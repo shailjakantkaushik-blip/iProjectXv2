@@ -1,0 +1,5 @@
+ALTER TABLE public.organizations
+  ADD COLUMN IF NOT EXISTS brand_name TEXT,
+  ADD COLUMN IF NOT EXISTS logo_url TEXT,
+  ADD COLUMN IF NOT EXISTS primary_color TEXT,
+  ADD COLUMN IF NOT EXISTS accent_color TEXT;

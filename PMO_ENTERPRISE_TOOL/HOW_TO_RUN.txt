@@ -1,0 +1,27 @@
+PMO ENTERPRISE TOOL - HOW TO RUN ON WINDOWS
+=============================================
+
+REQUIREMENTS (one-time)
+-----------------------
+1. Install Python 3.10 or newer:
+   https://www.python.org/downloads/
+   IMPORTANT: On the first installer screen, tick
+   "Add Python to PATH" before clicking Install.
+
+TO LAUNCH THE APP
+-----------------
+1. Unzip this folder anywhere (e.g. Desktop).
+2. Double-click  RUN.bat
+3. First launch will create a virtual environment and install
+   dependencies (takes 2-5 minutes, only happens once).
+4. Your browser opens automatically at http://localhost:8501
+
+TO STOP THE APP
+---------------
+Close the black command window.
+
+TROUBLESHOOTING
+---------------
+- "Python is not installed": install Python and re-run RUN.bat.
+- Browser didn't open: visit http://localhost:8501 manually.
+- To reset: delete the ".venv" folder and run RUN.bat again.

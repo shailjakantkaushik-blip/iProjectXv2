@@ -1,0 +1,322 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Streamlit PMO Enterprise Tool — exact palette (light preset)
+ * bg #f5f6f8, surface #ffffff, sidebar #e9edf2,
+ * text #0b1220, muted #374151, border #d1d5db,
+ * accent #1d4ed8, accent2 #15803d
+ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-surface: var(--surface);
+  --color-heading: var(--heading);
+  --color-accent2: var(--accent2);
+}
+
+:root {
+  --radius: 0.5rem;
+
+  /* Streamlit light preset — hex verbatim */
+  --background: #f5f6f8;
+  --surface: #ffffff;
+  --foreground: #0b1220;
+  --heading: #0b1220;
+  --muted-foreground: #374151;
+  --border: #d1d5db;
+  --input: #d1d5db;
+  --ring: #1d4ed8;
+
+  --card: #ffffff;
+  --card-foreground: #0b1220;
+  --popover: #ffffff;
+  --popover-foreground: #0b1220;
+
+  --primary: #1d4ed8;
+  --primary-foreground: #ffffff;
+  --secondary: #eef2f7;
+  --secondary-foreground: #0b1220;
+  --muted: #eef2f7;
+  --accent: #1d4ed8;
+  --accent-foreground: #ffffff;
+  --accent2: #15803d;
+
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+
+  /* Streamlit chart palette (plotly defaults + accents) */
+  --chart-1: #1d4ed8;
+  --chart-2: #15803d;
+  --chart-3: #f59e0b;
+  --chart-4: #8b5cf6;
+  --chart-5: #06b6d4;
+
+  --sidebar: #e9edf2;
+  --sidebar-foreground: #0b1220;
+  --sidebar-primary: #1d4ed8;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #dbe3ec;
+  --sidebar-accent-foreground: #0b1220;
+  --sidebar-border: #d1d5db;
+  --sidebar-ring: #1d4ed8;
+
+  /* Chart theme tokens — overridden at runtime by Configuration → Chart Theme */
+  --ct-rag-green: #22c55e;
+  --ct-rag-amber: #f59e0b;
+  --ct-rag-red: #ef4444;
+  --ct-priority-critical: #ef4444;
+  --ct-priority-high: #f59e0b;
+  --ct-priority-medium: #eab308;
+  --ct-priority-low: #22c55e;
+  --ct-status-approved: #22c55e;
+  --ct-status-review: #3b82f6;
+  --ct-status-pending: #94a3b8;
+  --ct-status-hold: #f59e0b;
+  --ct-status-rejected: #ef4444;
+  --ct-status-healthy: #16a34a;
+  --ct-status-at-risk: #f59e0b;
+  --ct-status-blocked: #dc2626;
+  --ct-chart-1: #1d4ed8;
+  --ct-chart-2: #15803d;
+  --ct-chart-3: #f59e0b;
+  --ct-chart-4: #8b5cf6;
+  --ct-chart-5: #06b6d4;
+  --ct-chart-6: #ec4899;
+  --ct-chart-7: #0ea5e9;
+  --ct-chart-8: #a3a3a3;
+}
+
+.dark {
+  /* Streamlit dark preset — navy cockpit */
+  --background: #0f172a;
+  --surface: #1e293b;
+  --foreground: #f8fafc;
+  --heading: #ffffff;
+  --muted-foreground: #cbd5e1;
+  --border: #475569;
+  --input: #475569;
+  --ring: #60a5fa;
+
+  --card: #1e293b;
+  --card-foreground: #f8fafc;
+  --popover: #1e293b;
+  --popover-foreground: #f8fafc;
+
+  --primary: #60a5fa;
+  --primary-foreground: #0f172a;
+  --secondary: #334155;
+  --secondary-foreground: #f8fafc;
+  --muted: #334155;
+  --accent: #60a5fa;
+  --accent-foreground: #0f172a;
+  --accent2: #4ade80;
+
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+
+  --chart-1: #60a5fa;
+  --chart-2: #4ade80;
+  --chart-3: #f59e0b;
+  --chart-4: #a78bfa;
+  --chart-5: #22d3ee;
+
+  --sidebar: #111827;
+  --sidebar-foreground: #f8fafc;
+  --sidebar-primary: #60a5fa;
+  --sidebar-primary-foreground: #0f172a;
+  --sidebar-accent: #1f2937;
+  --sidebar-accent-foreground: #f8fafc;
+  --sidebar-border: #334155;
+  --sidebar-ring: #60a5fa;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html, body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    color: var(--color-heading);
+    font-weight: 700;
+  }
+}
+
+/* ─────────── Streamlit visual primitives ─────────── */
+
+/* Section frame — matches Streamlit's <div class='section-frame'> */
+.section-frame {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 2px rgba(11, 18, 32, 0.03);
+  min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.section-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-heading);
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* KPI card — matches Streamlit's kpi-card */
+.kpi-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  min-height: 62px;
+}
+
+.kpi-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-muted-foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.kpi-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-heading);
+  line-height: 1.15;
+}
+
+/* Streamlit page heading (### emoji Title) */
+.page-heading {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-heading);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+/* Compact table like Streamlit dataframes */
+.st-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12.5px;
+}
+.st-table thead th {
+  background: #f1f3f6;
+  color: var(--color-heading);
+  font-weight: 600;
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+}
+.st-table tbody td {
+  padding: 7px 10px;
+  border-bottom: 1px solid #eef0f3;
+  color: var(--color-foreground);
+}
+.st-table tbody tr:hover td { background: #f8fafc; }
+
+/* Table wrapper: enable horizontal scroll within page instead of blowing out viewport */
+.st-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-left: -0.75rem;
+  margin-right: -0.75rem;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+}
+@media (min-width: 640px) {
+  .st-table-wrap { margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
+}
+
+/* Shared compact form input used across register/edit forms */
+.st-input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  padding: 4px 8px;
+  font-size: 12.5px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-foreground);
+}
+.st-input:focus { outline: none; border-color: var(--color-ring); box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-ring) 25%, transparent); }
+textarea.st-input { height: auto; min-height: 64px; }
+
+/* RAG chips */
+.rag-green  { background:#dcfce7; color:#15803d; border:1px solid #86efac; }
+.rag-amber  { background:#fef3c7; color:#a16207; border:1px solid #fcd34d; }
+.rag-red    { background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; }
+.rag-chip   { display:inline-flex; align-items:center; padding:2px 8px; border-radius:9999px; font-size:11px; font-weight:600; }
+
+/* Responsive spacing tweaks */
+html { -webkit-text-size-adjust: 100%; }
+body { overflow-x: hidden; }
+
+@media (max-width: 640px) {
+  .section-frame { padding: 12px 12px; border-radius: 8px; }
+  .page-heading { font-size: 18px; }
+  .kpi-value { font-size: 18px; }
+  .st-table thead th, .st-table tbody td { padding: 6px 8px; font-size: 12px; }
+}

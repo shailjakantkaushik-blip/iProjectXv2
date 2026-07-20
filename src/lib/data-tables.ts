@@ -1,0 +1,429 @@
+// Central schema for the Data Editor + Excel import/export.
+// All tables are org-scoped. Project-scoped tables resolve via `project_code`
+// (human-friendly column shown in exports) instead of the raw project_id UUID.
+
+export type FieldType = "text" | "number" | "date" | "select" | "textarea";
+
+export interface FieldDef {
+  key: string;
+  label: string;
+  type: FieldType;
+  options?: string[];
+  required?: boolean;
+  // In export/import, replace a UUID FK with a human-readable code column.
+  fk?: "project" | "bu";
+  // Show in list/editor tables (default true)
+  hidden?: boolean;
+  // Width hint for the editor grid
+  w?: string;
+}
+
+export interface TableDef {
+  key: string; // supabase table name
+  label: string;
+  // Row-scope for import: unique key(s) used to upsert-match a row.
+  // e.g. ["project_code","gate_name"] on stage_gates.
+  matchOn?: string[];
+  // Order results by this column
+  orderBy?: string;
+  // Whether new-row insert is supported through the editor (some tables
+  // are derived, e.g. financials_monthly you can, milestones you can, etc.)
+  fields: FieldDef[];
+  // Extra description shown at top of the tab
+  description?: string;
+}
+
+const RAG = ["Green", "Amber", "Red"];
+const STATUS = ["Not Started", "In Progress", "On Hold", "Completed", "Cancelled"];
+const PRIORITY = ["Low", "Medium", "High", "Critical"];
+const DELIVERY = ["Waterfall", "Agile", "Hybrid"];
+const GATE_STATUS = ["Pending", "In Review", "Approved", "Rejected", "On Hold"];
+const DECISION_OUTCOME = ["Pending", "In Review", "Approved", "Rejected", "On Hold"];
+
+export const TABLES: TableDef[] = [
+  {
+    key: "projects",
+    label: "Projects",
+    matchOn: ["project_code"],
+    orderBy: "project_code",
+    description: "Master project register. `project_code` is the human key used across every other sheet.",
+    fields: [
+      { key: "project_code", label: "Project Code", type: "text", required: true },
+      { key: "name", label: "Name", type: "text", required: true },
+      { key: "program", label: "Program", type: "text" },
+      { key: "sponsor", label: "Sponsor", type: "text" },
+      { key: "bu_id", label: "Business Unit", type: "text", fk: "bu" },
+      { key: "priority", label: "Priority", type: "select", options: PRIORITY },
+      { key: "status", label: "Status", type: "select", options: STATUS },
+      { key: "rag", label: "RAG", type: "select", options: RAG },
+      { key: "current_phase", label: "Current Phase", type: "text" },
+      { key: "delivery_method", label: "Delivery", type: "select", options: DELIVERY },
+      { key: "start_date", label: "Start Date", type: "date" },
+      { key: "end_date", label: "End Date", type: "date" },
+      { key: "target_go_live", label: "Target Go-Live", type: "date" },
+      { key: "planned_start_date", label: "Planned Start", type: "date" },
+      { key: "planned_end_date", label: "Planned End", type: "date" },
+      { key: "actual_start_date", label: "Actual Start", type: "date" },
+      { key: "actual_end_date", label: "Actual End", type: "date" },
+      { key: "budget", label: "Budget", type: "number" },
+      { key: "capex_approved", label: "CAPEX Approved", type: "number" },
+      { key: "capex_incurred", label: "CAPEX Incurred", type: "number" },
+      { key: "opex_approved", label: "OPEX Approved", type: "number" },
+      { key: "opex_incurred", label: "OPEX Incurred", type: "number" },
+      { key: "benefits_target", label: "Benefits Target", type: "number" },
+      { key: "benefits_realised", label: "Benefits Realised", type: "number" },
+      { key: "roi_percent", label: "ROI %", type: "number" },
+      { key: "description", label: "Description", type: "textarea" },
+    ],
+  },
+  {
+    key: "business_units",
+    label: "Business Units",
+    matchOn: ["code"],
+    orderBy: "name",
+    fields: [
+      { key: "code", label: "BU Code", type: "text", required: true },
+      { key: "name", label: "Name", type: "text", required: true },
+    ],
+  },
+  {
+    key: "stage_gate_definitions",
+    label: "Stage Gate Definitions",
+    matchOn: ["gate_name"],
+    orderBy: "sort_order",
+    description: "Org-wide list of stage gates used by every project.",
+    fields: [
+      { key: "gate_name", label: "Gate Name", type: "text", required: true },
+      { key: "sort_order", label: "Order", type: "number" },
+      { key: "is_active", label: "Active", type: "select", options: ["true", "false"] },
+    ],
+  },
+  {
+    key: "stage_gates",
+    label: "Stage Gates",
+    matchOn: ["project_code", "gate_name"],
+    orderBy: "planned_date",
+    fields: [
+      { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "gate_name", label: "Gate Name", type: "text", required: true },
+      { key: "planned_date", label: "Planned Date", type: "date" },
+      { key: "actual_date", label: "Actual Date", type: "date" },
+      { key: "status", label: "Status", type: "select", options: GATE_STATUS },
+      { key: "approver", label: "Approver", type: "text" },
+      { key: "notes", label: "Notes", type: "textarea" },
+    ],
+  },
+  {
+    key: "milestones",
+    label: "Milestones",
+    matchOn: ["project_code", "name"],
+    orderBy: "planned_date",
+    fields: [
+      { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "name", label: "Milestone", type: "text", required: true },
+      { key: "planned_date", label: "Planned", type: "date" },
+      { key: "actual_date", label: "Actual", type: "date" },
+      { key: "status", label: "Status", type: "select", options: STATUS },
+      { key: "owner", label: "Owner", type: "text" },
+      { key: "notes", label: "Notes", type: "textarea" },
+    ],
+  },
+  {
+    key: "risks",
+    label: "Risks",
+    matchOn: ["project_code", "title"],
+    orderBy: "severity",
+    fields: [
+      { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "title", label: "Title", type: "text", required: true },
+      { key: "description", label: "Description", type: "textarea" },
+      { key: "category", label: "Category", type: "text" },
+      { key: "probability", label: "Probability (1-5)", type: "number" },
+      { key: "impact", label: "Impact (1-5)", type: "number" },
+      { key: "severity", label: "Severity", type: "number" },
+      { key: "status", label: "Status", type: "select", options: ["Open", "Mitigating", "Closed"] },
+      { key: "owner", label: "Owner", type: "text" },
+      { key: "mitigation", label: "Mitigation", type: "textarea" },
+      { key: "due_date", label: "Due", type: "date" },
+    ],
+  },
+  {
+    key: "issues",
+    label: "Issues",
+    matchOn: ["project_code", "title"],
+    orderBy: "raised_date",
+    fields: [
+      { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "title", label: "Title", type: "text", required: true },
+      { key: "description", label: "Description", type: "textarea" },
+      { key: "priority", label: "Priority", type: "select", options: PRIORITY },
+      { key: "status", label: "Status", type: "select", options: ["Open", "In Progress", "Resolved", "Closed"] },
+      { key: "owner", label: "Owner", type: "text" },
+      { key: "raised_date", label: "Raised", type: "date" },
+      { key: "target_date", label: "Target", type: "date" },
+      { key: "resolved_date", label: "Resolved", type: "date" },
+      { key: "resolution", label: "Resolution", type: "textarea" },
+    ],
+  },
+  {
+    key: "actions",
+    label: "Actions",
+    matchOn: ["project_code", "title"],
+    orderBy: "due_date",
+    fields: [
+      { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "title", label: "Title", type: "text", required: true },
+      { key: "description", label: "Description", type: "textarea" },
+      { key: "owner", label: "Owner", type: "text" },
+      { key: "priority", label: "Priority", type: "select", options: PRIORITY },
+      { key: "status", label: "Status", type: "select", options: ["Open", "In Progress", "Done", "Cancelled"] },
+      { key: "due_date", label: "Due", type: "date" },
+      { key: "completed_date", label: "Completed", type: "date" },
+    ],
+  },
+  {
+    key: "decisions",
+    label: "Decisions",
+    matchOn: ["project_code", "title"],
+    orderBy: "decision_date",
+    fields: [
+      { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "title", label: "Title", type: "text", required: true },
+      { key: "description", label: "Description", type: "textarea" },
+      { key: "program", label: "Program", type: "text" },
+      { key: "forum", label: "Forum", type: "text" },
+      { key: "sponsor", label: "Sponsor", type: "text" },
+      { key: "decided_by", label: "Decided By", type: "text" },
+      { key: "approvers", label: "Approvers", type: "text" },
+      { key: "outcome", label: "Outcome", type: "select", options: DECISION_OUTCOME },
+      { key: "status", label: "Status", type: "text" },
+      { key: "decision_date", label: "Date", type: "date" },
+      { key: "rationale", label: "Rationale", type: "textarea" },
+      { key: "impact", label: "Impact", type: "textarea" },
+    ],
+  },
+  {
+    key: "dependencies",
+    label: "Dependencies",
+    matchOn: ["project_code", "title"],
+    orderBy: "needed_by",
+    fields: [
+      { key: "project_id", label: "Project (Successor)", type: "text", fk: "project", required: true },
+      { key: "depends_on_project_id", label: "Depends On (Predecessor)", type: "text", fk: "project" },
+      { key: "title", label: "Title", type: "text", required: true },
+      { key: "description", label: "Description", type: "textarea" },
+      { key: "dep_type", label: "Type", type: "select", options: ["Finish-to-Start", "Start-to-Start", "Finish-to-Finish", "Start-to-Finish"] },
+      { key: "status", label: "Status", type: "select", options: ["On Track", "At Risk", "Blocked", "Resolved"] },
+      { key: "owner", label: "Owner", type: "text" },
+      { key: "needed_by", label: "Needed By", type: "date" },
+    ],
+  },
+  {
+    key: "benefits",
+    label: "Benefits",
+    matchOn: ["project_code", "title"],
+    orderBy: "realisation_date",
+    fields: [
+      { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "title", label: "Benefit", type: "text", required: true },
+      { key: "benefit_type", label: "Type", type: "select", options: ["Cash", "Non-Cash", "Cost Avoidance", "Revenue"] },
+      { key: "target_value", label: "Target", type: "number" },
+      { key: "realised_value", label: "Realised", type: "number" },
+      { key: "realisation_date", label: "Realisation Date", type: "date" },
+      { key: "owner", label: "Owner", type: "text" },
+      { key: "status", label: "Status", type: "select", options: ["Planned", "In Progress", "Realised", "At Risk"] },
+      { key: "notes", label: "Notes", type: "textarea" },
+    ],
+  },
+  {
+    key: "financials_monthly",
+    label: "Financials (Monthly)",
+    matchOn: ["project_code", "period_month"],
+    orderBy: "period_month",
+    fields: [
+      { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "period_month", label: "Month (YYYY-MM-01)", type: "date", required: true },
+      { key: "capex_planned", label: "CAPEX Plan", type: "number" },
+      { key: "capex_actual", label: "CAPEX Actual", type: "number" },
+      { key: "capex_forecast", label: "CAPEX Forecast", type: "number" },
+      { key: "opex_planned", label: "OPEX Plan", type: "number" },
+      { key: "opex_actual", label: "OPEX Actual", type: "number" },
+      { key: "opex_forecast", label: "OPEX Forecast", type: "number" },
+      { key: "benefits_planned", label: "Benefits Plan", type: "number" },
+      { key: "benefits_actual", label: "Benefits Actual", type: "number" },
+    ],
+  },
+  {
+    key: "fy_allocations",
+    label: "FY Allocations",
+    matchOn: ["project_code", "fy"],
+    orderBy: "fy",
+    fields: [
+      { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "fy", label: "FY", type: "text", required: true },
+      { key: "capex", label: "CAPEX", type: "number" },
+      { key: "opex", label: "OPEX", type: "number" },
+      { key: "benefits", label: "Benefits", type: "number" },
+    ],
+  },
+  {
+    key: "sprints",
+    label: "Sprints",
+    matchOn: ["project_code", "sprint_number"],
+    orderBy: "start_date",
+    fields: [
+      { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "sprint_number", label: "Sprint #", type: "number", required: true },
+      { key: "name", label: "Name", type: "text" },
+      { key: "start_date", label: "Start", type: "date" },
+      { key: "end_date", label: "End", type: "date" },
+      { key: "planned_points", label: "Planned Pts", type: "number" },
+      { key: "completed_points", label: "Completed Pts", type: "number" },
+      { key: "committed_stories", label: "Committed Stories", type: "number" },
+      { key: "completed_stories", label: "Completed Stories", type: "number" },
+      { key: "status", label: "Status", type: "select", options: ["Planned", "Active", "Closed"] },
+      { key: "notes", label: "Notes", type: "textarea" },
+    ],
+  },
+  {
+    key: "change_requests",
+    label: "Change Requests",
+    matchOn: ["project_code", "cr_number"],
+    orderBy: "raised_date",
+    fields: [
+      { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "cr_number", label: "CR #", type: "text", required: true },
+      { key: "title", label: "Title", type: "text" },
+      { key: "description", label: "Description", type: "textarea" },
+      { key: "change_type", label: "Type", type: "select", options: ["Scope", "Schedule", "Cost", "Quality"] },
+      { key: "impact_scope", label: "Scope Impact", type: "text" },
+      { key: "impact_schedule_days", label: "Schedule Δ (days)", type: "number" },
+      { key: "impact_cost", label: "Cost Δ", type: "number" },
+      { key: "status", label: "Status", type: "select", options: ["Draft", "Submitted", "Approved", "Rejected"] },
+      { key: "raised_by", label: "Raised By", type: "text" },
+      { key: "raised_date", label: "Raised", type: "date" },
+      { key: "decision_date", label: "Decided", type: "date" },
+      { key: "approver", label: "Approver", type: "text" },
+    ],
+  },
+  {
+    key: "status_updates",
+    label: "Status Updates",
+    matchOn: ["project_code", "update_date"],
+    orderBy: "update_date",
+    fields: [
+      { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "update_date", label: "Date", type: "date", required: true },
+      { key: "reporter", label: "Reporter", type: "text" },
+      { key: "overall_rag", label: "Overall RAG", type: "select", options: RAG },
+      { key: "schedule_rag", label: "Schedule", type: "select", options: RAG },
+      { key: "cost_rag", label: "Cost", type: "select", options: RAG },
+      { key: "scope_rag", label: "Scope", type: "select", options: RAG },
+      { key: "progress_summary", label: "Progress", type: "textarea" },
+      { key: "achievements", label: "Achievements", type: "textarea" },
+      { key: "next_steps", label: "Next Steps", type: "textarea" },
+      { key: "blockers", label: "Blockers", type: "textarea" },
+    ],
+  },
+  {
+    key: "stakeholders",
+    label: "Stakeholders",
+    matchOn: ["project_code", "name"],
+    orderBy: "name",
+    fields: [
+      { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "name", label: "Name", type: "text", required: true },
+      { key: "role", label: "Role", type: "text" },
+      { key: "email", label: "Email", type: "text" },
+      { key: "influence", label: "Influence", type: "select", options: ["Low", "Medium", "High"] },
+      { key: "interest", label: "Interest", type: "select", options: ["Low", "Medium", "High"] },
+      { key: "engagement_strategy", label: "Engagement", type: "textarea" },
+    ],
+  },
+  {
+    key: "resources",
+    label: "Resources",
+    matchOn: ["name"],
+    orderBy: "name",
+    fields: [
+      { key: "name", label: "Name", type: "text", required: true },
+      { key: "email", label: "Email", type: "text" },
+      { key: "role", label: "Role", type: "text" },
+      { key: "skills", label: "Skills", type: "text" },
+      { key: "bu_id", label: "Business Unit", type: "text", fk: "bu" },
+      { key: "capacity_hours_week", label: "Capacity (h/wk)", type: "number" },
+      { key: "cost_rate", label: "Cost Rate", type: "number" },
+      { key: "location", label: "Location", type: "text" },
+      { key: "status", label: "Status", type: "select", options: ["Active", "Inactive"] },
+    ],
+  },
+  {
+    key: "resource_allocations",
+    label: "Resource Allocations",
+    matchOn: ["project_code", "resource_name", "period_month"],
+    orderBy: "period_month",
+    fields: [
+      { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "resource_id", label: "Resource", type: "text", required: true },
+      { key: "period_month", label: "Month", type: "date", required: true },
+      { key: "allocation_percent", label: "Allocation %", type: "number" },
+      { key: "allocated_hours", label: "Hours", type: "number" },
+      { key: "role_on_project", label: "Role", type: "text" },
+    ],
+  },
+  {
+    key: "documents",
+    label: "Documents",
+    matchOn: ["project_code", "name"],
+    orderBy: "uploaded_date",
+    fields: [
+      { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "name", label: "Name", type: "text", required: true },
+      { key: "doc_type", label: "Type", type: "text" },
+      { key: "url", label: "URL", type: "text" },
+      { key: "version", label: "Version", type: "text" },
+      { key: "owner", label: "Owner", type: "text" },
+      { key: "uploaded_date", label: "Uploaded", type: "date" },
+    ],
+  },
+  {
+    key: "lessons_learned",
+    label: "Lessons Learned",
+    matchOn: ["project_code", "what_happened"],
+    orderBy: "captured_date",
+    fields: [
+      { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "category", label: "Category", type: "text" },
+      { key: "what_happened", label: "What Happened", type: "textarea", required: true },
+      { key: "root_cause", label: "Root Cause", type: "textarea" },
+      { key: "recommendation", label: "Recommendation", type: "textarea" },
+      { key: "captured_by", label: "Captured By", type: "text" },
+      { key: "captured_date", label: "Date", type: "date" },
+    ],
+  },
+  {
+    key: "demand_pipeline",
+    label: "Demand Pipeline",
+    matchOn: ["idea_name"],
+    orderBy: "submitted_date",
+    fields: [
+      { key: "idea_name", label: "Idea", type: "text", required: true },
+      { key: "sponsor", label: "Sponsor", type: "text" },
+      { key: "description", label: "Description", type: "textarea" },
+      { key: "bu_id", label: "Business Unit", type: "text", fk: "bu" },
+      { key: "estimated_cost", label: "Est. Cost", type: "number" },
+      { key: "estimated_benefit", label: "Est. Benefit", type: "number" },
+      { key: "estimated_roi", label: "Est. ROI %", type: "number" },
+      { key: "strategic_alignment", label: "Alignment", type: "select", options: ["Low", "Medium", "High"] },
+      { key: "complexity", label: "Complexity", type: "select", options: ["Low", "Medium", "High"] },
+      { key: "status", label: "Status", type: "select", options: ["Idea", "Under Review", "Approved", "Rejected", "Deferred"] },
+      { key: "submitted_date", label: "Submitted", type: "date" },
+    ],
+  },
+];
+
+export function getTable(key: string) {
+  const t = TABLES.find((x) => x.key === key);
+  if (!t) throw new Error(`Unknown table: ${key}`);
+  return t;
+}

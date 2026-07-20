@@ -1,0 +1,16 @@
+[theme]
+base = "light"
+primaryColor = "#1d4ed8"
+backgroundColor = "#f5f6f8"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#0b1220"
+font = "sans serif"
+
+[server]
+headless = true
+# Don't rerun the app when the master .xlsx (or any non-source file) is touched
+# externally (e.g. Excel autosave / OneDrive sync). Prevents an infinite
+# reload loop while the workbook is open in Excel.
+fileWatcherType = "none"
+runOnSave = false
+
