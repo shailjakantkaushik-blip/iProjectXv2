@@ -45,10 +45,15 @@ the names already in your Vercel screenshot):
 | `STRIPE_WEBHOOK_SECRET`           | Prod (optional)   | If you wire Stripe billing later         |
 
 Vercel Framework Preset: **Vite**.
+Install command: `npm install` (not `npn` — that typo causes exit 127).
 Build command: `npm run vercel-build` (this runs `scripts/env-bridge.mjs`
 which aliases the `NEXT_PUBLIC_*` names to the `VITE_*` names Vite reads
 at build time, then runs `vite build`).
 Output directory: leave default (framework-detected).
+
+These are also set in `vercel.json`. If a dashboard **Override** still has
+`npn install`, clear or fix it under **Project → Settings → Build &
+Development Settings**, then redeploy.
 
 ## 4. Local dev (`.env`)
 
