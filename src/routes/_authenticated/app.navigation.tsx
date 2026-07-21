@@ -118,7 +118,7 @@ function OrgNavigationPage() {
           <SectionTitle>Workspace sidebar</SectionTitle>
         </div>
         {loading ? (
-          <PageLoading label="Loading navigation…" fullScreen={false} size="md" />
+          <PageLoading label="Loading navigation…" fullScreen={false} size="sm" />
         ) : (
           <fieldset disabled={!canEdit} className="min-w-0">
             <NavSequenceEditor

@@ -166,7 +166,7 @@ function Team() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <PageLoading label="Loading team…" fullScreen={false} size="md" />
+            <PageLoading label="Loading team…" fullScreen={false} size="sm" />
           ) : (
             <UserDirectoryTable
               users={users}

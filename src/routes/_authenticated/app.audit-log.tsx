@@ -105,7 +105,7 @@ function AuditLogPage() {
         </div>
 
         {isLoading ? (
-          <PageLoading label="Loading audit log…" fullScreen={false} size="md" />
+          <PageLoading label="Loading audit log…" fullScreen={false} size="sm" />
         ) : filtered.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No audit events yet. Decision outcome changes and other governed actions will appear

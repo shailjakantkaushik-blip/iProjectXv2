@@ -370,7 +370,7 @@ function ProjectAccessPage() {
 
       <SectionFrame>
         {loading ? (
-          <PageLoading label="Loading access…" fullScreen={false} size="md" />
+          <PageLoading label="Loading access…" fullScreen={false} size="sm" />
         ) : (
           <Tabs value={scopeTab} onValueChange={(v) => setScopeTab(v as "role" | "user")}>
             <TabsList className="mb-4">

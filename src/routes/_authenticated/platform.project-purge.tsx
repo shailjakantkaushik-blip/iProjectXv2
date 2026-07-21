@@ -146,7 +146,7 @@ function PlatformProjectPurgePage() {
         </SectionTitle>
 
         {isLoading ? (
-          <PageLoading label="Loading purge overview…" fullScreen={false} size="md" />
+          <PageLoading label="Loading purge overview…" fullScreen={false} size="sm" />
         ) : filtered.length === 0 ? (
           <p className="mt-3 text-sm text-muted-foreground">
             No organisations currently have closed projects older than 1 year.
