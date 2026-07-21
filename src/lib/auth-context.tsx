@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { getPostSignOutAuthPath } from "@/lib/org-auth-entry";
 
 export type AppRole = "admin" | "org_admin" | "bu_lead" | "pm" | "executive" | "platform_admin";
 
@@ -148,6 +149,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    // Return to the org white-label auth link when that is how they signed in.
+    if (typeof window !== "undefined") {
+      window.location.assign(getPostSignOutAuthPath());
+    }
   };
 
   return (

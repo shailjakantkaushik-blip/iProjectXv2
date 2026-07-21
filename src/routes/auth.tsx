@@ -28,8 +28,7 @@ import {
   type AuthOrgBrand,
 } from "@/components/auth-layout";
 import { ProcessingAnimation, ProcessingOverlay } from "@/components/processing-animation";
-
-const ORG_SLUG_KEY = "pmo:lastOrgSlug";
+import { clearOrgAuthEntry, rememberOrgAuthEntry } from "@/lib/org-auth-entry";
 
 type AuthSearch = { org?: string };
 
@@ -154,11 +153,7 @@ function AuthPage() {
       try {
         const result = await assertOrgMembership({ data: { slug } });
         if (result.allowed) {
-          try {
-            window.localStorage.setItem(ORG_SLUG_KEY, result.orgSlug);
-          } catch {
-            /* ignore */
-          }
+          rememberOrgAuthEntry(result.orgSlug);
           return true;
         }
         await supabase.auth.signOut();
@@ -198,14 +193,11 @@ function AuthPage() {
   }, [session, loading, orgRequested, targetOrgSlug, rejectWrongOrgSession, navigate]);
 
   useEffect(() => {
-    if (orgRequested && orgBrand?.slug) {
-      try {
-        window.localStorage.setItem(ORG_SLUG_KEY, orgBrand.slug);
-      } catch {
-        /* ignore */
-      }
+    // Org white-label entry: remember so sign-out returns here.
+    if (orgRequested && (orgBrand?.slug || targetOrgSlug)) {
+      rememberOrgAuthEntry(orgBrand?.slug || targetOrgSlug);
     }
-  }, [orgRequested, orgBrand?.slug]);
+  }, [orgRequested, orgBrand?.slug, targetOrgSlug]);
 
   const handleToken = useCallback((t: string) => setCaptchaToken(t), []);
   const handleExpire = useCallback(() => setCaptchaToken(null), []);
@@ -270,29 +262,8 @@ function AuthPage() {
       return;
     }
 
-    try {
-      const { data: userRes } = await supabase.auth.getUser();
-      const uid = userRes.user?.id;
-      if (uid) {
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("org_id")
-          .eq("id", uid)
-          .maybeSingle();
-        const orgId = (prof as { org_id?: string } | null)?.org_id;
-        if (orgId) {
-          const { data: org } = await supabase
-            .from("organizations")
-            .select("slug")
-            .eq("id", orgId)
-            .maybeSingle();
-          const slug = (org as { slug?: string } | null)?.slug;
-          if (slug) window.localStorage.setItem(ORG_SLUG_KEY, slug);
-        }
-      }
-    } catch {
-      /* ignore */
-    }
+    // General /auth sign-in — do not treat membership as org-link entry.
+    clearOrgAuthEntry();
     setBusy(false);
     toast.success("Signed in");
     navigate({ to: "/app", replace: true });
@@ -332,6 +303,7 @@ function AuthPage() {
         toast.error(error.message);
         return;
       }
+      clearOrgAuthEntry();
       toast.success("Account created — check email if confirmation is required.");
       navigate({ to: "/app", replace: true });
     } finally {
