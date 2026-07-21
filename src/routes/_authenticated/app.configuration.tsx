@@ -23,7 +23,7 @@ const CARDS = [
     to: "/app/team",
     icon: Users,
     title: "Team & Roles",
-    desc: "Invite users, assign roles across the organisation",
+    desc: "Invite users, roles, activate/deactivate, and delete accounts",
   },
   {
     to: "/app/business-units",

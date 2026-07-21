@@ -10,6 +10,7 @@ export interface Profile {
   full_name: string | null;
   org_id: string | null;
   must_change_password?: boolean;
+  is_active?: boolean;
 }
 
 
@@ -67,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadProfile = async (userId: string) => {
     const { data: p } = await supabase
       .from("profiles")
-      .select("id,email,full_name,org_id,must_change_password")
+      .select("id,email,full_name,org_id,must_change_password,is_active")
       .eq("id", userId)
       .maybeSingle();
     setProfile((p as Profile) ?? null);

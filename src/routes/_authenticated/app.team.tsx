@@ -1,118 +1,217 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth, isAdmin, type AppRole } from "@/lib/auth-context";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { useEffect, useState } from "react";
+import { useAuth, isAdmin } from "@/lib/auth-context";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
-import { useNavigate } from "@tanstack/react-router";
+import {
+  adminAssignUserRole,
+  adminDeleteUser,
+  adminRemoveUserRole,
+  adminSetUserActive,
+  listMyOrgUsers,
+  orgAdminCreateUser,
+} from "@/lib/user-admin.functions";
+import { UserDirectoryTable, randomPassword } from "@/components/user-directory-table";
 
 export const Route = createFileRoute("/_authenticated/app/team")({
   component: Team,
 });
 
-const ROLES: AppRole[] = ["org_admin", "bu_lead", "pm", "executive"];
-
 function Team() {
-  const { organization, roles: myRoles } = useAuth();
+  const { organization, roles: myRoles, user } = useAuth();
   const admin = isAdmin(myRoles);
   const qc = useQueryClient();
   const navigate = useNavigate();
-  useEffect(() => { if (!admin) navigate({ to: "/app", replace: true }); }, [admin, navigate]);
 
-  const { data: members = [] } = useQuery({
-    queryKey: ["team", organization?.id],
-    queryFn: async () => {
-      const { data: profiles } = await supabase.from("profiles").select("id,email,full_name").eq("org_id", organization!.id);
-      const { data: rolesRows } = await supabase.from("user_roles").select("user_id,role").eq("org_id", organization!.id);
-      const byUser = new Map<string, AppRole[]>();
-      (rolesRows ?? []).forEach((r) => {
-        const arr = byUser.get(r.user_id) ?? [];
-        arr.push(r.role as AppRole);
-        byUser.set(r.user_id, arr);
-      });
-      return (profiles ?? []).map((p) => ({ ...p, roles: byUser.get(p.id) ?? [] }));
-    },
+  useEffect(() => {
+    if (!admin) navigate({ to: "/app", replace: true });
+  }, [admin, navigate]);
+
+  const listUsers = useServerFn(listMyOrgUsers);
+  const createUser = useServerFn(orgAdminCreateUser);
+  const setActive = useServerFn(adminSetUserActive);
+  const deleteUser = useServerFn(adminDeleteUser);
+  const assignRole = useServerFn(adminAssignUserRole);
+  const removeRole = useServerFn(adminRemoveUserRole);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["org_team_directory", organization?.id],
+    queryFn: async () => listUsers(),
     enabled: !!organization && admin,
   });
 
-  const [targetUser, setTargetUser] = useState<string>("");
-  const [targetRole, setTargetRole] = useState<AppRole>("pm");
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [uEmail, setUEmail] = useState("");
+  const [uName, setUName] = useState("");
+  const [uRole, setURole] = useState("pm");
+  const [uPwd, setUPwd] = useState(randomPassword());
 
-  const assign = async () => {
-    if (!targetUser || !organization) return;
-    const { error } = await supabase.from("user_roles").insert({ user_id: targetUser, org_id: organization.id, role: targetRole });
-    if (error) return toast.error(error.message);
-    toast.success("Role added");
-    qc.invalidateQueries({ queryKey: ["team"] });
+  const addUser = useMutation({
+    mutationFn: async () =>
+      createUser({
+        data: {
+          email: uEmail,
+          full_name: uName,
+          role: uRole as any,
+          default_password: uPwd,
+        },
+      }),
+    onSuccess: () => {
+      toast.success(`User created. Share password: ${uPwd}`);
+      setUEmail("");
+      setUName("");
+      setUPwd(randomPassword());
+      qc.invalidateQueries({ queryKey: ["org_team_directory"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const runUserAction = async (userId: string, fn: () => Promise<unknown>, okMsg: string) => {
+    setBusyId(userId);
+    try {
+      await fn();
+      toast.success(okMsg);
+      await qc.invalidateQueries({ queryKey: ["org_team_directory"] });
+    } catch (e: any) {
+      toast.error(e?.message ?? "Action failed");
+    } finally {
+      setBusyId(null);
+    }
   };
 
-  const removeRole = async (userId: string, role: AppRole) => {
-    const { error } = await supabase.from("user_roles").delete().eq("user_id", userId).eq("org_id", organization!.id).eq("role", role);
-    if (error) return toast.error(error.message);
-    qc.invalidateQueries({ queryKey: ["team"] });
-  };
+  if (!admin) return null;
+
+  const orgId = data?.org.id ?? organization?.id ?? "";
+  const users = data?.users ?? [];
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Team & Roles</h1>
-        <p className="text-sm text-muted-foreground">Invite via signup URL. Assign roles below.</p>
+        <p className="text-sm text-muted-foreground">
+          Manage users in {organization?.name ?? "your organisation"} — roles, activate/deactivate,
+          or delete.
+        </p>
       </div>
 
-      <Card><CardContent className="pt-6">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex-1 min-w-52">
-            <label className="mb-1 block text-xs">User</label>
-            <select value={targetUser} onChange={(e) => setTargetUser(e.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
-              <option value="">Select…</option>
-              {members.map((m) => <option key={m.id} value={m.id}>{m.full_name || m.email} ({m.email})</option>)}
-            </select>
+      <Card>
+        <CardHeader>
+          <CardTitle>Create user</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-2">
+          <div>
+            <Label>Full name</Label>
+            <Input value={uName} onChange={(e) => setUName(e.target.value)} />
           </div>
-          <div className="w-40">
-            <label className="mb-1 block text-xs">Role</label>
-            <select value={targetRole} onChange={(e) => setTargetRole(e.target.value as AppRole)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
-              {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
+          <div>
+            <Label>Email</Label>
+            <Input type="email" value={uEmail} onChange={(e) => setUEmail(e.target.value)} />
           </div>
-          <Button onClick={assign} disabled={!targetUser}>Assign</Button>
-        </div>
-        <p className="mt-3 text-xs text-muted-foreground">
-          To invite a new member: share your app URL. They sign up, then appear here. Users automatically join your organization when they belong to no org yet — until then they'll be in onboarding. (Auto-join by email domain can be added later.)
-        </p>
-      </CardContent></Card>
+          <div>
+            <Label>Role</Label>
+            <Select value={uRole} onValueChange={setURole}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="org_admin">Org Admin</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="bu_lead">BU Lead</SelectItem>
+                <SelectItem value="pm">Project Manager</SelectItem>
+                <SelectItem value="executive">Executive</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Default password</Label>
+            <div className="flex gap-2">
+              <Input value={uPwd} onChange={(e) => setUPwd(e.target.value)} />
+              <Button type="button" variant="secondary" onClick={() => setUPwd(randomPassword())}>
+                Regenerate
+              </Button>
+            </div>
+          </div>
+          <div className="md:col-span-2">
+            <Button
+              disabled={!uEmail || !uName || !uPwd || addUser.isPending}
+              onClick={() => addUser.mutate()}
+            >
+              {addUser.isPending ? "Creating…" : "Create user"}
+            </Button>
+            <p className="mt-2 text-xs text-muted-foreground">
+              New users must change the password on first sign-in. They are created in your
+              organisation only.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
-      <Card><CardContent className="p-0">
-        {members.length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">No members yet.</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="border-b bg-muted/40 text-left text-xs uppercase text-muted-foreground">
-              <tr><th className="px-4 py-3">User</th><th className="px-4 py-3">Email</th><th className="px-4 py-3">Roles</th></tr>
-            </thead>
-            <tbody>
-              {members.map((m) => (
-                <tr key={m.id} className="border-b align-top">
-                  <td className="px-4 py-3 font-medium">{m.full_name || "—"}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{m.email}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {m.roles.length === 0 && <span className="text-xs text-muted-foreground">viewer (no roles)</span>}
-                      {m.roles.map((r) => (
-                        <Badge key={r} variant="secondary" className="cursor-pointer" onClick={() => removeRole(m.id, r)} title="Click to remove">
-                          {r} ×
-                        </Badge>
-                      ))}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </CardContent></Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            {users.length} user{users.length === 1 ? "" : "s"}
+            {data?.org?.name ? ` · ${data.org.name}` : ""}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : (
+            <UserDirectoryTable
+              users={users}
+              orgId={orgId}
+              currentUserId={user?.id}
+              busyId={busyId}
+              onToggleActive={(u, next) =>
+                void runUserAction(
+                  u.id,
+                  () => setActive({ data: { user_id: u.id, is_active: next } }),
+                  next ? "User activated" : "User deactivated",
+                )
+              }
+              onDelete={(u) =>
+                void runUserAction(
+                  u.id,
+                  () => deleteUser({ data: { user_id: u.id } }),
+                  "User deleted",
+                )
+              }
+              onAssignRole={(u, role) =>
+                void runUserAction(
+                  u.id,
+                  () =>
+                    assignRole({
+                      data: { user_id: u.id, org_id: orgId, role: role as any },
+                    }),
+                  "Role added",
+                )
+              }
+              onRemoveRole={(u, role) =>
+                void runUserAction(
+                  u.id,
+                  () =>
+                    removeRole({
+                      data: { user_id: u.id, org_id: orgId, role: role as any },
+                    }),
+                  "Role removed",
+                )
+              }
+            />
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
