@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { ProcessingOverlay } from "@/components/processing-animation";
 import { DEFAULT_LANDING, fetchLandingConfig, resolveBrandLogoUrl } from "@/lib/landing-config";
 import { AuthLayout, PasswordField, type AuthBrand } from "@/components/auth-layout";
+import { readOrgAuthEntrySlug } from "@/lib/org-auth-entry";
 
 export const Route = createFileRoute("/reset-password")({
   head: () => ({
@@ -34,6 +35,7 @@ function ResetPasswordPage() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [brand, setBrand] = useState<AuthBrand>(() => toAuthBrand(DEFAULT_LANDING.brand));
+  const orgEntrySlug = readOrgAuthEntrySlug();
 
   useEffect(() => {
     fetchLandingConfig()
@@ -77,7 +79,11 @@ function ResetPasswordPage() {
           : "Validating your reset link — this usually takes a moment."
       }
       footer={
-        <Link to="/auth" className="font-medium text-primary hover:underline">
+        <Link
+          to="/auth"
+          search={orgEntrySlug ? { org: orgEntrySlug } : {}}
+          className="font-medium text-primary hover:underline"
+        >
           Back to sign in
         </Link>
       }

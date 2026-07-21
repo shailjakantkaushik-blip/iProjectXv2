@@ -1,6 +1,7 @@
 import { createFileRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { readOrgAuthEntrySlug } from "@/lib/org-auth-entry";
 import { toast } from "sonner";
 import { PageLoading } from "@/components/page-loading";
 
@@ -16,12 +17,18 @@ function Gate() {
   useEffect(() => {
     if (loading) return;
     if (!session) {
-      navigate({ to: "/auth", replace: true });
+      const slug = readOrgAuthEntrySlug();
+      if (slug) {
+        void navigate({ to: "/auth", search: { org: slug }, replace: true });
+      } else {
+        void navigate({ to: "/auth", replace: true });
+      }
       return;
     }
     if (profile && profile.is_active === false) {
       toast.error("Your account is inactive. Contact your administrator.");
-      void signOut().then(() => navigate({ to: "/auth", replace: true }));
+      // signOut redirects to the org auth link when that is how they entered.
+      void signOut();
       return;
     }
     if (profile?.must_change_password && pathname !== "/force-password-change") {

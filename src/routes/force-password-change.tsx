@@ -9,6 +9,7 @@ import { clearMustChangePassword } from "@/lib/platform-admin.functions";
 import { ProcessingOverlay } from "@/components/processing-animation";
 import { DEFAULT_LANDING, fetchLandingConfig, resolveBrandLogoUrl } from "@/lib/landing-config";
 import { AuthLayout, PasswordField, type AuthBrand } from "@/components/auth-layout";
+import { readOrgAuthEntrySlug } from "@/lib/org-auth-entry";
 
 export const Route = createFileRoute("/force-password-change")({
   head: () => ({
@@ -40,7 +41,10 @@ function ForcePwdPage() {
   const [brand, setBrand] = useState<AuthBrand>(() => toAuthBrand(DEFAULT_LANDING.brand));
 
   useEffect(() => {
-    if (!loading && !session) navigate({ to: "/auth", replace: true });
+    if (loading || session) return;
+    const slug = readOrgAuthEntrySlug();
+    if (slug) void navigate({ to: "/auth", search: { org: slug }, replace: true });
+    else void navigate({ to: "/auth", replace: true });
   }, [loading, session, navigate]);
 
   useEffect(() => {
