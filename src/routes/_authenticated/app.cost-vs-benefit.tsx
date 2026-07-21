@@ -27,6 +27,11 @@ import {
   LabelList,
 } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
+import {
+  projectApprovedFunding,
+  projectBenefitsTarget,
+  projectTargetRoi,
+} from "@/lib/project-finance";
 
 export const Route = createFileRoute("/_authenticated/app/cost-vs-benefit")({
   component: CostVsBenefitPage,
@@ -50,9 +55,9 @@ function CostVsBenefitPage() {
   const scored = useMemo(
     () =>
       filtered.map((p: any) => {
-        const cost = Number(p.budget || 0);
-        const benefit = Number(p.benefits_target || 0);
-        const roi = cost > 0 ? ((benefit - cost) / cost) * 100 : 0;
+        const cost = projectApprovedFunding(p);
+        const benefit = projectBenefitsTarget(p);
+        const roi = projectTargetRoi(p);
         return { ...p, cost, benefit, roi, net: benefit - cost };
       }),
     [filtered],
@@ -62,7 +67,7 @@ function CostVsBenefitPage() {
   const totalBenefit = scored.reduce((s, p) => s + p.benefit, 0);
   const netValue = totalBenefit - totalCost;
   const portfolioRoi = totalCost > 0 ? (netValue / totalCost) * 100 : 0;
-  const paybackMedian = scored.filter((p) => p.benefit > 0).length;
+  const projectsWithBenefits = scored.filter((p) => p.benefit > 0).length;
 
   const top10 = [...scored].sort((a, b) => b.roi - a.roi).slice(0, 10);
   const bottom10 = [...scored].sort((a, b) => a.roi - b.roi).slice(0, 10);
@@ -100,7 +105,7 @@ function CostVsBenefitPage() {
           <KpiCard label="Portfolio ROI" value={`${portfolioRoi.toFixed(1)}%`} accent="#3b82f6" />
           <KpiCard
             label="Projects w/ Benefits"
-            value={paybackMedian}
+            value={projectsWithBenefits}
             sub={`of ${scored.length}`}
             accent="#8b5cf6"
           />

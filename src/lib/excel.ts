@@ -23,6 +23,7 @@ export interface ProjectRow {
   opex_incurred?: number;
   benefits_target?: number;
   benefits_realised?: number;
+  forecast_at_completion?: number;
   roi_percent?: number;
   description?: string | null;
 }
@@ -101,14 +102,23 @@ export async function exportOrganizationWorkbook(orgId: string, orgName: string)
 
   const wb = XLSX.utils.book_new();
 
-  // README
+  // README — customer-facing import/export guidance
   const readme = [
-    { A: "PMO Enterprise — Organization Export", B: "" },
+    { A: "iProjectX — Organization Data Workbook", B: "" },
     { A: "Organization", B: orgName },
     { A: "Generated", B: new Date().toISOString() },
     { A: "", B: "" },
-    { A: "How to update", B: "Edit values in the sheets below (never rename headers). Add new rows at the bottom. Save the file and upload it from the Data Editor → Upload button. Admin role required." },
-    { A: "Match keys", B: "Rows are matched by the columns listed under each sheet name below. New codes create new rows; existing codes update in place." },
+    { A: "How to update", B: "Edit values below (never rename headers). Add rows at the bottom. Upload via Data Editor → Upload. Admin role required." },
+    { A: "Match keys", B: "Rows match on the keys listed per sheet. New codes insert; existing codes update." },
+    { A: "", B: "" },
+    { A: "Finance model (canonical)", B: "" },
+    { A: "1. Projects", B: "budget = approved funding; capex/opex approved & incurred; forecast_at_completion (FAC); benefits_* are rollups." },
+    { A: "2. Benefits sheet", B: "Benefit lines are the detail source. Keep project benefits_target / benefits_realised in sync with the sum of lines." },
+    { A: "3. FY Allocations", B: "budget + forecast $ per FY drive Budget vs Forecast charts. capex/opex/benefits are the detail split of budget." },
+    { A: "4. Financials (Monthly)", B: "Cashflow by month (planned/actual/forecast). Use YYYY-MM-01 dates." },
+    { A: "5. ROI %", B: "Target ROI = (benefits_target − budget) / budget × 100. Store on Projects; realised ROI is computed from incurred + realised benefits." },
+    { A: "6. Stage gates", B: "gate_name must match Stage Gate Definitions. current_phase on Projects mirrors the in-flight gate." },
+    { A: "7. Resource allocations", B: "allocation_percent is % of FTE for that month. Multiple projects in the same month are summed in capacity views." },
   ];
   const readmeSheet = XLSX.utils.json_to_sheet(readme, { skipHeader: true });
   XLSX.utils.book_append_sheet(wb, readmeSheet, "README");
@@ -298,17 +308,125 @@ function buildMatchKeyFromPayload(t: TableDef, payload: any, raw: Dict): string 
   return parts.join("||");
 }
 
-// ---------- Legacy single-sheet template & parser (still used by New Project flow) ----------
+// ---------- Blank multi-sheet customer template ----------
 export function downloadTemplate() {
-  // Produce a minimal template for the projects sheet only — the full,
-  // multi-sheet template comes from the "Download data" button (org export).
-  const t = TABLES.find((x) => x.key === "projects")!;
-  const headers = exportHeaders(t);
-  const sample: Dict = { project_code: "PRJ-001", name: "Sample Project" };
-  const ws = XLSX.utils.json_to_sheet([sample], { header: headers });
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Projects");
-  XLSX.writeFile(wb, "PMO_Projects_Template.xlsx");
+  const readme = [
+    { A: "iProjectX — Blank Data Template", B: "" },
+    { A: "Purpose", B: "Start clean: fill sheets, then upload via Data Editor → Upload (admin)." },
+    { A: "", B: "" },
+    { A: "Import order", B: "Business Units → Stage Gate Definitions → Projects → Resources → all other sheets." },
+    { A: "Project code", B: "Human key used on every child sheet (risks, financials, allocations, etc.)." },
+    { A: "Dates", B: "Use YYYY-MM-DD. Prefer Planned/Actual dates; Schedule Start/End auto-sync in the app." },
+    { A: "FY labels", B: "Use FY26, FY27 style labels matching your org financial year (default April start → FY ends in labelled year)." },
+    { A: "FY Allocations", B: "Set budget and forecast $ per FY. CapEx/OpEx/Benefits are optional detail of the budget split." },
+    { A: "Benefits", B: "Add benefit lines; keep Projects.benefits_target / benefits_realised equal to the sum of lines." },
+    { A: "ROI %", B: "Target ROI on Projects. Leave blank to let the app compute from benefits_target and budget." },
+    { A: "Capacity", B: "resource_allocations.allocation_percent = % of person-month. Same person on two projects in one month should total ≤100% unless intentionally over-allocated." },
+  ];
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.json_to_sheet(readme, { skipHeader: true }),
+    "README",
+  );
+
+  for (const t of TABLES) {
+    const headers = [...exportHeaders(t)];
+    if (t.key === "dependencies") {
+      const idx = headers.indexOf("project_code");
+      headers.splice(idx + 1, 0, "depends_on_project_code");
+    }
+    if (t.key === "resource_allocations") {
+      const idx = headers.indexOf("resource_id");
+      if (idx >= 0) headers[idx] = "resource_name";
+    }
+    const sample = sampleRowForTemplate(t, headers);
+    const ws = XLSX.utils.json_to_sheet([sample], { header: headers });
+    XLSX.utils.book_append_sheet(wb, ws, t.label.slice(0, 31));
+  }
+  XLSX.writeFile(wb, "iProjectX_Data_Template.xlsx");
+}
+
+function sampleRowForTemplate(t: TableDef, headers: string[]): Dict {
+  const row: Dict = Object.fromEntries(headers.map((h) => [h, ""]));
+  if (t.key === "business_units") {
+    row.code = "DIG";
+    row.name = "Digital";
+  } else if (t.key === "stage_gate_definitions") {
+    row.gate_name = "Discovery";
+    row.sort_order = 1;
+    row.is_active = "true";
+  } else if (t.key === "projects") {
+    row.project_code = "PRJ-001";
+    row.name = "Sample Customer Portal";
+    row.program = "Digital Transformation";
+    row.priority = "P2 - High";
+    row.status = "In Progress";
+    row.rag = "Green";
+    row.current_phase = "Build";
+    row.delivery_method = "Hybrid";
+    row.bu_code = "DIG";
+    row.planned_start_date = "2025-07-01";
+    row.planned_end_date = "2026-06-30";
+    row.actual_start_date = "2025-07-15";
+    row.start_date = "2025-07-15";
+    row.end_date = "2026-06-30";
+    row.target_go_live = "2026-05-15";
+    row.budget = 2500000;
+    row.capex_approved = 2000000;
+    row.capex_incurred = 800000;
+    row.opex_approved = 500000;
+    row.opex_incurred = 120000;
+    row.forecast_at_completion = 2550000;
+    row.benefits_target = 4000000;
+    row.benefits_realised = 500000;
+    row.roi_percent = 60;
+  } else if (t.key === "fy_allocations") {
+    row.project_code = "PRJ-001";
+    row.fy = "FY26";
+    row.budget = 1500000;
+    row.forecast = 1550000;
+    row.capex = 1200000;
+    row.opex = 300000;
+    row.benefits = 2000000;
+  } else if (t.key === "benefits") {
+    row.project_code = "PRJ-001";
+    row.title = "Revenue uplift";
+    row.benefit_type = "Financial";
+    row.target_value = 2500000;
+    row.realised_value = 300000;
+    row.status = "In Progress";
+  } else if (t.key === "financials_monthly") {
+    row.project_code = "PRJ-001";
+    row.period_month = "2026-01-01";
+    row.capex_planned = 100000;
+    row.capex_actual = 95000;
+    row.capex_forecast = 100000;
+    row.opex_planned = 20000;
+    row.opex_actual = 18000;
+    row.opex_forecast = 20000;
+  } else if (t.key === "resources") {
+    row.name = "Alex Morgan";
+    row.role = "Senior BA";
+    row.skills = "Analysis,Agile";
+    row.bu_code = "DIG";
+    row.capacity_hours_week = 40;
+    row.status = "Active";
+  } else if (t.key === "resource_allocations") {
+    row.project_code = "PRJ-001";
+    row.resource_name = "Alex Morgan";
+    row.period_month = "2026-01-01";
+    row.allocation_percent = 50;
+    row.allocated_hours = 80;
+  } else if (t.key === "stage_gates") {
+    row.project_code = "PRJ-001";
+    row.gate_name = "Build";
+    row.status = "In Review";
+    row.planned_date = "2026-02-01";
+  } else if (headers.includes("project_code")) {
+    row.project_code = "PRJ-001";
+  }
+  return row;
 }
 
 export async function parseWorkbook(file: File): Promise<ProjectRow[]> {
@@ -317,7 +435,7 @@ export async function parseWorkbook(file: File): Promise<ProjectRow[]> {
   const sheetName = wb.SheetNames.find((n) => n.toLowerCase() === "projects") || wb.SheetNames[0];
   const ws = wb.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json<Dict>(ws, { defval: null });
-  const numericCols = ["budget","capex_approved","capex_incurred","opex_approved","opex_incurred","benefits_target","benefits_realised","roi_percent"];
+  const numericCols = ["budget","capex_approved","capex_incurred","opex_approved","opex_incurred","forecast_at_completion","benefits_target","benefits_realised","roi_percent"];
   const dateCols = ["start_date","end_date","target_go_live","planned_start_date","planned_end_date","actual_start_date","actual_end_date"];
   const out: ProjectRow[] = [];
   for (const r of rows) {

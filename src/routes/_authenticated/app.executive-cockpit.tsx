@@ -20,6 +20,8 @@ import {
   projectApprovedFunding,
   projectForecast,
   projectIncurred,
+  fyAllocBudget,
+  fyAllocForecast,
 } from "@/lib/project-finance";
 
 export const Route = createFileRoute("/_authenticated/app/executive-cockpit")({
@@ -139,14 +141,8 @@ function ExecutiveCockpit() {
     (p: any) => String(p.portfolio_category || "").toLowerCase() === "unfunded",
   ).length;
 
-  const benefitsForecast = benefits.reduce(
-    (s: number, b: any) => s + num(b.forecast_value ?? b.target_value),
-    0,
-  );
-  const benefitsRealised = benefits.reduce(
-    (s: number, b: any) => s + num(b.realised_value ?? b.actual_value),
-    0,
-  );
+  const benefitsForecast = benefits.reduce((s: number, b: any) => s + num(b.target_value), 0);
+  const benefitsRealised = benefits.reduce((s: number, b: any) => s + num(b.realised_value), 0);
 
   const decisionsPending = decisions.filter((d: any) => {
     const s = String(d.status || d.outcome || "").toLowerCase();
@@ -174,7 +170,7 @@ function ExecutiveCockpit() {
     const actual = rows.reduce((s: number, p: any) => s + projectIncurred(p), 0);
     const bf = benefits
       .filter((b: any) => rows.find((r: any) => r.id === b.project_id))
-      .reduce((s: number, b: any) => s + num(b.forecast_value ?? b.target_value), 0);
+      .reduce((s: number, b: any) => s + num(b.target_value), 0);
     return {
       name: cat,
       initiatives: rows.length,
@@ -217,8 +213,8 @@ function ExecutiveCockpit() {
       const fy = a.fy || a.financial_year;
       if (!fy) return;
       const cur = map.get(fy) || { fy, budget: 0, forecast: 0 };
-      cur.budget += num(a.budget ?? a.allocated_amount);
-      cur.forecast += num(a.forecast ?? a.forecast_amount ?? a.allocated_amount);
+      cur.budget += fyAllocBudget(a);
+      cur.forecast += fyAllocForecast(a);
       map.set(fy, cur);
     });
     if (map.size === 0) {
@@ -227,8 +223,8 @@ function ExecutiveCockpit() {
         const start = p.start_date ? fyLabel(new Date(p.start_date), fyStartMonth) : null;
         if (!start) return;
         const cur = map.get(start) || { fy: start, budget: 0, forecast: 0 };
-        cur.budget += num(p.approved_funding ?? p.budget);
-        cur.forecast += num(p.forecast_at_completion ?? p.capex_approved) + num(p.opex_approved);
+        cur.budget += projectApprovedFunding(p);
+        cur.forecast += projectForecast(p);
         map.set(start, cur);
       });
     }
@@ -275,9 +271,9 @@ function ExecutiveCockpit() {
       <SectionFrame exportName="cockpit-delivery">
         <SectionTitle>Delivery</SectionTitle>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <KpiCard label="Projects On Track (%)" value={pct(onTrack, total)} accent="#22c55e" />
-          <KpiCard label="Projects At Risk (%)" value={pct(atRisk, total)} accent="#f59e0b" />
-          <KpiCard label="Projects Delayed (%)" value={pct(delayed, total)} accent="#ef4444" />
+          <KpiCard label="On Track (%)" value={pct(onTrack, total)} accent="#22c55e" />
+          <KpiCard label="At Risk (%)" value={pct(atRisk, total)} accent="#f59e0b" />
+          <KpiCard label="Critical (RAG) (%)" value={pct(delayed, total)} accent="#ef4444" />
           <KpiCard label="Total Strategic Programs" value={strategicPrograms} />
           <KpiCard label="Total CAPEX Programs" value={capexPrograms} />
           <KpiCard label="Total Unfunded Initiatives" value={unfundedInitiatives} />

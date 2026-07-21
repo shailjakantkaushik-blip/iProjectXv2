@@ -231,7 +231,7 @@ function ResourcesPage() {
     under: utilisation.filter((u) => u.status === "Under").length,
   };
 
-  // Resource × Month heatmap grid
+  // Resource × Month heatmap grid — sum ALL allocations for resource+month
   const heatGrid = useMemo(() => {
     return resources.map((r) => {
       const row: { name: string; cells: { month: string; pct: number }[] } = {
@@ -239,8 +239,10 @@ function ResourcesPage() {
         cells: [],
       };
       months.forEach((m) => {
-        const found = allocations.find((a) => a.resource_id === r.id && a.period_month === m);
-        row.cells.push({ month: m, pct: Math.round(Number(found?.allocation_percent || 0)) });
+        const total = allocations
+          .filter((a) => a.resource_id === r.id && a.period_month === m)
+          .reduce((s, a) => s + Number(a.allocation_percent || 0), 0);
+        row.cells.push({ month: m, pct: Math.round(total) });
       });
       return row;
     });

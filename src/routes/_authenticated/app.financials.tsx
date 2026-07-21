@@ -27,6 +27,13 @@ import {
   Cell,
 } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
+import {
+  projectApprovedFunding,
+  projectIncurred,
+  projectBenefitCostRatio,
+  projectBenefitsRealised,
+  projectRealisedRoi,
+} from "@/lib/project-finance";
 
 export const Route = createFileRoute("/_authenticated/app/financials")({
   component: FinancialsPage,
@@ -64,14 +71,19 @@ function FinancialsPage() {
   const capexIncurred = sum("capex_incurred");
   const opexApproved = sum("opex_approved");
   const opexIncurred = sum("opex_incurred");
-  const totalBudget = sum("budget");
-  const benefitsTarget = sum("benefits_target");
-  const benefitsRealised = sum("benefits_realised");
-  const totalApproved = capexApproved + opexApproved;
-  const totalIncurred = capexIncurred + opexIncurred;
+  const totalBudget = filtered.reduce((s, p: any) => s + projectApprovedFunding(p), 0);
+  const benefitsRealised = filtered.reduce((s, p: any) => s + projectBenefitsRealised(p), 0);
+  const totalApproved = filtered.reduce((s, p: any) => s + projectApprovedFunding(p), 0);
+  const totalIncurred = filtered.reduce((s, p: any) => s + projectIncurred(p), 0);
   const spendPct = totalApproved > 0 ? (totalIncurred / totalApproved) * 100 : 0;
   const variance = totalApproved - totalIncurred;
-  const cpi = totalIncurred > 0 ? benefitsRealised / totalIncurred : 0;
+  // Portfolio benefit/cost ratio (not EVM CPI). Per-project helper used in table contexts.
+  const benefitCostRatio =
+    totalIncurred > 0
+      ? benefitsRealised / totalIncurred
+      : filtered.length
+        ? filtered.reduce((s, p: any) => s + projectBenefitCostRatio(p), 0) / filtered.length
+        : 0;
 
   // By program
   const byProgram = Array.from(
@@ -88,9 +100,9 @@ function FinancialsPage() {
         };
         cur.capex += Number(p.capex_approved || 0);
         cur.opex += Number(p.opex_approved || 0);
-        cur.incurred += Number(p.capex_incurred || 0) + Number(p.opex_incurred || 0);
-        cur.budget += Number(p.budget || 0);
-        cur.benefits += Number(p.benefits_realised || 0);
+        cur.incurred += projectIncurred(p);
+        cur.budget += projectApprovedFunding(p);
+        cur.benefits += projectBenefitsRealised(p);
         m.set(k, cur);
         return m;
       }, new Map())
@@ -118,16 +130,12 @@ function FinancialsPage() {
     });
   }, [mFiltered]);
 
-  // Top 10 variance (approved-incurred)
+  // Top 10 variance (approved funding − incurred)
   const varianceTop = [...filtered]
     .map((p: any) => ({
       code: p.project_code,
       name: p.name,
-      variance:
-        Number(p.capex_approved || 0) +
-        Number(p.opex_approved || 0) -
-        Number(p.capex_incurred || 0) -
-        Number(p.opex_incurred || 0),
+      variance: projectApprovedFunding(p) - projectIncurred(p),
     }))
     .sort((a, b) => a.variance - b.variance)
     .slice(0, 10);
@@ -152,8 +160,8 @@ function FinancialsPage() {
             accent={spendPct > 100 ? "#ef4444" : spendPct > 85 ? "#f59e0b" : "#22c55e"}
           />
           <KpiCard
-            label="Benefits / Cost (CPI)"
-            value={cpi.toFixed(2)}
+            label="Benefits / Cost Ratio"
+            value={benefitCostRatio.toFixed(2)}
             sub={`Variance ${money(variance)}`}
             accent="#0ea5e9"
           />
@@ -286,10 +294,10 @@ function FinancialsPage() {
             </thead>
             <tbody>
               {filtered.map((p: any) => {
-                const appr = Number(p.capex_approved || 0) + Number(p.opex_approved || 0);
-                const inc = Number(p.capex_incurred || 0) + Number(p.opex_incurred || 0);
-                const ben = Number(p.benefits_realised || 0);
-                const roi = inc > 0 ? ((ben - inc) / inc) * 100 : 0;
+                const appr = projectApprovedFunding(p);
+                const inc = projectIncurred(p);
+                const ben = projectBenefitsRealised(p);
+                const roi = projectRealisedRoi(p);
                 const vari = appr - inc;
                 return (
                   <tr key={p.id}>
@@ -304,7 +312,7 @@ function FinancialsPage() {
                     </td>
                     <td className="font-medium">{p.name}</td>
                     <td>{p.program || "—"}</td>
-                    <td className="text-right tabular-nums">{money(Number(p.budget || 0))}</td>
+                    <td className="text-right tabular-nums">{money(appr)}</td>
                     <td className="text-right tabular-nums">
                       {money(Number(p.capex_approved || 0))}
                     </td>
