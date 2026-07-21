@@ -34,7 +34,7 @@ import {
   type LandingThemeMode,
 } from "@/lib/landing-config";
 
-const MAX_LOGO_BYTES = 500 * 1024;
+const MAX_LOGO_BYTES = 5 * 1024 * 1024;
 const MAX_PHOTO_BYTES = 1024 * 1024;
 
 export const Route = createFileRoute("/_authenticated/platform/landing")({
@@ -75,7 +75,7 @@ function LandingConfigPage() {
   function handleBrandLogoPick(file: File) {
     if (!cfg) return;
     if (file.size > MAX_LOGO_BYTES) {
-      toast.error("Logo must be under 500 KB.");
+      toast.error("Logo must be under 5 MB.");
       return;
     }
     const reader = new FileReader();
@@ -225,7 +225,7 @@ function LandingConfigPage() {
                 iProjectX logo
               </Label>
               <p className="mt-1 text-xs text-muted-foreground">
-                Upload a PNG / JPG / SVG / WebP (max 500 KB), or paste a hosted URL. Leave empty to
+                Upload a PNG / JPG / SVG / WebP (max 5 MB), or paste a hosted URL. Leave empty to
                 keep the built-in diamond mark.
               </p>
               <div className="mt-3 grid gap-4 md:grid-cols-[1fr_auto]">

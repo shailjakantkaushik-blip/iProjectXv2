@@ -17,7 +17,7 @@ export const Route = createFileRoute("/_authenticated/platform/branding")({
   component: PlatformBrandingPage,
 });
 
-const MAX_LOGO_BYTES = 500 * 1024;
+const MAX_LOGO_BYTES = 5 * 1024 * 1024;
 
 type Swatch = { name: string; hex: string };
 type Org = {
@@ -116,7 +116,7 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
 
   const handleLogoPick = (file: File) => {
     if (file.size > MAX_LOGO_BYTES) {
-      toast.error("Logo must be under 500 KB.");
+      toast.error("Logo must be under 5 MB.");
       return;
     }
     const reader = new FileReader();
@@ -206,7 +206,7 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
                   </Button>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">PNG / JPG / SVG / WebP · max 500 KB · square works best.</p>
+              <p className="text-xs text-muted-foreground">PNG / JPG / SVG / WebP · max 5 MB · square works best.</p>
             </div>
           </div>
         </div>

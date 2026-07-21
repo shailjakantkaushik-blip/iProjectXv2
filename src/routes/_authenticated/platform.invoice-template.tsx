@@ -23,7 +23,7 @@ export const Route = createFileRoute("/_authenticated/platform/invoice-template"
   component: InvoiceTemplatePage,
 });
 
-const MAX_LOGO_BYTES = 500 * 1024;
+const MAX_LOGO_BYTES = 5 * 1024 * 1024;
 
 const SAMPLE_INVOICE = {
   id: "preview",
@@ -79,7 +79,7 @@ function InvoiceTemplatePage() {
   const handleLogoPick = (file: File) => {
     if (!cfg) return;
     if (file.size > MAX_LOGO_BYTES) {
-      toast.error("Logo must be under 500 KB.");
+      toast.error("Logo must be under 5 MB.");
       return;
     }
     const reader = new FileReader();
@@ -215,7 +215,7 @@ function InvoiceTemplatePage() {
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    PNG / JPG / SVG / WebP · max 500 KB. Shown on every generated invoice.
+                    PNG / JPG / SVG / WebP · max 5 MB. Shown on every generated invoice.
                   </p>
                   <Field label="Or paste logo URL">
                     <Input
