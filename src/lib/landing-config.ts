@@ -8,7 +8,19 @@ export type LandingPalette = {
   danger: string;
   warning: string;
   success: string;
+  /** Primary heading / brand text */
+  textHeading: string;
+  /** Body copy */
+  textBody: string;
+  /** Muted / secondary labels */
+  textMuted: string;
+  /** Text on dark (navy) backgrounds */
+  textOnDark: string;
+  /** Text on accent / CTA backgrounds */
+  textOnAccent: string;
 };
+
+export type LandingThemeMode = "light" | "dark";
 
 export type LandingItem = { title: string; desc: string; icon?: string };
 export type LandingCap = { title: string; desc: string; icon?: string };
@@ -21,6 +33,10 @@ export type LandingConfig = {
     logo_url: string;
     tagline: string;
   };
+  /** Site-wide theme mode (light / dark). Palette colors still apply within the mode. */
+  theme: LandingThemeMode;
+  /** Name of the last applied predefined palette, if any */
+  palette_preset: string;
   palette: LandingPalette;
   hero: {
     eyebrow: string;
@@ -47,21 +63,149 @@ export type LandingConfig = {
   footer: { text: string };
 };
 
+export const DEFAULT_PALETTE: LandingPalette = {
+  navy: "#0f1b3d",
+  navyLight: "#1e3a5f",
+  accent: "#3b6fa0",
+  surface: "#e8edf3",
+  danger: "#dc2626",
+  warning: "#facc15",
+  success: "#15803d",
+  textHeading: "#0f1b3d",
+  textBody: "#1e3a5f",
+  textMuted: "#64748b",
+  textOnDark: "#ffffff",
+  textOnAccent: "#ffffff",
+};
+
+/** Named predefined palettes (including light / dark presets). */
+export type PalettePreset = {
+  id: string;
+  name: string;
+  description: string;
+  theme: LandingThemeMode;
+  palette: LandingPalette;
+};
+
+export const PALETTE_PRESETS: PalettePreset[] = [
+  {
+    id: "iprojectx",
+    name: "iProjectX Classic",
+    description: "Default navy enterprise look",
+    theme: "light",
+    palette: { ...DEFAULT_PALETTE },
+  },
+  {
+    id: "light-slate",
+    name: "Light Slate",
+    description: "Clean light theme with slate accents",
+    theme: "light",
+    palette: {
+      navy: "#0f172a",
+      navyLight: "#334155",
+      accent: "#0ea5e9",
+      surface: "#f1f5f9",
+      danger: "#dc2626",
+      warning: "#d97706",
+      success: "#16a34a",
+      textHeading: "#0f172a",
+      textBody: "#334155",
+      textMuted: "#64748b",
+      textOnDark: "#f8fafc",
+      textOnAccent: "#ffffff",
+    },
+  },
+  {
+    id: "dark-navy",
+    name: "Dark Navy",
+    description: "Dark theme with soft blue accents",
+    theme: "dark",
+    palette: {
+      navy: "#0b1224",
+      navyLight: "#1a2744",
+      accent: "#60a5fa",
+      surface: "#152038",
+      danger: "#f87171",
+      warning: "#fbbf24",
+      success: "#4ade80",
+      textHeading: "#f1f5f9",
+      textBody: "#cbd5e1",
+      textMuted: "#94a3b8",
+      textOnDark: "#f8fafc",
+      textOnAccent: "#0b1224",
+    },
+  },
+  {
+    id: "dark-graphite",
+    name: "Dark Graphite",
+    description: "Neutral dark theme with teal accent",
+    theme: "dark",
+    palette: {
+      navy: "#111827",
+      navyLight: "#1f2937",
+      accent: "#2dd4bf",
+      surface: "#1f2937",
+      danger: "#f87171",
+      warning: "#fbbf24",
+      success: "#34d399",
+      textHeading: "#f9fafb",
+      textBody: "#d1d5db",
+      textMuted: "#9ca3af",
+      textOnDark: "#f9fafb",
+      textOnAccent: "#042f2e",
+    },
+  },
+  {
+    id: "ocean",
+    name: "Ocean",
+    description: "Cool teal / cyan palette",
+    theme: "light",
+    palette: {
+      navy: "#0c4a6e",
+      navyLight: "#075985",
+      accent: "#0891b2",
+      surface: "#e0f2fe",
+      danger: "#e11d48",
+      warning: "#ca8a04",
+      success: "#059669",
+      textHeading: "#0c4a6e",
+      textBody: "#155e75",
+      textMuted: "#64748b",
+      textOnDark: "#ecfeff",
+      textOnAccent: "#ffffff",
+    },
+  },
+  {
+    id: "forest",
+    name: "Forest",
+    description: "Green-forward governance palette",
+    theme: "light",
+    palette: {
+      navy: "#14532d",
+      navyLight: "#166534",
+      accent: "#16a34a",
+      surface: "#ecfdf5",
+      danger: "#dc2626",
+      warning: "#ca8a04",
+      success: "#15803d",
+      textHeading: "#14532d",
+      textBody: "#166534",
+      textMuted: "#6b7280",
+      textOnDark: "#f0fdf4",
+      textOnAccent: "#ffffff",
+    },
+  },
+];
+
 export const DEFAULT_LANDING: LandingConfig = {
   brand: {
     name: "iProjectX",
     logo_url: "",
     tagline: "Enterprise PMO Command Center",
   },
-  palette: {
-    navy: "#0f1b3d",
-    navyLight: "#1e3a5f",
-    accent: "#3b6fa0",
-    surface: "#e8edf3",
-    danger: "#dc2626",
-    warning: "#facc15",
-    success: "#15803d",
-  },
+  theme: "light",
+  palette_preset: "iprojectx",
+  palette: { ...DEFAULT_PALETTE },
   hero: {
     eyebrow: "Enterprise PMO Command Center",
     title: "Master the",
@@ -78,20 +222,56 @@ export const DEFAULT_LANDING: LandingConfig = {
     subtitle:
       "Every red flag below is a failure mode we see in enterprise portfolios that are still run on decks and spreadsheets. Every green marker is what a governed portfolio actually looks like.",
     failures: [
-      { title: "Executives fly blind", desc: "Status decks are 2 weeks old by the time the board sees them." },
-      { title: "Budget discovered late", desc: "Overruns surface only at year-end reconciliation — with no audit trail." },
-      { title: "Stage gates skipped", desc: "Approvals rubber-stamped in email; no evidence, no accountability." },
-      { title: "Resource double-booking", desc: "Critical talent silently booked across five programs at once." },
-      { title: "RAID rots in spreadsheets", desc: "Risks, actions, issues, decisions decoupled from delivery reality." },
-      { title: "Benefits never tracked", desc: "Post go-live value promised on the business case is never measured." },
+      {
+        title: "Executives fly blind",
+        desc: "Status decks are 2 weeks old by the time the board sees them.",
+      },
+      {
+        title: "Budget discovered late",
+        desc: "Overruns surface only at year-end reconciliation — with no audit trail.",
+      },
+      {
+        title: "Stage gates skipped",
+        desc: "Approvals rubber-stamped in email; no evidence, no accountability.",
+      },
+      {
+        title: "Resource double-booking",
+        desc: "Critical talent silently booked across five programs at once.",
+      },
+      {
+        title: "RAID rots in spreadsheets",
+        desc: "Risks, actions, issues, decisions decoupled from delivery reality.",
+      },
+      {
+        title: "Benefits never tracked",
+        desc: "Post go-live value promised on the business case is never measured.",
+      },
     ],
     wins: [
-      { title: "Live executive cockpit", desc: "Real-time portfolio KPIs with drill-down to task-level impediments." },
-      { title: "Financial early warning", desc: "Automated variance alerts by phase, FY, program and business unit." },
-      { title: "Auditable stage gates", desc: "Every approval, rejection and hold is logged with reviewer and date." },
-      { title: "Capacity heatmaps", desc: "Flag conflicts 3 months before they become the reason for a slip." },
-      { title: "RAID tied to delivery", desc: "Registers linked to projects, stage gates and status updates automatically." },
-      { title: "Benefits realisation", desc: "Track promised vs actual benefits from business case through steady state." },
+      {
+        title: "Live executive cockpit",
+        desc: "Real-time portfolio KPIs with drill-down to task-level impediments.",
+      },
+      {
+        title: "Financial early warning",
+        desc: "Automated variance alerts by phase, FY, program and business unit.",
+      },
+      {
+        title: "Auditable stage gates",
+        desc: "Every approval, rejection and hold is logged with reviewer and date.",
+      },
+      {
+        title: "Capacity heatmaps",
+        desc: "Flag conflicts 3 months before they become the reason for a slip.",
+      },
+      {
+        title: "RAID tied to delivery",
+        desc: "Registers linked to projects, stage gates and status updates automatically.",
+      },
+      {
+        title: "Benefits realisation",
+        desc: "Track promised vs actual benefits from business case through steady state.",
+      },
     ],
   },
   cockpit: {
@@ -119,25 +299,66 @@ export const DEFAULT_LANDING: LandingConfig = {
     eyebrow: "Governance & RAID",
     title: "Risks, Actions, Issues, Decisions — one governed spine.",
     body: "RAID isn't a spreadsheet. In iProjectX, every entry is tied to a project, a stage gate and a status update — with owners, forums, sponsors and approvers.",
-    chips: ["Auto-escalation", "Approver audit trail", "Forum & sponsor tagging", "Auto-status feed"],
+    chips: [
+      "Auto-escalation",
+      "Approver audit trail",
+      "Forum & sponsor tagging",
+      "Auto-status feed",
+    ],
   },
   capabilities: {
     heading: "Everything a modern PMO actually needs.",
     subtitle:
       "Twelve tightly-integrated modules that share the same data model — no exports, no sync jobs, no drift.",
     items: [
-      { title: "Executive Cockpit", desc: "Portfolio KPIs, segmentation, health snapshots, budget & forecast by FY." },
-      { title: "Portfolio Timeline", desc: "FY-aware Gantt, stage gates, TODAY line, planned vs actual, view-by dimensions." },
-      { title: "Financials", desc: "Monthly cashflow, FY allocation, phase spend, CapEx/OpEx with variance alerts." },
-      { title: "Stage-Gate Governance", desc: "Approvals, holds, rejections — configurable per organisation, fully audited." },
-      { title: "Resource Capacity", desc: "Heatmaps, allocation, conflict detection across programs and business units." },
-      { title: "Dependencies", desc: "Cross-project dependency graph with impact and needed-by dates." },
-      { title: "Agile + Waterfall", desc: "Sprints, velocity, burndown alongside gates and milestones — one register." },
-      { title: "Roadmap Analytics", desc: "Monte-Carlo confidence, portfolio scenarios and what-if modelling." },
-      { title: "Roles & Permissions", desc: "Row-level security, page-level access matrix, admin console per organisation." },
-      { title: "White-label & Themes", desc: "Per-org branding, logo, colors and configurable chart palette." },
-      { title: "Excel-Native", desc: "Import/export a 14-sheet workbook with upsert on project code." },
-      { title: "Benefits Realisation", desc: "Track promised vs delivered value from business case to steady state." },
+      {
+        title: "Executive Cockpit",
+        desc: "Portfolio KPIs, segmentation, health snapshots, budget & forecast by FY.",
+      },
+      {
+        title: "Portfolio Timeline",
+        desc: "FY-aware Gantt, stage gates, TODAY line, planned vs actual, view-by dimensions.",
+      },
+      {
+        title: "Financials",
+        desc: "Monthly cashflow, FY allocation, phase spend, CapEx/OpEx with variance alerts.",
+      },
+      {
+        title: "Stage-Gate Governance",
+        desc: "Approvals, holds, rejections — configurable per organisation, fully audited.",
+      },
+      {
+        title: "Resource Capacity",
+        desc: "Heatmaps, allocation, conflict detection across programs and business units.",
+      },
+      {
+        title: "Dependencies",
+        desc: "Cross-project dependency graph with impact and needed-by dates.",
+      },
+      {
+        title: "Agile + Waterfall",
+        desc: "Sprints, velocity, burndown alongside gates and milestones — one register.",
+      },
+      {
+        title: "Roadmap Analytics",
+        desc: "Monte-Carlo confidence, portfolio scenarios and what-if modelling.",
+      },
+      {
+        title: "Roles & Permissions",
+        desc: "Row-level security, page-level access matrix, admin console per organisation.",
+      },
+      {
+        title: "White-label & Themes",
+        desc: "Per-org branding, logo, colors and configurable chart palette.",
+      },
+      {
+        title: "Excel-Native",
+        desc: "Import/export a 14-sheet workbook with upsert on project code.",
+      },
+      {
+        title: "Benefits Realisation",
+        desc: "Track promised vs delivered value from business case to steady state.",
+      },
     ],
   },
   stats: [
@@ -156,6 +377,41 @@ export const DEFAULT_LANDING: LandingConfig = {
   footer: { text: "" },
 };
 
+/** Brand / status color keys shown in the surface swatch editor. */
+export const SURFACE_PALETTE_KEYS = [
+  "navy",
+  "navyLight",
+  "accent",
+  "surface",
+  "danger",
+  "warning",
+  "success",
+] as const satisfies ReadonlyArray<keyof LandingPalette>;
+
+/** Font color keys shown separately in the palette editor. */
+export const FONT_PALETTE_KEYS = [
+  "textHeading",
+  "textBody",
+  "textMuted",
+  "textOnDark",
+  "textOnAccent",
+] as const satisfies ReadonlyArray<keyof LandingPalette>;
+
+export const PALETTE_KEY_LABELS: Record<keyof LandingPalette, string> = {
+  navy: "Navy",
+  navyLight: "Navy light",
+  accent: "Accent",
+  surface: "Surface",
+  danger: "Danger",
+  warning: "Warning",
+  success: "Success",
+  textHeading: "Heading text",
+  textBody: "Body text",
+  textMuted: "Muted text",
+  textOnDark: "Text on dark",
+  textOnAccent: "Text on accent",
+};
+
 // Deep merge with defaults so partial saved configs still render fully.
 export function mergeConfig(partial: any): LandingConfig {
   const merged: any = structuredClone(DEFAULT_LANDING);
@@ -167,7 +423,22 @@ export function mergeConfig(partial: any): LandingConfig {
     else if (typeof v === "object") merged[k] = { ...merged[k], ...v };
     else merged[k] = v;
   }
+  // Ensure every palette key exists even if an older config omitted font colors.
+  merged.palette = { ...DEFAULT_PALETTE, ...(merged.palette ?? {}) };
+  if (merged.theme !== "dark") merged.theme = "light";
+  if (typeof merged.palette_preset !== "string") merged.palette_preset = "custom";
   return merged as LandingConfig;
+}
+
+export function applyPalettePreset(cfg: LandingConfig, presetId: string): LandingConfig {
+  const preset = PALETTE_PRESETS.find((p) => p.id === presetId);
+  if (!preset) return cfg;
+  return {
+    ...cfg,
+    theme: preset.theme,
+    palette_preset: preset.id,
+    palette: { ...preset.palette },
+  };
 }
 
 export async function fetchLandingConfig(): Promise<LandingConfig> {

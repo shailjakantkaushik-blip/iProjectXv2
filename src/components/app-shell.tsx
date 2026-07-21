@@ -1,19 +1,63 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  BarChart3, LayoutDashboard, FolderKanban, AlertTriangle, DollarSign,
-  Map, Users, GitBranch, Inbox, Scale, Info, Table2, Bell,
-  PieChart, Radio, Flag, Award, Gavel, ListChecks, Trophy, Image as ImageIcon,
-  ArrowLeftRight, FileBarChart, Settings, Calendar, Layers, Clock, Wallet,
-  Package, Zap, ShieldCheck, LogOut, Rocket, Route as RouteIcon, TrendingUp,
-  Receipt, Building2, Landmark, CreditCard, Palette, Menu, X,
+  BarChart3,
+  LayoutDashboard,
+  FolderKanban,
+  AlertTriangle,
+  DollarSign,
+  Map,
+  Users,
+  GitBranch,
+  Inbox,
+  Scale,
+  Info,
+  Table2,
+  Bell,
+  PieChart,
+  Radio,
+  Flag,
+  Award,
+  Gavel,
+  ListChecks,
+  Trophy,
+  Image as ImageIcon,
+  ArrowLeftRight,
+  FileBarChart,
+  Settings,
+  Calendar,
+  Layers,
+  Clock,
+  Wallet,
+  Package,
+  Zap,
+  ShieldCheck,
+  LogOut,
+  Rocket,
+  Route as RouteIcon,
+  TrendingUp,
+  Receipt,
+  Building2,
+  Landmark,
+  CreditCard,
+  Palette,
+  Menu,
+  X,
+  FileText,
 } from "lucide-react";
 import { useAuth, isAdmin, isPlatformAdmin } from "@/lib/auth-context";
 import { useAllowedPages } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-type NavItem = { to: string; label: string; icon: any; exact?: boolean; adminOnly?: boolean; platformOnly?: boolean };
+type NavItem = {
+  to: string;
+  label: string;
+  icon: any;
+  exact?: boolean;
+  adminOnly?: boolean;
+  platformOnly?: boolean;
+};
 
 const navGroups: { heading: string; items: NavItem[] }[] = [
   {
@@ -78,15 +122,40 @@ const navGroups: { heading: string; items: NavItem[] }[] = [
   {
     heading: "🏢 iProjectX Platform",
     items: [
-      { to: "/platform/organizations", label: "Organizations & Users", icon: Building2, platformOnly: true },
+      {
+        to: "/platform/organizations",
+        label: "Organizations & Users",
+        icon: Building2,
+        platformOnly: true,
+      },
       { to: "/platform/finance", label: "Finance & P&L", icon: TrendingUp, platformOnly: true },
       { to: "/platform/invoices", label: "All Invoices", icon: Receipt, platformOnly: true },
-
-      { to: "/platform/subscriptions", label: "Customer Subs", icon: Building2, platformOnly: true },
+      {
+        to: "/platform/invoice-template",
+        label: "Invoice Template",
+        icon: FileText,
+        platformOnly: true,
+      },
+      {
+        to: "/platform/subscriptions",
+        label: "Customer Subs",
+        icon: Building2,
+        platformOnly: true,
+      },
       { to: "/platform/plans", label: "Plans", icon: CreditCard, platformOnly: true },
-      { to: "/platform/limits", label: "Plan Limits & Usage", icon: ShieldCheck, platformOnly: true },
+      {
+        to: "/platform/limits",
+        label: "Plan Limits & Usage",
+        icon: ShieldCheck,
+        platformOnly: true,
+      },
       { to: "/platform/expenses", label: "Expenses", icon: Landmark, platformOnly: true },
-      { to: "/platform/branding", label: "Branding & White Label", icon: Palette, platformOnly: true },
+      {
+        to: "/platform/branding",
+        label: "Branding & White Label",
+        icon: Palette,
+        platformOnly: true,
+      },
       { to: "/platform/landing", label: "Landing Page", icon: Palette, platformOnly: true },
     ],
   },
@@ -104,12 +173,23 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Close drawer on route change
-  useEffect(() => { setMobileOpen(false); }, [pathname]);
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
-  const brandStyle = (primary || accent) ? {
-    ...(primary ? { ["--primary" as any]: primary, ["--st-accent" as any]: primary, ["--sidebar-primary" as any]: primary } : {}),
-    ...(accent ? { ["--accent" as any]: accent } : {}),
-  } as React.CSSProperties : undefined;
+  const brandStyle =
+    primary || accent
+      ? ({
+          ...(primary
+            ? {
+                ["--primary" as any]: primary,
+                ["--st-accent" as any]: primary,
+                ["--sidebar-primary" as any]: primary,
+              }
+            : {}),
+          ...(accent ? { ["--accent" as any]: accent } : {}),
+        } as React.CSSProperties)
+      : undefined;
 
   const BrandBlock = (
     <div className="flex items-center gap-2 border-b border-sidebar-border p-4">
@@ -117,13 +197,21 @@ export function AppShell({ children }: { children: ReactNode }) {
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg overflow-hidden"
         style={{ background: primary || "hsl(var(--primary))", color: "#fff" }}
       >
-        {organization?.logo_url
-          ? <img src={organization.logo_url} alt="" className="max-h-full max-w-full object-contain" />
-          : <BarChart3 className="h-4 w-4" />}
+        {organization?.logo_url ? (
+          <img
+            src={organization.logo_url}
+            alt=""
+            className="max-h-full max-w-full object-contain"
+          />
+        ) : (
+          <BarChart3 className="h-4 w-4" />
+        )}
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold text-sidebar-foreground">{brandName}</div>
-        <div className="truncate text-[11px] text-muted-foreground">{organization?.plan ?? "free"} plan</div>
+        <div className="truncate text-[11px] text-muted-foreground">
+          {organization?.plan ?? "free"} plan
+        </div>
       </div>
       <button
         type="button"
@@ -152,7 +240,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
             <div className="space-y-0.5">
               {items.map((n) => {
-                const active = n.exact ? pathname === n.to : pathname === n.to || pathname.startsWith(n.to + "/");
+                const active = n.exact
+                  ? pathname === n.to
+                  : pathname === n.to || pathname.startsWith(n.to + "/");
                 return (
                   <Link
                     key={n.to}
@@ -222,9 +312,15 @@ export function AppShell({ children }: { children: ReactNode }) {
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md overflow-hidden"
               style={{ background: primary || "hsl(var(--primary))", color: "#fff" }}
             >
-              {organization?.logo_url
-                ? <img src={organization.logo_url} alt="" className="max-h-full max-w-full object-contain" />
-                : <BarChart3 className="h-3.5 w-3.5" />}
+              {organization?.logo_url ? (
+                <img
+                  src={organization.logo_url}
+                  alt=""
+                  className="max-h-full max-w-full object-contain"
+                />
+              ) : (
+                <BarChart3 className="h-3.5 w-3.5" />
+              )}
             </div>
             <span className="truncate text-sm font-semibold">{brandName}</span>
           </div>
