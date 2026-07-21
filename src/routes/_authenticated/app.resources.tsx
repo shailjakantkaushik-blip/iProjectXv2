@@ -549,16 +549,17 @@ function ResourcesPage() {
       <SectionFrame>
         <SectionTitle>Month-wise Allocation Heatmap (Resource × Month)</SectionTitle>
         <div className="overflow-auto max-h-[420px]">
-          <table className="border-separate border-spacing-0 text-xs w-max min-w-full">
+          {/* w-max only (not min-w-full) — avoids stretching months into huge gaps */}
+          <table className="border-collapse text-xs w-max">
             <thead>
               <tr>
-                <th className="sticky left-0 z-10 bg-background px-2 py-1 text-left min-w-[140px]">
+                <th className="sticky left-0 z-10 bg-background px-1.5 py-1 text-left whitespace-nowrap">
                   Resource
                 </th>
                 {months.map((m) => (
                   <th
                     key={m}
-                    className="px-2 py-1 text-center font-normal text-muted-foreground min-w-[72px]"
+                    className="p-0.5 text-center font-normal text-muted-foreground w-14"
                   >
                     {monthLabel(m)}
                   </th>
@@ -568,13 +569,13 @@ function ResourcesPage() {
             <tbody>
               {heatGrid.map((row) => (
                 <tr key={row.name}>
-                  <td className="sticky left-0 z-10 bg-background px-2 py-1 font-medium min-w-[140px]">
+                  <td className="sticky left-0 z-10 bg-background px-1.5 py-0.5 font-medium whitespace-nowrap">
                     {row.name}
                   </td>
                   {row.cells.map((c) => (
-                    <td key={c.month} className="p-0">
+                    <td key={c.month} className="p-0.5">
                       <div
-                        className="mx-0.5 my-0.5 flex h-8 min-w-[72px] items-center justify-center rounded text-[11px] font-semibold text-white"
+                        className="flex h-7 w-14 items-center justify-center rounded text-[10px] font-semibold"
                         style={{
                           background: c.pct === 0 ? "rgba(148,163,184,0.25)" : heatColor(c.pct),
                           color: c.pct === 0 ? "#64748b" : "#fff",
@@ -590,7 +591,7 @@ function ResourcesPage() {
             </tbody>
           </table>
         </div>
-        <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
+        <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground max-w-xs">
           <span>0%</span>
           <div
             className="h-2 flex-1 rounded"
@@ -666,22 +667,25 @@ function ResourcesPage() {
         <SectionTitle>Resource × Project Heatmap (total across months)</SectionTitle>
         <p className="mb-2 text-[12px] text-muted-foreground">
           All {rpGrid.cols.length} projects shown as columns (0% = no allocation in the selected
-          months). Values are summed % across months — not a single-month load.
+          months). Hover a project code to see the full name. Values are summed % across months.
         </p>
         <div className="overflow-auto max-h-[480px]">
-          <table className="border-separate border-spacing-0 text-xs w-max min-w-full">
+          <table className="border-collapse text-xs w-max">
             <thead>
               <tr>
-                <th className="sticky left-0 z-10 bg-background px-2 py-1 text-left min-w-[140px]">
+                <th className="sticky left-0 z-10 bg-background px-1.5 py-1 text-left whitespace-nowrap">
                   Resource
                 </th>
                 {rpGrid.cols.map((c) => (
                   <th
                     key={c.id}
-                    className="px-1 py-1 text-center font-normal text-muted-foreground min-w-[72px] max-w-[96px] truncate"
+                    className="p-0.5 text-center font-normal text-muted-foreground w-14 cursor-default"
                     title={c.title}
+                    aria-label={c.title}
                   >
-                    {c.label}
+                    <span className="block truncate px-0.5" title={c.title}>
+                      {c.label}
+                    </span>
                   </th>
                 ))}
               </tr>
@@ -689,13 +693,13 @@ function ResourcesPage() {
             <tbody>
               {rpGrid.rows.map((row) => (
                 <tr key={row.name}>
-                  <td className="sticky left-0 z-10 bg-background px-2 py-1 font-medium min-w-[140px]">
+                  <td className="sticky left-0 z-10 bg-background px-1.5 py-0.5 font-medium whitespace-nowrap">
                     {row.name}
                   </td>
                   {row.cells.map((c) => (
-                    <td key={c.projectId} className="p-0">
+                    <td key={c.projectId} className="p-0.5">
                       <div
-                        className="mx-0.5 my-0.5 flex h-8 min-w-[72px] items-center justify-center rounded text-[11px] font-semibold"
+                        className="flex h-7 w-14 items-center justify-center rounded text-[10px] font-semibold"
                         style={{
                           background:
                             c.pct === 0
@@ -719,20 +723,23 @@ function ResourcesPage() {
       <SectionFrame>
         <SectionTitle>Utilisation</SectionTitle>
         <div className="overflow-auto max-h-[420px]">
-          <table className="st-table">
+          {/* Explicit grid columns so header + value share the same alignment */}
+          <table className="w-full max-w-xl border-collapse text-[12.5px]">
             <thead>
-              <tr>
-                <th>Resource</th>
-                <th className="text-right">Allocation %</th>
-                <th>Status</th>
+              <tr className="border-b bg-[#f1f3f6]">
+                <th className="px-2.5 py-2 text-left font-semibold">Resource</th>
+                <th className="w-28 px-2.5 py-2 text-right font-semibold tabular-nums">
+                  Allocation %
+                </th>
+                <th className="w-28 px-2.5 py-2 text-left font-semibold">Status</th>
               </tr>
             </thead>
             <tbody>
               {utilisation.map((u) => (
-                <tr key={u.resource}>
-                  <td className="font-medium">{u.resource}</td>
-                  <td className="text-right tabular-nums">{u.pct}</td>
-                  <td>
+                <tr key={u.resource} className="border-b border-[#eef0f3]">
+                  <td className="px-2.5 py-1.5 font-medium">{u.resource}</td>
+                  <td className="w-28 px-2.5 py-1.5 text-right tabular-nums">{u.pct}</td>
+                  <td className="w-28 px-2.5 py-1.5">
                     <span
                       className="inline-block rounded-full px-2 py-0.5 text-xs font-medium text-white"
                       style={{ background: STATUS_COLOR[u.status] }}
@@ -750,22 +757,20 @@ function ResourcesPage() {
       <SectionFrame>
         <SectionTitle>Monthly Allocation Matrix</SectionTitle>
         <p className="mb-2 text-[12px] text-muted-foreground">
-          Same data as the month heatmap — each column header matches the cell under it (
-          {months.length} month{months.length === 1 ? "" : "s"}).
+          Same data as the month heatmap — compact columns so each value sits under its month.
         </p>
         <div className="overflow-auto max-h-[420px]">
-          <table className="st-table w-max min-w-full table-fixed">
-            <colgroup>
-              <col style={{ width: 160 }} />
-              {months.map((m) => (
-                <col key={m} style={{ width: 88 }} />
-              ))}
-            </colgroup>
+          <table className="border-collapse text-[12.5px] w-max">
             <thead>
-              <tr>
-                <th className="text-left sticky left-0 z-10 bg-white">Resource</th>
+              <tr className="border-b bg-[#f1f3f6]">
+                <th className="sticky left-0 z-10 bg-[#f1f3f6] px-2 py-2 text-left font-semibold whitespace-nowrap">
+                  Resource
+                </th>
                 {months.map((m) => (
-                  <th key={m} className="text-right tabular-nums whitespace-nowrap">
+                  <th
+                    key={m}
+                    className="w-14 px-1 py-2 text-center font-semibold tabular-nums whitespace-nowrap"
+                  >
                     {monthLabel(m)}
                   </th>
                 ))}
@@ -773,12 +778,12 @@ function ResourcesPage() {
             </thead>
             <tbody>
               {heatGrid.map((row) => (
-                <tr key={row.name}>
-                  <td className="font-medium sticky left-0 z-10 bg-white whitespace-nowrap">
+                <tr key={row.name} className="border-b border-[#eef0f3]">
+                  <td className="sticky left-0 z-10 bg-white px-2 py-1.5 font-medium whitespace-nowrap">
                     {row.name}
                   </td>
                   {row.cells.map((c) => (
-                    <td key={c.month} className="text-right tabular-nums">
+                    <td key={c.month} className="w-14 px-1 py-1.5 text-center tabular-nums">
                       {c.pct}
                     </td>
                   ))}
