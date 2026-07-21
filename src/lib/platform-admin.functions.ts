@@ -77,11 +77,27 @@ export const adminCreateUser = createServerFn({ method: "POST" })
       );
     if (pErr) throw new Error(pErr.message);
 
-    // Assign role (idempotent)
-    const { error: rErr } = await supabaseAdmin
+    // Assign role (idempotent). Table unique key is (user_id, org_id, role, bu_id);
+    // org-level roles use bu_id NULL — use a null-safe check instead of a mismatched ON CONFLICT.
+    const { data: existingRole, error: findErr } = await supabaseAdmin
       .from("user_roles")
-      .upsert({ user_id: userId, org_id: data.org_id, role: data.role }, { onConflict: "user_id,role" });
-    if (rErr) throw new Error(rErr.message);
+      .select("id")
+      .eq("user_id", userId)
+      .eq("org_id", data.org_id)
+      .eq("role", data.role)
+      .is("bu_id", null)
+      .maybeSingle();
+    if (findErr) throw new Error(findErr.message);
+
+    if (!existingRole) {
+      const { error: rErr } = await supabaseAdmin
+        .from("user_roles")
+        .insert({ user_id: userId, org_id: data.org_id, role: data.role });
+      if (rErr) {
+        // Race: another insert may have won — treat unique violation as success
+        if (!/duplicate|unique/i.test(rErr.message)) throw new Error(rErr.message);
+      }
+    }
 
     return { user_id: userId };
   });
