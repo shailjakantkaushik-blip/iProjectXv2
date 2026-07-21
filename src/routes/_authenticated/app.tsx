@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { AppShell } from "@/components/app-shell";
 import { useLiveSync } from "@/lib/use-live-sync";
+import { PageLoading } from "@/components/page-loading";
 
 export const Route = createFileRoute("/_authenticated/app")({
   component: AppLayout,
@@ -20,16 +21,7 @@ function AppLayout() {
   }, [profile, organization, loading, navigate]);
 
   if (loading || !profile) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background px-4">
-        <div
-          className="h-9 w-9 animate-pulse rounded-lg"
-          style={{ background: "var(--primary)" }}
-        />
-        <div className="text-sm font-medium text-foreground">Loading workspace…</div>
-        <div className="text-xs text-muted-foreground">Preparing your portfolio cockpit</div>
-      </div>
-    );
+    return <PageLoading label="Loading workspace…" />;
   }
   if (!organization) return null;
 

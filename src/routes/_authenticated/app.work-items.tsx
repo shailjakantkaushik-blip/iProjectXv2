@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
+import { PageLoading } from "@/components/page-loading";
 
 export const Route = createFileRoute("/_authenticated/app/work-items")({
   component: WorkItemsPage,
@@ -223,7 +224,7 @@ function WorkItemsPage() {
       <SectionFrame>
         <SectionTitle>{mineOnly ? "My work items" : "Work register"}</SectionTitle>
         {isLoading ? (
-          <div className="py-8 text-center text-sm text-muted-foreground">Loading…</div>
+          <PageLoading label="Loading work items…" fullScreen={false} />
         ) : visible.length === 0 ? (
           <div className="py-8 text-center text-sm text-muted-foreground">No work items yet.</div>
         ) : (

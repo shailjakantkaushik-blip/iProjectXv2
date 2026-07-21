@@ -36,6 +36,7 @@ import {
 } from "recharts";
 import { RAG_COLORS, PRIORITY_COLORS, CHART_SERIES } from "@/lib/chart-theme";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { PageLoading } from "@/components/page-loading";
 
 export const Route = createFileRoute("/_authenticated/app/projects")({
   component: ProjectsList,
@@ -381,7 +382,7 @@ function ProjectsList() {
       <SectionFrame>
         <SectionTitle>Portfolio Register ({filtered.length})</SectionTitle>
         {isLoading ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">Loading…</div>
+          <PageLoading label="Loading projects…" fullScreen={false} />
         ) : filtered.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">
             No projects match.{" "}

@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import { Input } from "@/components/ui/input";
+import { PageLoading } from "@/components/page-loading";
 import {
   Select,
   SelectContent,
@@ -104,7 +105,7 @@ function AuditLogPage() {
         </div>
 
         {isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <PageLoading label="Loading audit log…" fullScreen={false} size="md" />
         ) : filtered.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No audit events yet. Decision outcome changes and other governed actions will appear

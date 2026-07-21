@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
 import { toast } from "sonner";
+import { PageLoading } from "@/components/page-loading";
 
 export const Route = createFileRoute("/_authenticated/app/stage-gate-config")({
   component: StageGateConfigPage,
@@ -123,7 +124,7 @@ function StageGateConfigPage() {
         </div>
 
         {isLoading ? (
-          <div className="py-6 text-center text-sm text-muted-foreground">Loading…</div>
+          <PageLoading label="Loading…" fullScreen={false} />
         ) : defs.length === 0 ? (
           <div className="py-6 text-center text-sm text-muted-foreground">No stage gates defined. Add one below or reset to defaults.</div>
         ) : (

@@ -7,6 +7,7 @@ import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit"
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PageLoading } from "@/components/page-loading";
 import {
   cancelPurgeNotice,
   createPurgeNotice,
@@ -145,7 +146,7 @@ function PlatformProjectPurgePage() {
         </SectionTitle>
 
         {isLoading ? (
-          <p className="mt-3 text-sm text-muted-foreground">Loading…</p>
+          <PageLoading label="Loading purge overview…" fullScreen={false} size="md" />
         ) : filtered.length === 0 ? (
           <p className="mt-3 text-sm text-muted-foreground">
             No organisations currently have closed projects older than 1 year.

@@ -37,10 +37,11 @@ import {
   type LogoDisplaySize,
 } from "@/lib/landing-config";
 import { StableBrandLogo } from "@/components/stable-brand-logo";
+import { PageLoading } from "@/components/page-loading";
 
 export const Route = createFileRoute("/")({
   loader: async () => ({ cfg: await fetchLandingConfig() }),
-  staleTime: 0,
+  staleTime: 60_000,
   pendingMs: 0,
   pendingComponent: LandingPending,
   component: LandingPage,
@@ -71,7 +72,13 @@ function LandingPending() {
   const p = cached?.palette ?? DEFAULT_LANDING.palette;
   const theme = cached?.theme ?? "light";
   const bg = theme === "dark" ? p.navy : "#ffffff";
-  return <div className="min-h-screen w-full" aria-hidden style={{ background: bg }} />;
+  return (
+    <PageLoading
+      label="Loading iProjectX…"
+      style={{ background: bg }}
+      className={theme === "dark" ? "text-white" : undefined}
+    />
+  );
 }
 
 const HEADING = { fontFamily: "'Sora', system-ui, sans-serif" as const };

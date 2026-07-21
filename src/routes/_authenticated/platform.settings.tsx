@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/lib/auth-context";
 import { CartoonSettingsPreview } from "@/components/cartoon-mascots";
 import { NavSequenceEditor } from "@/components/nav-sequence-editor";
+import { PageLoading } from "@/components/page-loading";
 import {
   DEFAULT_LANDING,
   defaultNavigationConfig,
@@ -47,7 +48,7 @@ function PlatformSettingsPage() {
   }
 
   if (!cfg) {
-    return <div className="p-8 text-sm text-muted-foreground">Loading platform settings…</div>;
+    return <PageLoading label="Loading platform settings…" fullScreen={false} />;
   }
 
   return (

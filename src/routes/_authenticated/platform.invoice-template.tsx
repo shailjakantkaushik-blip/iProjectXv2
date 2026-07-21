@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/lib/auth-context";
 import { InvoiceDocument } from "@/components/invoice-document";
+import { PageLoading } from "@/components/page-loading";
 import {
   DEFAULT_INVOICE_TEMPLATE,
   INVOICE_TEMPLATE_PRESETS,
@@ -88,7 +89,7 @@ function InvoiceTemplatePage() {
   };
 
   if (!cfg) {
-    return <div className="p-8 text-sm text-muted-foreground">Loading invoice template…</div>;
+    return <PageLoading label="Loading invoice template…" fullScreen={false} />;
   }
 
   const patch = (p: Partial<InvoiceTemplateConfig>) => setCfg({ ...cfg, ...p });

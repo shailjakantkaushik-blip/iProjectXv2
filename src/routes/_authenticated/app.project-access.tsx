@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PageLoading } from "@/components/page-loading";
 import {
   VISIBILITY_ROLES,
   defaultProjectVisibility,
@@ -369,7 +370,7 @@ function ProjectAccessPage() {
 
       <SectionFrame>
         {loading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <PageLoading label="Loading access…" fullScreen={false} size="md" />
         ) : (
           <Tabs value={scopeTab} onValueChange={(v) => setScopeTab(v as "role" | "user")}>
             <TabsList className="mb-4">

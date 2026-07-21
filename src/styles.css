@@ -556,6 +556,15 @@ html[data-focus-mode="1"] .cartoon-banner,
   display: grid;
   place-items: center;
 }
+.processing-anim__stage-bg {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #1a2744 0%, #0b1220 62%, #050814 100%);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset,
+    0 12px 40px rgba(15, 23, 42, 0.35);
+}
 .processing-anim__glow {
   position: absolute;
   inset: -18%;

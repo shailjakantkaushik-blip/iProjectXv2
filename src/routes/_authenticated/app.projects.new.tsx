@@ -5,6 +5,7 @@ import { useAuth, isAdmin } from "@/lib/auth-context";
 import { ProjectForm, type ProjectFormValues } from "@/components/project-form";
 import { toast } from "sonner";
 import { useEffect } from "react";
+import { PageLoading } from "@/components/page-loading";
 
 export const Route = createFileRoute("/_authenticated/app/projects/new")({
   component: NewProject,
@@ -22,7 +23,7 @@ function NewProject() {
   }, [roles, loading, navigate]);
 
   if (loading || roles.length === 0) {
-    return <div className="p-8 text-sm text-muted-foreground">Loading…</div>;
+    return <PageLoading label="Loading…" fullScreen={false} />;
   }
   if (!isAdmin(roles)) {
     return <div className="p-8 text-sm text-muted-foreground">You need admin access to create projects.</div>;

@@ -10,6 +10,7 @@ import { SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PageLoading } from "@/components/page-loading";
 
 type ProjectTab = "overview" | "decisions" | "work" | "governance" | "finance";
 
@@ -122,7 +123,7 @@ function ProjectDetail() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  if (isLoading) return <div className="text-sm text-muted-foreground">Loading…</div>;
+  if (isLoading) return <PageLoading label="Loading project…" fullScreen={false} />;
   if (!project) {
     return (
       <div className="text-sm text-muted-foreground">

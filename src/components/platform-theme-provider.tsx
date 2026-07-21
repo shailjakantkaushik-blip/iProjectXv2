@@ -42,7 +42,7 @@ export function PlatformThemeProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       window.removeEventListener("pmo:platform-theme-change", onTheme);
     };
-  }, [pathname]);
+  }, []);
 
   // useLayoutEffect applies before paint — avoids a frame of default colours.
   useLayoutEffect(() => {

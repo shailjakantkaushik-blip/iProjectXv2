@@ -36,6 +36,7 @@ import {
   type LogoDisplaySize,
 } from "@/lib/landing-config";
 import { LogoSizeControls } from "@/components/logo-size-controls";
+import { PageLoading } from "@/components/page-loading";
 
 const MAX_LOGO_BYTES = 5 * 1024 * 1024;
 const MAX_PHOTO_BYTES = 1024 * 1024;
@@ -100,7 +101,7 @@ function LandingConfigPage() {
     reader.readAsDataURL(file);
   }
 
-  if (!cfg) return <div className="p-8 text-sm text-muted-foreground">Loading landing config…</div>;
+  if (!cfg) return <PageLoading label="Loading landing config…" fullScreen={false} />;
 
   const patch = <K extends keyof LandingConfig>(k: K, v: Partial<LandingConfig[K]>) =>
     setCfg({ ...cfg, [k]: { ...(cfg[k] as any), ...v } });

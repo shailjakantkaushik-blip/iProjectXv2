@@ -92,7 +92,7 @@ export const Route = createFileRoute("/auth")({
     ],
   }),
   loader: async ({ deps }): Promise<AuthLoaderData> => loadAuthPublicConfig(deps.org),
-  staleTime: 0,
+  staleTime: 60_000,
   pendingMs: 0,
   pendingComponent: AuthPending,
   component: AuthPage,
@@ -128,8 +128,8 @@ function AuthPending() {
       title="Welcome back"
       description="Sign in with your organisation account."
     >
-      <div className="flex flex-col items-center justify-center py-6" aria-busy="true">
-        <ProcessingAnimation label="Preparing sign in…" size="md" />
+      <div className="flex flex-col items-center justify-center py-8" aria-busy="true">
+        <ProcessingAnimation label="Preparing sign in…" size="lg" />
       </div>
     </AuthLayout>
   );

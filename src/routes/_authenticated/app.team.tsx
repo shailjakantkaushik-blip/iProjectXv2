@@ -23,6 +23,7 @@ import {
   orgAdminCreateUser,
 } from "@/lib/user-admin.functions";
 import { UserDirectoryTable, randomPassword } from "@/components/user-directory-table";
+import { PageLoading } from "@/components/page-loading";
 
 export const Route = createFileRoute("/_authenticated/app/team")({
   component: Team,
@@ -165,7 +166,7 @@ function Team() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
+            <PageLoading label="Loading team…" fullScreen={false} size="md" />
           ) : (
             <UserDirectoryTable
               users={users}

@@ -983,7 +983,10 @@ export function readCachedLandingConfigForPaint(): LandingConfig | null {
 export function writeCachedLandingConfig(config: LandingConfig) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(LANDING_CONFIG_CACHE_KEY, JSON.stringify(config));
+    const next = JSON.stringify(config);
+    const prev = window.localStorage.getItem(LANDING_CONFIG_CACHE_KEY);
+    if (prev === next) return;
+    window.localStorage.setItem(LANDING_CONFIG_CACHE_KEY, next);
     // Drop pre-v2 cache that could still paint stale logos.
     window.localStorage.removeItem("pmo.landingConfig.v1");
   } catch {
@@ -991,15 +994,40 @@ export function writeCachedLandingConfig(config: LandingConfig) {
   }
 }
 
+/** In-flight + short memory cache — avoids duplicate Supabase hits across root/auth/shell. */
+let landingConfigInflight: Promise<LandingConfig> | null = null;
+let landingConfigMemory: { cfg: LandingConfig; at: number } | null = null;
+const LANDING_CONFIG_MEMORY_TTL_MS = 20_000;
+
+export function invalidateLandingConfigMemory() {
+  landingConfigMemory = null;
+  landingConfigInflight = null;
+}
+
 export async function fetchLandingConfig(): Promise<LandingConfig> {
-  const { data } = await supabase
-    .from("landing_config" as any)
-    .select("config")
-    .eq("id", "singleton")
-    .maybeSingle();
-  const cfg = mergeConfig((data as any)?.config);
-  writeCachedLandingConfig(cfg);
-  return cfg;
+  const now = Date.now();
+  if (landingConfigMemory && now - landingConfigMemory.at < LANDING_CONFIG_MEMORY_TTL_MS) {
+    return landingConfigMemory.cfg;
+  }
+  if (landingConfigInflight) return landingConfigInflight;
+
+  landingConfigInflight = (async () => {
+    try {
+      const { data } = await supabase
+        .from("landing_config" as any)
+        .select("config")
+        .eq("id", "singleton")
+        .maybeSingle();
+      const cfg = mergeConfig((data as any)?.config);
+      writeCachedLandingConfig(cfg);
+      landingConfigMemory = { cfg, at: Date.now() };
+      return cfg;
+    } finally {
+      landingConfigInflight = null;
+    }
+  })();
+
+  return landingConfigInflight;
 }
 
 export async function saveLandingConfig(config: LandingConfig, userId?: string) {
@@ -1007,7 +1035,9 @@ export async function saveLandingConfig(config: LandingConfig, userId?: string) 
     .from("landing_config" as any)
     .upsert({ id: "singleton", config: config as any, updated_by: userId ?? null });
   if (error) throw error;
+  invalidateLandingConfigMemory();
   writeCachedLandingConfig(config);
+  landingConfigMemory = { cfg: config, at: Date.now() };
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("pmo:platform-theme-change", { detail: config }));
   }

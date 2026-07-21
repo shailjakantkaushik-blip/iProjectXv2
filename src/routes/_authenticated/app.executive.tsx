@@ -15,6 +15,7 @@ import { ExpandableChart } from "@/components/expandable-chart";
 import { ExpandablePanel } from "@/components/expandable-panel";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { RAG_COLORS, PRIORITY_COLORS, CHART_SERIES } from "@/lib/chart-theme";
+import { PageLoading } from "@/components/page-loading";
 
 export const Route = createFileRoute("/_authenticated/app/executive")({
   component: ExecutiveDashboard,
@@ -545,7 +546,7 @@ function ExecutiveDashboard() {
       <SectionFrame>
         <SectionTitle>Portfolio Analytics</SectionTitle>
         {isLoading ? (
-          <div className="py-16 text-center text-sm text-muted-foreground">Loading…</div>
+          <PageLoading label="Loading executive view…" fullScreen={false} />
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {/* Portfolio Health — donut */}

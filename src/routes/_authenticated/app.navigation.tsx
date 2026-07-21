@@ -14,6 +14,7 @@ import {
   type NavigationConfig,
 } from "@/lib/navigation-config";
 import { fetchLandingConfig } from "@/lib/landing-config";
+import { PageLoading } from "@/components/page-loading";
 
 export const Route = createFileRoute("/_authenticated/app/navigation")({
   component: OrgNavigationPage,
@@ -117,7 +118,7 @@ function OrgNavigationPage() {
           <SectionTitle>Workspace sidebar</SectionTitle>
         </div>
         {loading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <PageLoading label="Loading navigation…" fullScreen={false} size="md" />
         ) : (
           <fieldset disabled={!canEdit} className="min-w-0">
             <NavSequenceEditor

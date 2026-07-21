@@ -2,6 +2,7 @@ import { createFileRoute, Outlet, useNavigate, useRouterState } from "@tanstack/
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
+import { PageLoading } from "@/components/page-loading";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -29,18 +30,10 @@ function Gate() {
   }, [session, profile, loading, navigate, pathname, signOut]);
 
   if (loading || !session) {
-    return (
-      <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
-        Loading…
-      </div>
-    );
+    return <PageLoading label="Checking your session…" />;
   }
   if (profile && profile.is_active === false) {
-    return (
-      <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
-        Account inactive…
-      </div>
-    );
+    return <PageLoading label="Account inactive…" />;
   }
   return <Outlet />;
 }

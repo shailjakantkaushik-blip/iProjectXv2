@@ -182,11 +182,11 @@ export function AppShell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("pmo:org-ui-config-change", onOrgUi);
   }, []);
 
-  const cached = readCachedLandingConfig();
+  const [cached] = useState(() => readCachedLandingConfig());
   const { data: landing } = useQuery({
     queryKey: ["landing-config"],
     queryFn: fetchLandingConfig,
-    staleTime: 30_000,
+    staleTime: 60_000,
     initialData: cached ?? undefined,
   });
 
