@@ -299,24 +299,19 @@ export const adminSetUserActive = createServerFn({ method: "POST" })
     return { ok: true, is_active: data.is_active };
   });
 
+/** Permanent delete — platform_admin only (org admins may deactivate). */
 export const adminDeleteUser = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ user_id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
+    await assertPlatformAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { targetRoleList } = await assertCanManageUser(
+    await assertCanManageUser(
       context.supabase,
       supabaseAdmin,
       context.userId,
       data.user_id,
     );
-
-    // Extra safety: only platform can delete platform_admin
-    const actorRoles = await loadCallerRoles(context.supabase, context.userId);
-    const actorIsPlatform = actorRoles.some((r) => r.role === "platform_admin");
-    if (targetRoleList.includes("platform_admin") && !actorIsPlatform) {
-      throw new Error("Forbidden: cannot delete platform administrators");
-    }
 
     const { error } = await supabaseAdmin.auth.admin.deleteUser(data.user_id);
     if (error) throw new Error(error.message);

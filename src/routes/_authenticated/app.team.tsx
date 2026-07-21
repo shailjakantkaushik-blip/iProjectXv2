@@ -17,7 +17,6 @@ import {
 import { toast } from "sonner";
 import {
   adminAssignUserRole,
-  adminDeleteUser,
   adminRemoveUserRole,
   adminSetUserActive,
   listMyOrgUsers,
@@ -42,7 +41,6 @@ function Team() {
   const listUsers = useServerFn(listMyOrgUsers);
   const createUser = useServerFn(orgAdminCreateUser);
   const setActive = useServerFn(adminSetUserActive);
-  const deleteUser = useServerFn(adminDeleteUser);
   const assignRole = useServerFn(adminAssignUserRole);
   const removeRole = useServerFn(adminRemoveUserRole);
 
@@ -101,8 +99,8 @@ function Team() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Team & Roles</h1>
         <p className="text-sm text-muted-foreground">
-          Manage users in {organization?.name ?? "your organisation"} — roles, activate/deactivate,
-          or delete.
+          Manage users in {organization?.name ?? "your organisation"} — roles and
+          activate/deactivate. Account deletion is only available to platform admins.
         </p>
       </div>
 
@@ -179,13 +177,6 @@ function Team() {
                   u.id,
                   () => setActive({ data: { user_id: u.id, is_active: next } }),
                   next ? "User activated" : "User deactivated",
-                )
-              }
-              onDelete={(u) =>
-                void runUserAction(
-                  u.id,
-                  () => deleteUser({ data: { user_id: u.id } }),
-                  "User deleted",
                 )
               }
               onAssignRole={(u, role) =>

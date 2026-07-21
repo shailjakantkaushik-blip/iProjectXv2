@@ -42,7 +42,8 @@ export function UserDirectoryTable({
   currentUserId?: string | null;
   busyId?: string | null;
   onToggleActive: (user: DirectoryUser, next: boolean) => void;
-  onDelete: (user: DirectoryUser) => void;
+  /** Only platform admins should pass this (org admins can deactivate only). */
+  onDelete?: (user: DirectoryUser) => void;
   onAssignRole: (user: DirectoryUser, role: string) => void;
   onRemoveRole: (user: DirectoryUser, role: string) => void;
 }) {
@@ -152,22 +153,24 @@ export function UserDirectoryTable({
                     >
                       {u.is_active ? "Deactivate" : "Activate"}
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      disabled={self || busy}
-                      onClick={() => {
-                        if (
-                          window.confirm(
-                            `Permanently delete ${u.full_name || u.email}? This cannot be undone.`,
-                          )
-                        ) {
-                          onDelete(u);
-                        }
-                      }}
-                    >
-                      Delete
-                    </Button>
+                    {onDelete && (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={self || busy}
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              `Permanently delete ${u.full_name || u.email}? This cannot be undone.`,
+                            )
+                          ) {
+                            onDelete(u);
+                          }
+                        }}
+                      >
+                        Delete
+                      </Button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -177,7 +180,8 @@ export function UserDirectoryTable({
       </table>
       <p className="mt-2 text-[11px] text-muted-foreground">
         Org id for role ops: {orgId.slice(0, 8)}… · Click a role badge to remove it. You cannot
-        deactivate or delete your own account.
+        deactivate{onDelete ? " or delete" : ""} your own account.
+        {!onDelete ? " Deactivate removes access without deleting the account." : ""}
       </p>
     </div>
   );
