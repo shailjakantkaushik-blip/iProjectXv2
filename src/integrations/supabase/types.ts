@@ -1227,6 +1227,7 @@ export type Database = {
           plan: string
           primary_color: string | null
           slug: string
+          ui_config: Json
           updated_at: string
         }
         Insert: {
@@ -1244,6 +1245,7 @@ export type Database = {
           plan?: string
           primary_color?: string | null
           slug: string
+          ui_config?: Json
           updated_at?: string
         }
         Update: {
@@ -1261,6 +1263,7 @@ export type Database = {
           plan?: string
           primary_color?: string | null
           slug?: string
+          ui_config?: Json
           updated_at?: string
         }
         Relationships: []

@@ -43,6 +43,7 @@ import { Route as AuthenticatedAppIssuesRouteImport } from './routes/_authentica
 import { Route as AuthenticatedAppLatestUpdatesRouteImport } from './routes/_authenticated/app.latest-updates'
 import { Route as AuthenticatedAppLessonsRouteImport } from './routes/_authenticated/app.lessons'
 import { Route as AuthenticatedAppMyWorkRouteImport } from './routes/_authenticated/app.my-work'
+import { Route as AuthenticatedAppNavigationRouteImport } from './routes/_authenticated/app.navigation'
 import { Route as AuthenticatedAppPermissionsRouteImport } from './routes/_authenticated/app.permissions'
 import { Route as AuthenticatedAppPhaseFinancialsRouteImport } from './routes/_authenticated/app.phase-financials'
 import { Route as AuthenticatedAppPortfolioMovementsRouteImport } from './routes/_authenticated/app.portfolio-movements'
@@ -269,6 +270,12 @@ const AuthenticatedAppMyWorkRoute = AuthenticatedAppMyWorkRouteImport.update({
   path: '/my-work',
   getParentRoute: () => AuthenticatedAppRoute,
 } as any)
+const AuthenticatedAppNavigationRoute =
+  AuthenticatedAppNavigationRouteImport.update({
+    id: '/navigation',
+    path: '/navigation',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
 const AuthenticatedAppPermissionsRoute =
   AuthenticatedAppPermissionsRouteImport.update({
     id: '/permissions',
@@ -529,6 +536,7 @@ export interface FileRoutesByFullPath {
   '/app/latest-updates': typeof AuthenticatedAppLatestUpdatesRoute
   '/app/lessons': typeof AuthenticatedAppLessonsRoute
   '/app/my-work': typeof AuthenticatedAppMyWorkRoute
+  '/app/navigation': typeof AuthenticatedAppNavigationRoute
   '/app/permissions': typeof AuthenticatedAppPermissionsRoute
   '/app/phase-financials': typeof AuthenticatedAppPhaseFinancialsRoute
   '/app/portfolio-movements': typeof AuthenticatedAppPortfolioMovementsRoute
@@ -601,6 +609,7 @@ export interface FileRoutesByTo {
   '/app/latest-updates': typeof AuthenticatedAppLatestUpdatesRoute
   '/app/lessons': typeof AuthenticatedAppLessonsRoute
   '/app/my-work': typeof AuthenticatedAppMyWorkRoute
+  '/app/navigation': typeof AuthenticatedAppNavigationRoute
   '/app/permissions': typeof AuthenticatedAppPermissionsRoute
   '/app/phase-financials': typeof AuthenticatedAppPhaseFinancialsRoute
   '/app/portfolio-movements': typeof AuthenticatedAppPortfolioMovementsRoute
@@ -676,6 +685,7 @@ export interface FileRoutesById {
   '/_authenticated/app/latest-updates': typeof AuthenticatedAppLatestUpdatesRoute
   '/_authenticated/app/lessons': typeof AuthenticatedAppLessonsRoute
   '/_authenticated/app/my-work': typeof AuthenticatedAppMyWorkRoute
+  '/_authenticated/app/navigation': typeof AuthenticatedAppNavigationRoute
   '/_authenticated/app/permissions': typeof AuthenticatedAppPermissionsRoute
   '/_authenticated/app/phase-financials': typeof AuthenticatedAppPhaseFinancialsRoute
   '/_authenticated/app/portfolio-movements': typeof AuthenticatedAppPortfolioMovementsRoute
@@ -751,6 +761,7 @@ export interface FileRouteTypes {
     | '/app/latest-updates'
     | '/app/lessons'
     | '/app/my-work'
+    | '/app/navigation'
     | '/app/permissions'
     | '/app/phase-financials'
     | '/app/portfolio-movements'
@@ -823,6 +834,7 @@ export interface FileRouteTypes {
     | '/app/latest-updates'
     | '/app/lessons'
     | '/app/my-work'
+    | '/app/navigation'
     | '/app/permissions'
     | '/app/phase-financials'
     | '/app/portfolio-movements'
@@ -897,6 +909,7 @@ export interface FileRouteTypes {
     | '/_authenticated/app/latest-updates'
     | '/_authenticated/app/lessons'
     | '/_authenticated/app/my-work'
+    | '/_authenticated/app/navigation'
     | '/_authenticated/app/permissions'
     | '/_authenticated/app/phase-financials'
     | '/_authenticated/app/portfolio-movements'
@@ -1185,6 +1198,13 @@ declare module '@tanstack/react-router' {
       path: '/my-work'
       fullPath: '/app/my-work'
       preLoaderRoute: typeof AuthenticatedAppMyWorkRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/app/navigation': {
+      id: '/_authenticated/app/navigation'
+      path: '/navigation'
+      fullPath: '/app/navigation'
+      preLoaderRoute: typeof AuthenticatedAppNavigationRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
     '/_authenticated/app/permissions': {
@@ -1498,6 +1518,7 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppLatestUpdatesRoute: typeof AuthenticatedAppLatestUpdatesRoute
   AuthenticatedAppLessonsRoute: typeof AuthenticatedAppLessonsRoute
   AuthenticatedAppMyWorkRoute: typeof AuthenticatedAppMyWorkRoute
+  AuthenticatedAppNavigationRoute: typeof AuthenticatedAppNavigationRoute
   AuthenticatedAppPermissionsRoute: typeof AuthenticatedAppPermissionsRoute
   AuthenticatedAppPhaseFinancialsRoute: typeof AuthenticatedAppPhaseFinancialsRoute
   AuthenticatedAppPortfolioMovementsRoute: typeof AuthenticatedAppPortfolioMovementsRoute
@@ -1551,6 +1572,7 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppLatestUpdatesRoute: AuthenticatedAppLatestUpdatesRoute,
   AuthenticatedAppLessonsRoute: AuthenticatedAppLessonsRoute,
   AuthenticatedAppMyWorkRoute: AuthenticatedAppMyWorkRoute,
+  AuthenticatedAppNavigationRoute: AuthenticatedAppNavigationRoute,
   AuthenticatedAppPermissionsRoute: AuthenticatedAppPermissionsRoute,
   AuthenticatedAppPhaseFinancialsRoute: AuthenticatedAppPhaseFinancialsRoute,
   AuthenticatedAppPortfolioMovementsRoute:

@@ -11,6 +11,7 @@ import { ChartLegendList, legendItemsFromCounts } from "@/components/chart-legen
 import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
 import { exportElementPDF } from "@/components/page-export";
+import { ExpandableChart } from "@/components/expandable-chart";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { RAG_COLORS, PRIORITY_COLORS, CHART_SERIES } from "@/lib/chart-theme";
 
@@ -692,16 +693,7 @@ function ChartBox({
   children: React.ReactElement;
   legend?: React.ReactNode;
 }) {
-  return (
-    <div className="flex h-full flex-col overflow-hidden rounded-md border border-border bg-surface p-3 shadow-sm">
-      <div className="mb-2 shrink-0 px-1 text-[12px] font-semibold text-foreground">{title}</div>
-      {/* Keep a standard chart height; legends scroll below when long */}
-      <div className="h-64 w-full shrink-0">
-        <ResponsiveContainer width="100%" height="100%">{children}</ResponsiveContainer>
-      </div>
-      {legend ? <div className="min-h-0 shrink">{legend}</div> : null}
-    </div>
-  );
+  return <ExpandableChart title={title} legend={legend}>{children}</ExpandableChart>;
 }
 
 function Empty({ msg = "No data" }: { msg?: string }) {

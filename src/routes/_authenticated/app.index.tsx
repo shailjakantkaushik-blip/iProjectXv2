@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
@@ -10,11 +11,15 @@ import {
   ArrowRight,
   Gavel,
   ListTodo,
+  Settings,
+  Menu,
+  Rocket,
+  type LucideIcon,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { CartoonWelcomeBanner } from "@/components/cartoon-mascots";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth, type AppRole } from "@/lib/auth-context";
 import { canActOnDecision } from "@/lib/decision-approval";
 
 export const Route = createFileRoute("/_authenticated/app/")({
@@ -37,61 +42,130 @@ function greeting() {
   return "Good evening";
 }
 
-const shortcuts = [
-  {
+type Shortcut = { to: string; label: string; desc: string; icon: LucideIcon };
+
+const ALL: Record<string, Shortcut> = {
+  myWork: {
     to: "/app/my-work",
     label: "My Work",
     desc: "Approvals, actions, and assigned work",
     icon: Briefcase,
   },
-  {
+  executive: {
     to: "/app/executive",
     label: "Executive Dashboard",
     desc: "Portfolio cockpit — KPIs, RAG, ROI, timelines",
     icon: LayoutDashboard,
   },
-  {
+  cockpit: {
+    to: "/app/executive-cockpit",
+    label: "Executive Cockpit",
+    desc: "Board-ready portfolio pulse",
+    icon: Rocket,
+  },
+  projects: {
     to: "/app/projects",
     label: "Projects",
     desc: "Register and project workspaces",
     icon: FolderKanban,
   },
-  {
+  workItems: {
     to: "/app/work-items",
     label: "Work Items",
     desc: "WBS / tasks across delivery",
     icon: ListTodo,
   },
-  {
+  decisions: {
     to: "/app/decisions",
     label: "Decisions",
     desc: "Approvals and decision register",
     icon: Gavel,
   },
-  {
+  ai: {
     to: "/app/ai-assist",
     label: "AI Assist",
     desc: "Ask the portfolio what needs attention",
     icon: Sparkles,
   },
-  {
+  financials: {
     to: "/app/financials",
     label: "Financials",
     desc: "CAPEX / OPEX / benefits",
     icon: DollarSign,
   },
-  {
+  risks: {
     to: "/app/risks",
     label: "Risks",
     desc: "Portfolio risk heatmap",
     icon: AlertTriangle,
   },
-];
+  config: {
+    to: "/app/configuration",
+    label: "Configuration",
+    desc: "Org admin controls and preferences",
+    icon: Settings,
+  },
+  navigation: {
+    to: "/app/navigation",
+    label: "Navigation sequence",
+    desc: "Reorder the sidebar for your organisation",
+    icon: Menu,
+  },
+};
+
+function shortcutsForRoles(roles: AppRole[]): Shortcut[] {
+  if (roles.includes("executive")) {
+    return [ALL.cockpit, ALL.executive, ALL.risks, ALL.financials, ALL.decisions, ALL.myWork, ALL.ai, ALL.projects];
+  }
+  if (roles.includes("admin") || roles.includes("org_admin")) {
+    return [
+      ALL.myWork,
+      ALL.projects,
+      ALL.navigation,
+      ALL.config,
+      ALL.decisions,
+      ALL.financials,
+      ALL.risks,
+      ALL.ai,
+    ];
+  }
+  if (roles.includes("pm") || roles.includes("bu_lead")) {
+    return [
+      ALL.myWork,
+      ALL.projects,
+      ALL.workItems,
+      ALL.decisions,
+      ALL.risks,
+      ALL.executive,
+      ALL.financials,
+      ALL.ai,
+    ];
+  }
+  return [
+    ALL.myWork,
+    ALL.executive,
+    ALL.projects,
+    ALL.workItems,
+    ALL.decisions,
+    ALL.ai,
+    ALL.financials,
+    ALL.risks,
+  ];
+}
+
+function roleHomeLabel(roles: AppRole[]) {
+  if (roles.includes("executive")) return "Executive home";
+  if (roles.includes("admin") || roles.includes("org_admin")) return "Admin home";
+  if (roles.includes("pm")) return "Delivery home";
+  if (roles.includes("bu_lead")) return "BU lead home";
+  return "Command center";
+}
 
 function Home() {
-  const { organization, profile, session } = useAuth();
+  const { organization, profile, session, roles } = useAuth();
   const firstName = profile?.full_name?.split(" ")[0];
   const userId = session?.user?.id;
+  const shortcuts = useMemo(() => shortcutsForRoles(roles), [roles]);
 
   const { data: projects = [], isLoading } = useQuery({
     queryKey: ["projects", organization?.id],
@@ -120,7 +194,7 @@ function Home() {
     <div className="animate-in fade-in-0 duration-300">
       <PageHeading
         title={`${greeting()}${firstName ? `, ${firstName}` : ""}`}
-        subtitle={`${organization?.name ?? "Your organization"} · Command center`}
+        subtitle={`${organization?.name ?? "Your organization"} · ${roleHomeLabel(roles)}`}
         actions={
           myApprovals > 0 ? (
             <Link
@@ -135,7 +209,7 @@ function Home() {
 
       <CartoonWelcomeBanner
         title={`${greeting()}${firstName ? `, ${firstName}` : ""} — ready when you are`}
-        subtitle="Click the guide for a portfolio tip. Platform admins can turn cartoons off in Platform Settings."
+        subtitle="Press ⌘K to jump anywhere. Use Focus mode in the header for a denser workspace."
       />
 
       <SectionFrame>
@@ -170,13 +244,13 @@ function Home() {
       </SectionFrame>
 
       <SectionFrame>
-        <SectionTitle>Jump to</SectionTitle>
+        <SectionTitle>Jump to · tailored for your role</SectionTitle>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
           {shortcuts.map((s) => (
             <Link
               key={s.to}
               to={s.to}
-              className="group flex items-start gap-3 rounded-xl border border-border/80 bg-surface/80 p-3.5 transition-all hover:border-primary/50 hover:bg-secondary/60"
+              className="group flex items-start gap-3 rounded-xl border border-border/80 bg-surface/80 p-3.5 transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:bg-secondary/60 hover:shadow-md"
             >
               <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
                 <s.icon className="h-4 w-4" />

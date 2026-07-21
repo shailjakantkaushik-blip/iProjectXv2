@@ -23,6 +23,10 @@ export interface Organization {
   primary_color?: string | null;
   accent_color?: string | null;
   fy_start_month?: number | null;
+  ui_config?: {
+    navigation?: any;
+    focus_mode?: boolean;
+  } | null;
 }
 
 
@@ -61,8 +65,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRoles(roleList);
 
     if (p?.org_id) {
-      const { data: org } = await supabase.from("organizations").select("id,name,slug,plan,brand_name,logo_url,primary_color,accent_color,fy_start_month").eq("id", p.org_id).maybeSingle();
-      setOrganization(org ?? null);
+      const { data: org } = await supabase.from("organizations").select("id,name,slug,plan,brand_name,logo_url,primary_color,accent_color,fy_start_month,ui_config").eq("id", p.org_id).maybeSingle();
+      setOrganization((org as Organization) ?? null);
     } else {
       setOrganization(null);
     }

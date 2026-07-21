@@ -51,6 +51,8 @@ import {
   BookOpen,
   CircleUser,
   ListTodo,
+  Search,
+  Focus,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth, isAdmin, isPlatformAdmin } from "@/lib/auth-context";
@@ -59,7 +61,9 @@ import { Button } from "@/components/ui/button";
 import { NotificationsBell } from "@/components/notifications-bell";
 import { CartoonCompanion } from "@/components/cartoon-mascots";
 import { fetchLandingConfig, readCachedLandingConfig } from "@/lib/landing-config";
-import { applyNavigationConfig, type NavGroupDef } from "@/lib/navigation-config";
+import { resolveCombinedNavigation, type NavGroupDef } from "@/lib/navigation-config";
+import { useFocusMode } from "@/lib/use-focus-mode";
+import { CommandPalette, useCommandPaletteHotkey } from "@/components/command-palette";
 import { cn } from "@/lib/utils";
 
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -102,6 +106,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   FileText,
   Table2,
   Settings,
+  Menu,
   Receipt,
   ShieldCheck,
   Building2,
@@ -145,6 +150,24 @@ export function AppShell({ children }: { children: ReactNode }) {
   const primary = organization?.primary_color || undefined;
   const accent = organization?.accent_color || undefined;
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [cmdOpen, setCmdOpen] = useState(false);
+  const { focusMode, toggleFocusMode } = useFocusMode();
+  useCommandPaletteHotkey(() => setCmdOpen(true));
+
+  const [orgNav, setOrgNav] = useState(organization?.ui_config?.navigation ?? null);
+
+  useEffect(() => {
+    setOrgNav(organization?.ui_config?.navigation ?? null);
+  }, [organization?.ui_config?.navigation]);
+
+  useEffect(() => {
+    const onOrgUi = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.navigation) setOrgNav(detail.navigation);
+    };
+    window.addEventListener("pmo:org-ui-config-change", onOrgUi);
+    return () => window.removeEventListener("pmo:org-ui-config-change", onOrgUi);
+  }, []);
 
   const cached = readCachedLandingConfig();
   const { data: landing } = useQuery({
@@ -155,8 +178,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   });
 
   const navGroups = useMemo(
-    () => applyNavigationConfig(landing?.navigation ?? cached?.navigation),
-    [landing?.navigation, cached?.navigation],
+    () =>
+      resolveCombinedNavigation(
+        landing?.navigation ?? cached?.navigation,
+        orgNav ?? null,
+      ),
+    [landing?.navigation, cached?.navigation, orgNav],
   );
 
   useEffect(() => {
@@ -164,6 +191,20 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [pathname]);
 
   const pageTitle = useMemo(() => pageTitleFromPath(pathname, navGroups), [pathname, navGroups]);
+
+  const visibleNavForPalette = useMemo(() => {
+    return navGroups
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((n) => {
+          if (n.to === "/app/") return true;
+          if (n.platformOnly) return platform;
+          if (n.adminOnly) return admin;
+          return admin || canViewPage(n.to);
+        }),
+      }))
+      .filter((g) => g.items.length > 0);
+  }, [navGroups, platform, admin, canViewPage]);
 
   const brandStyle =
     primary || accent
@@ -295,7 +336,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 
   return (
-    <div className="shell-root flex min-h-screen bg-background" style={brandStyle}>
+    <div
+      className={cn("shell-root flex min-h-screen bg-background", focusMode && "shell-focus")}
+      style={brandStyle}
+      data-focus-mode={focusMode ? "1" : undefined}
+    >
       <aside className="shell-sidebar hidden w-[15.5rem] shrink-0 border-r border-sidebar-border/80 bg-sidebar/95 backdrop-blur-sm md:flex md:flex-col lg:w-64">
         {BrandBlock}
         {Nav}
@@ -356,6 +401,30 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="hidden h-8 gap-1.5 px-2 text-[11px] text-muted-foreground sm:inline-flex"
+              onClick={() => setCmdOpen(true)}
+              title="Open command palette (⌘K)"
+            >
+              <Search className="h-3.5 w-3.5" />
+              Search
+              <kbd className="ml-1 rounded border border-border/80 bg-muted/60 px-1 font-mono text-[10px]">
+                ⌘K
+              </kbd>
+            </Button>
+            <Button
+              type="button"
+              variant={focusMode ? "default" : "outline"}
+              size="icon"
+              className="h-8 w-8"
+              onClick={toggleFocusMode}
+              title={focusMode ? "Exit focus mode" : "Focus mode — denser workspace"}
+            >
+              <Focus className="h-3.5 w-3.5" />
+            </Button>
             <NotificationsBell />
             <div className="hidden rounded-full border border-border/70 bg-muted/50 px-2.5 py-1 text-[11px] capitalize text-muted-foreground shadow-sm sm:block">
               {(organization?.plan ?? "free").replace(/_/g, " ")}
@@ -378,7 +447,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         </main>
       </div>
 
-      <CartoonCompanion />
+      <CommandPalette open={cmdOpen} onOpenChange={setCmdOpen} groups={visibleNavForPalette} />
+      {!focusMode && <CartoonCompanion />}
     </div>
   );
 }

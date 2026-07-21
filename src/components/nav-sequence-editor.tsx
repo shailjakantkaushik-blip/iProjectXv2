@@ -6,6 +6,7 @@ import {
   defaultNavigationConfig,
   mergeNavigationConfig,
   moveInList,
+  type NavGroupDef,
   type NavigationConfig,
 } from "@/lib/navigation-config";
 import { cn } from "@/lib/utils";
@@ -13,11 +14,16 @@ import { cn } from "@/lib/utils";
 type Props = {
   value: NavigationConfig;
   onChange: (next: NavigationConfig) => void;
+  /** Limit editor to these groups (defaults to full platform catalog). */
+  catalog?: NavGroupDef[];
 };
 
-export function NavSequenceEditor({ value, onChange }: Props) {
-  const nav = mergeNavigationConfig(value);
-  const catalog = DEFAULT_NAV_GROUPS;
+export function NavSequenceEditor({
+  value,
+  onChange,
+  catalog = DEFAULT_NAV_GROUPS,
+}: Props) {
+  const nav = mergeNavigationConfig(value, catalog);
   const groupOrder = (() => {
     const known = new Set(catalog.map((g) => g.heading));
     const ordered = nav.group_order.filter((h) => known.has(h));
@@ -42,7 +48,7 @@ export function NavSequenceEditor({ value, onChange }: Props) {
     onChange({ ...nav, hidden: Array.from(next) });
   };
 
-  const reset = () => onChange(defaultNavigationConfig());
+  const reset = () => onChange(defaultNavigationConfig(catalog));
 
   return (
     <div className="space-y-4">

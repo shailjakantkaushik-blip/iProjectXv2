@@ -92,6 +92,7 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
       { to: "/app/audit-log", label: "Audit Log", icon: "FileText" },
       { to: "/app/data-editor", label: "Data Editor", icon: "Table2" },
       { to: "/app/configuration", label: "Configuration", icon: "Settings" },
+      { to: "/app/navigation", label: "Navigation sequence", icon: "Menu", adminOnly: true },
       { to: "/app/billing", label: "Billing & Invoices", icon: "Receipt", adminOnly: true },
       { to: "/app/team", label: "Admin: Users", icon: "ShieldCheck", adminOnly: true },
       { to: "/app/permissions", label: "Admin: Permissions", icon: "ShieldCheck", adminOnly: true },
@@ -145,18 +146,30 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
   },
 ];
 
-export function defaultNavigationConfig(): NavigationConfig {
+export function defaultNavigationConfig(
+  catalog: NavGroupDef[] = DEFAULT_NAV_GROUPS,
+): NavigationConfig {
   return {
-    group_order: DEFAULT_NAV_GROUPS.map((g) => g.heading),
-    item_order: Object.fromEntries(
-      DEFAULT_NAV_GROUPS.map((g) => [g.heading, g.items.map((i) => i.to)]),
-    ),
+    group_order: catalog.map((g) => g.heading),
+    item_order: Object.fromEntries(catalog.map((g) => [g.heading, g.items.map((i) => i.to)])),
     hidden: [],
   };
 }
 
-export function mergeNavigationConfig(partial: any): NavigationConfig {
-  const base = defaultNavigationConfig();
+/** App workspace groups only (no Platform admin section). */
+export const APP_NAV_GROUPS: NavGroupDef[] = DEFAULT_NAV_GROUPS.filter(
+  (g) => g.heading !== "Platform",
+);
+
+export function defaultAppNavigationConfig(): NavigationConfig {
+  return defaultNavigationConfig(APP_NAV_GROUPS);
+}
+
+export function mergeNavigationConfig(
+  partial: any,
+  catalog: NavGroupDef[] = DEFAULT_NAV_GROUPS,
+): NavigationConfig {
+  const base = defaultNavigationConfig(catalog);
   if (!partial || typeof partial !== "object") return base;
 
   const group_order = Array.isArray(partial.group_order)
@@ -195,12 +208,12 @@ function orderByKeys<T extends { to?: string; heading?: string }>(
   return out;
 }
 
-/** Apply platform navigation sequence + hidden flags onto the default catalog. */
+/** Apply navigation sequence + hidden flags onto a catalog. */
 export function applyNavigationConfig(
   config: NavigationConfig | null | undefined,
   catalog: NavGroupDef[] = DEFAULT_NAV_GROUPS,
 ): NavGroupDef[] {
-  const nav = mergeNavigationConfig(config);
+  const nav = mergeNavigationConfig(config, catalog);
   const hidden = new Set(nav.hidden);
 
   const groups = orderByKeys(catalog, nav.group_order, (g) => g.heading).map((group) => {
@@ -212,6 +225,25 @@ export function applyNavigationConfig(
   });
 
   return groups.filter((g) => g.items.length > 0);
+}
+
+/**
+ * Platform config as base; when org has a custom navigation blob, it overrides
+ * app groups. Platform section always comes from platform config.
+ */
+export function resolveCombinedNavigation(
+  platformConfig: NavigationConfig | null | undefined,
+  orgConfig: NavigationConfig | null | undefined,
+): NavGroupDef[] {
+  const platformApplied = applyNavigationConfig(platformConfig, DEFAULT_NAV_GROUPS);
+  const platformSection = platformApplied.filter((g) => g.heading === "Platform");
+
+  if (!orgConfig) {
+    return platformApplied;
+  }
+
+  const appPart = applyNavigationConfig(orgConfig, APP_NAV_GROUPS);
+  return [...appPart, ...platformSection];
 }
 
 export function moveInList<T>(list: T[], index: number, dir: -1 | 1): T[] {

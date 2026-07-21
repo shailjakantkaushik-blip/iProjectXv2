@@ -507,3 +507,27 @@ body { overflow-x: hidden; }
     background-image: none;
   }
 }
+
+/* Focus mode — denser chrome for power users */
+html[data-focus-mode="1"] .shell-main,
+.shell-focus .shell-main {
+  padding: 0.65rem !important;
+}
+html[data-focus-mode="1"] .shell-header,
+.shell-focus .shell-header {
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+}
+html[data-focus-mode="1"] .shell-nav-link,
+.shell-focus .shell-nav-link {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+html[data-focus-mode="1"] .section-frame,
+.shell-focus .section-frame {
+  padding: 0.75rem;
+}
+html[data-focus-mode="1"] .cartoon-banner,
+.shell-focus .cartoon-banner {
+  display: none;
+}
