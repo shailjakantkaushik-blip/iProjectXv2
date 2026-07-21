@@ -470,8 +470,19 @@ body { overflow-x: hidden; }
 .shell-main {
   animation: shell-main-in 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
-.shell-nav-link {
-  will-change: transform;
+.shell-nav {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--sidebar-foreground) 25%, transparent) transparent;
+}
+.shell-nav::-webkit-scrollbar {
+  width: 6px;
+}
+.shell-nav::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--sidebar-foreground) 22%, transparent);
+  border-radius: 999px;
+}
+.shell-nav::-webkit-scrollbar-track {
+  background: transparent;
 }
 .shell-nav-active-bar {
   animation: shell-bar-in 0.25s ease-out both;

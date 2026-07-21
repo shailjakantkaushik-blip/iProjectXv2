@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   BarChart3,
@@ -153,6 +153,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [cmdOpen, setCmdOpen] = useState(false);
   const { focusMode, toggleFocusMode } = useFocusMode();
   useCommandPaletteHotkey(() => setCmdOpen(true));
+  const desktopNavRef = useRef<HTMLElement | null>(null);
+  const mobileNavRef = useRef<HTMLElement | null>(null);
 
   const [orgNav, setOrgNav] = useState(organization?.ui_config?.navigation ?? null);
 
@@ -189,6 +191,28 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
+
+  // Keep the active sidebar item visible; scroll the left nav to it after navigation.
+  useEffect(() => {
+    const scrollActiveIntoView = (root: HTMLElement | null) => {
+      if (!root) return;
+      const active = root.querySelector<HTMLElement>('[data-nav-active="true"]');
+      if (!active) return;
+      const reduce =
+        typeof window !== "undefined" &&
+        window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      active.scrollIntoView({
+        block: "center",
+        inline: "nearest",
+        behavior: reduce ? "auto" : "smooth",
+      });
+    };
+    const id = window.requestAnimationFrame(() => {
+      scrollActiveIntoView(desktopNavRef.current);
+      scrollActiveIntoView(mobileNavRef.current);
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [pathname, navGroups, mobileOpen]);
 
   const pageTitle = useMemo(() => pageTitleFromPath(pathname, navGroups), [pathname, navGroups]);
 
@@ -255,8 +279,11 @@ export function AppShell({ children }: { children: ReactNode }) {
     </div>
   );
 
-  const Nav = (
-    <nav className="shell-nav flex-1 space-y-5 overflow-y-auto px-2.5 py-3">
+  const renderNav = (navRef: { current: HTMLElement | null }) => (
+    <nav
+      ref={navRef as any}
+      className="shell-nav flex-1 space-y-5 overflow-y-auto overscroll-contain px-2.5 py-3 scroll-smooth"
+    >
       {navGroups.map((group) => {
         const items = group.items.filter((n) => {
           if (n.to === "/app/") return true;
@@ -281,6 +308,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <Link
                     key={n.to}
                     to={n.to}
+                    data-nav-active={active ? "true" : undefined}
                     className={cn(
                       "shell-nav-link group relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[12.5px] transition-all duration-200",
                       active
@@ -294,7 +322,9 @@ export function AppShell({ children }: { children: ReactNode }) {
                     <Icon
                       className={cn(
                         "h-3.5 w-3.5 shrink-0 transition-transform duration-200",
-                        active ? "opacity-100" : "opacity-70 group-hover:scale-110 group-hover:opacity-100",
+                        active
+                          ? "opacity-100"
+                          : "opacity-70 group-hover:scale-110 group-hover:opacity-100",
                       )}
                     />
                     <span className="truncate">{n.label}</span>
@@ -343,7 +373,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     >
       <aside className="shell-sidebar hidden w-[15.5rem] shrink-0 border-r border-sidebar-border/80 bg-sidebar/95 backdrop-blur-sm md:flex md:flex-col lg:w-64">
         {BrandBlock}
-        {Nav}
+        {renderNav(desktopNavRef)}
         {Footer}
       </aside>
 
@@ -355,7 +385,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           />
           <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] animate-in slide-in-from-left duration-200 flex-col border-r border-sidebar-border bg-sidebar shadow-2xl">
             {BrandBlock}
-            {Nav}
+            {renderNav(mobileNavRef)}
             {Footer}
           </aside>
         </div>
