@@ -20,9 +20,30 @@ export type InvoiceTemplateConfig = {
   show_payment_instructions: boolean;
   show_line_items: boolean;
   show_status_badge: boolean;
+  /** When true, GST line is shown on invoices and listings */
+  gst_enabled: boolean;
+  /** GST / tax percentage, e.g. 18 for 18% */
+  gst_percent: number;
+  /** Label printed on invoices, e.g. "GST" or "VAT" */
+  gst_label: string;
+  /**
+   * If false (default): invoice amount_cents is taxable (ex-GST); GST is added for total due.
+   * If true: amount_cents already includes GST; breakdown is derived.
+   */
+  gst_inclusive: boolean;
   footer_text: string;
   payment_instructions: string;
   thank_you_note: string;
+};
+
+export type InvoiceGstBreakdown = {
+  enabled: boolean;
+  label: string;
+  percent: number;
+  inclusive: boolean;
+  subtotal_cents: number;
+  gst_cents: number;
+  total_cents: number;
 };
 
 export type InvoiceTemplatePreset = {
@@ -67,6 +88,10 @@ export const DEFAULT_INVOICE_TEMPLATE: InvoiceTemplateConfig = {
   show_payment_instructions: true,
   show_line_items: true,
   show_status_badge: true,
+  gst_enabled: true,
+  gst_percent: 18,
+  gst_label: "GST",
+  gst_inclusive: false,
   footer_text: "Thank you for your business.",
   payment_instructions:
     "Please arrange payment by the due date. Reference the invoice number on your remittance.",
@@ -81,7 +106,64 @@ export function mergeInvoiceTemplate(partial: any): InvoiceTemplateConfig {
   if (!INVOICE_TEMPLATE_PRESETS.some((p) => p.id === merged.template_id)) {
     merged.template_id = "standard";
   }
+  const pct = Number(merged.gst_percent);
+  merged.gst_percent = Number.isFinite(pct) ? Math.min(100, Math.max(0, pct)) : 18;
+  merged.gst_enabled = Boolean(merged.gst_enabled);
+  merged.gst_inclusive = Boolean(merged.gst_inclusive);
+  merged.gst_label = String(merged.gst_label || "GST").trim() || "GST";
   return merged as InvoiceTemplateConfig;
+}
+
+/** Compute subtotal / GST / total from stored invoice amount_cents + template GST settings. */
+export function calcInvoiceGst(
+  amountCents: number,
+  template: Pick<
+    InvoiceTemplateConfig,
+    "gst_enabled" | "gst_percent" | "gst_label" | "gst_inclusive"
+  >,
+): InvoiceGstBreakdown {
+  const amount = Math.max(0, Math.round(Number(amountCents) || 0));
+  const percent = Number(template.gst_percent) || 0;
+  const label = template.gst_label || "GST";
+  const inclusive = Boolean(template.gst_inclusive);
+
+  if (!template.gst_enabled || percent <= 0) {
+    return {
+      enabled: false,
+      label,
+      percent: 0,
+      inclusive,
+      subtotal_cents: amount,
+      gst_cents: 0,
+      total_cents: amount,
+    };
+  }
+
+  if (inclusive) {
+    const total = amount;
+    const subtotal = Math.round(total / (1 + percent / 100));
+    return {
+      enabled: true,
+      label,
+      percent,
+      inclusive: true,
+      subtotal_cents: subtotal,
+      gst_cents: total - subtotal,
+      total_cents: total,
+    };
+  }
+
+  const subtotal = amount;
+  const gst = Math.round((subtotal * percent) / 100);
+  return {
+    enabled: true,
+    label,
+    percent,
+    inclusive: false,
+    subtotal_cents: subtotal,
+    gst_cents: gst,
+    total_cents: subtotal + gst,
+  };
 }
 
 export async function fetchInvoiceTemplate(): Promise<InvoiceTemplateConfig> {

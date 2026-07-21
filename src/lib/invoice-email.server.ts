@@ -14,6 +14,16 @@
  * git/Vercel/Supabase without extra dependencies.
  */
 
+type InvoiceGstBreakdown = {
+  enabled: boolean;
+  label: string;
+  percent: number;
+  inclusive: boolean;
+  subtotal_cents: number;
+  gst_cents: number;
+  total_cents: number;
+};
+
 type InvoiceRow = {
   id: string;
   invoice_number: string;
@@ -34,12 +44,31 @@ function fmtMoney(cents: number, currency = "USD") {
   }).format((cents ?? 0) / 100);
 }
 
-function buildHtml(orgName: string, inv: InvoiceRow) {
-  const amount = fmtMoney(inv.amount_cents, inv.currency ?? "USD");
+function resolveGst(inv: InvoiceRow, gst?: InvoiceGstBreakdown): InvoiceGstBreakdown {
+  if (gst) return gst;
+  const amount = Math.max(0, Math.round(Number(inv.amount_cents) || 0));
+  return {
+    enabled: false,
+    label: "GST",
+    percent: 0,
+    inclusive: false,
+    subtotal_cents: amount,
+    gst_cents: 0,
+    total_cents: amount,
+  };
+}
+
+function buildHtml(orgName: string, inv: InvoiceRow, gst: InvoiceGstBreakdown) {
+  const currency = inv.currency ?? "USD";
+  const total = fmtMoney(gst.total_cents, currency);
   const period =
     inv.period_start && inv.period_end
       ? `${inv.period_start} → ${inv.period_end}`
       : "—";
+  const gstRows = gst.enabled
+    ? `<tr><td style="padding:8px 0;color:#64748b">Subtotal</td><td style="padding:8px 0;text-align:right">${fmtMoney(gst.subtotal_cents, currency)}</td></tr>
+        <tr><td style="padding:8px 0;color:#64748b">${gst.label} (${gst.percent}%)${gst.inclusive ? " incl." : ""}</td><td style="padding:8px 0;text-align:right">${fmtMoney(gst.gst_cents, currency)}</td></tr>`
+    : "";
   return `<!doctype html><html><body style="font-family:Arial,sans-serif;background:#f6f7f9;padding:24px;color:#0f172a">
   <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
     <div style="padding:24px 28px;border-bottom:1px solid #eef1f5">
@@ -50,7 +79,8 @@ function buildHtml(orgName: string, inv: InvoiceRow) {
       <p style="margin:0 0 12px">Hi ${orgName},</p>
       <p style="margin:0 0 16px">Your invoice is now available. Summary below:</p>
       <table style="width:100%;border-collapse:collapse;font-size:14px">
-        <tr><td style="padding:8px 0;color:#64748b">Amount due</td><td style="padding:8px 0;text-align:right;font-weight:700">${amount}</td></tr>
+        ${gstRows}
+        <tr><td style="padding:8px 0;color:#64748b">Amount due</td><td style="padding:8px 0;text-align:right;font-weight:700">${total}</td></tr>
         <tr><td style="padding:8px 0;color:#64748b">Issue date</td><td style="padding:8px 0;text-align:right">${inv.issue_date}</td></tr>
         <tr><td style="padding:8px 0;color:#64748b">Due date</td><td style="padding:8px 0;text-align:right">${inv.due_date ?? "—"}</td></tr>
         <tr><td style="padding:8px 0;color:#64748b">Billing period</td><td style="padding:8px 0;text-align:right">${period}</td></tr>
@@ -63,12 +93,21 @@ function buildHtml(orgName: string, inv: InvoiceRow) {
 </body></html>`;
 }
 
-function buildText(orgName: string, inv: InvoiceRow) {
-  return [
+function buildText(orgName: string, inv: InvoiceRow, gst: InvoiceGstBreakdown) {
+  const currency = inv.currency ?? "USD";
+  const lines = [
     `Hi ${orgName},`,
     ``,
     `Invoice ${inv.invoice_number}`,
-    `Amount due: ${fmtMoney(inv.amount_cents, inv.currency ?? "USD")}`,
+  ];
+  if (gst.enabled) {
+    lines.push(`Subtotal: ${fmtMoney(gst.subtotal_cents, currency)}`);
+    lines.push(
+      `${gst.label} (${gst.percent}%)${gst.inclusive ? " incl." : ""}: ${fmtMoney(gst.gst_cents, currency)}`,
+    );
+  }
+  lines.push(
+    `Amount due: ${fmtMoney(gst.total_cents, currency)}`,
     `Issue date: ${inv.issue_date}`,
     `Due date: ${inv.due_date ?? "—"}`,
     inv.period_start && inv.period_end
@@ -76,29 +115,30 @@ function buildText(orgName: string, inv: InvoiceRow) {
       : "",
     `Status: ${inv.status}`,
     inv.notes ? `\n${inv.notes}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  );
+  return lines.filter(Boolean).join("\n");
 }
 
 export async function sendInvoiceEmailRaw(args: {
   to: string;
   orgName: string;
   invoice: InvoiceRow;
+  gst?: InvoiceGstBreakdown;
 }) {
   const { to, orgName, invoice } = args;
+  const gst = resolveGst(invoice, args.gst);
   const from = process.env.INVOICE_FROM_EMAIL;
   if (!from) throw new Error("INVOICE_FROM_EMAIL is not configured");
 
   const fromName = process.env.INVOICE_FROM_NAME || "Billing";
   const replyTo = process.env.INVOICE_REPLY_TO;
   const subject = `Invoice ${invoice.invoice_number} — ${fmtMoney(
-    invoice.amount_cents,
+    gst.total_cents,
     invoice.currency ?? "USD",
   )} due ${invoice.due_date ?? ""}`.trim();
 
-  const html = buildHtml(orgName, invoice);
-  const text = buildText(orgName, invoice);
+  const html = buildHtml(orgName, invoice, gst);
+  const text = buildText(orgName, invoice, gst);
 
   const resendKey = process.env.RESEND_API_KEY;
   if (resendKey) {

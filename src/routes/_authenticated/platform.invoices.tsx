@@ -18,6 +18,7 @@ import {
 import { toast } from "sonner";
 import { Plus, Check, Mail, Eye } from "lucide-react";
 import { emailInvoice } from "@/lib/invoices.functions";
+import { calcInvoiceGst, fetchInvoiceTemplate } from "@/lib/invoice-template";
 
 export const Route = createFileRoute("/_authenticated/platform/invoices")({
   component: InvoicesPage,
@@ -51,6 +52,10 @@ function InvoicesPage() {
     queryFn: async () =>
       (await supabase.from("organizations").select("id,name,billing_email").order("name")).data ??
       [],
+  });
+  const { data: invoiceTemplate } = useQuery({
+    queryKey: ["invoice-template"],
+    queryFn: fetchInvoiceTemplate,
   });
 
   const emailFn = useServerFn(emailInvoice);
@@ -102,12 +107,19 @@ function InvoicesPage() {
 
   const markPaid = useMutation({
     mutationFn: async (inv: any) => {
+      const total = invoiceTemplate
+        ? calcInvoiceGst(inv.amount_cents, invoiceTemplate).total_cents
+        : inv.amount_cents;
       await supabase
         .from("invoice_payments")
-        .insert({ invoice_id: inv.id, amount_cents: inv.amount_cents, method: "manual" });
+        .insert({ invoice_id: inv.id, amount_cents: total, method: "manual" });
       return setStatus.mutateAsync({ id: inv.id, status: "paid" });
     },
   });
+
+  const formGst = invoiceTemplate
+    ? calcInvoiceGst(Number(form.amount_cents) || 0, invoiceTemplate)
+    : null;
 
   return (
     <div className="space-y-6">
@@ -145,13 +157,37 @@ function InvoicesPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label>Amount (cents)</Label>
+            <div className="space-y-2">
+              <Label>
+                {invoiceTemplate?.gst_enabled && !invoiceTemplate.gst_inclusive
+                  ? "Taxable amount (ex-GST, cents)"
+                  : invoiceTemplate?.gst_enabled && invoiceTemplate.gst_inclusive
+                    ? "Amount including GST (cents)"
+                    : "Amount (cents)"}
+              </Label>
               <Input
                 type="number"
                 value={form.amount_cents}
                 onChange={(e) => setForm({ ...form, amount_cents: Number(e.target.value) })}
               />
+              {formGst && invoiceTemplate?.gst_enabled ? (
+                <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs space-y-1">
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span className="tabular-nums">{money(formGst.subtotal_cents)}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">
+                      {invoiceTemplate.gst_label} ({invoiceTemplate.gst_percent}%)
+                    </span>
+                    <span className="tabular-nums">{money(formGst.gst_cents)}</span>
+                  </div>
+                  <div className="flex justify-between gap-4 font-medium">
+                    <span>Total due</span>
+                    <span className="tabular-nums">{money(formGst.total_cents)}</span>
+                  </div>
+                </div>
+              ) : null}
             </div>
             <div>
               <Label>Period start</Label>
@@ -230,14 +266,18 @@ function InvoicesPage() {
                 <th>Organization</th>
                 <th>Issue</th>
                 <th>Due</th>
-                <th className="text-right">Amount</th>
+                <th className="text-right">Taxable</th>
+                <th className="text-right">GST</th>
+                <th className="text-right">Total due</th>
                 <th>Status</th>
                 <th>Emailed</th>
                 <th className="text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {invoices.map((i: any) => (
+              {invoices.map((i: any) => {
+                const gst = calcInvoiceGst(i.amount_cents, invoiceTemplate ?? { gst_enabled: false, gst_percent: 0, gst_label: "GST", gst_inclusive: false });
+                return (
                 <tr key={i.id}>
                   <td className="font-mono text-xs">
                     <Link
@@ -252,7 +292,11 @@ function InvoicesPage() {
                   <td>{i.organizations?.name}</td>
                   <td>{i.issue_date}</td>
                   <td>{i.due_date}</td>
-                  <td className="text-right tabular-nums">{money(i.amount_cents)}</td>
+                  <td className="text-right tabular-nums">{money(gst.subtotal_cents)}</td>
+                  <td className="text-right tabular-nums text-muted-foreground">
+                    {gst.enabled ? `${money(gst.gst_cents)} (${gst.percent}%)` : "—"}
+                  </td>
+                  <td className="text-right tabular-nums font-medium">{money(gst.total_cents)}</td>
                   <td>
                     <Select
                       value={i.status}
@@ -305,7 +349,8 @@ function InvoicesPage() {
                     )}
                   </td>
                 </tr>
-              ))}
+              );
+              })}
             </tbody>
           </table>
         </CardContent>

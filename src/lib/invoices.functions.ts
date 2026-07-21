@@ -36,12 +36,24 @@ export const emailInvoice = createServerFn({ method: "POST" })
     const to = org?.billing_email;
     if (!to) throw new Error("Organization has no billing_email set");
 
+    const { data: templateRow } = await supabaseAdmin
+      .from("invoice_template_config" as any)
+      .select("config")
+      .eq("id", "singleton")
+      .maybeSingle();
+    const { mergeInvoiceTemplate, calcInvoiceGst } = await import(
+      "@/lib/invoice-template"
+    );
+    const template = mergeInvoiceTemplate((templateRow as any)?.config);
+    const gst = calcInvoiceGst((inv as any).amount_cents, template);
+
     const { sendInvoiceEmailRaw } = await import("@/lib/invoice-email.server");
     try {
       await sendInvoiceEmailRaw({
         to,
         invoice: inv as any,
         orgName: org?.brand_name || org?.name || "Customer",
+        gst,
       });
     } catch (e: any) {
       await supabaseAdmin

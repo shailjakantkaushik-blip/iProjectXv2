@@ -7,6 +7,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   Line, ComposedChart, PieChart, Pie, Cell,
 } from "recharts";
+import { calcInvoiceGst, fetchInvoiceTemplate } from "@/lib/invoice-template";
 
 export const Route = createFileRoute("/_authenticated/platform/finance")({
   component: FinancePage,
@@ -28,12 +29,27 @@ function FinancePage() {
     queryKey: ["fin_subs"],
     queryFn: async () => (await supabase.from("subscriptions").select("*, billing_plans(price_cents,interval,name)")).data ?? [],
   });
+  const { data: invoiceTemplate } = useQuery({
+    queryKey: ["invoice-template"],
+    queryFn: fetchInvoiceTemplate,
+  });
+
+  const invoiceTotal = (amountCents: number) =>
+    calcInvoiceGst(
+      amountCents,
+      invoiceTemplate ?? {
+        gst_enabled: false,
+        gst_percent: 0,
+        gst_label: "GST",
+        gst_inclusive: false,
+      },
+    ).total_cents;
 
   const kpis = useMemo(() => {
     const paid = invoices.filter((i: any) => i.status === "paid");
-    const totalRevenue = paid.reduce((s: number, i: any) => s + i.amount_cents, 0);
-    const totalDue = invoices.filter((i: any) => ["sent", "overdue"].includes(i.status)).reduce((s: number, i: any) => s + i.amount_cents, 0);
-    const overdue = invoices.filter((i: any) => i.status === "overdue").reduce((s: number, i: any) => s + i.amount_cents, 0);
+    const totalRevenue = paid.reduce((s: number, i: any) => s + invoiceTotal(i.amount_cents), 0);
+    const totalDue = invoices.filter((i: any) => ["sent", "overdue"].includes(i.status)).reduce((s: number, i: any) => s + invoiceTotal(i.amount_cents), 0);
+    const overdue = invoices.filter((i: any) => i.status === "overdue").reduce((s: number, i: any) => s + invoiceTotal(i.amount_cents), 0);
     const totalExpenses = expenses.reduce((s: number, e: any) => s + e.amount_cents, 0);
     const netProfit = totalRevenue - totalExpenses;
     // MRR: sum of active subs' monthly-equivalent
@@ -43,7 +59,7 @@ function FinancePage() {
       return s + monthly;
     }, 0);
     return { totalRevenue, totalDue, overdue, totalExpenses, netProfit, mrr, arr: mrr * 12, paidCount: paid.length, dueCount: invoices.length - paid.length };
-  }, [invoices, expenses, subs]);
+  }, [invoices, expenses, subs, invoiceTemplate]);
 
   // Monthly revenue vs expenses (last 12 months + 6 forecast)
   const monthly = useMemo(() => {
@@ -54,7 +70,7 @@ function FinancePage() {
       map.set(monthKey(d), { month: monthKey(d), revenue: 0, expenses: 0, forecast: 0 });
     }
     invoices.filter((i: any) => i.status === "paid" && i.paid_date).forEach((i: any) => {
-      const k = monthKey(i.paid_date); const r = map.get(k); if (r) r.revenue += i.amount_cents;
+      const k = monthKey(i.paid_date); const r = map.get(k); if (r) r.revenue += invoiceTotal(i.amount_cents);
     });
     expenses.forEach((e: any) => {
       const k = monthKey(e.expense_date); const r = map.get(k); if (r) r.expenses += e.amount_cents;
@@ -64,7 +80,7 @@ function FinancePage() {
     const nowKey = monthKey(now);
     rows.forEach((r) => { if (r.month > nowKey) r.forecast = kpis.mrr; });
     return rows;
-  }, [invoices, expenses, kpis.mrr]);
+  }, [invoices, expenses, kpis.mrr, invoiceTemplate]);
 
   const byCat = useMemo(() => {
     const m = new Map<string, number>();

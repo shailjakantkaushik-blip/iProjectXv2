@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Check, Download, ExternalLink } from "lucide-react";
+import { calcInvoiceGst, fetchInvoiceTemplate } from "@/lib/invoice-template";
 
 export const Route = createFileRoute("/_authenticated/app/billing")({
   component: Billing,
@@ -58,13 +59,29 @@ function Billing() {
     enabled: !!organization,
   });
 
+  const { data: invoiceTemplate } = useQuery({
+    queryKey: ["invoice-template"],
+    queryFn: fetchInvoiceTemplate,
+  });
+
+  const gstFor = (amountCents: number) =>
+    calcInvoiceGst(
+      amountCents,
+      invoiceTemplate ?? {
+        gst_enabled: false,
+        gst_percent: 0,
+        gst_label: "GST",
+        gst_inclusive: false,
+      },
+    );
+
   const currentPlanId = subscription?.plan_id;
   const totalPaid = invoices
     .filter((i: any) => i.status === "paid")
-    .reduce((s: number, i: any) => s + i.amount_cents, 0);
+    .reduce((s: number, i: any) => s + gstFor(i.amount_cents).total_cents, 0);
   const totalDue = invoices
     .filter((i: any) => i.status === "sent" || i.status === "overdue")
-    .reduce((s: number, i: any) => s + i.amount_cents, 0);
+    .reduce((s: number, i: any) => s + gstFor(i.amount_cents).total_cents, 0);
 
   return (
     <div className="space-y-6">
@@ -162,13 +179,17 @@ function Billing() {
                   <th>Issue</th>
                   <th>Due</th>
                   <th>Period</th>
-                  <th className="text-right">Amount</th>
+                  <th className="text-right">Taxable</th>
+                  <th className="text-right">GST</th>
+                  <th className="text-right">Total due</th>
                   <th>Status</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {invoices.map((i: any) => (
+                {invoices.map((i: any) => {
+                  const gst = gstFor(i.amount_cents);
+                  return (
                   <tr key={i.id}>
                     <td className="font-mono text-xs">
                       <Link
@@ -185,7 +206,17 @@ function Billing() {
                     <td className="text-xs text-muted-foreground">
                       {i.period_start ?? "—"} → {i.period_end ?? "—"}
                     </td>
-                    <td className="text-right tabular-nums">{money(i.amount_cents, i.currency)}</td>
+                    <td className="text-right tabular-nums">
+                      {money(gst.subtotal_cents, i.currency)}
+                    </td>
+                    <td className="text-right tabular-nums text-muted-foreground">
+                      {gst.enabled
+                        ? `${money(gst.gst_cents, i.currency)} (${gst.percent}%)`
+                        : "—"}
+                    </td>
+                    <td className="text-right tabular-nums font-medium">
+                      {money(gst.total_cents, i.currency)}
+                    </td>
                     <td>
                       <span
                         className={
@@ -216,7 +247,8 @@ function Billing() {
                       )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           )}

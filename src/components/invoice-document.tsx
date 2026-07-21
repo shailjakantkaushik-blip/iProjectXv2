@@ -2,6 +2,7 @@ import { forwardRef } from "react";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import {
+  calcInvoiceGst,
   fmtInvoiceMoney,
   normalizeLineItems,
   type InvoiceForRender,
@@ -22,7 +23,8 @@ export const InvoiceDocument = forwardRef<HTMLDivElement, Props>(function Invoic
   const org = invoice.organizations;
   const customer = billToName || org?.brand_name || org?.name || "Customer";
   const lines = normalizeLineItems(invoice);
-  const amount = fmtInvoiceMoney(invoice.amount_cents, invoice.currency ?? "USD");
+  const currency = invoice.currency ?? "USD";
+  const gst = calcInvoiceGst(invoice.amount_cents, template);
   const primary = template.primary_color || "#0f1b3d";
   const accent = template.accent_color || "#3b6fa0";
 
@@ -59,9 +61,9 @@ export const InvoiceDocument = forwardRef<HTMLDivElement, Props>(function Invoic
           <MetaGrid invoice={invoice} template={template} />
         </div>
         {template.show_line_items && (
-          <LineTable lines={lines} currency={invoice.currency} primary={primary} />
+          <LineTable lines={lines} currency={currency} primary={primary} />
         )}
-        <Totals amount={amount} primary={primary} />
+        <Totals gst={gst} currency={currency} primary={primary} />
         <NotesFooter invoice={invoice} template={template} />
       </div>
     );
@@ -111,15 +113,32 @@ export const InvoiceDocument = forwardRef<HTMLDivElement, Props>(function Invoic
             </div>
           </div>
           {template.show_line_items && (
-            <LineTable lines={lines} currency={invoice.currency} primary={primary} />
+            <LineTable lines={lines} currency={currency} primary={primary} />
           )}
           <div className="mt-6 flex justify-end">
             <div
-              className="min-w-[220px] rounded-xl px-5 py-4 text-white"
+              className="min-w-[240px] rounded-xl px-5 py-4 text-white"
               style={{ background: primary }}
             >
+              {gst.enabled && (
+                <div className="mb-2 space-y-1 border-b border-white/20 pb-2 text-xs text-white/80">
+                  <div className="flex justify-between gap-4">
+                    <span>Subtotal</span>
+                    <span>{fmtInvoiceMoney(gst.subtotal_cents, currency)}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span>
+                      {gst.label} ({gst.percent}%)
+                      {gst.inclusive ? " incl." : ""}
+                    </span>
+                    <span>{fmtInvoiceMoney(gst.gst_cents, currency)}</span>
+                  </div>
+                </div>
+              )}
               <div className="text-xs uppercase tracking-wider text-white/70">Amount due</div>
-              <div className="mt-1 text-3xl font-bold">{amount}</div>
+              <div className="mt-1 text-3xl font-bold">
+                {fmtInvoiceMoney(gst.total_cents, currency)}
+              </div>
             </div>
           </div>
           <NotesFooter invoice={invoice} template={template} />
@@ -165,9 +184,9 @@ export const InvoiceDocument = forwardRef<HTMLDivElement, Props>(function Invoic
       </div>
 
       {template.show_line_items && (
-        <LineTable lines={lines} currency={invoice.currency} primary={primary} />
+        <LineTable lines={lines} currency={currency} primary={primary} />
       )}
-      <Totals amount={amount} primary={primary} />
+      <Totals gst={gst} currency={currency} primary={primary} />
       <NotesFooter invoice={invoice} template={template} />
     </div>
   );
@@ -298,17 +317,42 @@ function LineTable({
   );
 }
 
-function Totals({ amount, primary }: { amount: string; primary: string }) {
+function Totals({
+  gst,
+  currency,
+  primary,
+}: {
+  gst: ReturnType<typeof calcInvoiceGst>;
+  currency: string;
+  primary: string;
+}) {
   return (
     <div className="mt-4 flex justify-end">
-      <div className="min-w-[220px] space-y-2 text-sm">
+      <div className="min-w-[240px] space-y-1.5 text-sm">
+        {gst.enabled && (
+          <>
+            <div className="flex items-center justify-between text-slate-600">
+              <span>Subtotal</span>
+              <span className="tabular-nums">
+                {fmtInvoiceMoney(gst.subtotal_cents, currency)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-slate-600">
+              <span>
+                {gst.label} ({gst.percent}%)
+                {gst.inclusive ? " included" : ""}
+              </span>
+              <span className="tabular-nums">{fmtInvoiceMoney(gst.gst_cents, currency)}</span>
+            </div>
+          </>
+        )}
         <div
           className="flex items-center justify-between border-t-2 pt-3 font-bold"
           style={{ borderColor: primary }}
         >
           <span>Total due</span>
-          <span className="text-lg" style={{ color: primary }}>
-            {amount}
+          <span className="text-lg tabular-nums" style={{ color: primary }}>
+            {fmtInvoiceMoney(gst.total_cents, currency)}
           </span>
         </div>
       </div>

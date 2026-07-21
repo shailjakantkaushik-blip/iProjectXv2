@@ -264,6 +264,75 @@ function InvoiceTemplatePage() {
           </SectionFrame>
 
           <SectionFrame>
+            <SectionTitle>GST / tax</SectionTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Applied on every invoice preview, PDF, listing total, and customer billing view.
+            </p>
+            <div className="mt-4 space-y-4">
+              <label className="flex items-center justify-between gap-3 rounded border px-3 py-2 text-sm">
+                <span>Enable GST on invoices</span>
+                <Switch
+                  checked={cfg.gst_enabled}
+                  onCheckedChange={(v) => patch({ gst_enabled: v })}
+                />
+              </label>
+              <div className="grid gap-4 md:grid-cols-3">
+                <Field label="GST percentage">
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.01}
+                      disabled={!cfg.gst_enabled}
+                      value={cfg.gst_percent}
+                      onChange={(e) =>
+                        patch({ gst_percent: Number(e.target.value) })
+                      }
+                    />
+                    <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-muted-foreground">
+                      %
+                    </span>
+                  </div>
+                </Field>
+                <Field label="Tax label">
+                  <Input
+                    disabled={!cfg.gst_enabled}
+                    value={cfg.gst_label}
+                    placeholder="GST"
+                    onChange={(e) => patch({ gst_label: e.target.value })}
+                  />
+                </Field>
+                <div className="flex items-end">
+                  <label className="flex w-full items-center justify-between gap-3 rounded border px-3 py-2 text-sm">
+                    <span className="leading-tight">
+                      Amount includes GST
+                      <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                        Off = amount is exclusive; GST added
+                      </span>
+                    </span>
+                    <Switch
+                      checked={cfg.gst_inclusive}
+                      disabled={!cfg.gst_enabled}
+                      onCheckedChange={(v) => patch({ gst_inclusive: v })}
+                    />
+                  </label>
+                </div>
+              </div>
+              {cfg.gst_enabled && (
+                <p className="text-xs text-muted-foreground">
+                  Preview sample: taxable{" "}
+                  <span className="font-medium text-foreground">$2,499.00</span>
+                  {" → "}
+                  {cfg.gst_label} {cfg.gst_percent}%
+                  {cfg.gst_inclusive ? " (included)" : " added"}
+                  {" → total due updates live on the right."}
+                </p>
+              )}
+            </div>
+          </SectionFrame>
+
+          <SectionFrame>
             <SectionTitle>Layout elements</SectionTitle>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               {(
