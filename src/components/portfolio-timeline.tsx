@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
 import { fyStartFor as fyStartForOrg, fyEndFor as fyEndForOrg, fyLabel as fyLabelOrg } from "@/lib/fiscal-year";
 import { RAG_COLORS } from "@/lib/chart-theme";
+import { ExpandablePanel } from "@/components/expandable-panel";
 
 function money(n: number) {
   return "$" + new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n || 0);
@@ -428,8 +429,30 @@ export function GanttGroup({
 
 /** Convenience wrapper: renders a single collapsible FY-aware timeline for the given projects. */
 export function PortfolioTimeline({
-  projects, gates, fy = "All", title, showPlannedVsActual = false, showGates,
-}: { projects: any[]; gates: any[]; fy?: string; title?: string; showPlannedVsActual?: boolean; showGates?: boolean }) {
+  projects,
+  gates,
+  fy = "All",
+  title,
+  showPlannedVsActual = false,
+  showGates,
+  expandable = true,
+  expandToolbar,
+  captureId,
+  compactMaxHeightClass = "max-h-[min(70vh,800px)]",
+}: {
+  projects: any[];
+  gates: any[];
+  fy?: string;
+  title?: string;
+  showPlannedVsActual?: boolean;
+  showGates?: boolean;
+  /** When true (default), timeline gets an Expand control app-wide. */
+  expandable?: boolean;
+  expandToolbar?: ReactNode;
+  /** Optional id on the gantt body (e.g. for PPT capture). */
+  captureId?: string;
+  compactMaxHeightClass?: string;
+}) {
   const { organization } = useAuth();
   const fyStartMonth = organization?.fy_start_month || 4;
   const bounds = useMemo(() => computeTimelineBounds(projects, fy, fyStartMonth), [projects, fy, fyStartMonth]);
@@ -444,19 +467,35 @@ export function PortfolioTimeline({
   const [collapsed, setCollapsed] = useState(false);
   const items = projects.filter((p: any) => p.start_date && p.end_date);
   if (items.length === 0) {
-    return <div className="rounded-md border border-border bg-surface p-6 text-center text-xs text-muted-foreground">No projects with start/end dates</div>;
+    return (
+      <div className="rounded-md border border-border bg-surface p-6 text-center text-xs text-muted-foreground">
+        No projects with start/end dates
+      </div>
+    );
   }
-  const groupTitle = title || (items.length === 1 ? (items[0].name || "Project") : "Timeline");
+  const groupTitle = title || (items.length === 1 ? items[0].name || "Project" : "Timeline");
+  const body = (
+    <div id={captureId}>
+      <GanttGroup
+        title={groupTitle}
+        items={items}
+        bounds={bounds}
+        gatesByProject={gatesByProject}
+        collapsed={collapsed}
+        onToggle={() => setCollapsed((c) => !c)}
+        showPlannedVsActual={showPlannedVsActual}
+        showGates={showGates}
+      />
+    </div>
+  );
+  if (!expandable) return body;
   return (
-    <GanttGroup
+    <ExpandablePanel
       title={groupTitle}
-      items={items}
-      bounds={bounds}
-      gatesByProject={gatesByProject}
-      collapsed={collapsed}
-      onToggle={() => setCollapsed((c) => !c)}
-      showPlannedVsActual={showPlannedVsActual}
-      showGates={showGates}
-    />
+      toolbar={expandToolbar}
+      compactMaxHeightClass={compactMaxHeightClass}
+    >
+      {body}
+    </ExpandablePanel>
   );
 }

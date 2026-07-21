@@ -5,8 +5,28 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
-import { PortfolioFilters, emptyFilters, applyFilters, type PortfolioFilterState } from "@/components/portfolio-filters";
-import { ScatterChart, Scatter, XAxis, YAxis, ZAxis, ResponsiveContainer, CartesianGrid, Tooltip, Cell, ReferenceLine, BarChart, Bar, Legend, LabelList } from "recharts";
+import {
+  PortfolioFilters,
+  emptyFilters,
+  applyFilters,
+  type PortfolioFilterState,
+} from "@/components/portfolio-filters";
+import {
+  ScatterChart,
+  Scatter,
+  XAxis,
+  YAxis,
+  ZAxis,
+  CartesianGrid,
+  Tooltip,
+  Cell,
+  ReferenceLine,
+  BarChart,
+  Bar,
+  Legend,
+  LabelList,
+} from "recharts";
+import { ExpandableChart } from "@/components/expandable-chart";
 
 export const Route = createFileRoute("/_authenticated/app/cost-vs-benefit")({
   component: CostVsBenefitPage,
@@ -27,12 +47,16 @@ function CostVsBenefitPage() {
 
   const filtered = useMemo(() => applyFilters(projects, filters), [projects, filters]);
 
-  const scored = useMemo(() => filtered.map((p: any) => {
-    const cost = Number(p.budget || 0);
-    const benefit = Number(p.benefits_target || 0);
-    const roi = cost > 0 ? ((benefit - cost) / cost) * 100 : 0;
-    return { ...p, cost, benefit, roi, net: benefit - cost };
-  }), [filtered]);
+  const scored = useMemo(
+    () =>
+      filtered.map((p: any) => {
+        const cost = Number(p.budget || 0);
+        const benefit = Number(p.benefits_target || 0);
+        const roi = cost > 0 ? ((benefit - cost) / cost) * 100 : 0;
+        return { ...p, cost, benefit, roi, net: benefit - cost };
+      }),
+    [filtered],
+  );
 
   const totalCost = scored.reduce((s, p) => s + p.cost, 0);
   const totalBenefit = scored.reduce((s, p) => s + p.benefit, 0);
@@ -44,8 +68,12 @@ function CostVsBenefitPage() {
   const bottom10 = [...scored].sort((a, b) => a.roi - b.roi).slice(0, 10);
 
   // Quadrant classification (below/above median cost & benefit)
-  const medCost = scored.length ? [...scored].sort((a, b) => a.cost - b.cost)[Math.floor(scored.length / 2)].cost : 0;
-  const medBen = scored.length ? [...scored].sort((a, b) => a.benefit - b.benefit)[Math.floor(scored.length / 2)].benefit : 0;
+  const medCost = scored.length
+    ? [...scored].sort((a, b) => a.cost - b.cost)[Math.floor(scored.length / 2)].cost
+    : 0;
+  const medBen = scored.length
+    ? [...scored].sort((a, b) => a.benefit - b.benefit)[Math.floor(scored.length / 2)].benefit
+    : 0;
   const quadrants = { quickWins: 0, bigBets: 0, fillIns: 0, questionable: 0 };
   for (const p of scored) {
     if (p.benefit >= medBen && p.cost < medCost) quadrants.quickWins++;
@@ -64,83 +92,155 @@ function CostVsBenefitPage() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
           <KpiCard label="Total Cost" value={fmtM(totalCost)} accent="#ef4444" />
           <KpiCard label="Total Benefit" value={fmtM(totalBenefit)} accent="#22c55e" />
-          <KpiCard label="Net Value" value={fmtM(netValue)} accent={netValue >= 0 ? "#22c55e" : "#ef4444"} />
+          <KpiCard
+            label="Net Value"
+            value={fmtM(netValue)}
+            accent={netValue >= 0 ? "#22c55e" : "#ef4444"}
+          />
           <KpiCard label="Portfolio ROI" value={`${portfolioRoi.toFixed(1)}%`} accent="#3b82f6" />
-          <KpiCard label="Projects w/ Benefits" value={paybackMedian} sub={`of ${scored.length}`} accent="#8b5cf6" />
+          <KpiCard
+            label="Projects w/ Benefits"
+            value={paybackMedian}
+            sub={`of ${scored.length}`}
+            accent="#8b5cf6"
+          />
         </div>
       </SectionFrame>
 
       <SectionFrame>
-        <SectionTitle>Cost vs Benefit — Quadrant Matrix (bubble = budget · colour = RAG)</SectionTitle>
-        <div className="h-96">
-          <ResponsiveContainer>
-            <ScatterChart margin={{ top: 20, right: 20, bottom: 30, left: 40 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-              <XAxis type="number" dataKey="cost" name="Cost" fontSize={11}
-                tickFormatter={(v) => `$${(v / 1e6).toFixed(1)}M`}
-                label={{ value: "Cost", position: "insideBottom", offset: -15, fontSize: 11 }} />
-              <YAxis type="number" dataKey="benefit" name="Benefit" fontSize={11}
-                tickFormatter={(v) => `$${(v / 1e6).toFixed(1)}M`}
-                label={{ value: "Benefit", angle: -90, position: "insideLeft", fontSize: 11 }} />
-              <ZAxis type="number" dataKey="cost" range={[80, 500]} />
-              <ReferenceLine x={medCost} stroke="#94a3b8" strokeDasharray="4 4" label={{ value: "median cost", fontSize: 10, fill: "#64748b" }} />
-              <ReferenceLine y={medBen} stroke="#94a3b8" strokeDasharray="4 4" label={{ value: "median benefit", fontSize: 10, fill: "#64748b" }} />
-              <Tooltip cursor={{ strokeDasharray: "3 3" }}
-                content={({ payload }) => {
-                  const d: any = payload?.[0]?.payload; if (!d) return null;
-                  return <div className="rounded border bg-white p-2 text-[11px] shadow">
+        <ExpandableChart
+          title="Cost vs Benefit — Quadrant Matrix (bubble = budget · colour = RAG)"
+          heightClass="h-96"
+        >
+          <ScatterChart margin={{ top: 20, right: 20, bottom: 30, left: 40 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+            <XAxis
+              type="number"
+              dataKey="cost"
+              name="Cost"
+              fontSize={11}
+              tickFormatter={(v) => `$${(v / 1e6).toFixed(1)}M`}
+              label={{ value: "Cost", position: "insideBottom", offset: -15, fontSize: 11 }}
+            />
+            <YAxis
+              type="number"
+              dataKey="benefit"
+              name="Benefit"
+              fontSize={11}
+              tickFormatter={(v) => `$${(v / 1e6).toFixed(1)}M`}
+              label={{ value: "Benefit", angle: -90, position: "insideLeft", fontSize: 11 }}
+            />
+            <ZAxis type="number" dataKey="cost" range={[80, 500]} />
+            <ReferenceLine
+              x={medCost}
+              stroke="#94a3b8"
+              strokeDasharray="4 4"
+              label={{ value: "median cost", fontSize: 10, fill: "#64748b" }}
+            />
+            <ReferenceLine
+              y={medBen}
+              stroke="#94a3b8"
+              strokeDasharray="4 4"
+              label={{ value: "median benefit", fontSize: 10, fill: "#64748b" }}
+            />
+            <Tooltip
+              cursor={{ strokeDasharray: "3 3" }}
+              content={({ payload }) => {
+                const d: any = payload?.[0]?.payload;
+                if (!d) return null;
+                return (
+                  <div className="rounded border bg-white p-2 text-[11px] shadow">
                     <div className="font-semibold">{d.name}</div>
                     <div className="text-muted-foreground">{d.program || "—"}</div>
-                    <div>Cost {fmtM(d.cost)} · Benefit {fmtM(d.benefit)}</div>
-                    <div>Net {fmtM(d.net)} · ROI {d.roi.toFixed(1)}%</div>
-                  </div>;
-                }} />
-              <Scatter data={scored}>
-                {scored.map((p, i) => <Cell key={i} fill={RAG_COLOR[p.rag || "Green"] || "#3b82f6"} />)}
-              </Scatter>
-            </ScatterChart>
-          </ResponsiveContainer>
-        </div>
+                    <div>
+                      Cost {fmtM(d.cost)} · Benefit {fmtM(d.benefit)}
+                    </div>
+                    <div>
+                      Net {fmtM(d.net)} · ROI {d.roi.toFixed(1)}%
+                    </div>
+                  </div>
+                );
+              }}
+            />
+            <Scatter data={scored}>
+              {scored.map((p, i) => (
+                <Cell key={i} fill={RAG_COLOR[p.rag || "Green"] || "#3b82f6"} />
+              ))}
+            </Scatter>
+          </ScatterChart>
+        </ExpandableChart>
         <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-4">
-          <div className="rounded border bg-green-50 p-2"><div className="font-semibold text-green-700">Quick Wins</div><div>Low cost · High benefit — <b>{quadrants.quickWins}</b></div></div>
-          <div className="rounded border bg-blue-50 p-2"><div className="font-semibold text-blue-700">Big Bets</div><div>High cost · High benefit — <b>{quadrants.bigBets}</b></div></div>
-          <div className="rounded border bg-slate-50 p-2"><div className="font-semibold text-slate-700">Fill-ins</div><div>Low cost · Low benefit — <b>{quadrants.fillIns}</b></div></div>
-          <div className="rounded border bg-red-50 p-2"><div className="font-semibold text-red-700">Questionable</div><div>High cost · Low benefit — <b>{quadrants.questionable}</b></div></div>
+          <div className="rounded border bg-green-50 p-2">
+            <div className="font-semibold text-green-700">Quick Wins</div>
+            <div>
+              Low cost · High benefit — <b>{quadrants.quickWins}</b>
+            </div>
+          </div>
+          <div className="rounded border bg-blue-50 p-2">
+            <div className="font-semibold text-blue-700">Big Bets</div>
+            <div>
+              High cost · High benefit — <b>{quadrants.bigBets}</b>
+            </div>
+          </div>
+          <div className="rounded border bg-slate-50 p-2">
+            <div className="font-semibold text-slate-700">Fill-ins</div>
+            <div>
+              Low cost · Low benefit — <b>{quadrants.fillIns}</b>
+            </div>
+          </div>
+          <div className="rounded border bg-red-50 p-2">
+            <div className="font-semibold text-red-700">Questionable</div>
+            <div>
+              High cost · Low benefit — <b>{quadrants.questionable}</b>
+            </div>
+          </div>
         </div>
       </SectionFrame>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <SectionFrame>
-          <SectionTitle>Top 10 Projects by ROI</SectionTitle>
-          <div className="h-72">
-            <ResponsiveContainer>
-              <BarChart data={top10} layout="vertical" margin={{ top: 5, right: 40, left: 60, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-                <XAxis type="number" fontSize={10} tickFormatter={(v) => `${v.toFixed(0)}%`} />
-                <YAxis type="category" dataKey="project_code" fontSize={10} width={70} />
-                <Tooltip formatter={(v: any) => `${Number(v).toFixed(1)}%`} />
-                <Bar dataKey="roi" fill="#22c55e">
-                  <LabelList dataKey="roi" position="right" formatter={(v: number) => `${v.toFixed(0)}%`} style={{ fontSize: 10, fill: "#166534" }} />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <ExpandableChart title="Top 10 Projects by ROI" heightClass="h-72">
+            <BarChart
+              data={top10}
+              layout="vertical"
+              margin={{ top: 5, right: 40, left: 60, bottom: 5 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+              <XAxis type="number" fontSize={10} tickFormatter={(v) => `${v.toFixed(0)}%`} />
+              <YAxis type="category" dataKey="project_code" fontSize={10} width={70} />
+              <Tooltip formatter={(v: any) => `${Number(v).toFixed(1)}%`} />
+              <Bar dataKey="roi" fill="#22c55e">
+                <LabelList
+                  dataKey="roi"
+                  position="right"
+                  formatter={(v: number) => `${v.toFixed(0)}%`}
+                  style={{ fontSize: 10, fill: "#166534" }}
+                />
+              </Bar>
+            </BarChart>
+          </ExpandableChart>
         </SectionFrame>
         <SectionFrame>
-          <SectionTitle>Bottom 10 Projects by ROI</SectionTitle>
-          <div className="h-72">
-            <ResponsiveContainer>
-              <BarChart data={bottom10} layout="vertical" margin={{ top: 5, right: 40, left: 60, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-                <XAxis type="number" fontSize={10} tickFormatter={(v) => `${v.toFixed(0)}%`} />
-                <YAxis type="category" dataKey="project_code" fontSize={10} width={70} />
-                <Tooltip formatter={(v: any) => `${Number(v).toFixed(1)}%`} />
-                <Bar dataKey="roi" fill="#ef4444">
-                  <LabelList dataKey="roi" position="right" formatter={(v: number) => `${v.toFixed(0)}%`} style={{ fontSize: 10, fill: "#991b1b" }} />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <ExpandableChart title="Bottom 10 Projects by ROI" heightClass="h-72">
+            <BarChart
+              data={bottom10}
+              layout="vertical"
+              margin={{ top: 5, right: 40, left: 60, bottom: 5 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+              <XAxis type="number" fontSize={10} tickFormatter={(v) => `${v.toFixed(0)}%`} />
+              <YAxis type="category" dataKey="project_code" fontSize={10} width={70} />
+              <Tooltip formatter={(v: any) => `${Number(v).toFixed(1)}%`} />
+              <Bar dataKey="roi" fill="#ef4444">
+                <LabelList
+                  dataKey="roi"
+                  position="right"
+                  formatter={(v: number) => `${v.toFixed(0)}%`}
+                  style={{ fontSize: 10, fill: "#991b1b" }}
+                />
+              </Bar>
+            </BarChart>
+          </ExpandableChart>
         </SectionFrame>
       </div>
 
@@ -150,25 +250,51 @@ function CostVsBenefitPage() {
           <table className="st-table">
             <thead className="sticky top-0 bg-white">
               <tr>
-                <th>Code</th><th>Project</th><th>Program</th>
-                <th className="text-right">Cost</th><th className="text-right">Benefit</th>
-                <th className="text-right">Net</th><th className="text-right">ROI</th>
+                <th>Code</th>
+                <th>Project</th>
+                <th>Program</th>
+                <th className="text-right">Cost</th>
+                <th className="text-right">Benefit</th>
+                <th className="text-right">Net</th>
+                <th className="text-right">ROI</th>
               </tr>
             </thead>
             <tbody>
-              {scored.sort((a, b) => b.roi - a.roi).map((p, i) => (
-                <tr key={p.id}>
-                  <td className="font-mono text-[11px]">
-                    <Link to="/app/project-infographic" search={{ pid: p.id }} className="text-primary hover:underline">{p.project_code}</Link>
-                  </td>
-                  <td className="font-medium">{p.name}</td>
-                  <td>{p.program || "—"}</td>
-                  <td className="text-right tabular-nums">{fmtM(p.cost)}</td>
-                  <td className="text-right tabular-nums">{fmtM(p.benefit)}</td>
-                  <td className={"text-right tabular-nums " + (p.net >= 0 ? "text-green-700" : "text-red-700")}>{fmtM(p.net)}</td>
-                  <td className={"text-right tabular-nums " + (p.roi >= 0 ? "text-green-700" : "text-red-700")}>{p.roi.toFixed(1)}%</td>
-                </tr>
-              ))}
+              {scored
+                .sort((a, b) => b.roi - a.roi)
+                .map((p, i) => (
+                  <tr key={p.id}>
+                    <td className="font-mono text-[11px]">
+                      <Link
+                        to="/app/project-infographic"
+                        search={{ pid: p.id }}
+                        className="text-primary hover:underline"
+                      >
+                        {p.project_code}
+                      </Link>
+                    </td>
+                    <td className="font-medium">{p.name}</td>
+                    <td>{p.program || "—"}</td>
+                    <td className="text-right tabular-nums">{fmtM(p.cost)}</td>
+                    <td className="text-right tabular-nums">{fmtM(p.benefit)}</td>
+                    <td
+                      className={
+                        "text-right tabular-nums " +
+                        (p.net >= 0 ? "text-green-700" : "text-red-700")
+                      }
+                    >
+                      {fmtM(p.net)}
+                    </td>
+                    <td
+                      className={
+                        "text-right tabular-nums " +
+                        (p.roi >= 0 ? "text-green-700" : "text-red-700")
+                      }
+                    >
+                      {p.roi.toFixed(1)}%
+                    </td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         </div>

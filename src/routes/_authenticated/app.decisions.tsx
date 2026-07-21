@@ -8,9 +8,7 @@ import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/s
 import { PageExport } from "@/components/page-export";
 import { EditableCell } from "@/components/editable-cell";
 import { toast } from "sonner";
-import {
-  BarChart, Bar, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip,
-} from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import {
   DECISION_OUTCOME_CLASS,
   DECISION_OUTCOMES,
@@ -20,6 +18,7 @@ import {
   type DecisionOutcome,
   type OrgMember,
 } from "@/lib/decision-approval";
+import { ExpandableChart } from "@/components/expandable-chart";
 
 type DecisionsSearch = {
   awaiting?: "me" | "all";
@@ -98,10 +97,7 @@ function DecisionsPage() {
 
   const projectById = new Map(projects.map((p: any) => [p.id, p]));
   const gateById = new Map(gates.map((g: any) => [g.id, g]));
-  const memberById = useMemo(
-    () => new Map(members.map((m) => [m.id, m])),
-    [members],
-  );
+  const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["decisions", orgId] });
@@ -112,7 +108,10 @@ function DecisionsPage() {
 
   const updateDecision = useMutation({
     mutationFn: async ({ id, patch }: { id: string; patch: Record<string, unknown> }) => {
-      const { error } = await supabase.from("decisions").update(patch as never).eq("id", id);
+      const { error } = await supabase
+        .from("decisions")
+        .update(patch as never)
+        .eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -222,9 +221,8 @@ function DecisionsPage() {
 
   const myAwaitingCount = useMemo(
     () =>
-      decisions.filter(
-        (d: any) => d.approver_user_id === userId && isAwaitingApproval(d.outcome),
-      ).length,
+      decisions.filter((d: any) => d.approver_user_id === userId && isAwaitingApproval(d.outcome))
+        .length,
     [decisions, userId],
   );
 
@@ -284,18 +282,15 @@ function DecisionsPage() {
       </SectionFrame>
 
       <SectionFrame>
-        <SectionTitle>Outcomes</SectionTitle>
-        <div className="h-64">
-          <ResponsiveContainer>
-            <BarChart data={byOutcome}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-              <XAxis dataKey="outcome" fontSize={11} />
-              <YAxis allowDecimals={false} fontSize={11} />
-              <Tooltip />
-              <Bar dataKey="count" fill="#1d4ed8" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        <ExpandableChart title="Outcomes" heightClass="h-64">
+          <BarChart data={byOutcome}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+            <XAxis dataKey="outcome" fontSize={11} />
+            <YAxis allowDecimals={false} fontSize={11} />
+            <Tooltip />
+            <Bar dataKey="count" fill="#1d4ed8" radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ExpandableChart>
       </SectionFrame>
 
       <SectionFrame id="log-form">
@@ -415,9 +410,7 @@ function DecisionsPage() {
         </SectionTitle>
         {visibleDecisions.length === 0 ? (
           <div className="py-8 text-center text-sm text-muted-foreground">
-            {awaitingOnly
-              ? "Nothing waiting for your approval."
-              : "No decisions recorded yet."}
+            {awaitingOnly ? "Nothing waiting for your approval." : "No decisions recorded yet."}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -442,12 +435,8 @@ function DecisionsPage() {
               <tbody>
                 {visibleDecisions.map((d: any) => {
                   const proj = projectById.get(d.project_id) as any;
-                  const gate = d.stage_gate_id
-                    ? (gateById.get(d.stage_gate_id) as any)
-                    : null;
-                  const approver = d.approver_user_id
-                    ? memberById.get(d.approver_user_id)
-                    : null;
+                  const gate = d.stage_gate_id ? (gateById.get(d.stage_gate_id) as any) : null;
+                  const approver = d.approver_user_id ? memberById.get(d.approver_user_id) : null;
                   const actionable = canActOnDecision(d, userId);
                   return (
                     <tr key={d.id}>
@@ -527,17 +516,12 @@ function DecisionsPage() {
                           </div>
                         ) : null}
                       </td>
-                      <td>
-                        {gate
-                          ? `${gate.gate_name} (${gate.status || "Pending"})`
-                          : "—"}
-                      </td>
+                      <td>{gate ? `${gate.gate_name} (${gate.status || "Pending"})` : "—"}</td>
                       <td>
                         <select
                           className={`st-input !py-0.5 !text-xs ${
-                            DECISION_OUTCOME_CLASS[
-                              (d.outcome || "Pending") as DecisionOutcome
-                            ] || ""
+                            DECISION_OUTCOME_CLASS[(d.outcome || "Pending") as DecisionOutcome] ||
+                            ""
                           }`}
                           value={d.outcome || "Pending"}
                           onChange={(e) =>

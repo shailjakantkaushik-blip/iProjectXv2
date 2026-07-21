@@ -5,11 +5,25 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
-import { PortfolioFilters, emptyFilters, applyFilters, type PortfolioFilterState } from "@/components/portfolio-filters";
 import {
-  BarChart, Bar, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip, Legend, LabelList, Cell,
+  PortfolioFilters,
+  emptyFilters,
+  applyFilters,
+  type PortfolioFilterState,
+} from "@/components/portfolio-filters";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  LabelList,
+  Cell,
 } from "recharts";
 import { toast } from "sonner";
+import { ExpandableChart } from "@/components/expandable-chart";
 
 export const Route = createFileRoute("/_authenticated/app/fy-allocation")({
   component: FYAllocationPage,
@@ -23,7 +37,10 @@ const fmtM = (n: number) => {
   return `$${v.toFixed(0)}`;
 };
 const fmt$ = (n: number) => "$" + new Intl.NumberFormat("en-US").format(Math.round(Number(n || 0)));
-const fyKey = (fy: string) => { const m = /(\d+)/.exec(fy || ""); return m ? Number(m[1]) : 0; };
+const fyKey = (fy: string) => {
+  const m = /(\d+)/.exec(fy || "");
+  return m ? Number(m[1]) : 0;
+};
 const sortFY = (a: string, b: string) => fyKey(a) - fyKey(b);
 
 function TabButton({ active, onClick, children }: any) {
@@ -32,7 +49,9 @@ function TabButton({ active, onClick, children }: any) {
       onClick={onClick}
       className={
         "px-3 py-2 text-[13px] font-medium border-b-2 -mb-px transition " +
-        (active ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")
+        (active
+          ? "border-primary text-primary"
+          : "border-transparent text-muted-foreground hover:text-foreground")
       }
     >
       {children}
@@ -60,16 +79,30 @@ function FYAllocationPage() {
     <PageExport name="FY_Allocation" title="FY Budget & Forecast Allocation">
       <PageHeading icon="📅">FY Budget &amp; Forecast Allocation</PageHeading>
       <div className="text-sm text-muted-foreground mb-3">
-        Split each project's total Budget and Forecast across Financial Years, then track the resulting portfolio profile.
+        Split each project's total Budget and Forecast across Financial Years, then track the
+        resulting portfolio profile.
       </div>
 
       <div className="mb-3 flex gap-1 border-b">
-        <TabButton active={tab === "allocate"} onClick={() => setTab("allocate")}>✏️ Allocate</TabButton>
-        <TabButton active={tab === "portfolio"} onClick={() => setTab("portfolio")}>📊 Portfolio View</TabButton>
-        <TabButton active={tab === "roadmap"} onClick={() => setTab("roadmap")}>🗺️ Roadmap &amp; Financials</TabButton>
+        <TabButton active={tab === "allocate"} onClick={() => setTab("allocate")}>
+          ✏️ Allocate
+        </TabButton>
+        <TabButton active={tab === "portfolio"} onClick={() => setTab("portfolio")}>
+          📊 Portfolio View
+        </TabButton>
+        <TabButton active={tab === "roadmap"} onClick={() => setTab("roadmap")}>
+          🗺️ Roadmap &amp; Financials
+        </TabButton>
       </div>
 
-      {tab === "allocate" && <AllocateTab projects={projects} alloc={alloc} orgId={organization?.id} onSaved={() => qc.invalidateQueries({ queryKey: ["fy_allocations"] })} />}
+      {tab === "allocate" && (
+        <AllocateTab
+          projects={projects}
+          alloc={alloc}
+          orgId={organization?.id}
+          onSaved={() => qc.invalidateQueries({ queryKey: ["fy_allocations"] })}
+        />
+      )}
       {tab === "portfolio" && <PortfolioViewTab projects={projects} alloc={alloc} />}
       {tab === "roadmap" && <RoadmapTab projects={projects} alloc={alloc} />}
     </PageExport>
@@ -77,7 +110,17 @@ function FYAllocationPage() {
 }
 
 /* ─────────────── Tab 1: Allocate ─────────────── */
-function AllocateTab({ projects, alloc, orgId, onSaved }: { projects: any[]; alloc: any[]; orgId?: string; onSaved: () => void }) {
+function AllocateTab({
+  projects,
+  alloc,
+  orgId,
+  onSaved,
+}: {
+  projects: any[];
+  alloc: any[];
+  orgId?: string;
+  onSaved: () => void;
+}) {
   const [projectId, setProjectId] = useState<string>("");
   const sortedProjects = useMemo(
     () => [...projects].sort((a, b) => (a.project_code || "").localeCompare(b.project_code || "")),
@@ -87,9 +130,13 @@ function AllocateTab({ projects, alloc, orgId, onSaved }: { projects: any[]; all
     if (!projectId && sortedProjects.length) setProjectId(sortedProjects[0].id);
   }, [sortedProjects, projectId]);
 
-  const project = useMemo(() => sortedProjects.find((p) => p.id === projectId), [sortedProjects, projectId]);
+  const project = useMemo(
+    () => sortedProjects.find((p) => p.id === projectId),
+    [sortedProjects, projectId],
+  );
   const totalBudget = Number(project?.budget || 0);
-  const totalForecast = Number(project?.capex_approved || 0) + Number(project?.opex_approved || 0) || totalBudget;
+  const totalForecast =
+    Number(project?.capex_approved || 0) + Number(project?.opex_approved || 0) || totalBudget;
 
   // Derive FY suggestions from all allocations + project dates
   const knownFYs = useMemo(() => {
@@ -113,8 +160,8 @@ function AllocateTab({ projects, alloc, orgId, onSaved }: { projects: any[]; all
     for (const a of existing) {
       const amt = Number(a.capex || 0) + Number(a.opex || 0);
       rec[a.fy] = {
-        bp: totalBudget > 0 ? +(amt / totalBudget * 100).toFixed(2) : 0,
-        fp: totalForecast > 0 ? +(amt / totalForecast * 100).toFixed(2) : 0,
+        bp: totalBudget > 0 ? +((amt / totalBudget) * 100).toFixed(2) : 0,
+        fp: totalForecast > 0 ? +((amt / totalForecast) * 100).toFixed(2) : 0,
         notes: "",
       };
     }
@@ -130,20 +177,30 @@ function AllocateTab({ projects, alloc, orgId, onSaved }: { projects: any[]; all
     if (!selectedFYs.length) return;
     const share = +(100 / selectedFYs.length).toFixed(2);
     const next: typeof rows = {};
-    selectedFYs.forEach((fy) => { next[fy] = { bp: share, fp: share, notes: ensureRow(fy).notes }; });
+    selectedFYs.forEach((fy) => {
+      next[fy] = { bp: share, fp: share, notes: ensureRow(fy).notes };
+    });
     setRows(next);
   };
   const copyBudgetToForecast = () => {
     const next = { ...rows };
-    selectedFYs.forEach((fy) => { next[fy] = { ...ensureRow(fy), fp: ensureRow(fy).bp }; });
+    selectedFYs.forEach((fy) => {
+      next[fy] = { ...ensureRow(fy), fp: ensureRow(fy).bp };
+    });
     setRows(next);
   };
   const clearRows = () => setRows({});
 
   const bpTotal = selectedFYs.reduce((s, fy) => s + Number(ensureRow(fy).bp || 0), 0);
   const fpTotal = selectedFYs.reduce((s, fy) => s + Number(ensureRow(fy).fp || 0), 0);
-  const bAllocated = selectedFYs.reduce((s, fy) => s + Number(ensureRow(fy).bp || 0) * totalBudget / 100, 0);
-  const fAllocated = selectedFYs.reduce((s, fy) => s + Number(ensureRow(fy).fp || 0) * totalForecast / 100, 0);
+  const bAllocated = selectedFYs.reduce(
+    (s, fy) => s + (Number(ensureRow(fy).bp || 0) * totalBudget) / 100,
+    0,
+  );
+  const fAllocated = selectedFYs.reduce(
+    (s, fy) => s + (Number(ensureRow(fy).fp || 0) * totalForecast) / 100,
+    0,
+  );
 
   const save = async () => {
     if (!project || !orgId) return;
@@ -152,7 +209,7 @@ function AllocateTab({ projects, alloc, orgId, onSaved }: { projects: any[]; all
     const inserts = selectedFYs
       .map((fy) => {
         const r = ensureRow(fy);
-        const amt = (Number(r.bp) || 0) * totalBudget / 100;
+        const amt = ((Number(r.bp) || 0) * totalBudget) / 100;
         return {
           org_id: orgId,
           project_id: project.id,
@@ -165,7 +222,10 @@ function AllocateTab({ projects, alloc, orgId, onSaved }: { projects: any[]; all
       .filter((r) => r.capex > 0 || r.fy);
     if (inserts.length) {
       const { error } = await supabase.from("fy_allocations").insert(inserts);
-      if (error) { toast.error("Save failed: " + error.message); return; }
+      if (error) {
+        toast.error("Save failed: " + error.message);
+        return;
+      }
     }
     toast.success("Allocation saved");
     onSaved();
@@ -182,16 +242,30 @@ function AllocateTab({ projects, alloc, orgId, onSaved }: { projects: any[]; all
               value={projectId}
               onChange={(e) => setProjectId(e.target.value)}
             >
-              {sortedProjects.map((p) => <option key={p.id} value={p.id}>{p.project_code} · {p.name}</option>)}
+              {sortedProjects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.project_code} · {p.name}
+                </option>
+              ))}
             </select>
           </div>
           <div>
-            <div className="text-[11px] font-semibold text-muted-foreground mb-1">Financial Years</div>
+            <div className="text-[11px] font-semibold text-muted-foreground mb-1">
+              Financial Years
+            </div>
             <div className="flex flex-wrap items-center gap-1 rounded-md border bg-white p-1 min-h-[36px]">
               {selectedFYs.map((fy) => (
-                <span key={fy} className="flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 text-[12px]">
+                <span
+                  key={fy}
+                  className="flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 text-[12px]"
+                >
                   {fy}
-                  <button className="text-slate-500 hover:text-red-600" onClick={() => setSelectedFYs(selectedFYs.filter((x) => x !== fy))}>×</button>
+                  <button
+                    className="text-slate-500 hover:text-red-600"
+                    onClick={() => setSelectedFYs(selectedFYs.filter((x) => x !== fy))}
+                  >
+                    ×
+                  </button>
                 </span>
               ))}
               <select
@@ -199,11 +273,18 @@ function AllocateTab({ projects, alloc, orgId, onSaved }: { projects: any[]; all
                 value=""
                 onChange={(e) => {
                   const v = e.target.value;
-                  if (v && !selectedFYs.includes(v)) setSelectedFYs([...selectedFYs, v].sort(sortFY));
+                  if (v && !selectedFYs.includes(v))
+                    setSelectedFYs([...selectedFYs, v].sort(sortFY));
                 }}
               >
                 <option value="">+ add FY…</option>
-                {knownFYs.filter((f) => !selectedFYs.includes(f)).map((f) => <option key={f} value={f}>{f}</option>)}
+                {knownFYs
+                  .filter((f) => !selectedFYs.includes(f))
+                  .map((f) => (
+                    <option key={f} value={f}>
+                      {f}
+                    </option>
+                  ))}
               </select>
             </div>
           </div>
@@ -218,9 +299,24 @@ function AllocateTab({ projects, alloc, orgId, onSaved }: { projects: any[]; all
       <SectionFrame>
         <SectionTitle>Allocation table (percentages must total 100)</SectionTitle>
         <div className="mb-2 grid grid-cols-3 gap-2">
-          <button className="h-9 rounded-md border bg-white text-[12px] hover:bg-muted" onClick={splitEvenly}>Split evenly</button>
-          <button className="h-9 rounded-md border bg-white text-[12px] hover:bg-muted" onClick={copyBudgetToForecast}>Copy Budget % → Forecast %</button>
-          <button className="h-9 rounded-md border bg-white text-[12px] hover:bg-muted" onClick={clearRows}>Clear</button>
+          <button
+            className="h-9 rounded-md border bg-white text-[12px] hover:bg-muted"
+            onClick={splitEvenly}
+          >
+            Split evenly
+          </button>
+          <button
+            className="h-9 rounded-md border bg-white text-[12px] hover:bg-muted"
+            onClick={copyBudgetToForecast}
+          >
+            Copy Budget % → Forecast %
+          </button>
+          <button
+            className="h-9 rounded-md border bg-white text-[12px] hover:bg-muted"
+            onClick={clearRows}
+          >
+            Clear
+          </button>
         </div>
         <div className="overflow-x-auto">
           <table className="st-table w-full table-fixed">
@@ -245,33 +341,56 @@ function AllocateTab({ projects, alloc, orgId, onSaved }: { projects: any[]; all
                   <tr key={fy}>
                     <td className="font-medium text-left align-middle">{fy}</td>
                     <td className="align-middle">
-                      <input type="number" step="0.01" value={r.bp}
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={r.bp}
                         onChange={(e) => setCell(fy, "bp", Number(e.target.value))}
-                        className="h-8 w-full rounded border bg-white px-2 text-right text-[12px]" />
+                        className="h-8 w-full rounded border bg-white px-2 text-right text-[12px]"
+                      />
                     </td>
                     <td className="align-middle">
-                      <input type="number" step="0.01" value={r.fp}
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={r.fp}
                         onChange={(e) => setCell(fy, "fp", Number(e.target.value))}
-                        className="h-8 w-full rounded border bg-white px-2 text-right text-[12px]" />
+                        className="h-8 w-full rounded border bg-white px-2 text-right text-[12px]"
+                      />
                     </td>
                     <td className="align-middle">
-                      <input type="text" value={r.notes}
+                      <input
+                        type="text"
+                        value={r.notes}
                         onChange={(e) => setCell(fy, "notes", e.target.value)}
-                        className="h-8 w-full rounded border bg-white px-2 text-[12px]" />
+                        className="h-8 w-full rounded border bg-white px-2 text-[12px]"
+                      />
                     </td>
                   </tr>
                 );
               })}
               {!selectedFYs.length && (
-                <tr><td colSpan={4} className="p-4 text-center text-[12px] text-muted-foreground">Add one or more FYs above.</td></tr>
+                <tr>
+                  <td colSpan={4} className="p-4 text-center text-[12px] text-muted-foreground">
+                    Add one or more FYs above.
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
         </div>
 
         <div className="mt-3 grid gap-3 sm:grid-cols-4">
-          <KpiCard label="Budget % total" value={`${bpTotal.toFixed(1)}%`} accent={Math.abs(bpTotal - 100) < 0.5 ? "#22c55e" : "#ef4444"} />
-          <KpiCard label="Forecast % total" value={`${fpTotal.toFixed(1)}%`} accent={Math.abs(fpTotal - 100) < 0.5 ? "#22c55e" : "#ef4444"} />
+          <KpiCard
+            label="Budget % total"
+            value={`${bpTotal.toFixed(1)}%`}
+            accent={Math.abs(bpTotal - 100) < 0.5 ? "#22c55e" : "#ef4444"}
+          />
+          <KpiCard
+            label="Forecast % total"
+            value={`${fpTotal.toFixed(1)}%`}
+            accent={Math.abs(fpTotal - 100) < 0.5 ? "#22c55e" : "#ef4444"}
+          />
           <KpiCard label="Budget $ allocated" value={fmt$(bAllocated)} accent="#3b82f6" />
           <KpiCard label="Forecast $ allocated" value={fmt$(fAllocated)} accent="#8b5cf6" />
         </div>
@@ -280,7 +399,9 @@ function AllocateTab({ projects, alloc, orgId, onSaved }: { projects: any[]; all
           <button
             className="h-9 rounded-md bg-primary px-4 text-[13px] font-medium text-white hover:opacity-90"
             onClick={save}
-          >💾 Save allocation</button>
+          >
+            💾 Save allocation
+          </button>
         </div>
       </SectionFrame>
     </>
@@ -298,10 +419,19 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
   const byFY = useMemo(() => {
     const m = new Map<string, any>();
     for (const r of rowsF) {
-      const row = m.get(r.fy) || { fy: r.fy, budget: 0, forecast: 0, capex: 0, opex: 0, benefits: 0 };
+      const row = m.get(r.fy) || {
+        fy: r.fy,
+        budget: 0,
+        forecast: 0,
+        capex: 0,
+        opex: 0,
+        benefits: 0,
+      };
       const amt = Number(r.capex || 0) + Number(r.opex || 0);
-      row.budget += amt; row.forecast += amt;
-      row.capex += Number(r.capex || 0); row.opex += Number(r.opex || 0);
+      row.budget += amt;
+      row.forecast += amt;
+      row.capex += Number(r.capex || 0);
+      row.opex += Number(r.opex || 0);
       row.benefits += Number(r.benefits || 0);
       m.set(r.fy, row);
     }
@@ -313,7 +443,7 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
   const variance = totalForecast - totalBudget;
   const nAlloc = new Set(rowsF.map((r: any) => r.project_id)).size;
   const nAll = filtered.length;
-  const coverage = nAll ? (nAlloc / nAll * 100) : 0;
+  const coverage = nAll ? (nAlloc / nAll) * 100 : 0;
   const missing = Math.max(0, nAll - nAlloc);
 
   // Forecast Allocation Mix — Top 15 projects, stacked by FY
@@ -323,7 +453,10 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
       const amt = Number(r.capex || 0) + Number(r.opex || 0);
       m.set(r.project_id, (m.get(r.project_id) || 0) + amt);
     }
-    return Array.from(m.entries()).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([id]) => id);
+    return Array.from(m.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 15)
+      .map(([id]) => id);
   }, [rowsF]);
   const fys = Array.from(new Set(byFY.map((r) => r.fy)));
   const mixData = useMemo(() => {
@@ -342,8 +475,12 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
   // Heatmap (top 20)
   const heatProjects = useMemo(() => {
     const m = new Map<string, number>();
-    for (const r of rowsF) m.set(r.project_id, (m.get(r.project_id) || 0) + Number(r.capex || 0) + Number(r.opex || 0));
-    return Array.from(m.entries()).sort((a, b) => b[1] - a[1]).slice(0, 20).map(([id]) => id);
+    for (const r of rowsF)
+      m.set(r.project_id, (m.get(r.project_id) || 0) + Number(r.capex || 0) + Number(r.opex || 0));
+    return Array.from(m.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20)
+      .map(([id]) => id);
   }, [rowsF]);
   const heat = useMemo(() => {
     const grid: Record<string, Record<string, number>> = {};
@@ -370,51 +507,79 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <KpiCard label="Total Budget Allocated" value={fmtM(totalBudget)} accent="#3b82f6" />
           <KpiCard label="Total Forecast Allocated" value={fmtM(totalForecast)} accent="#8b5cf6" />
-          <KpiCard label="Forecast vs Budget" value={fmtM(variance)} accent={variance >= 0 ? "#22c55e" : "#ef4444"} />
+          <KpiCard
+            label="Forecast vs Budget"
+            value={fmtM(variance)}
+            accent={variance >= 0 ? "#22c55e" : "#ef4444"}
+          />
           <KpiCard label="Projects Allocated" value={`${nAlloc}/${nAll}`} accent="#0ea5e9" />
           <KpiCard label="Coverage" value={`${coverage.toFixed(0)}%`} accent="#22c55e" />
-          <KpiCard label="Missing Allocation" value={missing} accent={missing ? "#ef4444" : "#22c55e"} />
+          <KpiCard
+            label="Missing Allocation"
+            value={missing}
+            accent={missing ? "#ef4444" : "#22c55e"}
+          />
         </div>
       </SectionFrame>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <SectionFrame>
-          <SectionTitle>Budget vs Forecast by FY</SectionTitle>
-          <div className="h-72">
-            <ResponsiveContainer>
-              <BarChart data={byFY} margin={{ top: 20, right: 10, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-                <XAxis dataKey="fy" fontSize={11} />
-                <YAxis fontSize={11} tickFormatter={(v) => fmtM(v)} />
-                <Tooltip formatter={(v: any) => fmtM(Number(v))} />
-                <Legend verticalAlign="top" height={28} wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="budget" name="Budget" fill="#3b82f6">
-                  <LabelList dataKey="budget" position="top" formatter={(v: number) => fmtM(v)} style={{ fontSize: 10, fill: "#334155" }} />
-                </Bar>
-                <Bar dataKey="forecast" name="Forecast" fill="#f59e0b">
-                  <LabelList dataKey="forecast" position="top" formatter={(v: number) => fmtM(v)} style={{ fontSize: 10, fill: "#334155" }} />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <ExpandableChart title="Budget vs Forecast by FY" heightClass="h-72">
+            <BarChart data={byFY} margin={{ top: 20, right: 10, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+              <XAxis dataKey="fy" fontSize={11} />
+              <YAxis fontSize={11} tickFormatter={(v) => fmtM(v)} />
+              <Tooltip formatter={(v: any) => fmtM(Number(v))} />
+              <Legend verticalAlign="top" height={28} wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="budget" name="Budget" fill="#3b82f6">
+                <LabelList
+                  dataKey="budget"
+                  position="top"
+                  formatter={(v: number) => fmtM(v)}
+                  style={{ fontSize: 10, fill: "#334155" }}
+                />
+              </Bar>
+              <Bar dataKey="forecast" name="Forecast" fill="#f59e0b">
+                <LabelList
+                  dataKey="forecast"
+                  position="top"
+                  formatter={(v: number) => fmtM(v)}
+                  style={{ fontSize: 10, fill: "#334155" }}
+                />
+              </Bar>
+            </BarChart>
+          </ExpandableChart>
         </SectionFrame>
 
         <SectionFrame>
-          <SectionTitle>Forecast Allocation Mix — Top {mixData.length} Projects</SectionTitle>
-          <div className="h-72">
-            <ResponsiveContainer>
-              <BarChart data={mixData} margin={{ top: 10, right: 10, left: 0, bottom: 70 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-                <XAxis dataKey="name" fontSize={9} angle={-30} textAnchor="end" interval={0} height={80} />
-                <YAxis fontSize={11} tickFormatter={(v) => fmtM(v)} />
-                <Tooltip formatter={(v: any) => fmtM(Number(v))} />
-                <Legend verticalAlign="top" height={28} wrapperStyle={{ fontSize: 11 }} />
-                {fys.map((fy, i) => (
-                  <Bar key={fy} dataKey={fy} stackId="a" fill={mixColors[i % mixColors.length]} name={fy} />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <ExpandableChart
+            title={`Forecast Allocation Mix — Top ${mixData.length} Projects`}
+            heightClass="h-72"
+          >
+            <BarChart data={mixData} margin={{ top: 10, right: 10, left: 0, bottom: 70 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+              <XAxis
+                dataKey="name"
+                fontSize={9}
+                angle={-30}
+                textAnchor="end"
+                interval={0}
+                height={80}
+              />
+              <YAxis fontSize={11} tickFormatter={(v) => fmtM(v)} />
+              <Tooltip formatter={(v: any) => fmtM(Number(v))} />
+              <Legend verticalAlign="top" height={28} wrapperStyle={{ fontSize: 11 }} />
+              {fys.map((fy, i) => (
+                <Bar
+                  key={fy}
+                  dataKey={fy}
+                  stackId="a"
+                  fill={mixColors[i % mixColors.length]}
+                  name={fy}
+                />
+              ))}
+            </BarChart>
+          </ExpandableChart>
         </SectionFrame>
       </div>
 
@@ -426,7 +591,11 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
               <thead className="sticky top-0 bg-white">
                 <tr>
                   <th className="p-2 text-left text-muted-foreground">Project Name</th>
-                  {fys.map((f) => <th key={f} className="p-2 text-center text-muted-foreground">{f}</th>)}
+                  {fys.map((f) => (
+                    <th key={f} className="p-2 text-center text-muted-foreground">
+                      {f}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -438,8 +607,13 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
                       const intensity = v / heat.max;
                       return (
                         <td key={f} className="p-1">
-                          <div className="flex h-8 min-w-[70px] items-center justify-center rounded font-medium"
-                            style={{ background: `rgba(29, 78, 216, ${0.08 + intensity * 0.82})`, color: intensity > 0.5 ? "#fff" : "#0b1220" }}>
+                          <div
+                            className="flex h-8 min-w-[70px] items-center justify-center rounded font-medium"
+                            style={{
+                              background: `rgba(29, 78, 216, ${0.08 + intensity * 0.82})`,
+                              color: intensity > 0.5 ? "#fff" : "#0b1220",
+                            }}
+                          >
                             {v > 0 ? fmtM(v) : "—"}
                           </div>
                         </td>
@@ -453,56 +627,54 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
         </SectionFrame>
 
         <SectionFrame>
-          <SectionTitle>Forecast Roll-Forward by FY</SectionTitle>
-          <div className="h-72">
-            <ResponsiveContainer>
-              <BarChart data={byFY} margin={{ top: 20, right: 10, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-                <XAxis dataKey="fy" fontSize={11} />
-                <YAxis fontSize={11} tickFormatter={(v) => fmtM(v)} />
-                <Tooltip formatter={(v: any) => fmtM(Number(v))} />
-                <Bar dataKey="forecast" name="Forecast">
-                  {byFY.map((_, i) => <Cell key={i} fill="#14b8a6" />)}
-                  <LabelList dataKey="forecast" position="top" formatter={(v: number) => fmtM(v)} style={{ fontSize: 10, fill: "#334155" }} />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </SectionFrame>
-      </div>
-
-      <SectionFrame>
-        <SectionTitle>Investment vs Benefit by FY</SectionTitle>
-        <div className="h-64">
-          <ResponsiveContainer>
-            <BarChart data={byFY}>
+          <ExpandableChart title="Forecast Roll-Forward by FY" heightClass="h-72">
+            <BarChart data={byFY} margin={{ top: 20, right: 10, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
               <XAxis dataKey="fy" fontSize={11} />
               <YAxis fontSize={11} tickFormatter={(v) => fmtM(v)} />
               <Tooltip formatter={(v: any) => fmtM(Number(v))} />
-              <Legend verticalAlign="top" height={28} wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="forecast" name="Investment" fill="#3b82f6" />
-              <Bar dataKey="benefits" name="Benefits" fill="#22c55e" />
+              <Bar dataKey="forecast" name="Forecast">
+                {byFY.map((_, i) => (
+                  <Cell key={i} fill="#14b8a6" />
+                ))}
+                <LabelList
+                  dataKey="forecast"
+                  position="top"
+                  formatter={(v: number) => fmtM(v)}
+                  style={{ fontSize: 10, fill: "#334155" }}
+                />
+              </Bar>
             </BarChart>
-          </ResponsiveContainer>
-        </div>
+          </ExpandableChart>
+        </SectionFrame>
+      </div>
+
+      <SectionFrame>
+        <ExpandableChart title="Investment vs Benefit by FY" heightClass="h-64">
+          <BarChart data={byFY}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+            <XAxis dataKey="fy" fontSize={11} />
+            <YAxis fontSize={11} tickFormatter={(v) => fmtM(v)} />
+            <Tooltip formatter={(v: any) => fmtM(Number(v))} />
+            <Legend verticalAlign="top" height={28} wrapperStyle={{ fontSize: 11 }} />
+            <Bar dataKey="forecast" name="Investment" fill="#3b82f6" />
+            <Bar dataKey="benefits" name="Benefits" fill="#22c55e" />
+          </BarChart>
+        </ExpandableChart>
       </SectionFrame>
 
       <SectionFrame>
-        <SectionTitle>CAPEX vs OPEX by Fiscal Year</SectionTitle>
-        <div className="h-72">
-          <ResponsiveContainer>
-            <BarChart data={byFY} margin={{ top: 15, right: 10, left: 0, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-              <XAxis dataKey="fy" fontSize={11} />
-              <YAxis fontSize={11} tickFormatter={(v) => fmtM(v)} />
-              <Tooltip formatter={(v: number) => fmtM(v)} />
-              <Legend verticalAlign="top" height={28} wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="capex" name="CAPEX" stackId="a" fill="#1d4ed8" />
-              <Bar dataKey="opex" name="OPEX" stackId="a" fill="#f59e0b" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        <ExpandableChart title="CAPEX vs OPEX by Fiscal Year" heightClass="h-72">
+          <BarChart data={byFY} margin={{ top: 15, right: 10, left: 0, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+            <XAxis dataKey="fy" fontSize={11} />
+            <YAxis fontSize={11} tickFormatter={(v) => fmtM(v)} />
+            <Tooltip formatter={(v: number) => fmtM(v)} />
+            <Legend verticalAlign="top" height={28} wrapperStyle={{ fontSize: 11 }} />
+            <Bar dataKey="capex" name="CAPEX" stackId="a" fill="#1d4ed8" />
+            <Bar dataKey="opex" name="OPEX" stackId="a" fill="#f59e0b" />
+          </BarChart>
+        </ExpandableChart>
       </SectionFrame>
 
       <SectionFrame>
@@ -511,10 +683,16 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
           <table className="st-table">
             <thead className="sticky top-0 bg-white">
               <tr>
-                <th>Project ID</th><th>Project Name</th><th>FY</th>
-                <th className="text-right">Budget %</th><th className="text-right">Forecast %</th>
-                <th className="text-right">Budget Amount</th><th className="text-right">Forecast Amount</th>
-                <th>Portfolio Category</th><th>Sponsor</th><th>RAG</th>
+                <th>Project ID</th>
+                <th>Project Name</th>
+                <th>FY</th>
+                <th className="text-right">Budget %</th>
+                <th className="text-right">Forecast %</th>
+                <th className="text-right">Budget Amount</th>
+                <th className="text-right">Forecast Amount</th>
+                <th>Portfolio Category</th>
+                <th>Sponsor</th>
+                <th>RAG</th>
               </tr>
             </thead>
             <tbody>
@@ -522,11 +700,21 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
                 const p: any = projectMap.get(r.project_id);
                 const amt = Number(r.capex || 0) + Number(r.opex || 0);
                 const projB = Number(p?.budget || 0);
-                const bp = projB ? (amt / projB * 100) : 0;
+                const bp = projB ? (amt / projB) * 100 : 0;
                 return (
                   <tr key={r.id}>
                     <td className="font-mono text-[11px]">
-                      {p?.project_code ? <Link to="/app/project-infographic" search={{ pid: p.id }} className="text-primary hover:underline">{p.project_code}</Link> : "—"}
+                      {p?.project_code ? (
+                        <Link
+                          to="/app/project-infographic"
+                          search={{ pid: p.id }}
+                          className="text-primary hover:underline"
+                        >
+                          {p.project_code}
+                        </Link>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td>{p?.name || "—"}</td>
                     <td className="font-medium">{r.fy}</td>
@@ -564,13 +752,16 @@ function RoadmapTab({ projects, alloc }: { projects: any[]; alloc: any[] }) {
       if (!set.has(r.project_id)) set.set(r.project_id, new Set());
       set.get(r.project_id)!.add(r.fy);
     }
-    return Array.from(set.entries()).map(([pid, fs]) => {
-      const p: any = projectMap.get(pid);
-      return { id: pid, name: p?.name || pid, rag: p?.rag || "NA", fys: fs };
-    }).sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(set.entries())
+      .map(([pid, fs]) => {
+        const p: any = projectMap.get(pid);
+        return { id: pid, name: p?.name || pid, rag: p?.rag || "NA", fys: fs };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [rowsF, projectMap]);
 
-  const ragColor = (r: string) => r === "Green" ? "#22c55e" : r === "Amber" ? "#f59e0b" : r === "Red" ? "#ef4444" : "#94a3b8";
+  const ragColor = (r: string) =>
+    r === "Green" ? "#22c55e" : r === "Amber" ? "#f59e0b" : r === "Red" ? "#ef4444" : "#94a3b8";
 
   // Per-project Budget-by-FY table
   const perProject = useMemo(() => {
@@ -588,20 +779,29 @@ function RoadmapTab({ projects, alloc }: { projects: any[]; alloc: any[] }) {
     <>
       <PortfolioFilters projects={projects} value={filters} onChange={setFilters} />
       <div className="mb-3 text-[12px] text-muted-foreground">
-        Loaded {rowsF.length} allocation rows across {roadmapProjects.length} projects and {fys.length} FYs.
+        Loaded {rowsF.length} allocation rows across {roadmapProjects.length} projects and{" "}
+        {fys.length} FYs.
       </div>
 
       <SectionFrame>
         <SectionTitle>FY Allocation Roadmap</SectionTitle>
         {!fys.length ? (
-          <div className="p-6 text-center text-sm text-muted-foreground">No allocations to display.</div>
+          <div className="p-6 text-center text-sm text-muted-foreground">
+            No allocations to display.
+          </div>
         ) : (
           <div className="overflow-auto max-h-[520px]">
             <table className="border-collapse text-[11px] w-full">
               <thead className="sticky top-0 bg-white z-10">
                 <tr>
-                  <th className="p-2 text-left text-muted-foreground w-64 sticky left-0 bg-white">Project</th>
-                  {fys.map((f) => <th key={f} className="p-2 text-center text-muted-foreground">{f}</th>)}
+                  <th className="p-2 text-left text-muted-foreground w-64 sticky left-0 bg-white">
+                    Project
+                  </th>
+                  {fys.map((f) => (
+                    <th key={f} className="p-2 text-center text-muted-foreground">
+                      {f}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -610,7 +810,13 @@ function RoadmapTab({ projects, alloc }: { projects: any[]; alloc: any[] }) {
                     <td className="p-2 pr-4 font-medium sticky left-0 bg-white">{row.name}</td>
                     {fys.map((f) => (
                       <td key={f} className="p-1">
-                        <div className="h-6 rounded" style={{ background: row.fys.has(f) ? ragColor(row.rag) : "transparent", opacity: row.fys.has(f) ? 0.85 : 0 }} />
+                        <div
+                          className="h-6 rounded"
+                          style={{
+                            background: row.fys.has(f) ? ragColor(row.rag) : "transparent",
+                            opacity: row.fys.has(f) ? 0.85 : 0,
+                          }}
+                        />
                       </td>
                     ))}
                   </tr>
@@ -618,10 +824,22 @@ function RoadmapTab({ projects, alloc }: { projects: any[]; alloc: any[] }) {
               </tbody>
             </table>
             <div className="mt-3 flex gap-3 text-[11px] text-muted-foreground">
-              <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded bg-[#22c55e]" />Green</span>
-              <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded bg-[#f59e0b]" />Amber</span>
-              <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded bg-[#ef4444]" />Red</span>
-              <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded bg-[#94a3b8]" />NA</span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-3 w-3 rounded bg-[#22c55e]" />
+                Green
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-3 w-3 rounded bg-[#f59e0b]" />
+                Amber
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-3 w-3 rounded bg-[#ef4444]" />
+                Red
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-3 w-3 rounded bg-[#94a3b8]" />
+                NA
+              </span>
             </div>
           </div>
         )}
@@ -633,8 +851,13 @@ function RoadmapTab({ projects, alloc }: { projects: any[]; alloc: any[] }) {
           <table className="st-table">
             <thead className="sticky top-0 bg-white">
               <tr>
-                <th>Project ID</th><th>Project Name</th>
-                {fys.map((f) => <th key={f} className="text-right">{f}</th>)}
+                <th>Project ID</th>
+                <th>Project Name</th>
+                {fys.map((f) => (
+                  <th key={f} className="text-right">
+                    {f}
+                  </th>
+                ))}
                 <th className="text-right">Total</th>
               </tr>
             </thead>
@@ -645,10 +868,24 @@ function RoadmapTab({ projects, alloc }: { projects: any[]; alloc: any[] }) {
                 return (
                   <tr key={r.id}>
                     <td className="font-mono text-[11px]">
-                      {p?.project_code ? <Link to="/app/project-infographic" search={{ pid: p.id }} className="text-primary hover:underline">{p.project_code}</Link> : "—"}
+                      {p?.project_code ? (
+                        <Link
+                          to="/app/project-infographic"
+                          search={{ pid: p.id }}
+                          className="text-primary hover:underline"
+                        >
+                          {p.project_code}
+                        </Link>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td>{p?.name || "—"}</td>
-                    {fys.map((f) => <td key={f} className="text-right tabular-nums">{r[f] ? fmt$(r[f]) : "0"}</td>)}
+                    {fys.map((f) => (
+                      <td key={f} className="text-right tabular-nums">
+                        {r[f] ? fmt$(r[f]) : "0"}
+                      </td>
+                    ))}
                     <td className="text-right tabular-nums font-semibold">{fmt$(tot)}</td>
                   </tr>
                 );

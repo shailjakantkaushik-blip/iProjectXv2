@@ -3,16 +3,24 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
-import {
-  BarChart, Bar, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip, Legend,
-} from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
+import { ExpandableChart } from "@/components/expandable-chart";
 
 export const Route = createFileRoute("/_authenticated/app/roadmap-governance")({
   component: RoadmapGovPage,
 });
 
 const STAGES = ["Idea", "Discovery", "Definition", "Design", "Build", "Test", "Deploy", "Closure"];
-const STAGE_COLORS = ["#94a3b8", "#60a5fa", "#3b82f6", "#8b5cf6", "#f59e0b", "#ef4444", "#22c55e", "#15803d"];
+const STAGE_COLORS = [
+  "#94a3b8",
+  "#60a5fa",
+  "#3b82f6",
+  "#8b5cf6",
+  "#f59e0b",
+  "#ef4444",
+  "#22c55e",
+  "#15803d",
+];
 
 function RoadmapGovPage() {
   const { organization } = useAuth();
@@ -39,7 +47,8 @@ function RoadmapGovPage() {
       if (!p.target_go_live) return false;
       const d = new Date(p.target_go_live);
       const now = new Date();
-      const in30 = new Date(); in30.setDate(in30.getDate() + 30);
+      const in30 = new Date();
+      in30.setDate(in30.getDate() + 30);
       return d >= now && d <= in30;
     }).length,
     overdue: projects.filter((p) => {
@@ -63,18 +72,15 @@ function RoadmapGovPage() {
       </SectionFrame>
 
       <SectionFrame>
-        <SectionTitle>Stage-Gate Flow (active projects)</SectionTitle>
-        <div className="h-64">
-          <ResponsiveContainer>
-            <BarChart data={stageCounts}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-              <XAxis dataKey="stage" fontSize={11} />
-              <YAxis allowDecimals={false} fontSize={11} />
-              <Tooltip />
-              <Bar dataKey="count" radius={[4, 4, 0, 0]} fill="#1d4ed8" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        <ExpandableChart title="Stage-Gate Flow (active projects)" heightClass="h-64">
+          <BarChart data={stageCounts}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+            <XAxis dataKey="stage" fontSize={11} />
+            <YAxis allowDecimals={false} fontSize={11} />
+            <Tooltip />
+            <Bar dataKey="count" radius={[4, 4, 0, 0]} fill="#1d4ed8" />
+          </BarChart>
+        </ExpandableChart>
         <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-8">
           {STAGES.map((s, i) => (
             <div key={s} className="flex items-center gap-2 text-[11px]">
@@ -91,8 +97,14 @@ function RoadmapGovPage() {
           <table className="st-table">
             <thead>
               <tr>
-                <th>Project</th><th>Program</th><th>Current Phase</th><th>Status</th>
-                <th>RAG</th><th>Sponsor</th><th>Target Go-Live</th><th>End</th>
+                <th>Project</th>
+                <th>Program</th>
+                <th>Current Phase</th>
+                <th>Status</th>
+                <th>RAG</th>
+                <th>Sponsor</th>
+                <th>Target Go-Live</th>
+                <th>End</th>
               </tr>
             </thead>
             <tbody>
@@ -102,7 +114,9 @@ function RoadmapGovPage() {
                   <td>{p.program || "—"}</td>
                   <td>{p.current_phase || "—"}</td>
                   <td>{p.status}</td>
-                  <td><RagChip rag={p.rag} /></td>
+                  <td>
+                    <RagChip rag={p.rag} />
+                  </td>
                   <td>{p.sponsor || "—"}</td>
                   <td>{p.target_go_live || "—"}</td>
                   <td>{p.end_date || "—"}</td>

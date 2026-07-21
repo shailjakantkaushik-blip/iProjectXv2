@@ -6,7 +6,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
 import { PortfolioTimeline } from "@/components/portfolio-timeline";
-import { ExpandablePanel } from "@/components/expandable-panel";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/app/timeline")({
@@ -263,25 +262,20 @@ function TimelinePage() {
 
       {/* Planned vs Actual timeline (per project, side by side) */}
       <SectionFrame>
-        <ExpandablePanel
+        <PortfolioTimeline
+          projects={combinedProjects}
+          gates={gates}
+          fy={fFy}
           title="Planned vs Actual Timeline"
-          compactMaxHeightClass="max-h-[min(70vh,800px)]"
-          toolbar={
+          showPlannedVsActual
+          showGates={showGates}
+          expandToolbar={
             <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted">
               <input type="checkbox" checked={showGates} onChange={(e) => setShowGates(e.target.checked)} />
               Show stage gates
             </label>
           }
-        >
-          <PortfolioTimeline
-            projects={combinedProjects}
-            gates={gates}
-            fy={fFy}
-            title="Planned vs Actual"
-            showPlannedVsActual
-            showGates={showGates}
-          />
-        </ExpandablePanel>
+        />
       </SectionFrame>
 
       {/* Quick shift */}

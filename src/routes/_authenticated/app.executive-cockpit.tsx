@@ -6,12 +6,16 @@ import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  LayoutDashboard, TrendingUp, AlertTriangle, DollarSign, Users, Calendar,
+  LayoutDashboard,
+  TrendingUp,
+  AlertTriangle,
+  DollarSign,
+  Users,
+  Calendar,
 } from "lucide-react";
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList, Legend,
-} from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LabelList, Legend } from "recharts";
 import { fyLabel } from "@/lib/fiscal-year";
+import { ExpandableChart } from "@/components/expandable-chart";
 
 export const Route = createFileRoute("/_authenticated/app/executive-cockpit")({
   head: () => ({
@@ -24,10 +28,25 @@ export const Route = createFileRoute("/_authenticated/app/executive-cockpit")({
 });
 
 const tiles = [
-  { to: "/app/executive", label: "Executive Dashboard", icon: LayoutDashboard, desc: "Portfolio KPIs, health, timeline" },
-  { to: "/app/financials", label: "Financials", icon: DollarSign, desc: "Budget, actuals, forecast" },
+  {
+    to: "/app/executive",
+    label: "Executive Dashboard",
+    icon: LayoutDashboard,
+    desc: "Portfolio KPIs, health, timeline",
+  },
+  {
+    to: "/app/financials",
+    label: "Financials",
+    icon: DollarSign,
+    desc: "Budget, actuals, forecast",
+  },
   { to: "/app/risks", label: "Risks", icon: AlertTriangle, desc: "Top risks & mitigation" },
-  { to: "/app/prioritisation", label: "Prioritisation", icon: TrendingUp, desc: "ROI & value ranking" },
+  {
+    to: "/app/prioritisation",
+    label: "Prioritisation",
+    icon: TrendingUp,
+    desc: "ROI & value ranking",
+  },
   { to: "/app/resources", label: "Resources", icon: Users, desc: "Capacity & demand" },
   { to: "/app/timeline", label: "Timeline", icon: Calendar, desc: "Portfolio Gantt" },
 ] as const;
@@ -38,7 +57,9 @@ function money(n: number) {
   if (Math.abs(v) >= 1_000) return "$" + Math.round(v / 1_000) + "K";
   return "$" + Math.round(v).toLocaleString();
 }
-function pct(n: number, d: number) { return d ? ((n / d) * 100).toFixed(1) + "%" : "0.0%"; }
+function pct(n: number, d: number) {
+  return d ? ((n / d) * 100).toFixed(1) + "%" : "0.0%";
+}
 const num = (v: unknown) => Number(v || 0);
 
 function ExecutiveCockpit() {
@@ -81,26 +102,51 @@ function ExecutiveCockpit() {
   const totalValue = projects.reduce((s: number, p: any) => s + num(p.budget), 0);
   const capexApproved = projects.reduce((s: number, p: any) => s + num(p.capex_approved), 0);
   const opexApproved = projects.reduce((s: number, p: any) => s + num(p.opex_approved), 0);
-  const approvedFunding = projects.reduce((s: number, p: any) => s + num(p.approved_funding ?? p.budget), 0);
-  const actualSpend = projects.reduce((s: number, p: any) => s + num(p.capex_incurred) + num(p.opex_incurred), 0);
+  const approvedFunding = projects.reduce(
+    (s: number, p: any) => s + num(p.approved_funding ?? p.budget),
+    0,
+  );
+  const actualSpend = projects.reduce(
+    (s: number, p: any) => s + num(p.capex_incurred) + num(p.opex_incurred),
+    0,
+  );
   const remaining = Math.max(0, approvedFunding - actualSpend);
-  const fac = projects.reduce((s: number, p: any) => s + num(p.forecast_at_completion ?? p.capex_approved), 0);
+  const fac = projects.reduce(
+    (s: number, p: any) => s + num(p.forecast_at_completion ?? p.capex_approved),
+    0,
+  );
 
   const total = projects.length || 1;
   const onTrack = projects.filter((p: any) => (p.rag || "").toLowerCase() === "green").length;
   const atRisk = projects.filter((p: any) => (p.rag || "").toLowerCase() === "amber").length;
   const delayed = projects.filter((p: any) => (p.rag || "").toLowerCase() === "red").length;
   const strategicPrograms = new Set(
-    projects.filter((p: any) => p.portfolio_category === "Business Strategic" || p.portfolio_category === "IT Strategic")
-      .map((p: any) => p.program).filter(Boolean)
+    projects
+      .filter(
+        (p: any) =>
+          p.portfolio_category === "Business Strategic" || p.portfolio_category === "IT Strategic",
+      )
+      .map((p: any) => p.program)
+      .filter(Boolean),
   ).size;
   const capexPrograms = new Set(
-    projects.filter((p: any) => p.portfolio_category === "CAPEX").map((p: any) => p.program).filter(Boolean)
+    projects
+      .filter((p: any) => p.portfolio_category === "CAPEX")
+      .map((p: any) => p.program)
+      .filter(Boolean),
   ).size;
-  const unfundedInitiatives = projects.filter((p: any) => p.portfolio_category === "Unfunded").length;
+  const unfundedInitiatives = projects.filter(
+    (p: any) => p.portfolio_category === "Unfunded",
+  ).length;
 
-  const benefitsForecast = benefits.reduce((s: number, b: any) => s + num(b.forecast_value ?? b.target_value), 0);
-  const benefitsRealised = benefits.reduce((s: number, b: any) => s + num(b.realised_value ?? b.actual_value), 0);
+  const benefitsForecast = benefits.reduce(
+    (s: number, b: any) => s + num(b.forecast_value ?? b.target_value),
+    0,
+  );
+  const benefitsRealised = benefits.reduce(
+    (s: number, b: any) => s + num(b.realised_value ?? b.actual_value),
+    0,
+  );
 
   const decisionsPending = decisions.filter((d: any) => {
     const s = String(d.status || d.outcome || "").toLowerCase();
@@ -125,7 +171,10 @@ function ExecutiveCockpit() {
   const segRows = CATS.map((cat) => {
     const rows = projects.filter((p: any) => (p.portfolio_category || "Unfunded") === cat);
     const approved = rows.reduce((s: number, p: any) => s + num(p.approved_funding ?? p.budget), 0);
-    const actual = rows.reduce((s: number, p: any) => s + num(p.capex_incurred) + num(p.opex_incurred), 0);
+    const actual = rows.reduce(
+      (s: number, p: any) => s + num(p.capex_incurred) + num(p.opex_incurred),
+      0,
+    );
     const bf = benefits
       .filter((b: any) => rows.find((r: any) => r.id === b.project_id))
       .reduce((s: number, b: any) => s + num(b.forecast_value ?? b.target_value), 0);
@@ -152,7 +201,16 @@ function ExecutiveCockpit() {
       amber: t.amber + r.amber,
       red: t.red + r.red,
     }),
-    { initiatives: 0, approved: 0, actual: 0, remaining: 0, benefits: 0, green: 0, amber: 0, red: 0 },
+    {
+      initiatives: 0,
+      approved: 0,
+      actual: 0,
+      remaining: 0,
+      benefits: 0,
+      green: 0,
+      amber: 0,
+      red: 0,
+    },
   );
 
   // ---------- Budget vs Forecast by FY ----------
@@ -180,19 +238,27 @@ function ExecutiveCockpit() {
     return Array.from(map.values()).sort((a, b) => a.fy.localeCompare(b.fy));
   }, [fyAlloc, projects, fyStartMonth]);
 
-  const projectsWithFY = new Set(
-    fyAlloc.map((a: any) => a.project_id).filter(Boolean),
-  ).size || projects.filter((p: any) => p.start_date).length;
-  const allocationCoverage = projects.length ? Math.round((projectsWithFY / projects.length) * 100) : 0;
+  const projectsWithFY =
+    new Set(fyAlloc.map((a: any) => a.project_id).filter(Boolean)).size ||
+    projects.filter((p: any) => p.start_date).length;
+  const allocationCoverage = projects.length
+    ? Math.round((projectsWithFY / projects.length) * 100)
+    : 0;
 
   // ---------- Health snapshot rows ----------
   const healthRows = projects
     .slice()
-    .sort((a: any, b: any) => String(a.project_code || "").localeCompare(String(b.project_code || "")));
+    .sort((a: any, b: any) =>
+      String(a.project_code || "").localeCompare(String(b.project_code || "")),
+    );
 
   return (
     <div className="space-y-4">
-      <PageHeading icon="📊" title="Executive Cockpit" subtitle="Live portfolio snapshot for executives." />
+      <PageHeading
+        icon="📊"
+        title="Executive Cockpit"
+        subtitle="Live portfolio snapshot for executives."
+      />
 
       {/* Financial */}
       <SectionFrame exportName="cockpit-financial">
@@ -228,7 +294,11 @@ function ExecutiveCockpit() {
           <KpiCard label="Benefits Forecast" value={money(benefitsForecast)} />
           <KpiCard label="Benefits Realised" value={money(benefitsRealised)} accent="#22c55e" />
           <KpiCard label="Decisions Awaiting Approval" value={decisionsPending} accent="#3b82f6" />
-          <KpiCard label="Overdue Actions" value={overdueActions} accent={overdueActions ? "#ef4444" : undefined} />
+          <KpiCard
+            label="Overdue Actions"
+            value={overdueActions}
+            accent={overdueActions ? "#ef4444" : undefined}
+          />
           <KpiCard label="Upcoming Stage Gates" value={upcomingGates} accent="#8b5cf6" />
         </div>
       </SectionFrame>
@@ -256,10 +326,16 @@ function ExecutiveCockpit() {
                 <tr key={r.name} className="border-t">
                   <td className="px-3 py-2">{r.name}</td>
                   <td className="px-3 py-2 text-right">{r.initiatives}</td>
-                  <td className="px-3 py-2 text-right">{Math.round(r.approved).toLocaleString()}</td>
+                  <td className="px-3 py-2 text-right">
+                    {Math.round(r.approved).toLocaleString()}
+                  </td>
                   <td className="px-3 py-2 text-right">{Math.round(r.actual).toLocaleString()}</td>
-                  <td className="px-3 py-2 text-right">{Math.round(r.remaining).toLocaleString()}</td>
-                  <td className="px-3 py-2 text-right">{Math.round(r.benefits).toLocaleString()}</td>
+                  <td className="px-3 py-2 text-right">
+                    {Math.round(r.remaining).toLocaleString()}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    {Math.round(r.benefits).toLocaleString()}
+                  </td>
                   <td className="px-3 py-2 text-right">{r.green}</td>
                   <td className="px-3 py-2 text-right">{r.amber}</td>
                   <td className="px-3 py-2 text-right">{r.red}</td>
@@ -268,10 +344,18 @@ function ExecutiveCockpit() {
               <tr className="border-t bg-muted/30 font-semibold">
                 <td className="px-3 py-2">All Portfolio</td>
                 <td className="px-3 py-2 text-right">{segTotals.initiatives}</td>
-                <td className="px-3 py-2 text-right">{Math.round(segTotals.approved).toLocaleString()}</td>
-                <td className="px-3 py-2 text-right">{Math.round(segTotals.actual).toLocaleString()}</td>
-                <td className="px-3 py-2 text-right">{Math.round(segTotals.remaining).toLocaleString()}</td>
-                <td className="px-3 py-2 text-right">{Math.round(segTotals.benefits).toLocaleString()}</td>
+                <td className="px-3 py-2 text-right">
+                  {Math.round(segTotals.approved).toLocaleString()}
+                </td>
+                <td className="px-3 py-2 text-right">
+                  {Math.round(segTotals.actual).toLocaleString()}
+                </td>
+                <td className="px-3 py-2 text-right">
+                  {Math.round(segTotals.remaining).toLocaleString()}
+                </td>
+                <td className="px-3 py-2 text-right">
+                  {Math.round(segTotals.benefits).toLocaleString()}
+                </td>
                 <td className="px-3 py-2 text-right">{segTotals.green}</td>
                 <td className="px-3 py-2 text-right">{segTotals.amber}</td>
                 <td className="px-3 py-2 text-right">{segTotals.red}</td>
@@ -309,7 +393,11 @@ function ExecutiveCockpit() {
               {healthRows.map((p: any) => (
                 <tr key={p.id} className="border-t hover:bg-muted/30">
                   <td className="px-3 py-2 font-mono text-xs">
-                    <Link to="/app/project-infographic" search={{ pid: p.id } as any} className="text-primary hover:underline">
+                    <Link
+                      to="/app/project-infographic"
+                      search={{ pid: p.id } as any}
+                      className="text-primary hover:underline"
+                    >
                       {p.project_code || "—"}
                     </Link>
                   </td>
@@ -319,11 +407,21 @@ function ExecutiveCockpit() {
                   <td className="px-3 py-2">{p.sponsor || "—"}</td>
                   <td className="px-3 py-2">{p.delivery_lead || p.pm_name || "—"}</td>
                   <td className="px-3 py-2 text-right">{Math.round(num(p.progress_percent))}</td>
-                  <td className="px-3 py-2"><RagChip rag={p.schedule_rag} label={p.schedule_rag} /></td>
-                  <td className="px-3 py-2"><RagChip rag={p.financial_rag} label={p.financial_rag} /></td>
-                  <td className="px-3 py-2"><RagChip rag={p.delivery_rag} label={p.delivery_rag} /></td>
-                  <td className="px-3 py-2"><RagChip rag={p.benefit_rag} label={p.benefit_rag} /></td>
-                  <td className="px-3 py-2"><RagChip rag={p.rag} label={p.rag} /></td>
+                  <td className="px-3 py-2">
+                    <RagChip rag={p.schedule_rag} label={p.schedule_rag} />
+                  </td>
+                  <td className="px-3 py-2">
+                    <RagChip rag={p.financial_rag} label={p.financial_rag} />
+                  </td>
+                  <td className="px-3 py-2">
+                    <RagChip rag={p.delivery_rag} label={p.delivery_rag} />
+                  </td>
+                  <td className="px-3 py-2">
+                    <RagChip rag={p.benefit_rag} label={p.benefit_rag} />
+                  </td>
+                  <td className="px-3 py-2">
+                    <RagChip rag={p.rag} label={p.rag} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -338,29 +436,36 @@ function ExecutiveCockpit() {
       <SectionFrame exportName="cockpit-fy" exportTitle="Budget & Forecast by Financial Year">
         <SectionTitle>📅 Budget & Forecast by Financial Year</SectionTitle>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_240px]">
-          <div>
-            <div className="mb-2 text-sm font-semibold">Budget vs Forecast by FY</div>
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={fyData} margin={{ top: 20, right: 20, left: 10, bottom: 10 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="fy" />
-                  <YAxis tickFormatter={(v: number) => (v >= 1_000_000 ? `${(v / 1_000_000).toFixed(0)}M` : `${Math.round(v / 1000)}K`)} label={{ value: "Amount", angle: -90, position: "insideLeft" }} />
-                  <Tooltip formatter={(v: number) => money(v)} />
-                  <Legend verticalAlign="top" />
-                  <Bar dataKey="budget" name="Budget" fill="#3b82f6">
-                    <LabelList dataKey="budget" position="top" formatter={(v: number) => money(v)} />
-                  </Bar>
-                  <Bar dataKey="forecast" name="Forecast" fill="#f59e0b">
-                    <LabelList dataKey="forecast" position="top" formatter={(v: number) => money(v)} />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
+          <ExpandableChart title="Budget vs Forecast by FY" heightClass="h-72">
+            <BarChart data={fyData} margin={{ top: 20, right: 20, left: 10, bottom: 10 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="fy" />
+              <YAxis
+                tickFormatter={(v: number) =>
+                  v >= 1_000_000 ? `${(v / 1_000_000).toFixed(0)}M` : `${Math.round(v / 1000)}K`
+                }
+                label={{ value: "Amount", angle: -90, position: "insideLeft" }}
+              />
+              <Tooltip formatter={(v: number) => money(v)} />
+              <Legend verticalAlign="top" />
+              <Bar dataKey="budget" name="Budget" fill="#3b82f6">
+                <LabelList dataKey="budget" position="top" formatter={(v: number) => money(v)} />
+              </Bar>
+              <Bar dataKey="forecast" name="Forecast" fill="#f59e0b">
+                <LabelList dataKey="forecast" position="top" formatter={(v: number) => money(v)} />
+              </Bar>
+            </BarChart>
+          </ExpandableChart>
           <div className="flex flex-col gap-3">
-            <KpiCard label="Projects with FY Allocation" value={`${projectsWithFY}/${projects.length}`} />
-            <KpiCard label="Allocation Coverage" value={`${allocationCoverage}%`} accent="#22c55e" />
+            <KpiCard
+              label="Projects with FY Allocation"
+              value={`${projectsWithFY}/${projects.length}`}
+            />
+            <KpiCard
+              label="Allocation Coverage"
+              value={`${allocationCoverage}%`}
+              accent="#22c55e"
+            />
           </div>
         </div>
       </SectionFrame>

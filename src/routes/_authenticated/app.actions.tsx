@@ -7,17 +7,20 @@ import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import { EditableCell } from "@/components/editable-cell";
-import {
-  BarChart, Bar, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip,
-  PieChart, Pie, Cell,
-} from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from "recharts";
 import { ChartLegendList, legendItemsFromCounts } from "@/components/chart-legend-list";
+import { ExpandableChart } from "@/components/expandable-chart";
 
 export const Route = createFileRoute("/_authenticated/app/actions")({ component: ActionsPage });
 
 const STATUSES = ["Open", "In Progress", "Blocked", "Closed"];
 const PRIORITIES = ["Critical", "High", "Medium", "Low"];
-const PRIO_COLORS: Record<string, string> = { Critical: "#7f1d1d", High: "#dc2626", Medium: "#f59e0b", Low: "#15803d" };
+const PRIO_COLORS: Record<string, string> = {
+  Critical: "#7f1d1d",
+  High: "#dc2626",
+  Medium: "#f59e0b",
+  Low: "#15803d",
+};
 
 function ActionsPage() {
   const { organization } = useAuth();
@@ -26,7 +29,8 @@ function ActionsPage() {
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", orgId],
-    queryFn: async () => (await supabase.from("projects").select("id,name,project_code").order("name")).data ?? [],
+    queryFn: async () =>
+      (await supabase.from("projects").select("id,name,project_code").order("name")).data ?? [],
     enabled: !!orgId,
   });
   const { data: actions = [] } = useQuery({
@@ -37,17 +41,28 @@ function ActionsPage() {
   const projectById = new Map(projects.map((p: any) => [p.id, p]));
 
   const [form, setForm] = useState({
-    project_id: "", title: "", owner: "", priority: "Medium", status: "Open",
-    due_date: "", description: "", notes: "",
+    project_id: "",
+    title: "",
+    owner: "",
+    priority: "Medium",
+    status: "Open",
+    due_date: "",
+    description: "",
+    notes: "",
   });
 
   const create = useMutation({
     mutationFn: async () => {
       if (!orgId || !form.project_id || !form.title) throw new Error("Project and title required");
       const { error } = await supabase.from("actions").insert({
-        org_id: orgId, project_id: form.project_id, title: form.title,
-        owner: form.owner || null, priority: form.priority, status: form.status,
-        due_date: form.due_date || null, description: form.description || null,
+        org_id: orgId,
+        project_id: form.project_id,
+        title: form.title,
+        owner: form.owner || null,
+        priority: form.priority,
+        status: form.status,
+        due_date: form.due_date || null,
+        description: form.description || null,
         notes: form.notes || null,
       } as never);
       if (error) throw error;
@@ -65,25 +80,60 @@ function ActionsPage() {
       const { error } = await supabase.from("actions").delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["actions", orgId] }); toast.success("Deleted"); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["actions", orgId] });
+      toast.success("Deleted");
+    },
     onError: (e: any) => toast.error(e.message),
   });
 
   const today = new Date();
   const total = actions.length;
   const open = actions.filter((a: any) => a.status !== "Closed").length;
-  const overdue = actions.filter((a: any) => a.due_date && new Date(a.due_date) < today && a.status !== "Closed").length;
-  const high = actions.filter((a: any) => a.priority === "High" || a.priority === "Critical").length;
+  const overdue = actions.filter(
+    (a: any) => a.due_date && new Date(a.due_date) < today && a.status !== "Closed",
+  ).length;
+  const high = actions.filter(
+    (a: any) => a.priority === "High" || a.priority === "Critical",
+  ).length;
   const closed = actions.filter((a: any) => a.status === "Closed").length;
 
-  const byPriority = PRIORITIES.map((p) => ({ name: p, value: actions.filter((a: any) => a.priority === p).length })).filter((d) => d.value > 0);
+  const byPriority = PRIORITIES.map((p) => ({
+    name: p,
+    value: actions.filter((a: any) => a.priority === p).length,
+  })).filter((d) => d.value > 0);
   const byOwner = Array.from(
-    actions.reduce((m: Map<string, number>, a: any) => m.set(a.owner || "Unassigned", (m.get(a.owner || "Unassigned") || 0) + 1), new Map()).entries(),
-  ).map(([owner, count]) => ({ owner, count })).sort((a, b) => (b.count as number) - (a.count as number)).slice(0, 8);
+    actions
+      .reduce(
+        (m: Map<string, number>, a: any) =>
+          m.set(a.owner || "Unassigned", (m.get(a.owner || "Unassigned") || 0) + 1),
+        new Map(),
+      )
+      .entries(),
+  )
+    .map(([owner, count]) => ({ owner, count }))
+    .sort((a, b) => (b.count as number) - (a.count as number))
+    .slice(0, 8);
 
   return (
     <PageExport name="Actions_Register" title="Actions Register">
-      <PageHeading icon="✅" actions={<button className="st-btn-primary" onClick={() => document.getElementById("log-form")?.scrollIntoView({ behavior: "smooth", block: "start" })}>+ Log new action</button>}>Actions Register</PageHeading>
+      <PageHeading
+        icon="✅"
+        actions={
+          <button
+            className="st-btn-primary"
+            onClick={() =>
+              document
+                .getElementById("log-form")
+                ?.scrollIntoView({ behavior: "smooth", block: "start" })
+            }
+          >
+            + Log new action
+          </button>
+        }
+      >
+        Actions Register
+      </PageHeading>
 
       <SectionFrame>
         <SectionTitle>Action KPIs</SectionTitle>
@@ -99,52 +149,109 @@ function ActionsPage() {
       <SectionFrame>
         <SectionTitle>Action Analytics</SectionTitle>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <div className="rounded-md border border-border bg-surface p-2">
-            <div className="mb-1 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">By Priority</div>
-            <div className="h-56"><ResponsiveContainer>
-              <PieChart>
-                <Pie data={byPriority} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70}>
-                  {byPriority.map((e) => <Cell key={e.name} fill={PRIO_COLORS[e.name] || "#64748b"} />)}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer></div>
-            <ChartLegendList items={legendItemsFromCounts(byPriority, PRIO_COLORS)} columns={2} />
-          </div>
-          <div className="rounded-md border border-border bg-surface p-2">
-            <div className="mb-1 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Load by Owner (Top 8)</div>
-            <div className="h-56"><ResponsiveContainer>
-              <BarChart data={byOwner as any[]} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-                <XAxis type="number" allowDecimals={false} fontSize={10} />
-                <YAxis type="category" dataKey="owner" fontSize={10} width={110} />
-                <Tooltip />
-                <Bar dataKey="count" fill="#1d4ed8" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer></div>
-          </div>
+          <ExpandableChart
+            title="By Priority"
+            heightClass="h-56"
+            legend={
+              <ChartLegendList items={legendItemsFromCounts(byPriority, PRIO_COLORS)} columns={2} />
+            }
+          >
+            <PieChart>
+              <Pie
+                data={byPriority}
+                dataKey="value"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                outerRadius={70}
+              >
+                {byPriority.map((e) => (
+                  <Cell key={e.name} fill={PRIO_COLORS[e.name] || "#64748b"} />
+                ))}
+              </Pie>
+              <Tooltip />
+            </PieChart>
+          </ExpandableChart>
+          <ExpandableChart title="Load by Owner (Top 8)" heightClass="h-56">
+            <BarChart data={byOwner as any[]} layout="vertical">
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+              <XAxis type="number" allowDecimals={false} fontSize={10} />
+              <YAxis type="category" dataKey="owner" fontSize={10} width={110} />
+              <Tooltip />
+              <Bar dataKey="count" fill="#1d4ed8" radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ExpandableChart>
         </div>
       </SectionFrame>
 
       <SectionFrame id="log-form">
         <SectionTitle>Add Action</SectionTitle>
         <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
-          <select className="st-input" value={form.project_id} onChange={(e) => setForm((f) => ({ ...f, project_id: e.target.value }))}>
+          <select
+            className="st-input"
+            value={form.project_id}
+            onChange={(e) => setForm((f) => ({ ...f, project_id: e.target.value }))}
+          >
             <option value="">— Project —</option>
-            {projects.map((p: any) => <option key={p.id} value={p.id}>{p.project_code} · {p.name}</option>)}
+            {projects.map((p: any) => (
+              <option key={p.id} value={p.id}>
+                {p.project_code} · {p.name}
+              </option>
+            ))}
           </select>
-          <input className="st-input md:col-span-2" placeholder="Action title" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} />
-          <input className="st-input" placeholder="Owner" value={form.owner} onChange={(e) => setForm((f) => ({ ...f, owner: e.target.value }))} />
-          <select className="st-input" value={form.priority} onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}>
-            {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
+          <input
+            className="st-input md:col-span-2"
+            placeholder="Action title"
+            value={form.title}
+            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+          />
+          <input
+            className="st-input"
+            placeholder="Owner"
+            value={form.owner}
+            onChange={(e) => setForm((f) => ({ ...f, owner: e.target.value }))}
+          />
+          <select
+            className="st-input"
+            value={form.priority}
+            onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
+          >
+            {PRIORITIES.map((p) => (
+              <option key={p}>{p}</option>
+            ))}
           </select>
-          <select className="st-input" value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>
-            {STATUSES.map((s) => <option key={s}>{s}</option>)}
+          <select
+            className="st-input"
+            value={form.status}
+            onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
+          >
+            {STATUSES.map((s) => (
+              <option key={s}>{s}</option>
+            ))}
           </select>
-          <input className="st-input" type="date" value={form.due_date} onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value }))} />
-          <input className="st-input" placeholder="Description" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
-          <input className="st-input md:col-span-3" placeholder="Notes / info" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
-          <button className="st-btn-primary" disabled={create.isPending} onClick={() => create.mutate()}>
+          <input
+            className="st-input"
+            type="date"
+            value={form.due_date}
+            onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value }))}
+          />
+          <input
+            className="st-input"
+            placeholder="Description"
+            value={form.description}
+            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+          />
+          <input
+            className="st-input md:col-span-3"
+            placeholder="Notes / info"
+            value={form.notes}
+            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+          />
+          <button
+            className="st-btn-primary"
+            disabled={create.isPending}
+            onClick={() => create.mutate()}
+          >
             {create.isPending ? "Saving…" : "Add action"}
           </button>
         </div>
@@ -159,8 +266,15 @@ function ActionsPage() {
             <table className="st-table">
               <thead>
                 <tr>
-                  <th>Project</th><th>Title</th><th>Owner</th><th>Priority</th>
-                  <th>Status</th><th>Due</th><th>Description</th><th>Notes</th><th></th>
+                  <th>Project</th>
+                  <th>Title</th>
+                  <th>Owner</th>
+                  <th>Priority</th>
+                  <th>Status</th>
+                  <th>Due</th>
+                  <th>Description</th>
+                  <th>Notes</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -169,14 +283,82 @@ function ActionsPage() {
                   return (
                     <tr key={a.id}>
                       <td className="font-medium">{p?.project_code || "—"}</td>
-                      <td><EditableCell table="actions" rowId={a.id} field="title" value={a.title} invalidateKeys={["actions"]} /></td>
-                      <td><EditableCell table="actions" rowId={a.id} field="owner" value={a.owner} invalidateKeys={["actions"]} /></td>
-                      <td><EditableCell table="actions" rowId={a.id} field="priority" value={a.priority} type="select" options={PRIORITIES.map(p=>({label:p,value:p}))} invalidateKeys={["actions"]} /></td>
-                      <td><EditableCell table="actions" rowId={a.id} field="status" value={a.status} type="select" options={STATUSES.map(s=>({label:s,value:s}))} invalidateKeys={["actions"]} /></td>
-                      <td><EditableCell table="actions" rowId={a.id} field="due_date" value={a.due_date} type="date" invalidateKeys={["actions"]} /></td>
-                      <td className="max-w-[220px]"><EditableCell table="actions" rowId={a.id} field="description" value={a.description} invalidateKeys={["actions"]} /></td>
-                      <td className="max-w-[220px]"><EditableCell table="actions" rowId={a.id} field="notes" value={a.notes} invalidateKeys={["actions"]} /></td>
-                      <td><button className="text-xs text-rose-600 hover:underline" onClick={() => confirm("Delete this action?") && del.mutate(a.id)}>Delete</button></td>
+                      <td>
+                        <EditableCell
+                          table="actions"
+                          rowId={a.id}
+                          field="title"
+                          value={a.title}
+                          invalidateKeys={["actions"]}
+                        />
+                      </td>
+                      <td>
+                        <EditableCell
+                          table="actions"
+                          rowId={a.id}
+                          field="owner"
+                          value={a.owner}
+                          invalidateKeys={["actions"]}
+                        />
+                      </td>
+                      <td>
+                        <EditableCell
+                          table="actions"
+                          rowId={a.id}
+                          field="priority"
+                          value={a.priority}
+                          type="select"
+                          options={PRIORITIES.map((p) => ({ label: p, value: p }))}
+                          invalidateKeys={["actions"]}
+                        />
+                      </td>
+                      <td>
+                        <EditableCell
+                          table="actions"
+                          rowId={a.id}
+                          field="status"
+                          value={a.status}
+                          type="select"
+                          options={STATUSES.map((s) => ({ label: s, value: s }))}
+                          invalidateKeys={["actions"]}
+                        />
+                      </td>
+                      <td>
+                        <EditableCell
+                          table="actions"
+                          rowId={a.id}
+                          field="due_date"
+                          value={a.due_date}
+                          type="date"
+                          invalidateKeys={["actions"]}
+                        />
+                      </td>
+                      <td className="max-w-[220px]">
+                        <EditableCell
+                          table="actions"
+                          rowId={a.id}
+                          field="description"
+                          value={a.description}
+                          invalidateKeys={["actions"]}
+                        />
+                      </td>
+                      <td className="max-w-[220px]">
+                        <EditableCell
+                          table="actions"
+                          rowId={a.id}
+                          field="notes"
+                          value={a.notes}
+                          invalidateKeys={["actions"]}
+                        />
+                      </td>
+                      <td>
+                        <button
+                          className="text-xs text-rose-600 hover:underline"
+                          onClick={() => confirm("Delete this action?") && del.mutate(a.id)}
+                        >
+                          Delete
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}

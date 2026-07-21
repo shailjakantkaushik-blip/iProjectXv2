@@ -6,24 +6,43 @@ import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import {
-  BarChart, Bar, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip, Legend,
-  PieChart, Pie, Cell, ReferenceLine, LabelList,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  PieChart,
+  Pie,
+  Cell,
+  ReferenceLine,
+  LabelList,
 } from "recharts";
 import { ChartLegendList } from "@/components/chart-legend-list";
+import { ExpandableChart } from "@/components/expandable-chart";
 
 export const Route = createFileRoute("/_authenticated/app/roadmap-analytics")({
   component: RoadmapAnalyticsPage,
 });
 
 type Project = {
-  id: string; name: string; program?: string | null; priority?: string | null;
-  rag?: string | null; budget?: number | null; capex_approved?: number | null;
-  opex_approved?: number | null; theme?: string | null;
+  id: string;
+  name: string;
+  program?: string | null;
+  priority?: string | null;
+  rag?: string | null;
+  budget?: number | null;
+  capex_approved?: number | null;
+  opex_approved?: number | null;
+  theme?: string | null;
 };
 
 import { CHART_SERIES } from "@/lib/chart-theme";
 const THEME_COLORS: Record<string, string> = {
-  Transform: CHART_SERIES[0], Grow: CHART_SERIES[2], Run: CHART_SERIES[3],
+  Transform: CHART_SERIES[0],
+  Grow: CHART_SERIES[2],
+  Run: CHART_SERIES[3],
 };
 
 // Deterministic theme derivation from project attributes
@@ -56,7 +75,8 @@ function riskScore(rag?: string | null): number {
 
 // Box-Muller normal sample
 function randn(): number {
-  let u = 0, v = 0;
+  let u = 0,
+    v = 0;
   while (u === 0) u = Math.random();
   while (v === 0) v = Math.random();
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
@@ -65,7 +85,8 @@ function randn(): number {
 function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0;
   const idx = (sorted.length - 1) * (p / 100);
-  const lo = Math.floor(idx), hi = Math.ceil(idx);
+  const lo = Math.floor(idx),
+    hi = Math.ceil(idx);
   if (lo === hi) return sorted[lo];
   return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
 }
@@ -80,17 +101,21 @@ function RoadmapAnalyticsPage() {
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects-roadmap", organization?.id],
-    queryFn: async () => (await supabase.from("projects").select("*")).data as Project[] ?? [],
+    queryFn: async () => ((await supabase.from("projects").select("*")).data as Project[]) ?? [],
     enabled: !!organization,
   });
 
-  const enriched = useMemo(() => projects.map((p) => ({
-    ...p,
-    theme: themeFor(p),
-    budget: Number(p.budget || p.capex_approved || 0) + Number(p.opex_approved || 0),
-    sigma: riskFactor(p.rag),
-    score: riskScore(p.rag),
-  })), [projects]);
+  const enriched = useMemo(
+    () =>
+      projects.map((p) => ({
+        ...p,
+        theme: themeFor(p),
+        budget: Number(p.budget || p.capex_approved || 0) + Number(p.opex_approved || 0),
+        sigma: riskFactor(p.rag),
+        score: riskScore(p.rag),
+      })),
+    [projects],
+  );
 
   const approvedBudget = enriched.reduce((s, p) => s + p.budget, 0);
 
@@ -119,7 +144,14 @@ function RoadmapAnalyticsPage() {
 
   // Monte Carlo simulation
   const mc = useMemo(() => {
-    if (enriched.length === 0) return { samples: [] as number[], histogram: [] as { bin: number; count: number }[], p50: 0, p80: 0, p95: 0 };
+    if (enriched.length === 0)
+      return {
+        samples: [] as number[],
+        histogram: [] as { bin: number; count: number }[],
+        p50: 0,
+        p80: 0,
+        p95: 0,
+      };
     const samples: number[] = new Array(iterations);
     for (let i = 0; i < iterations; i++) {
       let total = 0;
@@ -141,7 +173,8 @@ function RoadmapAnalyticsPage() {
     const bins = 30;
     const width = Math.max(0.0001, (max - min) / bins);
     const hist: { bin: number; count: number }[] = [];
-    for (let b = 0; b < bins; b++) hist.push({ bin: +(min + b * width + width / 2).toFixed(2), count: 0 });
+    for (let b = 0; b < bins; b++)
+      hist.push({ bin: +(min + b * width + width / 2).toFixed(2), count: 0 });
     for (const s of samples) {
       const v = s / 1_000_000;
       const idx = Math.min(bins - 1, Math.floor((v - min) / width));
@@ -163,12 +196,14 @@ function RoadmapAnalyticsPage() {
     <PageExport name="Roadmap_Analytics" title="Strategic Roadmap Analytics + Predictive Risk">
       <PageHeading icon="🧠">Strategic Roadmap Analytics + Predictive Risk</PageHeading>
 
-
       <SectionFrame>
         <div className="text-xs font-medium text-muted-foreground mb-2">Monte-Carlo Iterations</div>
         <div className="flex items-center gap-4">
           <input
-            type="range" min={500} max={5000} step={100}
+            type="range"
+            min={500}
+            max={5000}
+            step={100}
             value={iterations}
             onChange={(e) => setIterations(Number(e.target.value))}
             className="flex-1 accent-blue-600"
@@ -185,24 +220,27 @@ function RoadmapAnalyticsPage() {
       </div>
 
       <SectionFrame>
-        <SectionTitle>Investment Mix</SectionTitle>
         <div className="grid grid-cols-1 items-center gap-4 md:grid-cols-[1fr_12rem]">
-          <div className="h-72">
-            <ResponsiveContainer>
-              <PieChart>
-                <Pie
-                  data={mix} dataKey="value" nameKey="theme"
-                  cx="50%" cy="50%"
-                  innerRadius={70} outerRadius={110}
-                  label={({ percent }) => `${((percent ?? 0) * 100).toFixed(0)}%`}
-                  labelLine={false}
-                >
-                  {mix.map((m) => <Cell key={m.theme} fill={THEME_COLORS[m.theme]} />)}
-                </Pie>
-                <Tooltip formatter={(v: number) => fmtM(v)} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
+          <ExpandableChart title="Investment Mix" heightClass="h-72">
+            <PieChart>
+              <Pie
+                data={mix}
+                dataKey="value"
+                nameKey="theme"
+                cx="50%"
+                cy="50%"
+                innerRadius={70}
+                outerRadius={110}
+                label={({ percent }) => `${((percent ?? 0) * 100).toFixed(0)}%`}
+                labelLine={false}
+              >
+                {mix.map((m) => (
+                  <Cell key={m.theme} fill={THEME_COLORS[m.theme]} />
+                ))}
+              </Pie>
+              <Tooltip formatter={(v: number) => fmtM(v)} />
+            </PieChart>
+          </ExpandableChart>
           <ChartLegendList
             columns={1}
             maxHeightClass="max-h-72"
@@ -216,59 +254,87 @@ function RoadmapAnalyticsPage() {
       </SectionFrame>
 
       <SectionFrame>
-        <SectionTitle>Risk Exposure by Program</SectionTitle>
-        <div className="h-80">
-          <ResponsiveContainer>
-            <BarChart data={riskByProgram} margin={{ top: 10, right: 20, left: 20, bottom: 40 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-              <XAxis dataKey="program" fontSize={11} angle={-20} textAnchor="end" interval={0} height={60}
-                     label={{ value: "Program", position: "insideBottom", offset: -5, fontSize: 11 }} />
-              <YAxis domain={[0, 7]} fontSize={11}
-                     label={{ value: "Risk Score", angle: -90, position: "insideLeft", fontSize: 11 }} />
-              <Tooltip />
-              <Bar dataKey="score">
-                {riskByProgram.map((r, i) => <Cell key={i} fill={riskColor(r.score)} />)}
-                <LabelList dataKey="score" position="top" fontSize={11} />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="mt-2 flex items-center justify-end gap-2 text-[11px] text-muted-foreground">
-          <span>Low</span>
-          <div className="h-2 w-32 rounded"
-               style={{ background: "linear-gradient(to right, rgb(254,226,226), rgb(139,0,0))" }} />
-          <span>High</span>
-        </div>
+        <ExpandableChart
+          title="Risk Exposure by Program"
+          heightClass="h-80"
+          legend={
+            <div className="mt-2 flex items-center justify-end gap-2 text-[11px] text-muted-foreground">
+              <span>Low</span>
+              <div
+                className="h-2 w-32 rounded"
+                style={{ background: "linear-gradient(to right, rgb(254,226,226), rgb(139,0,0))" }}
+              />
+              <span>High</span>
+            </div>
+          }
+        >
+          <BarChart data={riskByProgram} margin={{ top: 10, right: 20, left: 20, bottom: 40 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+            <XAxis
+              dataKey="program"
+              fontSize={11}
+              angle={-20}
+              textAnchor="end"
+              interval={0}
+              height={60}
+              label={{ value: "Program", position: "insideBottom", offset: -5, fontSize: 11 }}
+            />
+            <YAxis
+              domain={[0, 7]}
+              fontSize={11}
+              label={{ value: "Risk Score", angle: -90, position: "insideLeft", fontSize: 11 }}
+            />
+            <Tooltip />
+            <Bar dataKey="score">
+              {riskByProgram.map((r, i) => (
+                <Cell key={i} fill={riskColor(r.score)} />
+              ))}
+              <LabelList dataKey="score" position="top" fontSize={11} />
+            </Bar>
+          </BarChart>
+        </ExpandableChart>
       </SectionFrame>
 
       <SectionFrame>
-        <SectionTitle>Monte-Carlo Portfolio Cost ($M)</SectionTitle>
-        <div className="h-96">
-          <ResponsiveContainer>
-            <BarChart data={mc.histogram} margin={{ top: 10, right: 20, left: 20, bottom: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-              <XAxis dataKey="bin" fontSize={11}
-                     tickFormatter={(v: number) => v.toFixed(0)} />
-              <YAxis fontSize={11} />
-              <Tooltip
-                formatter={(v: number) => [v, "Iterations"]}
-                labelFormatter={(l) => `~$${l}M`}
-              />
-              <ReferenceLine x={mc.histogram.find(h => h.bin >= approvedBudget / 1_000_000)?.bin}
-                             stroke="#16a34a" strokeWidth={2}
-                             label={{ value: "Approved", position: "insideTopLeft", fill: "#16a34a", fontSize: 11 }} />
-              <ReferenceLine x={mc.histogram.find(h => h.bin >= mc.p80 / 1_000_000)?.bin}
-                             stroke="#f59e0b" strokeWidth={2}
-                             label={{ value: "P80", position: "insideTopRight", fill: "#b45309", fontSize: 11 }} />
-              <Bar dataKey="count" fill="#3b82f6" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="mt-1 text-[11px] text-muted-foreground">
-          Simulated {iterations.toLocaleString()} portfolio cost outcomes using per-project budget × RAG-derived volatility (Green 8%, Amber 18%, Red 35%).
-        </div>
+        <ExpandableChart
+          title="Monte-Carlo Portfolio Cost ($M)"
+          heightClass="h-96"
+          legend={
+            <div className="mt-1 text-[11px] text-muted-foreground">
+              Simulated {iterations.toLocaleString()} portfolio cost outcomes using per-project
+              budget × RAG-derived volatility (Green 8%, Amber 18%, Red 35%).
+            </div>
+          }
+        >
+          <BarChart data={mc.histogram} margin={{ top: 10, right: 20, left: 20, bottom: 20 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+            <XAxis dataKey="bin" fontSize={11} tickFormatter={(v: number) => v.toFixed(0)} />
+            <YAxis fontSize={11} />
+            <Tooltip
+              formatter={(v: number) => [v, "Iterations"]}
+              labelFormatter={(l) => `~$${l}M`}
+            />
+            <ReferenceLine
+              x={mc.histogram.find((h) => h.bin >= approvedBudget / 1_000_000)?.bin}
+              stroke="#16a34a"
+              strokeWidth={2}
+              label={{
+                value: "Approved",
+                position: "insideTopLeft",
+                fill: "#16a34a",
+                fontSize: 11,
+              }}
+            />
+            <ReferenceLine
+              x={mc.histogram.find((h) => h.bin >= mc.p80 / 1_000_000)?.bin}
+              stroke="#f59e0b"
+              strokeWidth={2}
+              label={{ value: "P80", position: "insideTopRight", fill: "#b45309", fontSize: 11 }}
+            />
+            <Bar dataKey="count" fill="#3b82f6" />
+          </BarChart>
+        </ExpandableChart>
       </SectionFrame>
     </PageExport>
   );
 }
-

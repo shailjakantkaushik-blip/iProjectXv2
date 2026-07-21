@@ -4,9 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
-import {
-  BarChart, Bar, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip, Legend,
-} from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
+import { ExpandableChart } from "@/components/expandable-chart";
 
 export const Route = createFileRoute("/_authenticated/app/benefits")({
   component: BenefitsPage,
@@ -39,26 +38,29 @@ function BenefitsPage() {
       target: Number(p.benefits_target || 0),
       realised: Number(p.benefits_realised || 0),
       gap: Number(p.benefits_target || 0) - Number(p.benefits_realised || 0),
-      rate: Number(p.benefits_target || 0) > 0
-        ? (Number(p.benefits_realised || 0) / Number(p.benefits_target || 0)) * 100
-        : 0,
+      rate:
+        Number(p.benefits_target || 0) > 0
+          ? (Number(p.benefits_realised || 0) / Number(p.benefits_target || 0)) * 100
+          : 0,
     }))
     .filter((r) => r.target > 0 || r.realised > 0)
     .sort((a, b) => b.target - a.target);
 
   const byProgram = Array.from(
-    rows.reduce((m: Map<string, { program: string; target: number; realised: number }>, r) => {
-      const c = m.get(r.program) || { program: r.program, target: 0, realised: 0 };
-      c.target += r.target; c.realised += r.realised;
-      m.set(r.program, c);
-      return m;
-    }, new Map()).values(),
+    rows
+      .reduce((m: Map<string, { program: string; target: number; realised: number }>, r) => {
+        const c = m.get(r.program) || { program: r.program, target: 0, realised: 0 };
+        c.target += r.target;
+        c.realised += r.realised;
+        m.set(r.program, c);
+        return m;
+      }, new Map())
+      .values(),
   );
 
   return (
     <PageExport name="Benefits_Realisation" title="Benefits Realisation">
       <PageHeading icon="🎁">Benefits Realisation</PageHeading>
-
 
       <SectionFrame>
         <SectionTitle>Benefits KPIs</SectionTitle>
@@ -71,32 +73,32 @@ function BenefitsPage() {
       </SectionFrame>
 
       <SectionFrame>
-        <SectionTitle>Target vs Realised by Program</SectionTitle>
-        <div className="h-72">
-          <ResponsiveContainer>
-            <BarChart data={byProgram}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-              <XAxis dataKey="program" fontSize={11} />
-              <YAxis fontSize={11} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-              <Tooltip formatter={(v: any) => fmt(Number(v))} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="target" fill="#94a3b8" name="Target" />
-              <Bar dataKey="realised" fill="#1d4ed8" name="Realised" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        <ExpandableChart title="Target vs Realised by Program" heightClass="h-72">
+          <BarChart data={byProgram}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+            <XAxis dataKey="program" fontSize={11} />
+            <YAxis fontSize={11} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
+            <Tooltip formatter={(v: any) => fmt(Number(v))} />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            <Bar dataKey="target" fill="#94a3b8" name="Target" />
+            <Bar dataKey="realised" fill="#1d4ed8" name="Realised" />
+          </BarChart>
+        </ExpandableChart>
       </SectionFrame>
 
       <SectionFrame>
         <SectionTitle>Benefits Register</SectionTitle>
         {rows.length === 0 ? (
-          <div className="py-8 text-center text-sm text-muted-foreground">No benefits data captured yet.</div>
+          <div className="py-8 text-center text-sm text-muted-foreground">
+            No benefits data captured yet.
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="st-table">
               <thead>
                 <tr>
-                  <th>Project</th><th>Program</th>
+                  <th>Project</th>
+                  <th>Program</th>
                   <th className="text-right">Target</th>
                   <th className="text-right">Realised</th>
                   <th className="text-right">Gap</th>
@@ -122,4 +124,3 @@ function BenefitsPage() {
     </PageExport>
   );
 }
-

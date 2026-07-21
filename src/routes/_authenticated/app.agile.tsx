@@ -5,9 +5,18 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-  Legend, LineChart, Line, ReferenceLine,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  Legend,
+  LineChart,
+  Line,
+  ReferenceLine,
 } from "recharts";
+import { ExpandableChart } from "@/components/expandable-chart";
 
 export const Route = createFileRoute("/_authenticated/app/agile")({ component: Page });
 
@@ -17,7 +26,10 @@ function Page() {
   const { data: projects = [] } = useQuery({
     queryKey: ["agile-projects", organization?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.from("projects").select("id, project_code, name, delivery_method").order("project_code");
+      const { data, error } = await supabase
+        .from("projects")
+        .select("id, project_code, name, delivery_method")
+        .order("project_code");
       if (error) throw error;
       return data;
     },
@@ -36,17 +48,31 @@ function Page() {
 
   const agileProjects = useMemo(
     () => projects.filter((p: any) => ["Agile", "Hybrid"].includes(p.delivery_method)),
-    [projects]
+    [projects],
   );
-  const projById = useMemo(() => Object.fromEntries(agileProjects.map((p: any) => [p.id, p])), [agileProjects]);
+  const projById = useMemo(
+    () => Object.fromEntries(agileProjects.map((p: any) => [p.id, p])),
+    [agileProjects],
+  );
 
   // Portfolio KPIs
-  const activeSprints = sprints.filter((s: any) => (s.status || "").toLowerCase() === "active").length;
-  const completedSprints = sprints.filter((s: any) => (s.status || "").toLowerCase() === "complete");
-  const totalCommitted = sprints.reduce((s: number, x: any) => s + Number(x.planned_points || 0), 0);
-  const totalCompleted = sprints.reduce((s: number, x: any) => s + Number(x.completed_points || 0), 0);
+  const activeSprints = sprints.filter(
+    (s: any) => (s.status || "").toLowerCase() === "active",
+  ).length;
+  const completedSprints = sprints.filter(
+    (s: any) => (s.status || "").toLowerCase() === "complete",
+  );
+  const totalCommitted = sprints.reduce(
+    (s: number, x: any) => s + Number(x.planned_points || 0),
+    0,
+  );
+  const totalCompleted = sprints.reduce(
+    (s: number, x: any) => s + Number(x.completed_points || 0),
+    0,
+  );
   const avgVelocity = completedSprints.length
-    ? completedSprints.reduce((s: number, x: any) => s + Number(x.completed_points || 0), 0) / completedSprints.length
+    ? completedSprints.reduce((s: number, x: any) => s + Number(x.completed_points || 0), 0) /
+      completedSprints.length
     : 0;
   const sayDo = totalCommitted > 0 ? (totalCompleted / totalCommitted) * 100 : 0;
 
@@ -66,12 +92,21 @@ function Page() {
   const projectSprints = sprints
     .filter((s: any) => s.project_id === activeProject)
     .sort((a: any, b: any) => (a.sprint_number || 0) - (b.sprint_number || 0));
-  const projSprintsComplete = projectSprints.filter((s: any) => (s.status || "").toLowerCase() === "complete");
+  const projSprintsComplete = projectSprints.filter(
+    (s: any) => (s.status || "").toLowerCase() === "complete",
+  );
   const projAvgVel = projSprintsComplete.length
-    ? projSprintsComplete.reduce((s: number, x: any) => s + Number(x.completed_points || 0), 0) / projSprintsComplete.length
+    ? projSprintsComplete.reduce((s: number, x: any) => s + Number(x.completed_points || 0), 0) /
+      projSprintsComplete.length
     : 0;
-  const projTotalCommitted = projectSprints.reduce((s: number, x: any) => s + Number(x.planned_points || 0), 0);
-  const projTotalCompleted = projectSprints.reduce((s: number, x: any) => s + Number(x.completed_points || 0), 0);
+  const projTotalCommitted = projectSprints.reduce(
+    (s: number, x: any) => s + Number(x.planned_points || 0),
+    0,
+  );
+  const projTotalCompleted = projectSprints.reduce(
+    (s: number, x: any) => s + Number(x.completed_points || 0),
+    0,
+  );
   const projSayDo = projTotalCommitted > 0 ? (projTotalCompleted / projTotalCommitted) * 100 : 0;
 
   const drillData = projectSprints.map((s: any) => ({
@@ -122,31 +157,37 @@ function Page() {
       <div className="grid gap-3 md:grid-cols-6 mb-3">
         <KpiCard label="Agile Projects" value={agileProjects.length} accent="#1d4ed8" />
         <KpiCard label="Active Sprints" value={activeSprints} accent="#0ea5e9" />
-        <KpiCard label="Avg Velocity (pts/sprint)" value={avgVelocity.toFixed(1)} accent="#8b5cf6" />
+        <KpiCard
+          label="Avg Velocity (pts/sprint)"
+          value={avgVelocity.toFixed(1)}
+          accent="#8b5cf6"
+        />
         <KpiCard label="Points Committed (all)" value={totalCommitted} accent="#f59e0b" />
         <KpiCard label="Points Completed (all)" value={totalCompleted} accent="#15803d" />
         <KpiCard label="Say/Do Ratio" value={`${sayDo.toFixed(1)}%`} accent="#dc2626" />
       </div>
 
       <SectionFrame>
-        <SectionTitle>📈 Portfolio Velocity Trend</SectionTitle>
-        <div style={{ height: 320 }}>
-          {trendData.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">No sprint data</div>
-          ) : (
-            <ResponsiveContainer>
-              <BarChart data={trendData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="sprint" label={{ value: "Sprint #", position: "insideBottom", offset: -5 }} />
-                <YAxis label={{ value: "Story Points", angle: -90, position: "insideLeft" }} />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="committed" fill="#94a3b8" name="Committed" />
-                <Bar dataKey="completed" fill="#22c55e" name="Completed" />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
+        {trendData.length === 0 ? (
+          <div className="flex h-80 items-center justify-center text-sm text-muted-foreground">
+            No sprint data
+          </div>
+        ) : (
+          <ExpandableChart title="Portfolio Velocity Trend" heightClass="h-80">
+            <BarChart data={trendData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis
+                dataKey="sprint"
+                label={{ value: "Sprint #", position: "insideBottom", offset: -5 }}
+              />
+              <YAxis label={{ value: "Story Points", angle: -90, position: "insideLeft" }} />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="committed" fill="#94a3b8" name="Committed" />
+              <Bar dataKey="completed" fill="#22c55e" name="Completed" />
+            </BarChart>
+          </ExpandableChart>
+        )}
       </SectionFrame>
 
       <SectionFrame>
@@ -155,10 +196,15 @@ function Page() {
         <select
           className="mt-1 mb-3 block w-full rounded-md border px-3 py-2 text-sm"
           value={activeProject}
-          onChange={(e) => { setProjectId(e.target.value); setSprintId(""); }}
+          onChange={(e) => {
+            setProjectId(e.target.value);
+            setSprintId("");
+          }}
         >
           {agileProjects.map((p: any) => (
-            <option key={p.id} value={p.id}>{p.project_code} — {p.name}</option>
+            <option key={p.id} value={p.id}>
+              {p.project_code} — {p.name}
+            </option>
           ))}
         </select>
 
@@ -169,29 +215,41 @@ function Page() {
           <KpiCard label="Say/Do" value={`${projSayDo.toFixed(1)}%`} accent="#15803d" />
         </div>
 
-        <div className="text-sm font-semibold mb-2">Sprint Velocity — Committed vs Completed</div>
-        <div style={{ height: 320 }}>
-          {drillData.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">No sprints for this project</div>
-          ) : (
-            <ResponsiveContainer>
-              <BarChart data={drillData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" label={{ value: "Sprint", position: "insideBottom", offset: -5 }} tick={{ fontSize: 11 }} />
-                <YAxis label={{ value: "Story Points", angle: -90, position: "insideLeft" }} />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="committed" fill="#94a3b8" name="Committed" />
-                <Bar dataKey="completed" fill="#2563eb" name="Completed" />
-                <ReferenceLine y={projAvgVel} stroke="#f59e0b" strokeDasharray="6 4" label={{ value: `Avg Velocity (${projAvgVel.toFixed(0)})`, position: "insideTopRight", fill: "#f59e0b", fontSize: 11 }} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
+        {drillData.length === 0 ? (
+          <div className="flex h-80 items-center justify-center text-sm text-muted-foreground">
+            No sprints for this project
+          </div>
+        ) : (
+          <ExpandableChart title="Sprint Velocity — Committed vs Completed" heightClass="h-80">
+            <BarChart data={drillData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis
+                dataKey="name"
+                label={{ value: "Sprint", position: "insideBottom", offset: -5 }}
+                tick={{ fontSize: 11 }}
+              />
+              <YAxis label={{ value: "Story Points", angle: -90, position: "insideLeft" }} />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="committed" fill="#94a3b8" name="Committed" />
+              <Bar dataKey="completed" fill="#2563eb" name="Completed" />
+              <ReferenceLine
+                y={projAvgVel}
+                stroke="#f59e0b"
+                strokeDasharray="6 4"
+                label={{
+                  value: `Avg Velocity (${projAvgVel.toFixed(0)})`,
+                  position: "insideTopRight",
+                  fill: "#f59e0b",
+                  fontSize: 11,
+                }}
+              />
+            </BarChart>
+          </ExpandableChart>
+        )}
       </SectionFrame>
 
       <SectionFrame>
-        <SectionTitle>Sprint Burndown</SectionTitle>
         <label className="text-xs text-muted-foreground">Sprint</label>
         <select
           className="mt-1 mb-3 block w-full rounded-md border px-3 py-2 text-sm"
@@ -199,29 +257,44 @@ function Page() {
           onChange={(e) => setSprintId(e.target.value)}
         >
           {projectSprints.map((s: any) => (
-            <option key={s.id} value={s.id}>{s.name || `Sprint ${s.sprint_number}`}</option>
+            <option key={s.id} value={s.id}>
+              {s.name || `Sprint ${s.sprint_number}`}
+            </option>
           ))}
         </select>
-        <div style={{ height: 320 }}>
-          {burndown.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">No sprint selected</div>
-          ) : (
-            <ResponsiveContainer>
-              <LineChart data={burndown}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="day" tick={{ fontSize: 11 }} />
-                <YAxis label={{ value: "Points Remaining", angle: -90, position: "insideLeft" }} />
-                <Tooltip />
-                <Legend />
-                <Line type="monotone" dataKey="ideal" stroke="#94a3b8" strokeDasharray="5 5" name="Ideal" dot={false} />
-                <Line type="monotone" dataKey="actual" stroke="#2563eb" name="Actual" dot={{ r: 2 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </div>
+        {burndown.length === 0 ? (
+          <div className="flex h-80 items-center justify-center text-sm text-muted-foreground">
+            No sprint selected
+          </div>
+        ) : (
+          <ExpandableChart title="Sprint Burndown" heightClass="h-80">
+            <LineChart data={burndown}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+              <YAxis label={{ value: "Points Remaining", angle: -90, position: "insideLeft" }} />
+              <Tooltip />
+              <Legend />
+              <Line
+                type="monotone"
+                dataKey="ideal"
+                stroke="#94a3b8"
+                strokeDasharray="5 5"
+                name="Ideal"
+                dot={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="actual"
+                stroke="#2563eb"
+                name="Actual"
+                dot={{ r: 2 }}
+              />
+            </LineChart>
+          </ExpandableChart>
+        )}
         <p className="text-xs text-muted-foreground mt-2">
-          Burndown is synthesised from Committed &amp; Completed points. For a true daily curve, add a <code>BurndownDaily</code> sheet
-          (Sprint ID, Day, Points Remaining) in a future release.
+          Burndown is synthesised from Committed &amp; Completed points. For a true daily curve, add
+          a <code>BurndownDaily</code> sheet (Sprint ID, Day, Points Remaining) in a future release.
         </p>
       </SectionFrame>
 
@@ -231,28 +304,41 @@ function Page() {
           <table className="st-table">
             <thead>
               <tr>
-                <th>Sprint #</th><th>Sprint Name</th><th>Project</th><th>Start</th><th>End</th>
-                <th>Points Committed</th><th>Points Completed</th>
-                <th>Stories Committed</th><th>Stories Completed</th><th>Status</th>
+                <th>Sprint #</th>
+                <th>Sprint Name</th>
+                <th>Project</th>
+                <th>Start</th>
+                <th>End</th>
+                <th>Points Committed</th>
+                <th>Points Completed</th>
+                <th>Stories Committed</th>
+                <th>Stories Completed</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {projectSprints.length === 0 ? (
-                <tr><td colSpan={10} className="text-center text-muted-foreground py-6">No sprints</td></tr>
-              ) : projectSprints.map((s: any) => (
-                <tr key={s.id}>
-                  <td>{s.sprint_number}</td>
-                  <td>{s.name}</td>
-                  <td>{projById[s.project_id]?.project_code || "—"}</td>
-                  <td>{s.start_date || "—"}</td>
-                  <td>{s.end_date || "—"}</td>
-                  <td>{s.planned_points ?? "—"}</td>
-                  <td>{s.completed_points ?? "—"}</td>
-                  <td>{s.committed_stories ?? "—"}</td>
-                  <td>{s.completed_stories ?? "—"}</td>
-                  <td>{s.status || "—"}</td>
+                <tr>
+                  <td colSpan={10} className="text-center text-muted-foreground py-6">
+                    No sprints
+                  </td>
                 </tr>
-              ))}
+              ) : (
+                projectSprints.map((s: any) => (
+                  <tr key={s.id}>
+                    <td>{s.sprint_number}</td>
+                    <td>{s.name}</td>
+                    <td>{projById[s.project_id]?.project_code || "—"}</td>
+                    <td>{s.start_date || "—"}</td>
+                    <td>{s.end_date || "—"}</td>
+                    <td>{s.planned_points ?? "—"}</td>
+                    <td>{s.completed_points ?? "—"}</td>
+                    <td>{s.committed_stories ?? "—"}</td>
+                    <td>{s.completed_stories ?? "—"}</td>
+                    <td>{s.status || "—"}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

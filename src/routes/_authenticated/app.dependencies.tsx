@@ -5,24 +5,33 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
-import {
-  BarChart, Bar, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip, Legend, LabelList,
-} from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LabelList } from "recharts";
+import { ExpandableChart } from "@/components/expandable-chart";
 
 export const Route = createFileRoute("/_authenticated/app/dependencies")({
   component: DependenciesPage,
 });
 
 type Project = {
-  id: string; project_id?: string | null; name: string;
-  program?: string | null; portfolio?: string | null;
-  start_date?: string | null; end_date?: string | null;
-  planned_start_date?: string | null; planned_end_date?: string | null;
+  id: string;
+  project_id?: string | null;
+  name: string;
+  program?: string | null;
+  portfolio?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  planned_start_date?: string | null;
+  planned_end_date?: string | null;
 };
 type Dep = {
-  id: string; project_id: string; depends_on_project_id: string;
-  title?: string | null; dep_type?: string | null; status?: string | null;
-  needed_by?: string | null; owner?: string | null;
+  id: string;
+  project_id: string;
+  depends_on_project_id: string;
+  title?: string | null;
+  dep_type?: string | null;
+  status?: string | null;
+  needed_by?: string | null;
+  owner?: string | null;
 };
 
 import { DEP_STATUS_COLORS as STATUS_COLORS } from "@/lib/chart-theme";
@@ -63,24 +72,30 @@ function DependenciesPage() {
     return m;
   }, [projects]);
 
-  const rows = useMemo(() => deps.map((d) => {
-    const from = projById.get(d.project_id);
-    const to = projById.get(d.depends_on_project_id);
-    return {
-      ...d,
-      fromName: from?.name ?? "—",
-      fromPortfolio: from?.portfolio || from?.program || "—",
-      toName: to?.name ?? "—",
-      toPortfolio: to?.portfolio || to?.program || "—",
-      status: normalizeStatus(d.status),
-      dep_type: d.dep_type || "Finish-Start",
-      impact: (d as any).impact || "Medium",
-      from, to,
-    };
-  }), [deps, projById]);
+  const rows = useMemo(
+    () =>
+      deps.map((d) => {
+        const from = projById.get(d.project_id);
+        const to = projById.get(d.depends_on_project_id);
+        return {
+          ...d,
+          fromName: from?.name ?? "—",
+          fromPortfolio: from?.portfolio || from?.program || "—",
+          toName: to?.name ?? "—",
+          toPortfolio: to?.portfolio || to?.program || "—",
+          status: normalizeStatus(d.status),
+          dep_type: d.dep_type || "Finish-Start",
+          impact: (d as any).impact || "Medium",
+          from,
+          to,
+        };
+      }),
+    [deps, projById],
+  );
 
   const total = rows.length;
-  const projectsInvolved = new Set(rows.flatMap((r) => [r.project_id, r.depends_on_project_id])).size;
+  const projectsInvolved = new Set(rows.flatMap((r) => [r.project_id, r.depends_on_project_id]))
+    .size;
   const healthy = rows.filter((r) => r.status === "Healthy").length;
   const atRisk = rows.filter((r) => r.status === "At Risk").length;
   const blocked = rows.filter((r) => r.status === "Blocked").length;
@@ -113,7 +128,6 @@ function DependenciesPage() {
     <PageExport name="Cross_Project_Dependencies" title="Cross-Project Dependencies">
       <PageHeading icon="🔗">Cross-Project Dependencies</PageHeading>
 
-
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5 mb-4">
         <KpiCard label="Total Links" value={total} />
         <KpiCard label="Projects Involved" value={projectsInvolved} />
@@ -123,49 +137,71 @@ function DependenciesPage() {
       </div>
 
       <SectionFrame>
-        <SectionTitle>Dependency Timeline — horizontal Gantt with interdependency arrows</SectionTitle>
+        <SectionTitle>
+          Dependency Timeline — horizontal Gantt with interdependency arrows
+        </SectionTitle>
         <DependencyGantt rows={rows} />
       </SectionFrame>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <SectionFrame>
-          <SectionTitle>Cross-Portfolio Dependencies (From → To)</SectionTitle>
-          <div className="h-72">
-            <ResponsiveContainer>
-              <BarChart data={byPortfolio}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-                <XAxis dataKey="portfolio" fontSize={11} label={{ value: "From Portfolio", position: "insideBottom", offset: -4, fontSize: 11 }} />
-                <YAxis allowDecimals={false} fontSize={11} label={{ value: "Count", angle: -90, position: "insideLeft", fontSize: 11 }} />
-                <Tooltip />
-                <Legend />
-                {(["Healthy", "At Risk", "Blocked"] as const).map((s) => (
-                  <Bar key={s} dataKey={s} stackId="s" fill={STATUS_COLORS[s]}>
-                    <LabelList dataKey={s} position="center" fill="#fff" fontSize={11} />
-                  </Bar>
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <ExpandableChart title="Cross-Portfolio Dependencies (From → To)" heightClass="h-72">
+            <BarChart data={byPortfolio}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+              <XAxis
+                dataKey="portfolio"
+                fontSize={11}
+                label={{
+                  value: "From Portfolio",
+                  position: "insideBottom",
+                  offset: -4,
+                  fontSize: 11,
+                }}
+              />
+              <YAxis
+                allowDecimals={false}
+                fontSize={11}
+                label={{ value: "Count", angle: -90, position: "insideLeft", fontSize: 11 }}
+              />
+              <Tooltip />
+              <Legend />
+              {(["Healthy", "At Risk", "Blocked"] as const).map((s) => (
+                <Bar key={s} dataKey={s} stackId="s" fill={STATUS_COLORS[s]}>
+                  <LabelList dataKey={s} position="center" fill="#fff" fontSize={11} />
+                </Bar>
+              ))}
+            </BarChart>
+          </ExpandableChart>
         </SectionFrame>
 
         <SectionFrame>
-          <SectionTitle>Dependencies by Type & Status</SectionTitle>
-          <div className="h-72">
-            <ResponsiveContainer>
-              <BarChart data={byType}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-                <XAxis dataKey="type" fontSize={11} label={{ value: "Dependency Type", position: "insideBottom", offset: -4, fontSize: 11 }} />
-                <YAxis allowDecimals={false} fontSize={11} label={{ value: "Count", angle: -90, position: "insideLeft", fontSize: 11 }} />
-                <Tooltip />
-                <Legend />
-                {(["Healthy", "At Risk", "Blocked"] as const).map((s) => (
-                  <Bar key={s} dataKey={s} stackId="s" fill={STATUS_COLORS[s]}>
-                    <LabelList dataKey={s} position="center" fill="#fff" fontSize={11} />
-                  </Bar>
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <ExpandableChart title="Dependencies by Type & Status" heightClass="h-72">
+            <BarChart data={byType}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+              <XAxis
+                dataKey="type"
+                fontSize={11}
+                label={{
+                  value: "Dependency Type",
+                  position: "insideBottom",
+                  offset: -4,
+                  fontSize: 11,
+                }}
+              />
+              <YAxis
+                allowDecimals={false}
+                fontSize={11}
+                label={{ value: "Count", angle: -90, position: "insideLeft", fontSize: 11 }}
+              />
+              <Tooltip />
+              <Legend />
+              {(["Healthy", "At Risk", "Blocked"] as const).map((s) => (
+                <Bar key={s} dataKey={s} stackId="s" fill={STATUS_COLORS[s]}>
+                  <LabelList dataKey={s} position="center" fill="#fff" fontSize={11} />
+                </Bar>
+              ))}
+            </BarChart>
+          </ExpandableChart>
         </SectionFrame>
       </div>
 
@@ -180,8 +216,13 @@ function DependenciesPage() {
             <table className="st-table">
               <thead>
                 <tr>
-                  <th>From</th><th>From Portfolio</th><th>To</th><th>To Portfolio</th>
-                  <th>Dependency Type</th><th>Status</th><th>Impact</th>
+                  <th>From</th>
+                  <th>From Portfolio</th>
+                  <th>To</th>
+                  <th>To Portfolio</th>
+                  <th>Dependency Type</th>
+                  <th>Status</th>
+                  <th>Impact</th>
                 </tr>
               </thead>
               <tbody>
@@ -189,18 +230,30 @@ function DependenciesPage() {
                   <tr key={r.id}>
                     <td className="font-medium">
                       {r.from ? (
-                        <Link to="/app/project-infographic" search={{ pid: r.from.id }} className="text-primary hover:underline">
+                        <Link
+                          to="/app/project-infographic"
+                          search={{ pid: r.from.id }}
+                          className="text-primary hover:underline"
+                        >
                           {r.fromName}
                         </Link>
-                      ) : r.fromName}
+                      ) : (
+                        r.fromName
+                      )}
                     </td>
                     <td>{r.fromPortfolio}</td>
                     <td className="font-medium">
                       {r.to ? (
-                        <Link to="/app/project-infographic" search={{ pid: r.to.id }} className="text-primary hover:underline">
+                        <Link
+                          to="/app/project-infographic"
+                          search={{ pid: r.to.id }}
+                          className="text-primary hover:underline"
+                        >
                           {r.toName}
                         </Link>
-                      ) : r.toName}
+                      ) : (
+                        r.toName
+                      )}
                     </td>
                     <td>{r.toPortfolio}</td>
                     <td>{r.dep_type}</td>
@@ -224,15 +277,19 @@ function DependenciesPage() {
   );
 }
 
-
 /* --------------------------- Dependency Gantt --------------------------- */
 
 type GanttRow = ReturnType<typeof buildRows>[number];
 
-function buildRows(rows: Array<{
-  project_id: string; depends_on_project_id: string; status: "Healthy" | "At Risk" | "Blocked";
-  from?: Project; to?: Project;
-}>) {
+function buildRows(
+  rows: Array<{
+    project_id: string;
+    depends_on_project_id: string;
+    status: "Healthy" | "At Risk" | "Blocked";
+    from?: Project;
+    to?: Project;
+  }>,
+) {
   // Unique projects appearing in any dependency
   const seen = new Map<string, { p: Project; outCount: number; inCount: number }>();
   for (const r of rows) {
@@ -247,22 +304,35 @@ function buildRows(rows: Array<{
       seen.set(r.to.id, cur);
     }
   }
-  return Array.from(seen.values()).map(({ p, outCount, inCount }) => {
-    const start = p.planned_start_date || p.start_date;
-    const end = p.planned_end_date || p.end_date;
-    return {
-      id: p.id, name: p.name, portfolio: p.portfolio || p.program || "—",
-      outCount, inCount,
-      start: start ? new Date(start) : null,
-      end: end ? new Date(end) : null,
-    };
-  }).filter((r) => r.start && r.end);
+  return Array.from(seen.values())
+    .map(({ p, outCount, inCount }) => {
+      const start = p.planned_start_date || p.start_date;
+      const end = p.planned_end_date || p.end_date;
+      return {
+        id: p.id,
+        name: p.name,
+        portfolio: p.portfolio || p.program || "—",
+        outCount,
+        inCount,
+        start: start ? new Date(start) : null,
+        end: end ? new Date(end) : null,
+      };
+    })
+    .filter((r) => r.start && r.end);
 }
 
-function DependencyGantt({ rows }: { rows: Array<{
-  id: string; project_id: string; depends_on_project_id: string;
-  status: "Healthy" | "At Risk" | "Blocked"; from?: Project; to?: Project;
-}> }) {
+function DependencyGantt({
+  rows,
+}: {
+  rows: Array<{
+    id: string;
+    project_id: string;
+    depends_on_project_id: string;
+    status: "Healthy" | "At Risk" | "Blocked";
+    from?: Project;
+    to?: Project;
+  }>;
+}) {
   const laneRows = useMemo(() => buildRows(rows), [rows]);
   const idxById = useMemo(() => {
     const m = new Map<string, number>();
@@ -291,7 +361,11 @@ function DependencyGantt({ rows }: { rows: Array<{
   }, []);
 
   if (laneRows.length === 0) {
-    return <div className="py-8 text-center text-sm text-muted-foreground">No timeline data available for dependencies.</div>;
+    return (
+      <div className="py-8 text-center text-sm text-muted-foreground">
+        No timeline data available for dependencies.
+      </div>
+    );
   }
 
   const LABEL_W = 260;
@@ -323,17 +397,35 @@ function DependencyGantt({ rows }: { rows: Array<{
   return (
     <div ref={containerRef}>
       <div className="mb-2 flex flex-wrap items-center gap-4 text-xs">
-        <div className="flex items-center gap-1"><span className="inline-block h-3 w-6 rounded-sm bg-sky-300" /> Portfolio bar</div>
-        <div className="flex items-center gap-1"><span className="inline-block h-0.5 w-6" style={{ background: STATUS_COLORS.Healthy }} /> Dep: Healthy</div>
-        <div className="flex items-center gap-1"><span className="inline-block h-0.5 w-6" style={{ background: STATUS_COLORS["At Risk"] }} /> Dep: At Risk</div>
-        <div className="flex items-center gap-1"><span className="inline-block h-0.5 w-6" style={{ background: STATUS_COLORS.Blocked }} /> Dep: Blocked</div>
+        <div className="flex items-center gap-1">
+          <span className="inline-block h-3 w-6 rounded-sm bg-sky-300" /> Portfolio bar
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="inline-block h-0.5 w-6" style={{ background: STATUS_COLORS.Healthy }} />{" "}
+          Dep: Healthy
+        </div>
+        <div className="flex items-center gap-1">
+          <span
+            className="inline-block h-0.5 w-6"
+            style={{ background: STATUS_COLORS["At Risk"] }}
+          />{" "}
+          Dep: At Risk
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="inline-block h-0.5 w-6" style={{ background: STATUS_COLORS.Blocked }} />{" "}
+          Dep: Blocked
+        </div>
       </div>
 
       <div className="flex" style={{ minHeight: chartH }}>
         {/* Row labels */}
         <div style={{ width: LABEL_W }} className="pr-3">
           {laneRows.map((r) => (
-            <div key={r.id} className="flex items-center text-xs text-slate-700" style={{ height: ROW_H }}>
+            <div
+              key={r.id}
+              className="flex items-center text-xs text-slate-700"
+              style={{ height: ROW_H }}
+            >
               <Link
                 to="/app/project-infographic"
                 search={{ pid: r.id }}
@@ -341,7 +433,9 @@ function DependencyGantt({ rows }: { rows: Array<{
                 title={r.name}
               >
                 {r.name}{" "}
-                <span className="text-slate-400">(→{r.outCount} · ←{r.inCount})</span>
+                <span className="text-slate-400">
+                  (→{r.outCount} · ←{r.inCount})
+                </span>
               </Link>
             </div>
           ))}
@@ -351,7 +445,16 @@ function DependencyGantt({ rows }: { rows: Array<{
         <svg width={chartW} height={chartH} style={{ overflow: "visible" }}>
           <defs>
             {(["Healthy", "At Risk", "Blocked"] as const).map((s) => (
-              <marker key={s} id={`arr-${s.replace(/\s/g, "")}`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+              <marker
+                key={s}
+                id={`arr-${s.replace(/\s/g, "")}`}
+                viewBox="0 0 10 10"
+                refX="8"
+                refY="5"
+                markerWidth="8"
+                markerHeight="8"
+                orient="auto"
+              >
                 <path d="M0,0 L10,5 L0,10 z" fill={STATUS_COLORS[s]} />
               </marker>
             ))}
@@ -360,7 +463,13 @@ function DependencyGantt({ rows }: { rows: Array<{
           {/* Grid + ticks */}
           {ticks.map((t, i) => (
             <g key={i}>
-              <line x1={t.x} y1={0} x2={t.x} y2={laneRows.length * ROW_H} stroke="rgba(11,18,32,0.06)" />
+              <line
+                x1={t.x}
+                y1={0}
+                x2={t.x}
+                y2={laneRows.length * ROW_H}
+                stroke="rgba(11,18,32,0.06)"
+              />
             </g>
           ))}
 
@@ -371,8 +480,19 @@ function DependencyGantt({ rows }: { rows: Array<{
             const y = i * ROW_H + (ROW_H - BAR_H) / 2;
             return (
               <g key={r.id}>
-                <rect x={x} y={y} width={w} height={BAR_H} rx={4} fill="#7dd3fc" stroke="#0284c7" strokeOpacity={0.4} />
-                <text x={x + 6} y={y + BAR_H / 2 + 4} fontSize={11} fill="#0c4a6e">{r.name}</text>
+                <rect
+                  x={x}
+                  y={y}
+                  width={w}
+                  height={BAR_H}
+                  rx={4}
+                  fill="#7dd3fc"
+                  stroke="#0284c7"
+                  strokeOpacity={0.4}
+                />
+                <text x={x + 6} y={y + BAR_H / 2 + 4} fontSize={11} fill="#0c4a6e">
+                  {r.name}
+                </text>
               </g>
             );
           })}
@@ -407,8 +527,12 @@ function DependencyGantt({ rows }: { rows: Array<{
           <g transform={`translate(0,${laneRows.length * ROW_H + 8})`}>
             {ticks.map((t, i) => (
               <g key={i} transform={`translate(${t.x},0)`}>
-                <text fontSize={11} fill="#334155" textAnchor="end" x={-4}>{t.label}</text>
-                <text fontSize={10} fill="#64748b" textAnchor="end" x={-4} y={14}>{t.sub}</text>
+                <text fontSize={11} fill="#334155" textAnchor="end" x={-4}>
+                  {t.label}
+                </text>
+                <text fontSize={10} fill="#64748b" textAnchor="end" x={-4} y={14}>
+                  {t.sub}
+                </text>
               </g>
             ))}
           </g>
