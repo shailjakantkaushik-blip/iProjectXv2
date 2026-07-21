@@ -1,4 +1,12 @@
 import { supabase } from "@/integrations/supabase/client";
+import {
+  defaultNavigationConfig,
+  mergeNavigationConfig,
+  type NavigationConfig,
+} from "@/lib/navigation-config";
+
+export type { NavigationConfig };
+export { defaultNavigationConfig };
 
 export type LandingPalette = {
   navy: string;
@@ -49,6 +57,11 @@ export type LandingConfig = {
    * (home banner + floating companion). Controlled from Platform Settings.
    */
   cartoons_enabled: boolean;
+  /**
+   * Platform-wide sidebar sequence and visibility.
+   * Edited from Platform Settings / Landing → Access & Cartoons.
+   */
+  navigation: NavigationConfig;
   /** Name of the last applied predefined palette, if any */
   palette_preset: string;
   palette: LandingPalette;
@@ -395,6 +408,7 @@ export const DEFAULT_LANDING: LandingConfig = {
   apply_theme_to_app: true,
   signup_enabled: true,
   cartoons_enabled: true,
+  navigation: defaultNavigationConfig(),
   palette_preset: "iprojectx",
   palette: { ...DEFAULT_PALETTE },
   hero: {
@@ -667,6 +681,7 @@ export function mergeConfig(partial: any): LandingConfig {
   if (typeof merged.apply_theme_to_app !== "boolean") merged.apply_theme_to_app = true;
   if (typeof merged.signup_enabled !== "boolean") merged.signup_enabled = true;
   if (typeof merged.cartoons_enabled !== "boolean") merged.cartoons_enabled = true;
+  merged.navigation = mergeNavigationConfig(merged.navigation);
   return merged as LandingConfig;
 }
 

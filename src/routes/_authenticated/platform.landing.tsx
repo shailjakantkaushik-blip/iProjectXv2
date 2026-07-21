@@ -11,8 +11,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/lib/auth-context";
 import { CartoonSettingsPreview } from "@/components/cartoon-mascots";
+import { NavSequenceEditor } from "@/components/nav-sequence-editor";
 import {
   DEFAULT_LANDING,
+  defaultNavigationConfig,
   DARK_ON_LIGHT_FONT_KEYS,
   LIGHT_ON_DARK_FONT_KEYS,
   PALETTE_KEY_HINTS,
@@ -116,7 +118,7 @@ function LandingConfigPage() {
 
       <Tabs defaultValue="experience">
         <TabsList className="flex flex-wrap">
-          <TabsTrigger value="experience">Access &amp; Cartoons</TabsTrigger>
+          <TabsTrigger value="experience">Access · Nav · Cartoons</TabsTrigger>
           <TabsTrigger value="brand">Brand & Logo</TabsTrigger>
           <TabsTrigger value="palette">Color Palette</TabsTrigger>
           <TabsTrigger value="hero">Hero</TabsTrigger>
@@ -178,6 +180,18 @@ function LandingConfigPage() {
             <div className="mt-4">
               <CartoonSettingsPreview enabled={cfg.cartoons_enabled} />
             </div>
+          </SectionFrame>
+
+          <SectionFrame>
+            <SectionTitle>Navigation sequence</SectionTitle>
+            <p className="mt-1 mb-4 text-sm text-muted-foreground">
+              Reorder sidebar groups and links platform-wide. Save &amp; publish to apply for all
+              users.
+            </p>
+            <NavSequenceEditor
+              value={cfg.navigation ?? defaultNavigationConfig()}
+              onChange={(navigation) => setCfg({ ...cfg, navigation })}
+            />
           </SectionFrame>
         </TabsContent>
 

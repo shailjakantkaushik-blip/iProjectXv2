@@ -450,3 +450,60 @@ body { overflow-x: hidden; }
     animation: none !important;
   }
 }
+
+/* ========== Futuristic shell / navigation motion ========== */
+.shell-root {
+  background-image:
+    radial-gradient(1200px 500px at 10% -10%, color-mix(in oklab, var(--primary) 12%, transparent), transparent 60%),
+    radial-gradient(900px 400px at 100% 0%, color-mix(in oklab, var(--accent2) 8%, transparent), transparent 55%);
+  background-attachment: fixed;
+}
+.shell-sidebar {
+  box-shadow: inset -1px 0 0 color-mix(in oklab, var(--sidebar-border) 80%, transparent);
+}
+.shell-header {
+  box-shadow: 0 1px 0 color-mix(in oklab, var(--border) 70%, transparent);
+}
+.shell-page-title {
+  animation: shell-title-in 0.35s ease-out both;
+}
+.shell-main {
+  animation: shell-main-in 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.shell-nav-link {
+  will-change: transform;
+}
+.shell-nav-active-bar {
+  animation: shell-bar-in 0.25s ease-out both;
+}
+
+@keyframes shell-title-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes shell-main-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes shell-bar-in {
+  from { opacity: 0; transform: translateY(-50%) scaleY(0.4); }
+  to { opacity: 1; transform: translateY(-50%) scaleY(1); }
+}
+
+/* Soft interactive surfaces used across home / config cards */
+.section-frame {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell-page-title,
+  .shell-main,
+  .shell-nav-active-bar,
+  .shell-nav-link {
+    animation: none !important;
+    transition: none !important;
+  }
+  .shell-root {
+    background-image: none;
+  }
+}

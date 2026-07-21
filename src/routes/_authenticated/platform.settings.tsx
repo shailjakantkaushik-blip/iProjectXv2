@@ -1,14 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Save, RefreshCw, UserPlus, Sparkles } from "lucide-react";
+import { Save, RefreshCw, UserPlus, Sparkles, Menu } from "lucide-react";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/lib/auth-context";
 import { CartoonSettingsPreview } from "@/components/cartoon-mascots";
+import { NavSequenceEditor } from "@/components/nav-sequence-editor";
 import {
   DEFAULT_LANDING,
+  defaultNavigationConfig,
   fetchLandingConfig,
   saveLandingConfig,
   type LandingConfig,
@@ -36,7 +38,7 @@ function PlatformSettingsPage() {
     setSaving(true);
     try {
       await saveLandingConfig(cfg, user?.id);
-      toast.success("Platform settings saved.");
+      toast.success("Platform settings saved — sidebar updates for everyone.");
     } catch (e: any) {
       toast.error(e?.message ?? "Failed to save");
     } finally {
@@ -53,7 +55,7 @@ function PlatformSettingsPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeading
           title="Platform Settings"
-          subtitle="Signup and interactive cartoons. Same toggles also live under Landing Page → Access & Cartoons."
+          subtitle="Signup, cartoons, and sidebar navigation sequence for the whole platform."
         />
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => void reload()}>
@@ -93,7 +95,7 @@ function PlatformSettingsPage() {
         <SectionTitle>Interactive cartoons</SectionTitle>
         <p className="mt-1 text-sm text-muted-foreground">
           Lightweight animated guide characters that tip users toward My Work, risks, and
-          scenarios. Respects reduced-motion preferences. No third-party animation libraries.
+          scenarios. Respects reduced-motion preferences.
         </p>
         <label className="mt-4 flex items-center justify-between gap-4 rounded-lg border px-4 py-3">
           <div className="flex items-start gap-3">
@@ -115,14 +117,23 @@ function PlatformSettingsPage() {
           <CartoonSettingsPreview enabled={cfg.cartoons_enabled} />
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
-          Current state:{" "}
-          <span className="font-medium text-foreground">
-            {cfg.cartoons_enabled ? "Cartoons enabled" : "Cartoons disabled"}
-          </span>
-          {" · "}
-          Default is {DEFAULT_LANDING.cartoons_enabled ? "on" : "off"}. Stored with
-          landing/platform config (no migration).
+          Default cartoons: {DEFAULT_LANDING.cartoons_enabled ? "on" : "off"}.
         </p>
+      </SectionFrame>
+
+      <SectionFrame>
+        <div className="mb-1 flex items-center gap-2">
+          <Menu className="h-4 w-4 text-muted-foreground" />
+          <SectionTitle>Navigation sequence</SectionTitle>
+        </div>
+        <p className="mt-1 mb-4 text-sm text-muted-foreground">
+          Configure the order of sidebar groups and links for every organisation. Also available
+          under Landing Page → Access &amp; Cartoons.
+        </p>
+        <NavSequenceEditor
+          value={cfg.navigation ?? defaultNavigationConfig()}
+          onChange={(navigation) => setCfg({ ...cfg, navigation })}
+        />
       </SectionFrame>
     </div>
   );
