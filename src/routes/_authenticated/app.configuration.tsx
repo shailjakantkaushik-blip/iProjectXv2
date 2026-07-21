@@ -74,7 +74,7 @@ const ORG_ADMIN_CARDS = [
     to: "/app/project-access",
     icon: Eye,
     title: "Project data access",
-    desc: "Limit each role to all projects, selected programs, or specific projects",
+    desc: "Limit each role or user to all projects, selected programs, or specific projects",
   },
 ];
 

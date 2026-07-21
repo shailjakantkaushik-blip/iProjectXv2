@@ -115,7 +115,7 @@ const ALL: Record<string, Shortcut> = {
   projectAccess: {
     to: "/app/project-access",
     label: "Project data access",
-    desc: "Limit projects by role — all, programs, or specific projects",
+    desc: "Limit projects by role or user — all, programs, or specific projects",
     icon: Eye,
   },
 };

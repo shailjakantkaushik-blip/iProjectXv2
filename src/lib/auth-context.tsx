@@ -33,6 +33,12 @@ export interface Organization {
         programs?: string[];
         project_ids?: string[];
       }>;
+      user_rules?: Array<{
+        user_id: string;
+        mode: "all" | "programs" | "projects";
+        programs?: string[];
+        project_ids?: string[];
+      }>;
     };
   } | null;
 }
