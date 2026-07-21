@@ -507,6 +507,16 @@ body { overflow-x: hidden; }
 .shell-nav-active-bar {
   animation: shell-bar-in 0.22s ease-out both;
 }
+.shell-nav-groups {
+  display: flex;
+  flex-direction: column;
+}
+/* Light divider between section headers — visible collapsed or expanded */
+.shell-nav-group + .shell-nav-group {
+  margin-top: 0.2rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid color-mix(in oklab, var(--sidebar-border) 88%, transparent);
+}
 .shell-nav-group-trigger {
   cursor: pointer;
 }

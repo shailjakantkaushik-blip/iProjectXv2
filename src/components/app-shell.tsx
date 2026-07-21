@@ -441,7 +441,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </button>
       </div>
 
-      <div className="space-y-0.5">
+      <div className="shell-nav-groups">
         {visibleNavGroups.map((group) => {
           const open = openGroups.has(group.heading);
           const hasActive = group.items.some((n) => navItemMatches(pathname, n));
