@@ -12,6 +12,7 @@ import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
 import { exportElementPDF } from "@/components/page-export";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { ExpandablePanel } from "@/components/expandable-panel";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { RAG_COLORS, PRIORITY_COLORS, CHART_SERIES } from "@/lib/chart-theme";
 
@@ -26,6 +27,47 @@ const PHASE_HEADER_COLORS: Record<string, string> = {
 };
 const THEME_PALETTE = CHART_SERIES;
 const CAPEX_COLORS = [CHART_SERIES[0], CHART_SERIES[1], CHART_SERIES[2], CHART_SERIES[3]];
+
+const INACTIVE_STATUSES = new Set([
+  "completed",
+  "cancelled",
+  "canceled",
+  "closed",
+  "archived",
+]);
+
+function normLabel(s: string) {
+  return s.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** Map a free-text phase/gate name onto the org's configured stage list. */
+function matchPhase(value: string | null | undefined, phases: string[]): string | null {
+  if (!value) return null;
+  const n = normLabel(value);
+  const exact = phases.find((p) => normLabel(p) === n);
+  if (exact) return exact;
+
+  const tokens = n.split(/[^a-z0-9]+/).filter((t) => t.length > 2);
+  const fuzzy = phases.find((p) => {
+    const pn = normLabel(p);
+    if (pn.includes(n) || n.includes(pn)) return true;
+    const pTokens = pn.split(/[^a-z0-9]+/).filter((t) => t.length > 2);
+    return tokens.some((t) => pTokens.includes(t) || pn.includes(t));
+  });
+  return fuzzy ?? null;
+}
+
+function isActiveGateStatus(status: string | null | undefined) {
+  const s = normLabel(status || "pending");
+  return [
+    "pending",
+    "in progress",
+    "in-progress",
+    "in review",
+    "open",
+    "on hold",
+  ].includes(s);
+}
 
 function money(n: number) {
   return "$" + new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n || 0);
@@ -344,11 +386,76 @@ function ExecutiveDashboard() {
     const fromDefs = (gateDefs as any[]).map((d) => d.gate_name).filter(Boolean);
     return fromDefs.length > 0 ? fromDefs : PHASES;
   }, [gateDefs]);
-  const phaseColor = (name: string, i: number) => PHASE_HEADER_COLORS[name] || THEME_PALETTE[i % THEME_PALETTE.length];
-  const kanban = orgPhases.map((ph) => ({
-    phase: ph,
-    items: filtered.filter((p: any) => (p.current_phase || orgPhases[0]) === ph).slice(0, 8),
-  }));
+
+  const phaseColor = (name: string, i: number) =>
+    PHASE_HEADER_COLORS[name] || THEME_PALETTE[i % THEME_PALETTE.length];
+
+  /** Current stage: first in-flight gate, else project.current_phase (fuzzy-matched to org gates). */
+  const resolveCurrentStage = (p: any): string | null => {
+    const gs = gatesByProject.get(p.id) || [];
+    const orderIdx = new Map<string, number>();
+    orgPhases.forEach((name, i) => orderIdx.set(normLabel(name), i));
+    const sorted = [...gs].sort((a, b) => {
+      const oa = orderIdx.get(normLabel(a.gate_name || ""));
+      const ob = orderIdx.get(normLabel(b.gate_name || ""));
+      if (oa !== undefined && ob !== undefined) return oa - ob;
+      const da = a.planned_date ? new Date(a.planned_date).getTime() : Infinity;
+      const db = b.planned_date ? new Date(b.planned_date).getTime() : Infinity;
+      return da - db;
+    });
+
+    const inFlight = sorted.find((g) => isActiveGateStatus(g.status));
+    if (inFlight?.gate_name) {
+      return matchPhase(inFlight.gate_name, orgPhases) ?? inFlight.gate_name;
+    }
+
+    const fromPhase = matchPhase(p.current_phase, orgPhases);
+    if (fromPhase) return fromPhase;
+
+    // All gates approved — sit under the last approved gate if we can map it
+    const lastApproved = [...sorted]
+      .reverse()
+      .find((g) => normLabel(g.status || "") === "approved");
+    if (lastApproved?.gate_name) {
+      return matchPhase(lastApproved.gate_name, orgPhases) ?? lastApproved.gate_name;
+    }
+
+    if (p.current_phase) return p.current_phase;
+    return null;
+  };
+
+  const kanban = useMemo(() => {
+    const activeProjects = filtered.filter((p: any) => {
+      const s = normLabel(p.status || "");
+      return !INACTIVE_STATUSES.has(s);
+    });
+
+    const cols = orgPhases.map((ph) => ({ phase: ph, items: [] as any[] }));
+    const byPhase = new Map(cols.map((c) => [c.phase, c]));
+    const other: any[] = [];
+
+    for (const p of activeProjects) {
+      const stage = resolveCurrentStage(p);
+      if (stage && byPhase.has(stage)) {
+        byPhase.get(stage)!.items.push(p);
+        continue;
+      }
+      const mapped = matchPhase(stage, orgPhases);
+      if (mapped && byPhase.has(mapped)) {
+        byPhase.get(mapped)!.items.push(p);
+      } else {
+        other.push(p);
+      }
+    }
+
+    const result = cols.map((c) => ({ ...c, items: c.items.slice(0, 24) }));
+    if (other.length > 0) {
+      result.push({ phase: "Other / Unmapped", items: other.slice(0, 24) });
+    }
+    return result;
+    // resolveCurrentStage closes over gatesByProject + orgPhases
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, orgPhases, gatesByProject]);
 
   const exportPdf = async () => {
     if (!reportRef.current) {
@@ -573,78 +680,105 @@ function ExecutiveDashboard() {
         )}
       </SectionFrame>
 
-      {/* Portfolio Timelines — collapsible Gantt swim-lanes */}
+      {/* Portfolio Timelines — collapsible Gantt swim-lanes (expandable + scrollable) */}
       <SectionFrame>
-        <div className="mb-2 flex items-center justify-between gap-2 pr-10">
-          <SectionTitle>Portfolio Timelines</SectionTitle>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                const allCollapsed = timelineGroups.every(([g]) => collapsed[g]);
-                const next: Record<string, boolean> = {};
-                timelineGroups.forEach(([g]) => { next[g] = !allCollapsed; });
-                setCollapsed(next);
-              }}
-              className="rounded-md border border-border bg-surface px-2 py-1 text-xs hover:bg-muted"
-            >
-              {timelineGroups.every(([g]) => collapsed[g]) ? "Expand all" : "Collapse all"}
-            </button>
-            <select value={timelineView} onChange={(e) => setTimelineView(e.target.value as TimelineView)}
-              className="rounded-md border border-border bg-surface px-2 py-1 text-xs">
-              <option value="Portfolio">View: Portfolio</option>
-              <option value="Program">View: Program</option>
-              <option value="Health">View: Health (RAG)</option>
-              <option value="Priority">View: Priority</option>
-              <option value="Theme">View: Theme</option>
-              <option value="Sponsor">View: Sponsor</option>
-              <option value="Status">View: Status</option>
-            </select>
-          </div>
-        </div>
-        {timelineGroups.length === 0 ? (
-          <Empty msg="No projects with start/end dates match filters" />
-        ) : (
-          <div className="space-y-3">
-            {timelineGroups.map(([groupName, items]) => (
-              <GanttGroup
-                key={groupName}
-                title={groupName}
-                items={items}
-                bounds={timelineBounds}
-                gatesByProject={gatesByProject}
-                collapsed={!!collapsed[groupName]}
-                onToggle={() => toggleCollapse(groupName)}
-              />
-            ))}
-          </div>
-        )}
+        <ExpandablePanel
+          title="Portfolio Timelines"
+          compactMaxHeightClass="max-h-[min(68vh,760px)]"
+          toolbar={
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const allCollapsed = timelineGroups.every(([g]) => collapsed[g]);
+                  const next: Record<string, boolean> = {};
+                  timelineGroups.forEach(([g]) => {
+                    next[g] = !allCollapsed;
+                  });
+                  setCollapsed(next);
+                }}
+                className="rounded-md border border-border bg-surface px-2 py-1 text-xs hover:bg-muted"
+              >
+                {timelineGroups.every(([g]) => collapsed[g]) ? "Expand all" : "Collapse all"}
+              </button>
+              <select
+                value={timelineView}
+                onChange={(e) => setTimelineView(e.target.value as TimelineView)}
+                className="rounded-md border border-border bg-surface px-2 py-1 text-xs"
+              >
+                <option value="Portfolio">View: Portfolio</option>
+                <option value="Program">View: Program</option>
+                <option value="Health">View: Health (RAG)</option>
+                <option value="Priority">View: Priority</option>
+                <option value="Theme">View: Theme</option>
+                <option value="Sponsor">View: Sponsor</option>
+                <option value="Status">View: Status</option>
+              </select>
+            </div>
+          }
+        >
+          {timelineGroups.length === 0 ? (
+            <Empty msg="No projects with start/end dates match filters" />
+          ) : (
+            <div className="space-y-3">
+              {timelineGroups.map(([groupName, items]) => (
+                <GanttGroup
+                  key={groupName}
+                  title={groupName}
+                  items={items}
+                  bounds={timelineBounds}
+                  gatesByProject={gatesByProject}
+                  collapsed={!!collapsed[groupName]}
+                  onToggle={() => toggleCollapse(groupName)}
+                />
+              ))}
+            </div>
+          )}
+        </ExpandablePanel>
       </SectionFrame>
 
       {/* Governance Flow kanban */}
       <SectionFrame>
-        <SectionTitle>Governance Flow — active projects by current stage</SectionTitle>
-        <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${kanban.length}, minmax(0, 1fr))` }}>
-          {kanban.map((col, i) => (
-            <div key={col.phase} className="rounded-md border border-border bg-surface p-2">
-              <div className="mb-2 rounded px-2 py-1 text-center text-[11px] font-semibold text-white"
-                   style={{ background: phaseColor(col.phase, i) }}
-                   title={col.phase}>
-                {col.phase}
+        <ExpandablePanel
+          title="Governance Flow — active projects by current stage"
+          compactMaxHeightClass="max-h-[min(60vh,640px)]"
+        >
+          <div
+            className="grid min-w-[720px] gap-2"
+            style={{ gridTemplateColumns: `repeat(${Math.max(1, kanban.length)}, minmax(120px, 1fr))` }}
+          >
+            {kanban.map((col, i) => (
+              <div key={col.phase} className="flex max-h-[520px] flex-col rounded-md border border-border bg-surface p-2">
+                <div
+                  className="mb-2 shrink-0 rounded px-2 py-1 text-center text-[11px] font-semibold text-white"
+                  style={{ background: phaseColor(col.phase, i) }}
+                  title={col.phase}
+                >
+                  {col.phase}
+                  <span className="ml-1 opacity-80">({col.items.length})</span>
+                </div>
+                <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
+                  {col.items.length === 0 ? (
+                    <div className="px-1 py-2 text-center text-[10px] text-muted-foreground">—</div>
+                  ) : (
+                    col.items.map((p: any) => (
+                      <Link
+                        key={p.id}
+                        to="/app/project-infographic"
+                        search={{ pid: p.id }}
+                        className="block truncate rounded px-2 py-1 text-[10px] text-white hover:opacity-90"
+                        style={{ background: RAG_COLORS[p.rag as string] || "#64748b" }}
+                        title={`${p.name}${p.current_phase ? ` · ${p.current_phase}` : ""}`}
+                      >
+                        {p.project_code || (p.name || "").slice(0, 18)}
+                      </Link>
+                    ))
+                  )}
+                </div>
               </div>
-              <div className="space-y-1">
-                {col.items.length === 0 ? (
-                  <div className="px-1 py-2 text-center text-[10px] text-muted-foreground">—</div>
-                ) : col.items.map((p: any) => (
-                  <Link key={p.id} to="/app/project-infographic" search={{ pid: p.id }}
-                    className="block truncate rounded px-2 py-1 text-[10px] text-white hover:opacity-90"
-                    style={{ background: RAG_COLORS[p.rag as string] || "#64748b" }} title={p.name}>
-                    {p.project_code || (p.name || "").slice(0, 10)}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </ExpandablePanel>
       </SectionFrame>
 
       {/* Portfolio Register */}

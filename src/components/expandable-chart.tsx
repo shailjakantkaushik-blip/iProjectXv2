@@ -123,38 +123,40 @@ export function ExpandableChart({
             <DialogTitle className="text-base sm:text-lg">{title}</DialogTitle>
           </DialogHeader>
 
-          <div
-            ref={measureRef}
-            className="w-full shrink-0 rounded-lg border border-border/70 bg-surface p-2 sm:p-3"
-            style={{ height: 520, minHeight: 520 }}
-          >
-            {chart && ready ? (
-              <ResponsiveContainer
-                key={`expanded-${title}-${chartSize.width}x${chartSize.height}`}
-                width="100%"
-                height="100%"
-                minWidth={200}
-                minHeight={200}
-              >
-                {cloneElement(chart)}
-              </ResponsiveContainer>
-            ) : chart ? (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                Loading chart…
-              </div>
-            ) : (
-              <div className="flex h-full w-full items-center justify-center">{children}</div>
-            )}
-          </div>
-
-          {legend ? (
-            <div className="max-h-36 shrink-0 overflow-auto rounded-md border border-border/50 bg-muted/20 p-3">
-              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Details
-              </div>
-              {legend}
+          <div className="min-h-0 flex-1 overflow-auto">
+            <div
+              ref={measureRef}
+              className="w-full rounded-lg border border-border/70 bg-surface p-2 sm:p-3"
+              style={{ height: 520, minHeight: 520 }}
+            >
+              {chart && ready ? (
+                <ResponsiveContainer
+                  key={`expanded-${title}-${chartSize.width}x${chartSize.height}`}
+                  width="100%"
+                  height="100%"
+                  minWidth={200}
+                  minHeight={200}
+                >
+                  {cloneElement(chart)}
+                </ResponsiveContainer>
+              ) : chart ? (
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                  Loading chart…
+                </div>
+              ) : (
+                <div className="flex h-full w-full items-center justify-center">{children}</div>
+              )}
             </div>
-          ) : null}
+
+            {legend ? (
+              <div className="mt-3 max-h-48 overflow-auto rounded-md border border-border/50 bg-muted/20 p-3">
+                <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Details
+                </div>
+                {legend}
+              </div>
+            ) : null}
+          </div>
 
           <div className="flex shrink-0 justify-end">
             <button
