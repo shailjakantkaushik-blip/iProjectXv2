@@ -28,6 +28,11 @@ import {
   ReferenceLine,
 } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
+import {
+  projectApprovedFunding,
+  projectBenefitsTarget,
+  projectRoiPercent,
+} from "@/lib/project-finance";
 
 export const Route = createFileRoute("/_authenticated/app/portfolio-segmentation")({
   component: Segmentation,
@@ -66,9 +71,9 @@ function Segmentation() {
 
   const scatterData = projects.map((p: any) => ({
     name: p.name,
-    x: Number(p.budget || 0),
-    y: Number(p.roi_percent || 0),
-    z: Number(p.benefits_target || p.budget || 100000),
+    x: projectApprovedFunding(p),
+    y: projectRoiPercent(p),
+    z: projectBenefitsTarget(p) || projectApprovedFunding(p) || 100000,
     rag: p.rag || "Amber",
   }));
 
@@ -78,7 +83,7 @@ function Segmentation() {
       const k = p[dim] || "Unassigned";
       const cur = m.get(k) || { name: k, count: 0, budget: 0 };
       cur.count += 1;
-      cur.budget += Number(p.budget || 0);
+      cur.budget += projectApprovedFunding(p);
       m.set(k, cur);
     });
     return Array.from(m.values()).sort((a, b) => b.count - a.count);

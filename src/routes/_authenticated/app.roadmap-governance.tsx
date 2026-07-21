@@ -1,16 +1,29 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
 
 export const Route = createFileRoute("/_authenticated/app/roadmap-governance")({
   component: RoadmapGovPage,
 });
 
-const STAGES = ["Idea", "Discovery", "Definition", "Design", "Build", "Test", "Deploy", "Closure"];
+/** Fallback when org has no active stage_gate_definitions (matches stage-gate-config DEFAULTS). */
+const STAGE_DEFAULTS = [
+  "Discovery",
+  "Business Case / Seed Funding",
+  "Design",
+  "Business Case / Full Funding",
+  "Build",
+  "Testing",
+  "Deployment",
+  "Handover",
+  "Benefit Realisation",
+];
+
 const STAGE_COLORS = [
   "#94a3b8",
   "#60a5fa",
@@ -20,7 +33,31 @@ const STAGE_COLORS = [
   "#ef4444",
   "#22c55e",
   "#15803d",
+  "#0ea5e9",
+  "#a855f7",
 ];
+
+/** Map a project phase to one stage: exact lowercase match first, else fuzzy includes. */
+function resolveStage(phase: string | null | undefined, stages: string[]): string | null {
+  const p = (phase || "").trim().toLowerCase();
+  if (!p) return null;
+  const exact = stages.find((s) => s.trim().toLowerCase() === p);
+  if (exact) return exact;
+  // Prefer longest fuzzy match to avoid "Business Case" hitting multiple gates
+  let best: string | null = null;
+  let bestLen = 0;
+  for (const s of stages) {
+    const sl = s.trim().toLowerCase();
+    if (!sl) continue;
+    if (p.includes(sl) || sl.includes(p)) {
+      if (sl.length > bestLen) {
+        best = s;
+        bestLen = sl.length;
+      }
+    }
+  }
+  return best;
+}
 
 function RoadmapGovPage() {
   const { organization } = useAuth();
@@ -34,11 +71,34 @@ function RoadmapGovPage() {
     enabled: !!organization,
   });
 
+  const { data: gateDefs = [] } = useQuery({
+    queryKey: ["stage_gate_definitions", organization?.id],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("stage_gate_definitions")
+          .select("*")
+          .eq("org_id", organization!.id)
+          .eq("is_active", true)
+          .order("sort_order", { ascending: true })
+      ).data ?? [],
+    enabled: !!organization,
+  });
+
+  const stages = useMemo(() => {
+    const fromDefs = (gateDefs as any[]).map((d) => d.gate_name).filter(Boolean);
+    return fromDefs.length > 0 ? fromDefs : [...STAGE_DEFAULTS];
+  }, [gateDefs]);
+
   const active = projects.filter((p) => p.status !== "Completed" && p.status !== "Cancelled");
-  const stageCounts = STAGES.map((s) => ({
-    stage: s,
-    count: active.filter((p) => (p.current_phase || "").toLowerCase() === s.toLowerCase()).length,
-  }));
+  const stageCounts = useMemo(() => {
+    const counts = new Map(stages.map((s) => [s, 0]));
+    for (const p of active) {
+      const matched = resolveStage(p.current_phase, stages);
+      if (matched) counts.set(matched, (counts.get(matched) || 0) + 1);
+    }
+    return stages.map((s) => ({ stage: s, count: counts.get(s) || 0 }));
+  }, [active, stages]);
 
   const kpis = {
     inFlight: active.length,
@@ -75,17 +135,22 @@ function RoadmapGovPage() {
         <ExpandableChart title="Stage-Gate Flow (active projects)" heightClass="h-64">
           <BarChart data={stageCounts}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-            <XAxis dataKey="stage" fontSize={11} />
+            <XAxis dataKey="stage" fontSize={10} interval={0} angle={-20} textAnchor="end" height={60} />
             <YAxis allowDecimals={false} fontSize={11} />
             <Tooltip />
             <Bar dataKey="count" radius={[4, 4, 0, 0]} fill="#1d4ed8" />
           </BarChart>
         </ExpandableChart>
-        <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-8">
-          {STAGES.map((s, i) => (
+        <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-9">
+          {stages.map((s, i) => (
             <div key={s} className="flex items-center gap-2 text-[11px]">
-              <span className="h-3 w-3 rounded" style={{ background: STAGE_COLORS[i] }} />
-              {s}
+              <span
+                className="h-3 w-3 shrink-0 rounded"
+                style={{ background: STAGE_COLORS[i % STAGE_COLORS.length] }}
+              />
+              <span className="truncate" title={s}>
+                {s}
+              </span>
             </div>
           ))}
         </div>

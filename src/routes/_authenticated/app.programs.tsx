@@ -122,9 +122,9 @@ function ProgramsPage() {
           ? fyOf(new Date(Math.max(...p.endDates)).toISOString(), fyStartMonth) || "—"
           : "—",
         committedVsBudget: p.forecast - p.budget,
-        remaining: Math.max(0, p.budget - p.actual),
-        variance: p.budget - p.fac,
-        utilisation: p.budget ? p.actual / p.budget : 0,
+        remaining: Math.max(0, p.approved - p.actual),
+        variance: p.approved - p.fac,
+        utilisation: p.approved ? p.actual / p.approved : 0,
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [projects, organization?.fy_start_month]);

@@ -6,6 +6,11 @@ import { useAuth } from "@/lib/auth-context";
 import { SectionFrame, SectionTitle, PageHeading, KpiCard, RagChip } from "@/components/streamlit";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LabelList, Cell } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
+import {
+  projectApprovedFunding,
+  projectBenefitsTarget,
+  projectRoiPercent,
+} from "@/lib/project-finance";
 
 export const Route = createFileRoute("/_authenticated/app/prioritisation")({
   component: Prioritisation,
@@ -44,14 +49,15 @@ function Prioritisation() {
   const ranked = useMemo(() => {
     return projects
       .map((p: any) => {
-        const budget = Number(p.budget || 0);
-        const roi = Number(p.roi_percent || 0);
-        const benTgt = Number(p.benefits_target || 0);
+        const funding = projectApprovedFunding(p);
+        // Prefer stored roi_percent; else target ROI = (benefits − funding) / funding
+        const roi = projectRoiPercent(p);
+        const benTgt = projectBenefitsTarget(p);
         const priScore = PRI_WEIGHT[p.priority || ""] || 25;
-        // Simple composite: (ROI + PriorityWeight + Benefits/1M) - Cost/1M penalty
+        // Composite score (documented in page subtitle)
         const score =
-          roi * 0.5 + priScore * 0.3 + (benTgt / 1_000_000) * 5 - (budget / 1_000_000) * 2;
-        return { ...p, _score: Math.round(score * 10) / 10, _pri: priScore };
+          roi * 0.5 + priScore * 0.3 + (benTgt / 1_000_000) * 5 - (funding / 1_000_000) * 2;
+        return { ...p, _score: Math.round(score * 10) / 10, _pri: priScore, _roi: roi, _funding: funding, _benTgt: benTgt };
       })
       .sort((a: any, b: any) => b._score - a._score);
   }, [projects]);
@@ -61,7 +67,7 @@ function Prioritisation() {
 
   const totalScore = ranked.reduce((s: number, p: any) => s + p._score, 0);
   const avgROI = ranked.length
-    ? ranked.reduce((s: number, p: any) => s + Number(p.roi_percent || 0), 0) / ranked.length
+    ? ranked.reduce((s: number, p: any) => s + Number(p._roi || 0), 0) / ranked.length
     : 0;
   const critical = projects.filter(
     (p: any) => (p.priority || "").startsWith("P1") || p.priority === "Critical",
@@ -72,7 +78,7 @@ function Prioritisation() {
       <PageHeading
         icon="🏆"
         title="Prioritisation"
-        subtitle="Composite score = ROI × 0.5 + Priority × 0.3 + Benefits − Cost."
+        subtitle="Composite score = (ROI% × 0.5) + (Priority weight × 0.3) + (Benefits target ÷ $1M × 5) − (Approved funding ÷ $1M × 2). ROI uses stored roi_percent, else target ROI."
       />
 
       <SectionFrame>
@@ -91,7 +97,7 @@ function Prioritisation() {
             data={top10.map((p: any) => ({
               name: p.name.slice(0, 22),
               score: p._score,
-              roi: p.roi_percent || 0,
+              roi: p._roi || 0,
             }))}
             layout="vertical"
             margin={{ top: 5, right: 40, left: 120, bottom: 5 }}
@@ -116,9 +122,9 @@ function Prioritisation() {
           <ExpandableChart title="Top 5 by ROI" heightClass="h-56">
             <BarChart
               data={[...ranked]
-                .sort((a: any, b: any) => (b.roi_percent || 0) - (a.roi_percent || 0))
+                .sort((a: any, b: any) => (b._roi || 0) - (a._roi || 0))
                 .slice(0, 5)
-                .map((p: any) => ({ name: p.name.slice(0, 20), roi: Number(p.roi_percent || 0) }))}
+                .map((p: any) => ({ name: p.name.slice(0, 20), roi: Number(p._roi || 0) }))}
               layout="vertical"
               margin={{ top: 5, right: 40, left: 110, bottom: 5 }}
             >
@@ -157,7 +163,7 @@ function Prioritisation() {
                     <td>{p.priority || "—"}</td>
                     <td className="text-right tabular-nums">{p._score}</td>
                     <td className="text-right tabular-nums">
-                      {Number(p.roi_percent || 0).toFixed(1)}%
+                      {Number(p._roi || 0).toFixed(1)}%
                     </td>
                   </tr>
                 ))}
@@ -178,7 +184,7 @@ function Prioritisation() {
                 <th>Program</th>
                 <th>Priority</th>
                 <th>RAG</th>
-                <th className="text-right">Budget</th>
+                <th className="text-right">Approved Funding</th>
                 <th className="text-right">Benefits Tgt</th>
                 <th className="text-right">ROI %</th>
                 <th className="text-right">Score</th>
@@ -194,12 +200,12 @@ function Prioritisation() {
                   <td>
                     <RagChip rag={p.rag} />
                   </td>
-                  <td className="text-right tabular-nums">{money(Number(p.budget || 0))}</td>
+                  <td className="text-right tabular-nums">{money(p._funding)}</td>
                   <td className="text-right tabular-nums">
-                    {money(Number(p.benefits_target || 0))}
+                    {money(p._benTgt)}
                   </td>
                   <td className="text-right tabular-nums">
-                    {Number(p.roi_percent || 0).toFixed(1)}%
+                    {Number(p._roi || 0).toFixed(1)}%
                   </td>
                   <td className="text-right tabular-nums font-semibold">{p._score}</td>
                 </tr>

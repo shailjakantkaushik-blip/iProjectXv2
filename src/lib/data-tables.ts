@@ -80,9 +80,18 @@ export const TABLES: TableDef[] = [
       { key: "capex_incurred", label: "CAPEX Incurred", type: "number" },
       { key: "opex_approved", label: "OPEX Approved", type: "number" },
       { key: "opex_incurred", label: "OPEX Incurred", type: "number" },
-      { key: "benefits_target", label: "Benefits Target", type: "number" },
-      { key: "benefits_realised", label: "Benefits Realised", type: "number" },
-      { key: "roi_percent", label: "ROI %", type: "number" },
+      {
+        key: "forecast_at_completion",
+        label: "Forecast at Completion (FAC)",
+        type: "number",
+      },
+      { key: "benefits_target", label: "Benefits Target (rollup)", type: "number" },
+      { key: "benefits_realised", label: "Benefits Realised (rollup)", type: "number" },
+      {
+        key: "roi_percent",
+        label: "ROI % (target)",
+        type: "number",
+      },
       { key: "description", label: "Description", type: "textarea" },
     ],
   },
@@ -251,6 +260,9 @@ export const TABLES: TableDef[] = [
     label: "Financials (Monthly)",
     matchOn: ["project_code", "period_month"],
     orderBy: "period_month",
+    description:
+      "Execution cashflow. Planned/forecast are cascaded from FY Allocation; enter Actual after kickoff. " +
+      "Use Financials → Sync incurred from actuals to roll CapEx/OpEx actuals up to the project register.",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
       { key: "period_month", label: "Month (YYYY-MM-01)", type: "date", required: true },
@@ -269,12 +281,17 @@ export const TABLES: TableDef[] = [
     label: "FY Allocations",
     matchOn: ["project_code", "fy"],
     orderBy: "fy",
+    description:
+      "Split each project's Budget and Forecast across financial years. " +
+      "`budget` / `forecast` drive portfolio charts; CapEx/OpEx/Benefits are the detail split of budget.",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
       { key: "fy", label: "FY", type: "text", required: true },
-      { key: "capex", label: "CAPEX", type: "number" },
-      { key: "opex", label: "OPEX", type: "number" },
-      { key: "benefits", label: "Benefits", type: "number" },
+      { key: "budget", label: "Budget $", type: "number" },
+      { key: "forecast", label: "Forecast $", type: "number" },
+      { key: "capex", label: "CAPEX (budget split)", type: "number" },
+      { key: "opex", label: "OPEX (budget split)", type: "number" },
+      { key: "benefits", label: "Benefits (FY)", type: "number" },
     ],
   },
   {

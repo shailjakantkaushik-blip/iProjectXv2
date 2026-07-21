@@ -27,7 +27,6 @@ import {
   Cell,
 } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
-import { ExpandablePanel } from "@/components/expandable-panel";
 
 export const Route = createFileRoute("/_authenticated/app/resources")({
   component: ResourcesPage,
@@ -47,10 +46,32 @@ type Allocation = {
   period_month: string;
   allocation_percent: number | null;
 };
-type Project = { id: string; name: string };
+type Project = { id: string; name: string; project_code?: string | null };
 
 const STATUS_COLOR = { Over: "#dc2626", Optimal: "#16a34a", Under: "#f59e0b" } as const;
 type Status = keyof typeof STATUS_COLOR;
+
+/** Normalize DB dates to YYYY-MM-01 so filters/headers/cells share one key. */
+function normMonth(v: string | null | undefined): string {
+  if (!v) return "";
+  const s = String(v).slice(0, 10);
+  const m = /^(\d{4})-(\d{2})/.exec(s);
+  if (!m) return s;
+  return `${m[1]}-${m[2]}-01`;
+}
+
+/** Label without UTC timezone shift (avoid "2026-01-01" → Dec in local TZ). */
+function monthLabel(m: string): string {
+  const key = normMonth(m).slice(0, 7);
+  const [ys, ms] = key.split("-");
+  const y = Number(ys);
+  const mo = Number(ms);
+  if (!y || !mo) return key;
+  return new Date(y, mo - 1, 1).toLocaleDateString(undefined, {
+    month: "short",
+    year: "2-digit",
+  });
+}
 
 function statusFor(pct: number): Status {
   if (pct > 100) return "Over";
@@ -94,7 +115,8 @@ function ResourcesPage() {
   const { data: projects = [] } = useQuery({
     queryKey: ["projects-r", organization?.id],
     queryFn: async () =>
-      ((await supabase.from("projects").select("id,name")).data as Project[]) ?? [],
+      ((await supabase.from("projects").select("id,name,project_code").order("project_code")).data as Project[]) ??
+      [],
     enabled: !!organization,
   });
 
@@ -128,15 +150,18 @@ function ResourcesPage() {
   }, [resourcesAll]);
   const monthOptionsAll = useMemo(() => {
     const s = new Set<string>();
-    allocationsAll.forEach((a) => s.add(a.period_month));
+    allocationsAll.forEach((a) => {
+      const m = normMonth(a.period_month);
+      if (m) s.add(m);
+    });
     return Array.from(s).sort();
   }, [allocationsAll]);
 
   // Utilisation across the currently visible months, used for the status filter
   const monthsInRange = useMemo(() => {
-    return monthOptionsAll.filter(
-      (m) => (monthFrom === "all" || m >= monthFrom) && (monthTo === "all" || m <= monthTo),
-    );
+    const from = monthFrom === "all" ? null : normMonth(monthFrom);
+    const to = monthTo === "all" ? null : normMonth(monthTo);
+    return monthOptionsAll.filter((m) => (!from || m >= from) && (!to || m <= to));
   }, [monthOptionsAll, monthFrom, monthTo]);
 
   const resources = useMemo(() => {
@@ -157,7 +182,7 @@ function ResourcesPage() {
       }
       if (statusFilter !== "all") {
         const rows = allocationsAll.filter(
-          (a) => a.resource_id === r.id && monthsInRange.includes(a.period_month),
+          (a) => a.resource_id === r.id && monthsInRange.includes(normMonth(a.period_month)),
         );
         const total = rows.reduce((s, a) => s + Number(a.allocation_percent || 0), 0);
         const avg = monthsInRange.length ? total / monthsInRange.length : 0;
@@ -178,19 +203,22 @@ function ResourcesPage() {
 
   const resIdSet = useMemo(() => new Set(resources.map((r) => r.id)), [resources]);
   const allocations = useMemo(() => {
-    return allocationsAll.filter((a) => {
-      if (!resIdSet.has(a.resource_id)) return false;
-      if (projectFilter !== "all" && a.project_id !== projectFilter) return false;
-      if (monthFrom !== "all" && a.period_month < monthFrom) return false;
-      if (monthTo !== "all" && a.period_month > monthTo) return false;
-      return true;
-    });
+    const from = monthFrom === "all" ? null : normMonth(monthFrom);
+    const to = monthTo === "all" ? null : normMonth(monthTo);
+    return allocationsAll
+      .filter((a) => {
+        if (!resIdSet.has(a.resource_id)) return false;
+        if (projectFilter !== "all" && a.project_id !== projectFilter) return false;
+        const m = normMonth(a.period_month);
+        if (from && m < from) return false;
+        if (to && m > to) return false;
+        return true;
+      })
+      .map((a) => ({ ...a, period_month: normMonth(a.period_month) }));
   }, [allocationsAll, resIdSet, projectFilter, monthFrom, monthTo]);
 
   const resById = resByIdAll;
   const projById = projByIdAll;
-  void resById;
-  void projById;
 
   const resetFilters = () => {
     setSearch("");
@@ -202,16 +230,26 @@ function ResourcesPage() {
     setMonthTo("all");
   };
 
-  // Distinct months (sorted)
+  // Distinct months (sorted, normalized)
   const months = useMemo(() => {
     const s = new Set<string>();
-    allocations.forEach((a) => s.add(a.period_month));
+    allocations.forEach((a) => {
+      const m = normMonth(a.period_month);
+      if (m) s.add(m);
+    });
     return Array.from(s).sort();
   }, [allocations]);
-  const monthLabel = (m: string) => {
-    const d = new Date(m);
-    return d.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
-  };
+
+  const projectColumns = useMemo(() => {
+    // Always show every visible project (not only those with allocations).
+    const list =
+      projectFilter === "all"
+        ? [...projects]
+        : projects.filter((p) => p.id === projectFilter);
+    return list.sort((a, b) =>
+      String(a.project_code || a.name).localeCompare(String(b.project_code || b.name)),
+    );
+  }, [projects, projectFilter]);
 
   // Avg allocation per resource
   const utilisation = useMemo(() => {
@@ -232,7 +270,7 @@ function ResourcesPage() {
     under: utilisation.filter((u) => u.status === "Under").length,
   };
 
-  // Resource × Month heatmap grid (sum all project allocations in the month)
+  // Resource × Month heatmap grid — sum ALL allocations for resource+month
   const heatGrid = useMemo(() => {
     return resources.map((r) => {
       const row: { name: string; cells: { month: string; pct: number }[] } = {
@@ -251,16 +289,18 @@ function ResourcesPage() {
 
   // Monthly demand by project (stacked area = simple bar per month)
   const monthlyByProject = useMemo(() => {
-    const projSet = new Set<string>();
     const map = new Map<string, Record<string, number>>();
+    const projKeys = new Set<string>();
     allocations.forEach((a) => {
-      const pname = projById.get(a.project_id)?.name || "—";
-      projSet.add(pname);
-      const row = map.get(a.period_month) || {};
+      const p = projById.get(a.project_id);
+      const pname = p?.name || "—";
+      projKeys.add(pname);
+      const mk = normMonth(a.period_month);
+      const row = map.get(mk) || {};
       row[pname] = (row[pname] || 0) + Number(a.allocation_percent || 0);
-      map.set(a.period_month, row);
+      map.set(mk, row);
     });
-    const projList = Array.from(projSet);
+    const projList = Array.from(projKeys).sort();
     const data = months.map((m) => ({ month: monthLabel(m), ...(map.get(m) || {}) }));
     return { data, projList };
   }, [allocations, months, projById]);
@@ -283,25 +323,30 @@ function ResourcesPage() {
       .slice(0, 12);
   }, [allocations, resById]);
 
-  // Resource × Project heatmap (sum across months)
+  // Resource × Project heatmap — one column per project (zeros when no allocation)
   const rpGrid = useMemo(() => {
-    const projSet = new Set<string>();
-    const map = new Map<string, Map<string, number>>();
+    const byResProj = new Map<string, Map<string, number>>();
     allocations.forEach((a) => {
-      const rn = resById.get(a.resource_id)?.name || "—";
-      const pn = projById.get(a.project_id)?.name || "—";
-      projSet.add(pn);
-      const row = map.get(rn) || new Map();
-      row.set(pn, (row.get(pn) || 0) + Number(a.allocation_percent || 0));
-      map.set(rn, row);
+      const row = byResProj.get(a.resource_id) || new Map();
+      row.set(a.project_id, (row.get(a.project_id) || 0) + Number(a.allocation_percent || 0));
+      byResProj.set(a.resource_id, row);
     });
-    const projList = Array.from(projSet);
+    const cols = projectColumns.map((p) => ({
+      id: p.id,
+      label: p.project_code ? `${p.project_code}` : p.name,
+      // Native tooltip on header hover — full project name
+      title: p.project_code ? `${p.name} (${p.project_code})` : p.name,
+    }));
     const rows = resources.map((r) => ({
       name: r.name,
-      cells: projList.map((p) => ({ project: p, pct: Math.round(map.get(r.name)?.get(p) || 0) })),
+      cells: cols.map((c) => ({
+        projectId: c.id,
+        project: c.title,
+        pct: Math.round(byResProj.get(r.id)?.get(c.id) || 0),
+      })),
     }));
-    return { rows, projList };
-  }, [allocations, resById, projById, resources]);
+    return { rows, cols };
+  }, [allocations, resources, projectColumns]);
 
   return (
     <PageExport name="Resource_Capacity" title="Resource Capacity & Skill Intelligence">
@@ -503,56 +548,61 @@ function ResourcesPage() {
       </SectionFrame>
 
       <SectionFrame>
-        <ExpandablePanel title="Month-wise Allocation Heatmap (Resource × Month)">
-          <div className="overflow-auto">
-            <table className="border-separate border-spacing-0 text-xs">
-              <thead>
-                <tr>
-                  <th className="sticky left-0 z-10 bg-background px-2 py-1 text-left">Resource</th>
-                  {months.map((m) => (
-                    <th key={m} className="px-2 py-1 text-center font-normal text-muted-foreground">
-                      {monthLabel(m)}
-                    </th>
+        <SectionTitle>Month-wise Allocation Heatmap (Resource × Month)</SectionTitle>
+        <div className="overflow-auto max-h-[420px]">
+          {/* w-max only (not min-w-full) — avoids stretching months into huge gaps */}
+          <table className="border-collapse text-xs w-max">
+            <thead>
+              <tr>
+                <th className="sticky left-0 z-10 bg-background px-1.5 py-1 text-left whitespace-nowrap">
+                  Resource
+                </th>
+                {months.map((m) => (
+                  <th
+                    key={m}
+                    className="p-0.5 text-center font-normal text-muted-foreground w-14"
+                  >
+                    {monthLabel(m)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {heatGrid.map((row) => (
+                <tr key={row.name}>
+                  <td className="sticky left-0 z-10 bg-background px-1.5 py-0.5 font-medium whitespace-nowrap">
+                    {row.name}
+                  </td>
+                  {row.cells.map((c) => (
+                    <td key={c.month} className="p-0.5">
+                      <div
+                        className="flex h-7 w-14 items-center justify-center rounded text-[10px] font-semibold"
+                        style={{
+                          background: c.pct === 0 ? "rgba(148,163,184,0.25)" : heatColor(c.pct),
+                          color: c.pct === 0 ? "#64748b" : "#fff",
+                        }}
+                        title={`${row.name} · ${monthLabel(c.month)}: ${c.pct}%`}
+                      >
+                        {c.pct}%
+                      </div>
+                    </td>
                   ))}
                 </tr>
-              </thead>
-              <tbody>
-                {heatGrid.map((row) => (
-                  <tr key={row.name}>
-                    <td className="sticky left-0 z-10 bg-background px-2 py-1 font-medium">
-                      {row.name}
-                    </td>
-                    {row.cells.map((c, i) => (
-                      <td key={i} className="p-0">
-                        <div
-                          className="mx-0.5 my-0.5 flex h-8 min-w-[64px] items-center justify-center rounded text-[11px] font-semibold text-white"
-                          style={{
-                            background: c.pct === 0 ? "rgba(148,163,184,0.25)" : heatColor(c.pct),
-                            color: c.pct === 0 ? "#64748b" : "#fff",
-                          }}
-                          title={`${row.name} · ${monthLabel(c.month)}: ${c.pct}%`}
-                        >
-                          {c.pct}%
-                        </div>
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
-            <span>0%</span>
-            <div
-              className="h-2 flex-1 rounded"
-              style={{
-                background:
-                  "linear-gradient(to right, rgb(22,163,74), rgb(234,179,8), rgb(220,38,38))",
-              }}
-            />
-            <span>120%</span>
-          </div>
-        </ExpandablePanel>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground max-w-xs">
+          <span>0%</span>
+          <div
+            className="h-2 flex-1 rounded"
+            style={{
+              background:
+                "linear-gradient(to right, rgb(22,163,74), rgb(234,179,8), rgb(220,38,38))",
+            }}
+          />
+          <span>120%</span>
+        </div>
       </SectionFrame>
 
       <SectionFrame>
@@ -585,103 +635,112 @@ function ResourcesPage() {
         </ExpandableChart>
       </SectionFrame>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <SectionFrame>
-          <ExpandableChart title="Demand by Skill" heightClass="h-72">
-            <BarChart data={bySkill} margin={{ top: 10, right: 10, left: 10, bottom: 40 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-              <XAxis
-                dataKey="skill"
+      <SectionFrame>
+        <ExpandableChart title="Demand by Skill" heightClass="h-72">
+          <BarChart data={bySkill} margin={{ top: 10, right: 10, left: 10, bottom: 40 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+            <XAxis
+              dataKey="skill"
+              fontSize={10}
+              angle={-25}
+              textAnchor="end"
+              interval={0}
+              height={50}
+            />
+            <YAxis
+              fontSize={11}
+              label={{ value: "Allocation %", angle: -90, position: "insideLeft", fontSize: 11 }}
+            />
+            <Tooltip formatter={(v: number) => `${v}%`} />
+            <Bar dataKey="pct" fill="#0d9488" radius={[4, 4, 0, 0]}>
+              <LabelList
+                dataKey="pct"
+                position="top"
                 fontSize={10}
-                angle={-25}
-                textAnchor="end"
-                interval={0}
-                height={50}
+                formatter={(v: number) => `${v}%`}
               />
-              <YAxis
-                fontSize={11}
-                label={{ value: "Allocation %", angle: -90, position: "insideLeft", fontSize: 11 }}
-              />
-              <Tooltip formatter={(v: number) => `${v}%`} />
-              <Bar dataKey="pct" fill="#0d9488" radius={[4, 4, 0, 0]}>
-                <LabelList
-                  dataKey="pct"
-                  position="top"
-                  fontSize={10}
-                  formatter={(v: number) => `${v}%`}
-                />
-              </Bar>
-            </BarChart>
-          </ExpandableChart>
-        </SectionFrame>
+            </Bar>
+          </BarChart>
+        </ExpandableChart>
+      </SectionFrame>
 
-        <SectionFrame>
-          <ExpandablePanel title="Resource × Project Heatmap (total across months)">
-            <div className="overflow-auto">
-              <table className="border-separate border-spacing-0 text-xs">
-                <thead>
-                  <tr>
-                    <th className="sticky left-0 z-10 bg-background px-2 py-1 text-left">Resource</th>
-                    {rpGrid.projList.map((p) => (
-                      <th
-                        key={p}
-                        className="px-2 py-1 text-center font-normal text-muted-foreground max-w-[120px] truncate"
-                        title={p}
+      <SectionFrame>
+        <SectionTitle>Resource × Project Heatmap (total across months)</SectionTitle>
+        <p className="mb-2 text-[12px] text-muted-foreground">
+          All {rpGrid.cols.length} projects shown as columns (0% = no allocation in the selected
+          months). Hover a project code to see the full name. Values are summed % across months.
+        </p>
+        <div className="overflow-auto max-h-[480px]">
+          <table className="border-collapse text-xs w-max">
+            <thead>
+              <tr>
+                <th className="sticky left-0 z-10 bg-background px-1.5 py-1 text-left whitespace-nowrap">
+                  Resource
+                </th>
+                {rpGrid.cols.map((c) => (
+                  <th
+                    key={c.id}
+                    className="p-0.5 text-center font-normal text-muted-foreground w-14 cursor-default"
+                    title={c.title}
+                    aria-label={c.title}
+                  >
+                    <span className="block truncate px-0.5" title={c.title}>
+                      {c.label}
+                    </span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rpGrid.rows.map((row) => (
+                <tr key={row.name}>
+                  <td className="sticky left-0 z-10 bg-background px-1.5 py-0.5 font-medium whitespace-nowrap">
+                    {row.name}
+                  </td>
+                  {row.cells.map((c) => (
+                    <td key={c.projectId} className="p-0.5">
+                      <div
+                        className="flex h-7 w-14 items-center justify-center rounded text-[10px] font-semibold"
+                        style={{
+                          background:
+                            c.pct === 0
+                              ? "rgba(148,163,184,0.2)"
+                              : heatColor(Math.min(100, c.pct / 3)),
+                          color: c.pct === 0 ? "#64748b" : "#fff",
+                        }}
+                        title={`${row.name} → ${c.project}: ${c.pct}%`}
                       >
-                        {p}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rpGrid.rows.map((row) => (
-                    <tr key={row.name}>
-                      <td className="sticky left-0 z-10 bg-background px-2 py-1 font-medium">
-                        {row.name}
-                      </td>
-                      {row.cells.map((c, i) => (
-                        <td key={i} className="p-0">
-                          <div
-                            className="mx-0.5 my-0.5 flex h-8 min-w-[80px] items-center justify-center rounded text-[11px] font-semibold"
-                            style={{
-                              background:
-                                c.pct === 0
-                                  ? "rgba(148,163,184,0.2)"
-                                  : heatColor(Math.min(100, c.pct / 3)),
-                              color: c.pct === 0 ? "#64748b" : "#fff",
-                            }}
-                            title={`${row.name} → ${c.project}: ${c.pct}%`}
-                          >
-                            {c.pct}%
-                          </div>
-                        </td>
-                      ))}
-                    </tr>
+                        {c.pct}%
+                      </div>
+                    </td>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </ExpandablePanel>
-        </SectionFrame>
-      </div>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </SectionFrame>
 
       <SectionFrame>
         <SectionTitle>Utilisation</SectionTitle>
         <div className="overflow-auto max-h-[420px]">
-          <table className="st-table">
+          {/* Explicit grid columns so header + value share the same alignment */}
+          <table className="w-full max-w-xl border-collapse text-[12.5px]">
             <thead>
-              <tr>
-                <th>Resource</th>
-                <th className="text-right">Allocation %</th>
-                <th>Status</th>
+              <tr className="border-b bg-[#f1f3f6]">
+                <th className="px-2.5 py-2 text-left font-semibold">Resource</th>
+                <th className="w-28 px-2.5 py-2 text-right font-semibold tabular-nums">
+                  Allocation %
+                </th>
+                <th className="w-28 px-2.5 py-2 text-left font-semibold">Status</th>
               </tr>
             </thead>
             <tbody>
               {utilisation.map((u) => (
-                <tr key={u.resource}>
-                  <td className="font-medium">{u.resource}</td>
-                  <td className="text-right tabular-nums">{u.pct}</td>
-                  <td>
+                <tr key={u.resource} className="border-b border-[#eef0f3]">
+                  <td className="px-2.5 py-1.5 font-medium">{u.resource}</td>
+                  <td className="w-28 px-2.5 py-1.5 text-right tabular-nums">{u.pct}</td>
+                  <td className="w-28 px-2.5 py-1.5">
                     <span
                       className="inline-block rounded-full px-2 py-0.5 text-xs font-medium text-white"
                       style={{ background: STATUS_COLOR[u.status] }}
@@ -698,24 +757,34 @@ function ResourcesPage() {
 
       <SectionFrame>
         <SectionTitle>Monthly Allocation Matrix</SectionTitle>
+        <p className="mb-2 text-[12px] text-muted-foreground">
+          Same data as the month heatmap — compact columns so each value sits under its month.
+        </p>
         <div className="overflow-auto max-h-[420px]">
-          <table className="st-table">
+          <table className="border-collapse text-[12.5px] w-max">
             <thead>
-              <tr>
-                <th>Resource</th>
+              <tr className="border-b bg-[#f1f3f6]">
+                <th className="sticky left-0 z-10 bg-[#f1f3f6] px-2 py-2 text-left font-semibold whitespace-nowrap">
+                  Resource
+                </th>
                 {months.map((m) => (
-                  <th key={m} className="text-right">
-                    {m.slice(0, 7)}
+                  <th
+                    key={m}
+                    className="w-14 px-1 py-2 text-center font-semibold tabular-nums whitespace-nowrap"
+                  >
+                    {monthLabel(m)}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {heatGrid.map((row) => (
-                <tr key={row.name}>
-                  <td className="font-medium">{row.name}</td>
-                  {row.cells.map((c, i) => (
-                    <td key={i} className="text-right tabular-nums">
+                <tr key={row.name} className="border-b border-[#eef0f3]">
+                  <td className="sticky left-0 z-10 bg-white px-2 py-1.5 font-medium whitespace-nowrap">
+                    {row.name}
+                  </td>
+                  {row.cells.map((c) => (
+                    <td key={c.month} className="w-14 px-1 py-1.5 text-center tabular-nums">
                       {c.pct}
                     </td>
                   ))}

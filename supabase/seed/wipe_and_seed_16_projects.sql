@@ -1,538 +1,307 @@
--- =============================================================================
--- iProjectX — Wipe project portfolio data + seed 16 sample projects
--- Run in: Supabase SQL Editor (as postgres / service role)
+-- =========================================================================
+-- iProjectX — Wipe project data + seed 16 clean sample projects (per org)
+-- Paste into Supabase SQL Editor and run once.
 --
--- KEEPS (org / identity / platform):
---   organizations, profiles, user_roles, auth.users,
---   billing_*, subscriptions, invoices*, landing_config, invoice_template_config,
---   stage_gate_definitions, business_units, resources, governance_channels,
---   role_table_permissions, branding / org UI config (if present)
+-- Keeps: organizations, profiles, user_roles, business_units, billing,
+--        landing/branding config
+-- Ensures: canonical stage_gate_definitions (9 gates)
+-- Deletes: projects (+ cascaded children), resources, allocations,
+--          demand pipeline, scenarios, monthly/FY/benefits leftovers
 --
--- DELETES (portfolio / project delivery data):
---   projects (+ cascaded children), portfolio scenarios, demand pipeline,
---   work items, project purge notices, project-scoped audit events
+-- Also applies finance schema patches:
+--   fy_allocations.budget / forecast
+--   projects.forecast_at_completion
 --
--- Seeds 16 realistic projects PER organisation with stage gates, FY allocations,
--- monthly financials, risks, issues, actions, benefits, milestones, status updates.
--- =============================================================================
+-- Finance model in seed:
+--   FY allocations = forward PLAN (budget + forecast)
+--   financials_monthly = planned + actual + forecast by month
+--   project capex/opex incurred aligned with monthly actuals story
+-- =========================================================================
 
 BEGIN;
 
--- ---------------------------------------------------------------------------
--- 1) Wipe project-related data (safe if some tables are absent)
--- ---------------------------------------------------------------------------
-DO $$
+-- ---------- A) Schema patches (idempotent) ----------
+ALTER TABLE public.fy_allocations
+  ADD COLUMN IF NOT EXISTS budget NUMERIC(14,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS forecast NUMERIC(14,2) DEFAULT 0;
+
+ALTER TABLE public.projects
+  ADD COLUMN IF NOT EXISTS forecast_at_completion NUMERIC(14,2) DEFAULT 0;
+
+-- ---------- B) Wipe operational / project data ----------
+DELETE FROM public.resource_allocations;
+DELETE FROM public.resources;
+DELETE FROM public.demand_pipeline;
+DELETE FROM public.financials_monthly;
+DELETE FROM public.fy_allocations;
+DELETE FROM public.benefits;
+DELETE FROM public.status_updates;
+DELETE FROM public.documents;
+DELETE FROM public.lessons_learned;
+DO $wipe$
 BEGIN
-  IF to_regclass('public.scenario_projects') IS NOT NULL THEN
-    DELETE FROM public.scenario_projects;
-  END IF;
-  IF to_regclass('public.portfolio_scenarios') IS NOT NULL THEN
-    DELETE FROM public.portfolio_scenarios;
-  END IF;
-  IF to_regclass('public.demand_pipeline') IS NOT NULL THEN
-    DELETE FROM public.demand_pipeline;
-  END IF;
-  IF to_regclass('public.work_items') IS NOT NULL THEN
-    DELETE FROM public.work_items;
-  END IF;
-  IF to_regclass('public.project_purge_notices') IS NOT NULL THEN
-    DELETE FROM public.project_purge_notices;
-  END IF;
-  IF to_regclass('public.audit_events') IS NOT NULL THEN
-    DELETE FROM public.audit_events
-    WHERE entity_type ILIKE '%project%'
-       OR entity_type ILIKE '%gate%'
-       OR entity_type ILIKE '%risk%'
-       OR entity_type ILIKE '%milestone%'
-       OR entity_type ILIKE '%financial%'
-       OR entity_type ILIKE '%work_item%';
-  END IF;
-  IF to_regclass('public.audit_log') IS NOT NULL THEN
-    DELETE FROM public.audit_log;
-  END IF;
-  IF to_regclass('public.notifications') IS NOT NULL THEN
-    DELETE FROM public.notifications
-    WHERE title ILIKE '%project%'
-       OR body ILIKE '%project%'
-       OR coalesce(link, '') ILIKE '%/app/%';
-  END IF;
+  DELETE FROM public.scenario_projects;
+  DELETE FROM public.portfolio_scenarios;
+EXCEPTION WHEN undefined_table THEN NULL;
+END
+$wipe$;
+DO $wipe2$
+BEGIN
+  DELETE FROM public.work_items;
+EXCEPTION WHEN undefined_table THEN NULL;
+END
+$wipe2$;
+DELETE FROM public.projects; -- cascades stage_gates, risks, issues, actions, decisions, etc.
 
-  -- Cascades: stage_gates, milestones, risks, issues, actions, decisions,
-  -- dependencies, benefits, financials_monthly, fy_allocations, sprints,
-  -- change_requests, status_updates, stakeholders, documents, lessons_learned,
-  -- resource_allocations, work_items (already cleared), etc.
-  DELETE FROM public.projects;
-END $$;
-
--- ---------------------------------------------------------------------------
--- 2) Ensure each org has BUs + default stage-gate definitions
--- ---------------------------------------------------------------------------
-INSERT INTO public.business_units (org_id, name, code)
-SELECT o.id, v.name, v.code
+-- ---------- C) Ensure stage gate definitions (canonical 9) ----------
+INSERT INTO public.stage_gate_definitions (org_id, gate_name, sort_order, is_active)
+SELECT o.id, g.gate_name, g.sort_order, true
 FROM public.organizations o
-CROSS JOIN (VALUES
-  ('Retail Banking', 'RB'),
-  ('Technology', 'TECH'),
-  ('Operations', 'OPS'),
-  ('Risk & Compliance', 'RC')
-) AS v(name, code)
-WHERE NOT EXISTS (
-  SELECT 1 FROM public.business_units bu
-  WHERE bu.org_id = o.id AND bu.code = v.code
-);
+CROSS JOIN (
+  VALUES
+    ('Discovery', 1),
+    ('Business Case / Seed Funding', 2),
+    ('Design', 3),
+    ('Business Case / Full Funding', 4),
+    ('Build', 5),
+    ('Testing', 6),
+    ('Deployment', 7),
+    ('Handover', 8),
+    ('Benefit Realisation', 9)
+) AS g(gate_name, sort_order)
+ON CONFLICT (org_id, gate_name) DO UPDATE
+SET sort_order = EXCLUDED.sort_order, is_active = true;
 
-INSERT INTO public.stage_gate_definitions (org_id, gate_name, sort_order)
-SELECT o.id, g.name, g.ord
-FROM public.organizations o
-CROSS JOIN (VALUES
-  ('Discovery', 1),
-  ('Business Case / Seed Funding', 2),
-  ('Design', 3),
-  ('Business Case / Full Funding', 4),
-  ('Build', 5),
-  ('Testing', 6),
-  ('Deployment', 7),
-  ('Handover', 8),
-  ('Benefit Realisation', 9)
-) AS g(name, ord)
-ON CONFLICT (org_id, gate_name) DO NOTHING;
-
--- ---------------------------------------------------------------------------
--- 3) Seed 16 projects per organisation + related delivery data
--- ---------------------------------------------------------------------------
+-- ---------- D) Seed 16 projects + related data for EVERY organization ----------
 DO $$
 DECLARE
-  org RECORD;
-  bu_ids uuid[];
-  bu uuid;
+  r_org RECORD;
+  r_bu uuid;
+  p_id uuid;
+  res_ids uuid[] := ARRAY[]::uuid[];
+  rid uuid;
   i int;
-  pid uuid;
-  p_code text;
-  p_name text;
-  p_program text;
-  p_sponsor text;
-  p_priority text;
-  p_status public.project_status;
-  p_rag public.project_rag;
-  p_method public.delivery_method;
-  p_phase text;
-  p_start date;
-  p_end date;
-  p_actual_start date;
-  p_actual_end date;
-  p_budget numeric;
-  p_capex numeric;
-  p_opex numeric;
-  p_ben_t numeric;
-  p_ben_r numeric;
-  p_capex_inc numeric;
-  p_opex_inc numeric;
-  gates_approved int;
-  gate RECORD;
-  g_idx int;
+  j int;
+  codes text[] := ARRAY['PRJ-001', 'PRJ-002', 'PRJ-003', 'PRJ-004', 'PRJ-005', 'PRJ-006', 'PRJ-007', 'PRJ-008', 'PRJ-009', 'PRJ-010', 'PRJ-011', 'PRJ-012', 'PRJ-013', 'PRJ-014', 'PRJ-015', 'PRJ-016'];
+  names text[] := ARRAY['Customer Portal Redesign', 'Core Banking API Platform', 'Data Lakehouse Foundation', 'Cyber Resilience Uplift', 'Contact Centre Omnichannel', 'Finance Close Automation', 'HR Self-Service Suite', 'Supplier Portal 2.0', 'Branch Network WiFi Refresh', 'Regulatory Reporting Engine', 'Mobile App Payments', 'Cloud Cost Optimisation', 'Claims Straight-Through', 'ESG Data Platform', 'Legacy Policy Admin Decommission', 'AI Document Intake'];
+  programs text[] := ARRAY['Digital Transformation', 'Platform Modernisation', 'Data & Analytics', 'Risk & Compliance', 'Customer Experience', 'Finance Transformation', 'People Systems', 'Procurement', 'Infrastructure', 'Risk & Compliance', 'Digital Transformation', 'Platform Modernisation', 'Operations Excellence', 'Data & Analytics', 'Platform Modernisation', 'Operations Excellence'];
+  phases text[] := ARRAY['Build', 'Testing', 'Design', 'Business Case / Full Funding', 'Deployment', 'Handover', 'Build', 'Discovery', 'Testing', 'Build', 'Business Case / Seed Funding', 'Benefit Realisation', 'Design', 'Discovery', 'Deployment', 'Build'];
+  statuses public.project_status[] := ARRAY['In Progress'::public.project_status, 'In Progress'::public.project_status, 'In Progress'::public.project_status, 'In Progress'::public.project_status, 'In Progress'::public.project_status, 'In Progress'::public.project_status, 'In Progress'::public.project_status, 'In Progress'::public.project_status, 'In Progress'::public.project_status, 'In Progress'::public.project_status, 'In Progress'::public.project_status, 'Completed'::public.project_status, 'In Progress'::public.project_status, 'Not Started'::public.project_status, 'In Progress'::public.project_status, 'In Progress'::public.project_status];
+  rags public.project_rag[] := ARRAY['Green'::public.project_rag, 'Amber'::public.project_rag, 'Green'::public.project_rag, 'Amber'::public.project_rag, 'Green'::public.project_rag, 'Green'::public.project_rag, 'Amber'::public.project_rag, 'Green'::public.project_rag, 'Red'::public.project_rag, 'Amber'::public.project_rag, 'Green'::public.project_rag, 'Green'::public.project_rag, 'Green'::public.project_rag, 'Green'::public.project_rag, 'Amber'::public.project_rag, 'Green'::public.project_rag];
+  priorities text[] := ARRAY['P1 - Critical', 'P1 - Critical', 'P2 - High', 'P1 - Critical', 'P2 - High', 'P2 - High', 'P3 - Medium', 'P3 - Medium', 'P2 - High', 'P1 - Critical', 'P2 - High', 'P3 - Medium', 'P2 - High', 'P4 - Low', 'P2 - High', 'P2 - High'];
+  methods public.delivery_method[] := ARRAY['Hybrid'::public.delivery_method, 'Agile'::public.delivery_method, 'Waterfall'::public.delivery_method, 'Hybrid'::public.delivery_method, 'Agile'::public.delivery_method, 'Waterfall'::public.delivery_method, 'Hybrid'::public.delivery_method, 'Agile'::public.delivery_method, 'Waterfall'::public.delivery_method, 'Hybrid'::public.delivery_method, 'Agile'::public.delivery_method, 'Agile'::public.delivery_method, 'Hybrid'::public.delivery_method, 'Waterfall'::public.delivery_method, 'Waterfall'::public.delivery_method, 'Agile'::public.delivery_method];
+  budgets numeric[] := ARRAY[3200000, 5800000, 4100000, 2700000, 1900000, 1500000, 1200000, 980000, 2200000, 3600000, 2800000, 650000, 3400000, 1100000, 4500000, 1750000];
+  capex_a numeric[] := ARRAY[2500000, 4800000, 3500000, 2000000, 1400000, 1100000, 900000, 750000, 2000000, 2900000, 2200000, 200000, 2700000, 850000, 3800000, 1300000];
+  capex_i numeric[] := ARRAY[1100000, 3100000, 900000, 400000, 1250000, 1050000, 450000, 80000, 1600000, 1400000, 250000, 195000, 700000, 0, 2900000, 600000];
+  opex_a numeric[] := ARRAY[700000, 1000000, 600000, 700000, 500000, 400000, 300000, 230000, 200000, 700000, 600000, 450000, 700000, 250000, 700000, 450000];
+  opex_i numeric[] := ARRAY[280000, 620000, 150000, 180000, 410000, 360000, 120000, 20000, 150000, 300000, 80000, 440000, 160000, 0, 500000, 180000];
+  facs numeric[] := ARRAY[3300000, 6100000, 4200000, 2850000, 1950000, 1520000, 1280000, 1000000, 2550000, 3750000, 2900000, 640000, 3500000, 1100000, 4800000, 1800000];
+  ben_t numeric[] := ARRAY[5200000, 9500000, 7000000, 3500000, 3100000, 2400000, 1800000, 1600000, 1800000, 4200000, 6000000, 1500000, 5500000, 900000, 6200000, 3200000];
+  ben_r numeric[] := ARRAY[900000, 1200000, 200000, 0, 1800000, 1600000, 150000, 0, 200000, 400000, 0, 1450000, 100000, 0, 2100000, 450000];
+  rois numeric[] := ARRAY[62.5, 63.8, 70.7, 29.6, 63.2, 60, 50, 63.3, -18.2, 16.7, 114.3, 130.8, 61.8, -18.2, 37.8, 82.9];
+  starts date[] := ARRAY['2025-04-01'::date, '2024-10-01'::date, '2025-07-01'::date, '2025-11-01'::date, '2024-08-01'::date, '2024-05-01'::date, '2025-06-01'::date, '2026-01-15'::date, '2025-02-01'::date, '2025-03-01'::date, '2025-12-01'::date, '2024-04-01'::date, '2025-08-01'::date, '2026-04-01'::date, '2024-06-01'::date, '2025-09-01'::date];
+  ends date[] := ARRAY['2026-09-30'::date, '2026-06-30'::date, '2027-03-31'::date, '2026-12-31'::date, '2026-04-30'::date, '2026-02-28'::date, '2026-08-31'::date, '2026-12-15'::date, '2026-05-31'::date, '2026-11-30'::date, '2027-06-30'::date, '2025-12-31'::date, '2027-02-28'::date, '2027-03-31'::date, '2026-07-31'::date, '2026-10-31'::date];
+  lives date[] := ARRAY['2026-08-15'::date, '2026-05-01'::date, '2027-01-15'::date, '2026-11-30'::date, '2026-03-15'::date, '2026-01-20'::date, '2026-07-15'::date, '2026-11-01'::date, '2026-04-30'::date, '2026-10-15'::date, '2027-04-01'::date, '2025-11-01'::date, '2026-12-15'::date, '2027-02-28'::date, '2026-06-15'::date, '2026-09-15'::date];
+  sponsors text[] := ARRAY['CDO', 'CTO', 'CDO', 'CISO', 'COO', 'CFO', 'CHRO', 'CPO', 'CTO', 'CRO', 'CDO', 'CTO', 'COO', 'CSO', 'CTO', 'COO'];
+  gate_names text[] := ARRAY['Discovery', 'Business Case / Seed Funding', 'Design', 'Business Case / Full Funding', 'Build', 'Testing', 'Deployment', 'Handover', 'Benefit Realisation'];
   g_status text;
-  g_planned date;
-  m int;
-  month_start date;
-  months_total int;
-  fy_label text;
-  n_fys int;
+  g_idx int;
+  m date;
+  b1 numeric;
+  b2 numeric;
+  fy_a text;
+  fy_b text;
   fy_start int;
-  fy_end int;
-  y int;
+  split_a numeric;
+  split_b numeric;
+  cap_split numeric;
+  opex_split numeric;
+  r1 int;
+  r2 int;
 BEGIN
-  FOR org IN SELECT id FROM public.organizations LOOP
-    SELECT array_agg(id ORDER BY name) INTO bu_ids
-    FROM public.business_units WHERE org_id = org.id;
+  FOR r_org IN SELECT id, COALESCE(fy_start_month, 4) AS fy_start_month FROM public.organizations LOOP
+    fy_start := r_org.fy_start_month;
+    SELECT id INTO r_bu FROM public.business_units WHERE org_id = r_org.id ORDER BY name LIMIT 1;
 
-    IF bu_ids IS NULL OR array_length(bu_ids, 1) IS NULL THEN
-      INSERT INTO public.business_units (org_id, name, code)
-      VALUES (org.id, 'Enterprise', 'ENT')
-      RETURNING id INTO bu;
-      bu_ids := ARRAY[bu];
-    END IF;
+    res_ids := ARRAY[]::uuid[];
+    INSERT INTO public.resources (org_id, bu_id, name, email, role, skills, capacity_hours_week, cost_rate, location, status)
+    VALUES (r_org.id, r_bu, 'Alex Morgan', 'alex.morgan@example.com', 'Senior BA', 'Analysis,Agile,Jira', 40, 95, 'Hybrid', 'Active')
+    RETURNING id INTO rid;
+    res_ids := array_append(res_ids, rid);
+    INSERT INTO public.resources (org_id, bu_id, name, email, role, skills, capacity_hours_week, cost_rate, location, status)
+    VALUES (r_org.id, r_bu, 'Jordan Lee', 'jordan.lee@example.com', 'Tech Lead', 'Architecture,Cloud,API', 40, 140, 'Hybrid', 'Active')
+    RETURNING id INTO rid;
+    res_ids := array_append(res_ids, rid);
+    INSERT INTO public.resources (org_id, bu_id, name, email, role, skills, capacity_hours_week, cost_rate, location, status)
+    VALUES (r_org.id, r_bu, 'Sam Rivera', 'sam.rivera@example.com', 'Delivery Manager', 'PMO,RAID,Stakeholder', 40, 120, 'Hybrid', 'Active')
+    RETURNING id INTO rid;
+    res_ids := array_append(res_ids, rid);
+    INSERT INTO public.resources (org_id, bu_id, name, email, role, skills, capacity_hours_week, cost_rate, location, status)
+    VALUES (r_org.id, r_bu, 'Taylor Kim', 'taylor.kim@example.com', 'Data Engineer', 'SQL,ETL,Python', 40, 125, 'Hybrid', 'Active')
+    RETURNING id INTO rid;
+    res_ids := array_append(res_ids, rid);
+    INSERT INTO public.resources (org_id, bu_id, name, email, role, skills, capacity_hours_week, cost_rate, location, status)
+    VALUES (r_org.id, r_bu, 'Casey Brooks', 'casey.brooks@example.com', 'QA Lead', 'Testing,Automation', 40, 100, 'Hybrid', 'Active')
+    RETURNING id INTO rid;
+    res_ids := array_append(res_ids, rid);
+    INSERT INTO public.resources (org_id, bu_id, name, email, role, skills, capacity_hours_week, cost_rate, location, status)
+    VALUES (r_org.id, r_bu, 'Riley Chen', 'riley.chen@example.com', 'UX Designer', 'Design,Research', 40, 105, 'Hybrid', 'Active')
+    RETURNING id INTO rid;
+    res_ids := array_append(res_ids, rid);
+    INSERT INTO public.resources (org_id, bu_id, name, email, role, skills, capacity_hours_week, cost_rate, location, status)
+    VALUES (r_org.id, r_bu, 'Morgan Patel', 'morgan.patel@example.com', 'Security Analyst', 'Security,Risk', 40, 115, 'Hybrid', 'Active')
+    RETURNING id INTO rid;
+    res_ids := array_append(res_ids, rid);
+    INSERT INTO public.resources (org_id, bu_id, name, email, role, skills, capacity_hours_week, cost_rate, location, status)
+    VALUES (r_org.id, r_bu, 'Avery Nguyen', 'avery.nguyen@example.com', 'Finance Analyst', 'Finance,Benefits', 40, 90, 'Hybrid', 'Active')
+    RETURNING id INTO rid;
+    res_ids := array_append(res_ids, rid);
 
     FOR i IN 1..16 LOOP
-      bu := bu_ids[1 + ((i - 1) % array_length(bu_ids, 1))];
-
-      -- Portfolio sample set (stable identities)
-      CASE i
-        WHEN 1 THEN
-          p_code := 'DX-101'; p_name := 'Core Banking Modernisation';
-          p_program := 'Digital Transformation'; p_sponsor := 'Elena Rossi';
-          p_priority := 'Critical'; p_status := 'In Progress'; p_rag := 'Amber';
-          p_method := 'Hybrid'; p_phase := 'Build';
-          p_start := DATE '2025-04-01'; p_end := DATE '2027-03-31';
-          p_actual_start := DATE '2025-04-15'; p_actual_end := NULL;
-          p_budget := 4200000; p_capex := 3100000; p_opex := 1100000;
-          p_ben_t := 6800000; p_ben_r := 850000; gates_approved := 4;
-        WHEN 2 THEN
-          p_code := 'CX-204'; p_name := 'Omnichannel Customer Portal';
-          p_program := 'Customer Experience'; p_sponsor := 'Priya Nair';
-          p_priority := 'High'; p_status := 'In Progress'; p_rag := 'Green';
-          p_method := 'Agile'; p_phase := 'Testing';
-          p_start := DATE '2025-07-01'; p_end := DATE '2026-09-30';
-          p_actual_start := DATE '2025-07-08'; p_actual_end := NULL;
-          p_budget := 1850000; p_capex := 1200000; p_opex := 650000;
-          p_ben_t := 3200000; p_ben_r := 620000; gates_approved := 5;
-        WHEN 3 THEN
-          p_code := 'DT-310'; p_name := 'Enterprise Data Platform';
-          p_program := 'Data & Analytics'; p_sponsor := 'Marcus Chen';
-          p_priority := 'High'; p_status := 'In Progress'; p_rag := 'Amber';
-          p_method := 'Hybrid'; p_phase := 'Design';
-          p_start := DATE '2025-10-01'; p_end := DATE '2027-06-30';
-          p_actual_start := DATE '2025-10-20'; p_actual_end := NULL;
-          p_budget := 2750000; p_capex := 2100000; p_opex := 650000;
-          p_ben_t := 5100000; p_ben_r := 180000; gates_approved := 2;
-        WHEN 4 THEN
-          p_code := 'RC-118'; p_name := 'Regulatory Reporting Uplift';
-          p_program := 'Risk & Compliance'; p_sponsor := 'Sofia Alvarez';
-          p_priority := 'Critical'; p_status := 'In Progress'; p_rag := 'Red';
-          p_method := 'Waterfall'; p_phase := 'Build';
-          p_start := DATE '2025-05-01'; p_end := DATE '2026-06-30';
-          p_actual_start := DATE '2025-05-12'; p_actual_end := NULL;
-          p_budget := 980000; p_capex := 520000; p_opex := 460000;
-          p_ben_t := 1400000; p_ben_r := 90000; gates_approved := 4;
-        WHEN 5 THEN
-          p_code := 'IN-402'; p_name := 'Cloud Landing Zone Expansion';
-          p_program := 'Infrastructure'; p_sponsor := 'James Whitfield';
-          p_priority := 'Medium'; p_status := 'In Progress'; p_rag := 'Green';
-          p_method := 'Agile'; p_phase := 'Deployment';
-          p_start := DATE '2025-02-01'; p_end := DATE '2026-04-30';
-          p_actual_start := DATE '2025-02-10'; p_actual_end := NULL;
-          p_budget := 1450000; p_capex := 1050000; p_opex := 400000;
-          p_ben_t := 2100000; p_ben_r := 780000; gates_approved := 6;
-        WHEN 6 THEN
-          p_code := 'CX-221'; p_name := 'Contact Centre AI Assist';
-          p_program := 'Customer Experience'; p_sponsor := 'Priya Nair';
-          p_priority := 'High'; p_status := 'In Progress'; p_rag := 'Green';
-          p_method := 'Agile'; p_phase := 'Build';
-          p_start := DATE '2025-11-01'; p_end := DATE '2026-12-15';
-          p_actual_start := DATE '2025-11-18'; p_actual_end := NULL;
-          p_budget := 1120000; p_capex := 700000; p_opex := 420000;
-          p_ben_t := 2600000; p_ben_r := 210000; gates_approved := 3;
-        WHEN 7 THEN
-          p_code := 'OPS-055'; p_name := 'Payments Reconciliation Automation';
-          p_program := 'Operations Excellence'; p_sponsor := 'Helen Park';
-          p_priority := 'Medium'; p_status := 'On Hold'; p_rag := 'Amber';
-          p_method := 'Waterfall'; p_phase := 'Business Case / Full Funding';
-          p_start := DATE '2025-08-01'; p_end := DATE '2026-08-31';
-          p_actual_start := DATE '2025-08-15'; p_actual_end := NULL;
-          p_budget := 640000; p_capex := 380000; p_opex := 260000;
-          p_ben_t := 1100000; p_ben_r := 0; gates_approved := 3;
-        WHEN 8 THEN
-          p_code := 'DX-088'; p_name := 'Mobile App Redesign';
-          p_program := 'Digital Transformation'; p_sponsor := 'Elena Rossi';
-          p_priority := 'High'; p_status := 'Completed'; p_rag := 'Green';
-          p_method := 'Agile'; p_phase := 'Benefit Realisation';
-          p_start := DATE '2024-06-01'; p_end := DATE '2025-12-15';
-          p_actual_start := DATE '2024-06-10'; p_actual_end := DATE '2025-12-08';
-          p_budget := 920000; p_capex := 610000; p_opex := 310000;
-          p_ben_t := 1800000; p_ben_r := 1450000; gates_approved := 9;
-        WHEN 9 THEN
-          p_code := 'DT-275'; p_name := 'Customer 360 Analytics';
-          p_program := 'Data & Analytics'; p_sponsor := 'Marcus Chen';
-          p_priority := 'Medium'; p_status := 'In Progress'; p_rag := 'Green';
-          p_method := 'Hybrid'; p_phase := 'Testing';
-          p_start := DATE '2025-03-01'; p_end := DATE '2026-05-31';
-          p_actual_start := DATE '2025-03-17'; p_actual_end := NULL;
-          p_budget := 780000; p_capex := 500000; p_opex := 280000;
-          p_ben_t := 1950000; p_ben_r := 420000; gates_approved := 5;
-        WHEN 10 THEN
-          p_code := 'RC-142'; p_name := 'Identity & Access Governance';
-          p_program := 'Risk & Compliance'; p_sponsor := 'Sofia Alvarez';
-          p_priority := 'High'; p_status := 'In Progress'; p_rag := 'Amber';
-          p_method := 'Waterfall'; p_phase := 'Testing';
-          p_start := DATE '2025-06-01'; p_end := DATE '2026-07-31';
-          p_actual_start := DATE '2025-06-09'; p_actual_end := NULL;
-          p_budget := 1320000; p_capex := 860000; p_opex := 460000;
-          p_ben_t := 1700000; p_ben_r := 260000; gates_approved := 5;
-        WHEN 11 THEN
-          p_code := 'IN-419'; p_name := 'Branch Network Wi-Fi Refresh';
-          p_program := 'Infrastructure'; p_sponsor := 'James Whitfield';
-          p_priority := 'Low'; p_status := 'Not Started'; p_rag := 'Green';
-          p_method := 'Waterfall'; p_phase := 'Discovery';
-          p_start := DATE '2026-04-01'; p_end := DATE '2027-01-31';
-          p_actual_start := NULL; p_actual_end := NULL;
-          p_budget := 540000; p_capex := 480000; p_opex := 60000;
-          p_ben_t := 700000; p_ben_r := 0; gates_approved := 0;
-        WHEN 12 THEN
-          p_code := 'OPS-071'; p_name := 'Vendor Invoice e-Workflow';
-          p_program := 'Operations Excellence'; p_sponsor := 'Helen Park';
-          p_priority := 'Medium'; p_status := 'In Progress'; p_rag := 'Green';
-          p_method := 'Hybrid'; p_phase := 'Build';
-          p_start := DATE '2025-09-01'; p_end := DATE '2026-10-31';
-          p_actual_start := DATE '2025-09-15'; p_actual_end := NULL;
-          p_budget := 490000; p_capex := 270000; p_opex := 220000;
-          p_ben_t := 980000; p_ben_r := 120000; gates_approved := 4;
-        WHEN 13 THEN
-          p_code := 'CX-260'; p_name := 'Loyalty Programme Relaunch';
-          p_program := 'Customer Experience'; p_sponsor := 'Priya Nair';
-          p_priority := 'High'; p_status := 'In Progress'; p_rag := 'Amber';
-          p_method := 'Agile'; p_phase := 'Design';
-          p_start := DATE '2026-01-06'; p_end := DATE '2026-11-30';
-          p_actual_start := DATE '2026-01-20'; p_actual_end := NULL;
-          p_budget := 1680000; p_capex := 950000; p_opex := 730000;
-          p_ben_t := 4100000; p_ben_r := 50000; gates_approved := 2;
-        WHEN 14 THEN
-          p_code := 'DX-130'; p_name := 'Open Banking API Gateway';
-          p_program := 'Digital Transformation'; p_sponsor := 'Elena Rossi';
-          p_priority := 'Critical'; p_status := 'In Progress'; p_rag := 'Red';
-          p_method := 'Hybrid'; p_phase := 'Build';
-          p_start := DATE '2025-04-15'; p_end := DATE '2026-08-31';
-          p_actual_start := DATE '2025-05-01'; p_actual_end := NULL;
-          p_budget := 2100000; p_capex := 1600000; p_opex := 500000;
-          p_ben_t := 3600000; p_ben_r := 300000; gates_approved := 4;
-        WHEN 15 THEN
-          p_code := 'DT-290'; p_name := 'Fraud Detection Model Refresh';
-          p_program := 'Data & Analytics'; p_sponsor := 'Marcus Chen';
-          p_priority := 'Critical'; p_status := 'Completed'; p_rag := 'Green';
-          p_method := 'Agile'; p_phase := 'Handover';
-          p_start := DATE '2024-09-01'; p_end := DATE '2025-11-30';
-          p_actual_start := DATE '2024-09-05'; p_actual_end := DATE '2025-11-22';
-          p_budget := 860000; p_capex := 520000; p_opex := 340000;
-          p_ben_t := 2400000; p_ben_r := 1980000; gates_approved := 8;
-        ELSE
-          p_code := 'RC-155'; p_name := 'Third-Party Risk Portal';
-          p_program := 'Risk & Compliance'; p_sponsor := 'Sofia Alvarez';
-          p_priority := 'Medium'; p_status := 'Not Started'; p_rag := 'Green';
-          p_method := 'Waterfall'; p_phase := 'Business Case / Seed Funding';
-          p_start := DATE '2026-05-01'; p_end := DATE '2027-04-30';
-          p_actual_start := NULL; p_actual_end := NULL;
-          p_budget := 720000; p_capex := 450000; p_opex := 270000;
-          p_ben_t := 1250000; p_ben_r := 0; gates_approved := 1;
-      END CASE;
-
-      -- Incurred spend: higher for later-stage / completed work
-      p_capex_inc := round(p_capex * LEAST(0.95, greatest(0.05, gates_approved::numeric / 9.0)) , 2);
-      p_opex_inc  := round(p_opex  * LEAST(0.90, greatest(0.04, gates_approved::numeric / 10.0)), 2);
-
       INSERT INTO public.projects (
-        org_id, bu_id, project_code, name, program, sponsor, priority,
-        status, rag, current_phase, delivery_method,
-        start_date, end_date, planned_start_date, planned_end_date,
-        actual_start_date, actual_end_date, target_go_live,
+        org_id, bu_id, project_code, name, program, sponsor, priority, status, rag,
+        current_phase, delivery_method,
+        planned_start_date, planned_end_date, actual_start_date, actual_end_date,
+        start_date, end_date, target_go_live,
         budget, capex_approved, capex_incurred, opex_approved, opex_incurred,
-        benefits_target, benefits_realised, roi_percent, description, brief,
-        baseline_budget, baseline_capex, baseline_opex, baseline_benefits,
-        baseline_date, baseline_label
+        forecast_at_completion, benefits_target, benefits_realised, roi_percent,
+        description
       ) VALUES (
-        org.id, bu, p_code, p_name, p_program, p_sponsor, p_priority,
-        p_status, p_rag, p_phase, p_method,
-        COALESCE(p_actual_start, p_start), COALESCE(p_actual_end, p_end),
-        p_start, p_end,
-        p_actual_start, p_actual_end,
-        p_end - 14,
-        p_budget, p_capex, p_capex_inc, p_opex, p_opex_inc,
-        p_ben_t, p_ben_r,
-        CASE WHEN p_budget > 0 THEN round(((p_ben_t - p_budget) / p_budget) * 100, 1) ELSE 0 END,
-        p_name || ' — sample portfolio initiative for executive and delivery views.',
-        jsonb_build_object(
-          'objective', 'Deliver measurable outcomes for ' || p_program,
-          'success_criteria', 'On-time stage gates, controlled RAG, benefit tracking'
-        ),
-        p_budget, p_capex, p_opex, p_ben_t,
-        p_start, 'Board baseline'
-      )
-      RETURNING id INTO pid;
+        r_org.id, r_bu, codes[i], names[i], programs[i], sponsors[i], priorities[i],
+        statuses[i], rags[i], phases[i], methods[i],
+        starts[i], ends[i],
+        CASE WHEN statuses[i] = 'Not Started' THEN NULL ELSE starts[i] + 14 END,
+        CASE WHEN statuses[i] = 'Completed' THEN ends[i] ELSE NULL END,
+        starts[i], ends[i], lives[i],
+        budgets[i], capex_a[i], capex_i[i], opex_a[i], opex_i[i],
+        facs[i], ben_t[i], ben_r[i], rois[i],
+        'Sample portfolio project for demo and training.'
+      ) RETURNING id INTO p_id;
 
-      -- Stage gates from org definitions
-      g_idx := 0;
-      FOR gate IN
-        SELECT gate_name, sort_order
-        FROM public.stage_gate_definitions
-        WHERE org_id = org.id AND is_active = true
-        ORDER BY sort_order
-      LOOP
-        g_idx := g_idx + 1;
-        g_planned := p_start + ((p_end - p_start) * (gate.sort_order - 1) / 8);
-        IF g_idx <= gates_approved THEN
-          g_status := 'Approved';
-        ELSIF g_idx = gates_approved + 1 AND p_status = 'In Progress' THEN
-          g_status := 'In Progress';
-        ELSIF p_status = 'On Hold' AND g_idx = gates_approved + 1 THEN
-          g_status := 'On Hold';
-        ELSE
-          g_status := 'Pending';
+      g_idx := array_position(gate_names, phases[i]);
+      IF g_idx IS NULL THEN g_idx := 1; END IF;
+      FOR j IN 1..array_length(gate_names, 1) LOOP
+        IF j < g_idx THEN g_status := 'Approved';
+        ELSIF j = g_idx THEN g_status := 'In Review';
+        ELSE g_status := 'Pending';
         END IF;
-
         INSERT INTO public.stage_gates (
-          org_id, project_id, gate_name, planned_date, actual_date, status, approver, notes
+          org_id, project_id, gate_name, planned_date, actual_date, status, approver
         ) VALUES (
-          org.id, pid, gate.gate_name, g_planned,
-          CASE WHEN g_status = 'Approved' THEN g_planned + ((g_idx % 5) - 2) ELSE NULL END,
+          r_org.id, p_id, gate_names[j],
+          starts[i] + ((j - 1) * 45),
+          CASE WHEN g_status = 'Approved' THEN starts[i] + ((j - 1) * 45) + 3 ELSE NULL END,
           g_status,
-          CASE WHEN g_status = 'Approved' THEN p_sponsor ELSE NULL END,
-          CASE
-            WHEN g_status = 'In Progress' THEN 'Evidence pack in review'
-            WHEN g_status = 'On Hold' THEN 'Awaiting funding decision'
-            ELSE NULL
-          END
+          sponsors[i]
         );
       END LOOP;
 
-      -- FY allocations (Apr–Mar)
-      fy_start := CASE WHEN EXTRACT(MONTH FROM p_start) >= 4
-        THEN EXTRACT(YEAR FROM p_start)::int ELSE EXTRACT(YEAR FROM p_start)::int - 1 END;
-      fy_end := CASE WHEN EXTRACT(MONTH FROM p_end) >= 4
-        THEN EXTRACT(YEAR FROM p_end)::int ELSE EXTRACT(YEAR FROM p_end)::int - 1 END;
-      n_fys := greatest(1, fy_end - fy_start + 1);
-      FOR y IN fy_start..fy_end LOOP
-        fy_label := 'FY' || right((y + 1)::text, 2);
-        INSERT INTO public.fy_allocations (org_id, project_id, fy, capex, opex, benefits)
-        VALUES (
-          org.id, pid, fy_label,
-          round(p_capex / n_fys, 2),
-          round(p_opex / n_fys, 2),
-          round(p_ben_t / n_fys, 2)
-        )
-        ON CONFLICT DO NOTHING;
-      END LOOP;
+      b1 := round(ben_t[i] * 0.6, 2);
+      b2 := ben_t[i] - b1;
+      INSERT INTO public.benefits (org_id, project_id, title, benefit_type, target_value, realised_value, realisation_date, owner, status)
+      VALUES
+        (r_org.id, p_id, 'Primary value realisation', 'Financial', b1, round(ben_r[i] * 0.6, 2), lives[i], sponsors[i],
+         CASE WHEN ben_r[i] > 0 THEN 'In Progress' ELSE 'Planned' END),
+        (r_org.id, p_id, 'Secondary / efficiency benefit', 'Efficiency', b2, ben_r[i] - round(ben_r[i] * 0.6, 2), lives[i], sponsors[i],
+         CASE WHEN ben_r[i] > 0 THEN 'In Progress' ELSE 'Planned' END);
 
-      -- Monthly financials across schedule window (cap ~18 months for volume)
-      months_total := least(18, greatest(3, ((p_end - p_start) / 30)));
-      FOR m IN 0..(months_total - 1) LOOP
-        month_start := (date_trunc('month', p_start) + (m || ' months')::interval)::date;
-        EXIT WHEN month_start > p_end;
+      fy_a := 'FY' || to_char(
+        CASE WHEN EXTRACT(MONTH FROM starts[i]) >= fy_start
+          THEN make_date(EXTRACT(YEAR FROM starts[i])::int + 1, 1, 1)
+          ELSE make_date(EXTRACT(YEAR FROM starts[i])::int, 1, 1)
+        END, 'YY');
+      fy_b := 'FY' || to_char(
+        CASE WHEN EXTRACT(MONTH FROM ends[i]) >= fy_start
+          THEN make_date(EXTRACT(YEAR FROM ends[i])::int + 1, 1, 1)
+          ELSE make_date(EXTRACT(YEAR FROM ends[i])::int, 1, 1)
+        END, 'YY');
+      IF fy_a = fy_b THEN
+        split_a := 1; split_b := 0;
+      ELSE
+        split_a := 0.55; split_b := 0.45;
+      END IF;
+      cap_split := CASE WHEN (capex_a[i] + opex_a[i]) > 0 THEN capex_a[i] / (capex_a[i] + opex_a[i]) ELSE 1 END;
+      opex_split := 1 - cap_split;
+
+      INSERT INTO public.fy_allocations (org_id, project_id, fy, budget, forecast, capex, opex, benefits)
+      VALUES (
+        r_org.id, p_id, fy_a,
+        round(budgets[i] * split_a, 2),
+        round(facs[i] * split_a, 2),
+        round(budgets[i] * split_a * cap_split, 2),
+        round(budgets[i] * split_a * opex_split, 2),
+        round(ben_t[i] * split_a, 2)
+      );
+      IF split_b > 0 THEN
+        INSERT INTO public.fy_allocations (org_id, project_id, fy, budget, forecast, capex, opex, benefits)
+        VALUES (
+          r_org.id, p_id, fy_b,
+          round(budgets[i] * split_b, 2),
+          round(facs[i] * split_b, 2),
+          round(budgets[i] * split_b * cap_split, 2),
+          round(budgets[i] * split_b * opex_split, 2),
+          round(ben_t[i] * split_b, 2)
+        );
+      END IF;
+
+      j := 0;
+      m := date_trunc('month', starts[i])::date;
+      WHILE m <= ends[i] AND j < 8 LOOP
         INSERT INTO public.financials_monthly (
           org_id, project_id, period_month,
           capex_planned, capex_actual, capex_forecast,
           opex_planned, opex_actual, opex_forecast,
           benefits_planned, benefits_actual
         ) VALUES (
-          org.id, pid, month_start,
-          round(p_capex / months_total, 2),
-          CASE WHEN month_start < CURRENT_DATE THEN round((p_capex_inc) / greatest(1, months_total * 0.7), 2) ELSE 0 END,
-          round(p_capex / months_total, 2),
-          round(p_opex / months_total, 2),
-          CASE WHEN month_start < CURRENT_DATE THEN round((p_opex_inc) / greatest(1, months_total * 0.7), 2) ELSE 0 END,
-          round(p_opex / months_total, 2),
-          round(p_ben_t / months_total, 2),
-          CASE WHEN month_start < CURRENT_DATE THEN round((p_ben_r) / greatest(1, months_total * 0.5), 2) ELSE 0 END
-        )
-        ON CONFLICT DO NOTHING;
+          r_org.id, p_id, m,
+          round(capex_a[i] / 8.0, 2),
+          round((capex_i[i] / 8.0) * CASE WHEN m <= CURRENT_DATE THEN 1 ELSE 0 END, 2),
+          round(capex_a[i] / 8.0, 2),
+          round(opex_a[i] / 8.0, 2),
+          round((opex_i[i] / 8.0) * CASE WHEN m <= CURRENT_DATE THEN 1 ELSE 0 END, 2),
+          round(opex_a[i] / 8.0, 2),
+          round(ben_t[i] / 12.0, 2),
+          round((ben_r[i] / 12.0) * CASE WHEN m <= CURRENT_DATE THEN 1 ELSE 0 END, 2)
+        );
+        m := (m + INTERVAL '1 month')::date;
+        j := j + 1;
       END LOOP;
 
-      -- Milestones
-      INSERT INTO public.milestones (org_id, project_id, name, planned_date, actual_date, status, owner, notes) VALUES
-        (org.id, pid, 'Kick-off complete', p_start + 14,
-          CASE WHEN p_actual_start IS NOT NULL THEN p_actual_start + 10 ELSE NULL END,
-          CASE WHEN p_actual_start IS NOT NULL THEN 'Complete' ELSE 'Planned' END,
-          p_sponsor, NULL),
-        (org.id, pid, 'MVP / Pilot ready', p_start + ((p_end - p_start) / 2),
-          NULL,
-          CASE WHEN gates_approved >= 5 THEN 'In Progress' ELSE 'Planned' END,
-          'Delivery Lead', NULL),
-        (org.id, pid, 'Go-live', p_end - 14,
-          p_actual_end,
-          CASE WHEN p_status = 'Completed' THEN 'Complete' ELSE 'Planned' END,
-          p_sponsor, NULL);
+      -- severity = probability × impact (canonical)
+      INSERT INTO public.risks (org_id, project_id, title, description, probability, impact, severity, status, owner, mitigation)
+      VALUES
+        (r_org.id, p_id, 'Delivery capacity constraint', 'Key skills contention across portfolio', 3, 4, 12, 'Open', 'Sam Rivera', 'Prioritise critical path; surge contractors'),
+        (r_org.id, p_id, 'Dependency slippage', 'Upstream platform dependency may slip', 4, 3, 12, 'Open', 'Jordan Lee', 'Weekly dependency forum; contingency design');
 
-      -- Risks / issues / actions / benefits / status
-      INSERT INTO public.risks (
-        org_id, project_id, title, description, category, probability, impact, severity,
-        status, owner, mitigation, notes, due_date
-      ) VALUES
-        (org.id, pid, 'Schedule pressure on ' || p_name,
-         'Critical path activities showing compression against baseline.',
-         'Schedule', 3 + (i % 2), 3 + (i % 3), (3 + (i % 2)) * (3 + (i % 3)),
-         CASE WHEN p_rag = 'Red' THEN 'Open' WHEN p_rag = 'Amber' THEN 'Mitigating' ELSE 'Open' END,
-         'Alex Chen', 'Re-baseline sprint plan; add contingency buffer.',
-         'Reviewed in weekly RAID.', CURRENT_DATE + (14 + i)),
-        (org.id, pid, 'Vendor dependency for ' || p_code,
-         'External supplier lead times may affect integration window.',
-         'Vendor', 2 + (i % 3), 4, (2 + (i % 3)) * 4,
-         'Mitigating', 'Priya Nair', 'Secondary supplier shortlist + weekly vendor board.',
-         NULL, CURRENT_DATE + (21 + i));
+      INSERT INTO public.issues (org_id, project_id, title, description, priority, status, owner)
+      VALUES (r_org.id, p_id, 'Environment access delay', 'Non-prod access pending', 'Medium', 'Open', 'Jordan Lee');
+      INSERT INTO public.actions (org_id, project_id, title, owner, due_date, status, priority)
+      VALUES (r_org.id, p_id, 'Confirm FY funding drawdown', sponsors[i], CURRENT_DATE + 14, 'Open', 'Medium');
 
-      INSERT INTO public.issues (
-        org_id, project_id, title, description, priority, status, owner, raised_date, target_date, resolution
-      ) VALUES
-        (org.id, pid, 'Environment access delay',
-         'Non-prod access tickets pending for two squads.',
-         CASE WHEN p_rag = 'Red' THEN 'High' ELSE 'Medium' END,
-         CASE WHEN i % 3 = 0 THEN 'Closed' ELSE 'Open' END,
-         'Jordan Blake', CURRENT_DATE - 10, CURRENT_DATE + 7,
-         CASE WHEN i % 3 = 0 THEN 'Access granted via ITSM.' ELSE NULL END);
-
-      INSERT INTO public.actions (
-        org_id, project_id, title, description, owner, priority, status, due_date, notes
-      ) VALUES
-        (org.id, pid, 'Publish stage-gate pack for ' || p_phase,
-         'Compile evidence and circulate to approvers.',
-         'Ravi Kumar', 'High',
-         CASE WHEN gates_approved >= 6 THEN 'Closed' ELSE 'Open' END,
-         CURRENT_DATE + 5, 'Template from Data Editor.'),
-        (org.id, pid, 'Update financial forecast',
-         'Refresh CAPEX/OPEX forecast after latest actuals.',
-         'Anna Weber', 'Medium', 'In Progress', CURRENT_DATE + 12, NULL);
-
-      INSERT INTO public.benefits (
-        org_id, project_id, title, benefit_type, target_value, realised_value,
-        status, owner, realisation_date, notes
-      ) VALUES
-        (org.id, pid, 'Cost avoidance — ' || p_program, 'Financial',
-         round(p_ben_t * 0.55, 2), round(p_ben_r * 0.55, 2),
-         CASE WHEN p_ben_r > 0 THEN 'In Progress' ELSE 'Planned' END,
-         p_sponsor, p_end, NULL),
-        (org.id, pid, 'Customer / process uplift', 'Non-Financial',
-         round(p_ben_t * 0.45, 2), round(p_ben_r * 0.45, 2),
-         CASE WHEN p_status = 'Completed' THEN 'Realised' ELSE 'Planned' END,
-         'Helen Park', p_end + 60, NULL);
-
-      INSERT INTO public.status_updates (
-        org_id, project_id, update_date, reporter,
-        overall_rag, schedule_rag, cost_rag, scope_rag,
-        progress_summary, achievements, next_steps, blockers
-      ) VALUES (
-        org.id, pid, CURRENT_DATE - (i % 7),
-        'PMO Office',
-        p_rag, p_rag,
-        CASE WHEN p_rag = 'Red' THEN 'Amber'::public.project_rag ELSE p_rag END,
-        'Green'::public.project_rag,
-        'Delivery progressing against ' || p_phase || ' for ' || p_name || '.',
-        'Stage evidence updated; RAID reviewed with sponsor.',
-        'Clear open actions and confirm next gate date.',
-        CASE WHEN p_rag = 'Red' THEN 'Critical dependency needs executive escalation.' ELSE NULL END
-      );
-
-      INSERT INTO public.stakeholders (
-        org_id, project_id, name, role, influence, interest, email, engagement_strategy
-      ) VALUES
-        (org.id, pid, p_sponsor, 'Executive Sponsor', 'High', 'High',
-         lower(replace(p_sponsor, ' ', '.')) || '@example.com', 'Monthly steering'),
-        (org.id, pid, 'Delivery Lead', 'Project Manager', 'Medium', 'High',
-         'delivery.lead' || i || '@example.com', 'Weekly stand-up + RAID');
-
+      FOR j IN 1..3 LOOP
+        m := (date_trunc('month', CURRENT_DATE)::date - ((j - 1) * INTERVAL '1 month'))::date;
+        r1 := 1 + ((i + j - 1) % array_length(res_ids, 1));
+        r2 := 1 + ((i + j + 2) % array_length(res_ids, 1));
+        IF r1 = r2 THEN r2 := 1 + (r1 % array_length(res_ids, 1)); END IF;
+        INSERT INTO public.resource_allocations (
+          org_id, project_id, resource_id, period_month, allocation_percent, allocated_hours, role_on_project
+        ) VALUES
+          (r_org.id, p_id, res_ids[r1], m, 40 + ((i + j) % 3) * 10, 64, 'Delivery'),
+          (r_org.id, p_id, res_ids[r2], m, 30 + (i % 4) * 10, 48, 'Support')
+        ON CONFLICT (project_id, resource_id, period_month) DO NOTHING;
+      END LOOP;
     END LOOP;
 
-    -- A few demand-pipeline ideas (portfolio funnel, not projects)
-    IF to_regclass('public.demand_pipeline') IS NOT NULL THEN
-      INSERT INTO public.demand_pipeline (
-        org_id, bu_id, idea_name, description, sponsor, status,
-        estimated_cost, estimated_benefit, estimated_roi,
-        strategic_alignment, complexity, submitted_date
-      ) VALUES
-        (org.id, bu_ids[1], 'Branch staff scheduling optimiser',
-         'Workforce optimisation concept for retail branches.',
-         'Helen Park', 'Under Review', 420000, 900000, 114,
-         4, 3, CURRENT_DATE - 20),
-        (org.id, bu_ids[1], 'ESG disclosure automation',
-         'Automate sustainability data collection and filings.',
-         'Sofia Alvarez', 'Shortlisted', 680000, 1100000, 62,
-         5, 4, CURRENT_DATE - 12);
-    END IF;
-
+    INSERT INTO public.demand_pipeline (org_id, bu_id, idea_name, description, status, estimated_cost, estimated_benefit, estimated_roi, strategic_alignment, complexity)
+    VALUES
+      (r_org.id, r_bu, 'Loyalty wallet concept', 'Early demand idea', 'Idea', 800000, 1200000, 45, 3, 2),
+      (r_org.id, r_bu, 'Branch digital kiosk', 'Under assessment', 'Assessment', 1200000, 1600000, 30, 4, 3);
   END LOOP;
 END $$;
 
 COMMIT;
 
--- Quick verification
-SELECT
-  (SELECT count(*) FROM public.projects) AS projects,
-  (SELECT count(*) FROM public.stage_gates) AS stage_gates,
-  (SELECT count(*) FROM public.fy_allocations) AS fy_allocations,
-  (SELECT count(*) FROM public.financials_monthly) AS financials_monthly,
-  (SELECT count(*) FROM public.risks) AS risks,
-  (SELECT count(*) FROM public.benefits) AS benefits;
+-- Optional verification:
+-- SELECT o.name, count(p.*) FROM organizations o LEFT JOIN projects p ON p.org_id = o.id GROUP BY 1;
+-- SELECT probability, impact, severity FROM risks LIMIT 10;
+-- SELECT fy, round(sum(budget)) budget, round(sum(forecast)) forecast FROM fy_allocations GROUP BY 1 ORDER BY 1;

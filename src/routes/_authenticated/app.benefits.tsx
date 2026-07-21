@@ -1,11 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { sumBenefitsTarget, sumBenefitsRealised } from "@/lib/project-finance";
 
 export const Route = createFileRoute("/_authenticated/app/benefits")({
   component: BenefitsPage,
@@ -25,26 +27,37 @@ function BenefitsPage() {
     enabled: !!organization,
   });
 
-  const sum = (k: string) => projects.reduce((a, p) => a + Number((p as any)[k] || 0), 0);
-  const target = sum("benefits_target");
-  const realised = sum("benefits_realised");
+  const { data: benefits = [] } = useQuery({
+    queryKey: ["benefits", organization?.id],
+    queryFn: async () => (await supabase.from("benefits").select("*")).data ?? [],
+    enabled: !!organization,
+  });
+
+  // Prefer summing register lines per project; fall back to project rollups.
+  const rows = useMemo(
+    () =>
+      projects
+        .map((p) => {
+          const target = sumBenefitsTarget(benefits, p, p.id);
+          const realised = sumBenefitsRealised(benefits, p, p.id);
+          return {
+            name: p.name,
+            program: p.program || "Unassigned",
+            target,
+            realised,
+            gap: target - realised,
+            rate: target > 0 ? (realised / target) * 100 : 0,
+          };
+        })
+        .filter((r) => r.target > 0 || r.realised > 0)
+        .sort((a, b) => b.target - a.target),
+    [projects, benefits],
+  );
+
+  const target = rows.reduce((s, r) => s + r.target, 0);
+  const realised = rows.reduce((s, r) => s + r.realised, 0);
   const gap = target - realised;
   const realisationRate = target > 0 ? (realised / target) * 100 : 0;
-
-  const rows = projects
-    .map((p) => ({
-      name: p.name,
-      program: p.program || "Unassigned",
-      target: Number(p.benefits_target || 0),
-      realised: Number(p.benefits_realised || 0),
-      gap: Number(p.benefits_target || 0) - Number(p.benefits_realised || 0),
-      rate:
-        Number(p.benefits_target || 0) > 0
-          ? (Number(p.benefits_realised || 0) / Number(p.benefits_target || 0)) * 100
-          : 0,
-    }))
-    .filter((r) => r.target > 0 || r.realised > 0)
-    .sort((a, b) => b.target - a.target);
 
   const byProgram = Array.from(
     rows

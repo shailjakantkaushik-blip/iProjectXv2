@@ -716,8 +716,10 @@ export type Database = {
       fy_allocations: {
         Row: {
           benefits: number | null
+          budget: number | null
           capex: number | null
           created_at: string
+          forecast: number | null
           fy: string
           id: string
           opex: number | null
@@ -727,8 +729,10 @@ export type Database = {
         }
         Insert: {
           benefits?: number | null
+          budget?: number | null
           capex?: number | null
           created_at?: string
+          forecast?: number | null
           fy: string
           id?: string
           opex?: number | null
@@ -738,8 +742,10 @@ export type Database = {
         }
         Update: {
           benefits?: number | null
+          budget?: number | null
           capex?: number | null
           created_at?: string
+          forecast?: number | null
           fy?: string
           id?: string
           opex?: number | null
@@ -1414,6 +1420,7 @@ export type Database = {
           delivery_method: Database["public"]["Enums"]["delivery_method"] | null
           description: string | null
           end_date: string | null
+          forecast_at_completion: number | null
           id: string
           name: string
           opex_approved: number | null
@@ -1450,6 +1457,7 @@ export type Database = {
             | null
           description?: string | null
           end_date?: string | null
+          forecast_at_completion?: number | null
           id?: string
           name: string
           opex_approved?: number | null
@@ -1486,6 +1494,7 @@ export type Database = {
             | null
           description?: string | null
           end_date?: string | null
+          forecast_at_completion?: number | null
           id?: string
           name?: string
           opex_approved?: number | null

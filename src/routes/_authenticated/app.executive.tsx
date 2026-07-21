@@ -22,7 +22,13 @@ import {
   resolveCurrentStage as resolveStageShared,
 } from "@/lib/project-phase";
 import { fyOf, projectScheduleEnd, projectScheduleStart } from "@/lib/project-dates";
-import { projectForecast, projectIncurred } from "@/lib/project-finance";
+import {
+  projectApprovedFunding,
+  projectForecast,
+  projectIncurred,
+  projectRemaining,
+  projectRealisedRoi,
+} from "@/lib/project-finance";
 
 export const Route = createFileRoute("/_authenticated/app/executive")({
   component: ExecutiveDashboard,
@@ -117,11 +123,11 @@ function ExecutiveDashboard() {
 
   const filteredIds = new Set(filtered.map((p: any) => p.id));
 
-  // KPI totals
-  const capexApproved = filtered.reduce((s, p) => s + Number(p.capex_approved || 0), 0);
-  const capexIncurred = filtered.reduce((s, p) => s + Number(p.capex_incurred || 0), 0);
-  const capexForecast = filtered.reduce((s, p) => s + Number(p.capex_approved || 0) * 1.05, 0);
-  const remaining = Math.max(0, capexApproved - capexIncurred);
+  // KPI totals — approved funding / incurred / FAC / remaining via project-finance helpers
+  const approvedFunding = filtered.reduce((s, p) => s + projectApprovedFunding(p), 0);
+  const totalIncurred = filtered.reduce((s, p) => s + projectIncurred(p), 0);
+  const totalForecast = filtered.reduce((s, p) => s + projectForecast(p), 0);
+  const remaining = filtered.reduce((s, p) => s + projectRemaining(p), 0);
   const active = filtered.filter((p: any) => p.status === "In Progress").length;
   const completed = filtered.filter((p: any) => p.status === "Completed").length;
   const today = new Date();
@@ -130,33 +136,39 @@ function ExecutiveDashboard() {
     ? Math.round((filtered.filter((p: any) => p.rag === "Green").length / filtered.length) * 100)
     : 0;
 
-  const buildSpark = (key: "capex_planned" | "capex_actual" | "capex_forecast" | "benefits_actual" | null, fallbackTotal: number, color: string) => {
+  const buildSpark = (
+    key: "capex_planned" | "capex_actual" | "capex_forecast" | "benefits_actual" | null,
+    color: string,
+  ) => {
     const rows = monthly.filter((m: any) => filteredIds.has(m.project_id));
     const buckets = new Map<string, number>();
     if (key && rows.length) {
       rows.forEach((r: any) => {
         const k = String(r.period_month || "").slice(0, 7);
+        if (!k) return;
         buckets.set(k, (buckets.get(k) || 0) + Number(r[key] || 0));
       });
     }
-    let series = Array.from(buckets.entries()).sort().slice(-12).map(([_m, v], i) => ({ i, v }));
+    let series = Array.from(buckets.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-12)
+      .map(([_m, v], i) => ({ i, v }));
+    // Do not invent synthetic sparklines for financial KPIs when monthly data is thin.
     if (series.length < 6) {
-      series = Array.from({ length: 12 }, (_, i) => ({
-        i, v: (fallbackTotal / 12) * (0.7 + 0.6 * Math.sin(i * 0.9 + fallbackTotal % 5)),
-      }));
+      series = Array.from({ length: 12 }, (_, i) => ({ i, v: 0 }));
     }
     return { data: series, color };
   };
 
   const kpis = [
-    { label: "CAPEX Approved", value: money(capexApproved), spark: buildSpark("capex_planned", capexApproved, "#1d4ed8") },
-    { label: "Incurred", value: money(capexIncurred), spark: buildSpark("capex_actual", capexIncurred, "#15803d") },
-    { label: "Forecast", value: money(capexForecast), spark: buildSpark("capex_forecast", capexForecast, "#f59e0b") },
-    { label: "Remaining", value: money(remaining), spark: buildSpark(null, remaining, "#8b5cf6") },
-    { label: "Active", value: active, spark: buildSpark(null, active * 5, "#06b6d4") },
-    { label: "Completed", value: completed, spark: buildSpark(null, completed * 4, "#15803d") },
-    { label: "Overdue", value: overdue, spark: buildSpark(null, overdue * 3 || 1, "#dc2626") },
-    { label: "RAG Score", value: `${ragScore}%`, spark: buildSpark(null, ragScore, "#8b5cf6") },
+    { label: "Approved Funding", value: money(approvedFunding), spark: buildSpark("capex_planned", "#1d4ed8") },
+    { label: "Incurred", value: money(totalIncurred), spark: buildSpark("capex_actual", "#15803d") },
+    { label: "Forecast", value: money(totalForecast), spark: buildSpark("capex_forecast", "#f59e0b") },
+    { label: "Remaining", value: money(remaining), spark: buildSpark(null, "#8b5cf6") },
+    { label: "Active", value: active, spark: buildSpark(null, "#06b6d4") },
+    { label: "Completed", value: completed, spark: buildSpark(null, "#15803d") },
+    { label: "Overdue", value: overdue, spark: buildSpark(null, "#dc2626") },
+    { label: "RAG Score", value: `${ragScore}%`, spark: buildSpark(null, "#8b5cf6") },
   ];
 
   // ── Charts data ──────────────────────────────────────────────
@@ -165,32 +177,39 @@ function ExecutiveDashboard() {
     name: r, value: filtered.filter((p: any) => p.rag === r).length,
   })).filter((d) => d.value > 0);
 
-  // CAPEX vs Actual (4 bars)
+  // Funding vs Actual (4 bars)
   const capexBars = [
-    { name: "Approved", value: capexApproved },
-    { name: "Incurred", value: capexIncurred },
-    { name: "Forecast", value: capexForecast },
+    { name: "Approved", value: approvedFunding },
+    { name: "Incurred", value: totalIncurred },
+    { name: "Forecast", value: totalForecast },
     { name: "Remaining", value: remaining },
   ];
 
-  // Monthly Spend ($M) — Actual vs Forecast per month across FY (12 months)
+  // Monthly Spend ($M) — Actual vs Forecast, bucketed by year-month (last 12)
   const monthlySpend = useMemo(() => {
-    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     const rows = monthly.filter((m: any) => filteredIds.has(m.project_id));
-    const buckets = new Map<number, { actual: number; forecast: number }>();
+    const buckets = new Map<string, { actual: number; forecast: number }>();
     rows.forEach((r: any) => {
       const d = new Date(r.period_month);
       if (isNaN(d.getTime())) return;
-      const mi = d.getMonth();
-      const cur = buckets.get(mi) || { actual: 0, forecast: 0 };
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const cur = buckets.get(key) || { actual: 0, forecast: 0 };
       cur.actual += Number(r.capex_actual || 0) + Number(r.opex_actual || 0);
       cur.forecast += Number(r.capex_forecast || 0) + Number(r.opex_forecast || 0);
-      buckets.set(mi, cur);
+      buckets.set(key, cur);
     });
-    return months.map((m, i) => {
-      const v = buckets.get(i) || { actual: 0, forecast: 0 };
-      return { month: m, actual: v.actual / 1e6, forecast: v.forecast / 1e6 };
-    });
+    return Array.from(buckets.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-12)
+      .map(([key, v]) => {
+        const [y, m] = key.split("-");
+        return {
+          month: `${monthNames[Number(m) - 1]} '${y.slice(-2)}`,
+          actual: v.actual / 1e6,
+          forecast: v.forecast / 1e6,
+        };
+      });
   }, [monthly, filteredIds]);
 
   // By Theme (donut)
@@ -219,12 +238,10 @@ function ExecutiveDashboard() {
     return arr;
   }, [filtered]);
 
-  // Top 10 by ROI (horizontal bar)
+  // Top 10 by realised ROI (horizontal bar)
   const topROI = useMemo(() => filtered
     .map((p: any) => {
-      const cost = Number(p.capex_incurred || 0) + Number(p.opex_incurred || 0);
-      const benefit = Number(p.benefits_realised || 0);
-      const roi = cost > 0 ? ((benefit - cost) / cost) * 100 : Number(p.roi_percent || 0);
+      const roi = projectRealisedRoi(p);
       return { name: (p.name || "").slice(0, 22), roi: Math.round(roi * 10) / 10 };
     })
     .filter((x) => x.roi !== 0)
@@ -512,8 +529,8 @@ function ExecutiveDashboard() {
               )}
             </ChartBox>
 
-            {/* CAPEX vs Actual */}
-            <ChartBox title="CAPEX vs Actual">
+            {/* Funding vs Actual */}
+            <ChartBox title="Funding vs Actual">
               <BarChart data={capexBars} margin={{ top: 25, right: 15, left: 5, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
                 <XAxis dataKey="name" fontSize={11} />
@@ -742,8 +759,8 @@ function ExecutiveDashboard() {
                     <td className="font-medium">{p.name}</td>
                     <td>{p.program ?? "—"}</td>
                     <td>{p.sponsor ?? "—"}</td>
-                    <td>{money(Number(p.budget || 0))}</td>
-                    <td>{money(Number(p.capex_incurred || 0) + Number(p.opex_incurred || 0))}</td>
+                    <td>{money(projectApprovedFunding(p))}</td>
+                    <td>{money(projectIncurred(p))}</td>
                     <td><RagChip rag={p.rag} /></td>
                     <td>{resolveCurrentStage(p) ?? "—"}</td>
                   </tr>

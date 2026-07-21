@@ -24,7 +24,18 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 import { ExpandableChart } from "@/components/expandable-chart";
-import { ExpandablePanel } from "@/components/expandable-panel";
+import { fyLabel } from "@/lib/fiscal-year";
+import {
+  projectApprovedFunding,
+  projectForecast,
+  fyAllocBudget,
+  fyAllocForecast,
+  splitCapexOpex,
+} from "@/lib/project-finance";
+import {
+  cascadeMonthlyFromFyPlan,
+  syncProjectIncurredFromMonthly,
+} from "@/lib/finance-lifecycle";
 
 export const Route = createFileRoute("/_authenticated/app/fy-allocation")({
   component: FYAllocationPage,
@@ -80,8 +91,9 @@ function FYAllocationPage() {
     <PageExport name="FY_Allocation" title="FY Budget & Forecast Allocation">
       <PageHeading icon="📅">FY Budget &amp; Forecast Allocation</PageHeading>
       <div className="text-sm text-muted-foreground mb-3">
-        Split each project's total Budget and Forecast across Financial Years, then track the
-        resulting portfolio profile.
+        Forward planning: split each project&apos;s Budget and Forecast across Financial Years.
+        Saving also cascades into monthly <em>planned</em> cashflow (actuals are preserved) for
+        Plan vs Actual comparison on Financials.
       </div>
 
       <div className="mb-3 flex gap-1 border-b">
@@ -101,7 +113,12 @@ function FYAllocationPage() {
           projects={projects}
           alloc={alloc}
           orgId={organization?.id}
-          onSaved={() => qc.invalidateQueries({ queryKey: ["fy_allocations"] })}
+          fyStartMonth={organization?.fy_start_month || 4}
+          onSaved={() => {
+            void qc.invalidateQueries({ queryKey: ["fy_allocations"] });
+            void qc.invalidateQueries({ queryKey: ["financials_monthly"] });
+            void qc.invalidateQueries({ queryKey: ["projects"] });
+          }}
         />
       )}
       {tab === "portfolio" && <PortfolioViewTab projects={projects} alloc={alloc} />}
@@ -115,11 +132,13 @@ function AllocateTab({
   projects,
   alloc,
   orgId,
+  fyStartMonth,
   onSaved,
 }: {
   projects: any[];
   alloc: any[];
   orgId?: string;
+  fyStartMonth: number;
   onSaved: () => void;
 }) {
   const [projectId, setProjectId] = useState<string>("");
@@ -135,19 +154,20 @@ function AllocateTab({
     () => sortedProjects.find((p) => p.id === projectId),
     [sortedProjects, projectId],
   );
-  const totalBudget = Number(project?.budget || 0);
-  const totalForecast =
-    Number(project?.capex_approved || 0) + Number(project?.opex_approved || 0) || totalBudget;
+  const totalBudget = projectApprovedFunding(project);
+  const totalForecast = projectForecast(project);
 
-  // Derive FY suggestions from all allocations + project dates
+  // Derive FY suggestions from all allocations + org FY calendar
   const knownFYs = useMemo(() => {
     const s = new Set<string>();
-    for (const a of alloc) s.add(a.fy);
-    // include a few default years
-    const y = new Date().getFullYear();
-    for (let i = -1; i <= 4; i++) s.add(`FY${String((y + i) % 100).padStart(2, "0")}`);
+    for (const a of alloc) if (a.fy) s.add(a.fy);
+    const now = new Date();
+    for (let i = -1; i <= 4; i++) {
+      const d = new Date(now.getFullYear() + i, now.getMonth(), 15);
+      s.add(fyLabel(d, fyStartMonth));
+    }
     return Array.from(s).sort(sortFY);
-  }, [alloc]);
+  }, [alloc, fyStartMonth]);
 
   const [selectedFYs, setSelectedFYs] = useState<string[]>([]);
   const [rows, setRows] = useState<Record<string, { bp: number; fp: number; notes: string }>>({});
@@ -159,10 +179,11 @@ function AllocateTab({
     setSelectedFYs(Array.from(new Set(fys)).sort(sortFY));
     const rec: Record<string, { bp: number; fp: number; notes: string }> = {};
     for (const a of existing) {
-      const amt = Number(a.capex || 0) + Number(a.opex || 0);
+      const bAmt = fyAllocBudget(a);
+      const fAmt = fyAllocForecast(a);
       rec[a.fy] = {
-        bp: totalBudget > 0 ? +((amt / totalBudget) * 100).toFixed(2) : 0,
-        fp: totalForecast > 0 ? +((amt / totalForecast) * 100).toFixed(2) : 0,
+        bp: totalBudget > 0 ? +((bAmt / totalBudget) * 100).toFixed(2) : 0,
+        fp: totalForecast > 0 ? +((fAmt / totalForecast) * 100).toFixed(2) : 0,
         notes: "",
       };
     }
@@ -207,20 +228,27 @@ function AllocateTab({
     if (!project || !orgId) return;
     // delete then insert
     await supabase.from("fy_allocations").delete().eq("project_id", project.id);
+    const benefitsTarget = Number(project.benefits_target || 0);
     const inserts = selectedFYs
       .map((fy) => {
         const r = ensureRow(fy);
-        const amt = ((Number(r.bp) || 0) * totalBudget) / 100;
+        const bp = Number(r.bp) || 0;
+        const fp = Number(r.fp) || 0;
+        const budgetAmt = (bp * totalBudget) / 100;
+        const forecastAmt = (fp * totalForecast) / 100;
+        const { capex, opex } = splitCapexOpex(budgetAmt, project);
         return {
           org_id: orgId,
           project_id: project.id,
           fy,
-          capex: amt,
-          opex: 0,
-          benefits: 0,
+          budget: budgetAmt,
+          forecast: forecastAmt,
+          capex,
+          opex,
+          benefits: (bp / 100) * benefitsTarget,
         };
       })
-      .filter((r) => r.capex > 0 || r.fy);
+      .filter((r) => r.budget > 0 || r.forecast > 0 || r.fy);
     if (inserts.length) {
       const { error } = await supabase.from("fy_allocations").insert(inserts);
       if (error) {
@@ -228,7 +256,26 @@ function AllocateTab({
         return;
       }
     }
-    toast.success("Allocation saved");
+    try {
+      const { monthsUpserted } = await cascadeMonthlyFromFyPlan({
+        orgId,
+        projectId: project.id,
+        project,
+        allocations: inserts,
+        fyStartMonth,
+      });
+      await syncProjectIncurredFromMonthly(project.id);
+      toast.success(
+        `Allocation saved — ${monthsUpserted} monthly planned periods updated (actuals kept).`,
+      );
+    } catch (e) {
+      toast.success("Allocation saved");
+      toast.error(
+        e instanceof Error
+          ? `Monthly cascade failed: ${e.message}`
+          : "Monthly cascade failed",
+      );
+    }
     onSaved();
   };
 
@@ -428,9 +475,8 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
         opex: 0,
         benefits: 0,
       };
-      const amt = Number(r.capex || 0) + Number(r.opex || 0);
-      row.budget += amt;
-      row.forecast += amt;
+      row.budget += fyAllocBudget(r);
+      row.forecast += fyAllocForecast(r);
       row.capex += Number(r.capex || 0);
       row.opex += Number(r.opex || 0);
       row.benefits += Number(r.benefits || 0);
@@ -451,8 +497,7 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
   const projTotals = useMemo(() => {
     const m = new Map<string, number>();
     for (const r of rowsF) {
-      const amt = Number(r.capex || 0) + Number(r.opex || 0);
-      m.set(r.project_id, (m.get(r.project_id) || 0) + amt);
+      m.set(r.project_id, (m.get(r.project_id) || 0) + fyAllocForecast(r));
     }
     return Array.from(m.entries())
       .sort((a, b) => b[1] - a[1])
@@ -466,7 +511,7 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
       const row: any = { name: p?.name || pid };
       for (const fy of fys) row[fy] = 0;
       for (const r of rowsF.filter((r: any) => r.project_id === pid)) {
-        row[r.fy] = (row[r.fy] || 0) + Number(r.capex || 0) + Number(r.opex || 0);
+        row[r.fy] = (row[r.fy] || 0) + fyAllocForecast(r);
       }
       return row;
     });
@@ -477,7 +522,7 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
   const heatProjects = useMemo(() => {
     const m = new Map<string, number>();
     for (const r of rowsF)
-      m.set(r.project_id, (m.get(r.project_id) || 0) + Number(r.capex || 0) + Number(r.opex || 0));
+      m.set(r.project_id, (m.get(r.project_id) || 0) + fyAllocForecast(r));
     return Array.from(m.entries())
       .sort((a, b) => b[1] - a[1])
       .slice(0, 20)
@@ -493,7 +538,7 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
       const p: any = projectMap.get(r.project_id);
       const key = p?.name;
       if (!key || !grid[key]) continue;
-      grid[key][r.fy] = (grid[key][r.fy] || 0) + Number(r.capex || 0) + Number(r.opex || 0);
+      grid[key][r.fy] = (grid[key][r.fy] || 0) + fyAllocForecast(r);
     }
     const max = Math.max(1, ...Object.values(grid).flatMap((row) => Object.values(row)));
     return { grid, max };
@@ -586,46 +631,45 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
 
       <div className="grid gap-4 lg:grid-cols-2">
         <SectionFrame>
-          <ExpandablePanel title="Forecast Heatmap — Project × FY">
-            <div className="overflow-auto">
-              <table className="border-collapse text-[11px]">
-                <thead className="sticky top-0 bg-background">
-                  <tr>
-                    <th className="p-2 text-left text-muted-foreground">Project Name</th>
-                    {fys.map((f) => (
-                      <th key={f} className="p-2 text-center text-muted-foreground">
-                        {f}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(heat.grid).map(([name, row]) => (
-                    <tr key={name}>
-                      <td className="p-2 pr-4 font-medium">{name}</td>
-                      {fys.map((f) => {
-                        const v = row[f] || 0;
-                        const intensity = v / heat.max;
-                        return (
-                          <td key={f} className="p-1">
-                            <div
-                              className="flex h-8 min-w-[70px] items-center justify-center rounded font-medium"
-                              style={{
-                                background: `rgba(29, 78, 216, ${0.08 + intensity * 0.82})`,
-                                color: intensity > 0.5 ? "#fff" : "#0b1220",
-                              }}
-                            >
-                              {v > 0 ? fmtM(v) : "—"}
-                            </div>
-                          </td>
-                        );
-                      })}
-                    </tr>
+          <SectionTitle>Forecast Heatmap — Project × FY</SectionTitle>
+          <div className="overflow-auto max-h-[420px]">
+            <table className="border-collapse text-[11px]">
+              <thead className="sticky top-0 bg-white">
+                <tr>
+                  <th className="p-2 text-left text-muted-foreground">Project Name</th>
+                  {fys.map((f) => (
+                    <th key={f} className="p-2 text-center text-muted-foreground">
+                      {f}
+                    </th>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </ExpandablePanel>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(heat.grid).map(([name, row]) => (
+                  <tr key={name}>
+                    <td className="p-2 pr-4 font-medium">{name}</td>
+                    {fys.map((f) => {
+                      const v = row[f] || 0;
+                      const intensity = v / heat.max;
+                      return (
+                        <td key={f} className="p-1">
+                          <div
+                            className="flex h-8 min-w-[70px] items-center justify-center rounded font-medium"
+                            style={{
+                              background: `rgba(29, 78, 216, ${0.08 + intensity * 0.82})`,
+                              color: intensity > 0.5 ? "#fff" : "#0b1220",
+                            }}
+                          >
+                            {v > 0 ? fmtM(v) : "—"}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </SectionFrame>
 
         <SectionFrame>
@@ -700,9 +744,12 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
             <tbody>
               {rowsF.slice(0, 500).map((r: any) => {
                 const p: any = projectMap.get(r.project_id);
-                const amt = Number(r.capex || 0) + Number(r.opex || 0);
-                const projB = Number(p?.budget || 0);
-                const bp = projB ? (amt / projB) * 100 : 0;
+                const bAmt = fyAllocBudget(r);
+                const fAmt = fyAllocForecast(r);
+                const projB = projectApprovedFunding(p);
+                const projF = projectForecast(p);
+                const bp = projB ? (bAmt / projB) * 100 : 0;
+                const fp = projF ? (fAmt / projF) * 100 : 0;
                 return (
                   <tr key={r.id}>
                     <td className="font-mono text-[11px]">
@@ -721,9 +768,9 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
                     <td>{p?.name || "—"}</td>
                     <td className="font-medium">{r.fy}</td>
                     <td className="text-right tabular-nums">{bp.toFixed(0)}</td>
-                    <td className="text-right tabular-nums">{bp.toFixed(0)}</td>
-                    <td className="text-right tabular-nums">{fmt$(amt)}</td>
-                    <td className="text-right tabular-nums">{fmt$(amt)}</td>
+                    <td className="text-right tabular-nums">{fp.toFixed(0)}</td>
+                    <td className="text-right tabular-nums">{fmt$(bAmt)}</td>
+                    <td className="text-right tabular-nums">{fmt$(fAmt)}</td>
                     <td>{p?.portfolio_category || "—"}</td>
                     <td>{p?.sponsor || "—"}</td>
                     <td>{p?.rag || "NA"}</td>
@@ -771,7 +818,7 @@ function RoadmapTab({ projects, alloc }: { projects: any[]; alloc: any[] }) {
     for (const r of rowsF) {
       const key = r.project_id;
       const row = m.get(key) || { id: key };
-      row[r.fy] = (row[r.fy] || 0) + Number(r.capex || 0) + Number(r.opex || 0);
+      row[r.fy] = (row[r.fy] || 0) + fyAllocBudget(r);
       m.set(key, row);
     }
     return Array.from(m.values());
