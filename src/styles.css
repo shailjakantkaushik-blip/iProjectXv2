@@ -490,6 +490,13 @@ body { overflow-x: hidden; }
 .shell-nav-group-trigger {
   cursor: pointer;
 }
+.shell-nav-group-label {
+  line-height: 1.25;
+}
+.exec-report-tabs {
+  /* Keep tab bar readable above scrolling tables */
+  top: 0;
+}
 .shell-nav-group-content {
   overflow: hidden;
 }

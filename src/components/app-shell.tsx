@@ -463,7 +463,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <CollapsibleTrigger
                 type="button"
                 className={cn(
-                  "shell-nav-group-trigger flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left transition-colors",
+                  "shell-nav-group-trigger flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
                   "hover:bg-sidebar-accent/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
                   hasActive && !open && "bg-sidebar-accent/40",
                 )}
@@ -471,20 +471,21 @@ export function AppShell({ children }: { children: ReactNode }) {
               >
                 <ChevronDown
                   className={cn(
-                    "h-3 w-3 shrink-0 text-muted-foreground transition-transform duration-200",
+                    "h-3.5 w-3.5 shrink-0 text-muted-foreground/80 transition-transform duration-200",
                     open ? "rotate-0" : "-rotate-90",
                   )}
                   aria-hidden
                 />
                 <span
                   className={cn(
-                    "min-w-0 flex-1 truncate text-[10px] font-semibold uppercase tracking-[0.1em]",
-                    hasActive ? "text-sidebar-foreground" : "text-muted-foreground/90",
+                    // Slightly larger than nav page links (12.5px) and section titles (13px)
+                    "shell-nav-group-label min-w-0 flex-1 truncate text-[14px] font-semibold tracking-[-0.01em]",
+                    hasActive ? "text-sidebar-foreground" : "text-sidebar-foreground/85",
                   )}
                 >
                   {group.heading}
                 </span>
-                <span className="tabular-nums text-[10px] text-muted-foreground/55">
+                <span className="tabular-nums text-[11px] text-muted-foreground/55">
                   {group.items.length}
                 </span>
               </CollapsibleTrigger>
@@ -502,7 +503,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                           "shell-nav-link group relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[12.5px] transition-all duration-200",
                           active
                             ? "bg-primary font-semibold text-primary-foreground shadow-md shadow-primary/20"
-                            : "text-sidebar-foreground hover:translate-x-0.5 hover:bg-sidebar-accent/90",
+                            : "text-sidebar-foreground/90 hover:translate-x-0.5 hover:bg-sidebar-accent/90 hover:text-sidebar-foreground",
                         )}
                       >
                         {active && (

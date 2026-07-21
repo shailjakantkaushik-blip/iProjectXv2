@@ -317,7 +317,7 @@ function ExecutiveReportsPage() {
   if (!orgId) return <PageLoading label="Loading workspace…" fullScreen={false} />;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <PageHeading
         title="Executive Reports"
         subtitle="Boardroom-ready portfolio reports — browse every section in-page"
@@ -335,29 +335,44 @@ function ExecutiveReportsPage() {
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-5">
-        <KpiCard label="Projects" value={total} />
-        <KpiCard label="Total Budget" value={fmtM(budget)} />
-        <KpiCard label="Incurred" value={fmtM(incurred)} />
-        <KpiCard label="Red" value={red} accent="var(--st-danger)" />
-        <KpiCard label="Amber" value={amber} accent="var(--st-warning)" />
-      </div>
-
       {loading ? (
         <PageLoading label="Loading report data…" fullScreen={false} />
       ) : (
-        <Tabs defaultValue="overview" className="space-y-4">
-          <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="portfolio">Portfolio & RAG</TabsTrigger>
-            <TabsTrigger value="financials">Financials</TabsTrigger>
-            <TabsTrigger value="risks">Risks & Actions</TabsTrigger>
-            <TabsTrigger value="benefits">Benefits</TabsTrigger>
-            <TabsTrigger value="gates">Stage Gates</TabsTrigger>
-            <TabsTrigger value="rollups">Programs & BU</TabsTrigger>
+        <Tabs defaultValue="overview" className="space-y-3">
+          {/* Tabs sit directly above each report’s KPIs / data tables */}
+          <TabsList className="exec-report-tabs sticky top-14 z-20 flex h-auto w-full flex-wrap justify-start gap-1 border border-border/60 bg-background/95 p-1 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/85">
+            <TabsTrigger value="overview" className="text-[13px]">
+              Overview
+            </TabsTrigger>
+            <TabsTrigger value="portfolio" className="text-[13px]">
+              Portfolio & RAG
+            </TabsTrigger>
+            <TabsTrigger value="financials" className="text-[13px]">
+              Financials
+            </TabsTrigger>
+            <TabsTrigger value="risks" className="text-[13px]">
+              Risks & Actions
+            </TabsTrigger>
+            <TabsTrigger value="benefits" className="text-[13px]">
+              Benefits
+            </TabsTrigger>
+            <TabsTrigger value="gates" className="text-[13px]">
+              Stage Gates
+            </TabsTrigger>
+            <TabsTrigger value="rollups" className="text-[13px]">
+              Programs & BU
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="space-y-4">
+          <TabsContent value="overview" className="mt-0 space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-5">
+              <KpiCard label="Projects" value={total} />
+              <KpiCard label="Total Budget" value={fmtM(budget)} />
+              <KpiCard label="Incurred" value={fmtM(incurred)} />
+              <KpiCard label="Red" value={red} accent="var(--st-danger)" />
+              <KpiCard label="Amber" value={amber} accent="var(--st-warning)" />
+            </div>
+
             <SectionFrame>
               <SectionTitle>Executive Summary</SectionTitle>
               <p className="text-sm text-muted-foreground leading-relaxed">
@@ -394,7 +409,7 @@ function ExecutiveReportsPage() {
             </div>
           </TabsContent>
 
-          <TabsContent value="portfolio" className="space-y-4">
+          <TabsContent value="portfolio" className="mt-0 space-y-4">
             <SectionFrame>
               <SectionTitle>Portfolio KPIs & RAG Status</SectionTitle>
               <div className="mb-4 grid gap-3 sm:grid-cols-4">
@@ -440,7 +455,7 @@ function ExecutiveReportsPage() {
             </SectionFrame>
           </TabsContent>
 
-          <TabsContent value="financials" className="space-y-4">
+          <TabsContent value="financials" className="mt-0 space-y-4">
             <SectionFrame>
               <SectionTitle>Financial Position (CAPEX / OPEX)</SectionTitle>
               <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -490,7 +505,7 @@ function ExecutiveReportsPage() {
             </SectionFrame>
           </TabsContent>
 
-          <TabsContent value="risks" className="space-y-4">
+          <TabsContent value="risks" className="mt-0 space-y-4">
             <SectionFrame>
               <SectionTitle>Top Risks</SectionTitle>
               <div className="mb-4 grid gap-3 sm:grid-cols-3">
@@ -580,7 +595,7 @@ function ExecutiveReportsPage() {
             </SectionFrame>
           </TabsContent>
 
-          <TabsContent value="benefits" className="space-y-4">
+          <TabsContent value="benefits" className="mt-0 space-y-4">
             <SectionFrame>
               <SectionTitle>Benefits Realisation</SectionTitle>
               <div className="mb-4 grid gap-3 sm:grid-cols-4">
@@ -631,7 +646,7 @@ function ExecutiveReportsPage() {
             </SectionFrame>
           </TabsContent>
 
-          <TabsContent value="gates" className="space-y-4">
+          <TabsContent value="gates" className="mt-0 space-y-4">
             <SectionFrame>
               <SectionTitle>Stage-Gate Progress</SectionTitle>
               <div className="mb-4 grid gap-3 sm:grid-cols-4">
@@ -720,7 +735,7 @@ function ExecutiveReportsPage() {
             </SectionFrame>
           </TabsContent>
 
-          <TabsContent value="rollups" className="space-y-4">
+          <TabsContent value="rollups" className="mt-0 space-y-4">
             <SectionFrame>
               <SectionTitle>Program Roll-up</SectionTitle>
               <div className="overflow-x-auto">
