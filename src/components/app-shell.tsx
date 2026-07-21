@@ -45,6 +45,11 @@ import {
   X,
   FileText,
   Home,
+  Sparkles,
+  Briefcase,
+  BookOpen,
+  CircleUser,
+  ListTodo,
 } from "lucide-react";
 import { useAuth, isAdmin, isPlatformAdmin } from "@/lib/auth-context";
 import { useAllowedPages } from "@/lib/permissions";
@@ -63,11 +68,13 @@ type NavItem = {
 
 const navGroups: { heading: string; items: NavItem[] }[] = [
   {
-    heading: "Home",
+    heading: "Command",
     items: [
       { to: "/app/", label: "Home", icon: Home, exact: true },
+      { to: "/app/my-work", label: "My Work", icon: Briefcase },
       { to: "/app/executive-cockpit", label: "Executive Cockpit", icon: Rocket },
       { to: "/app/executive", label: "Executive Dashboard", icon: LayoutDashboard },
+      { to: "/app/ai-assist", label: "AI Assist", icon: Sparkles },
       { to: "/app/latest-updates", label: "Latest Updates", icon: Bell },
       { to: "/app/about", label: "About", icon: Info },
     ],
@@ -87,8 +94,10 @@ const navGroups: { heading: string; items: NavItem[] }[] = [
   {
     heading: "Delivery",
     items: [
+      { to: "/app/work-items", label: "Work Items", icon: ListTodo },
       { to: "/app/timeline", label: "Timeline", icon: Calendar },
       { to: "/app/roadmap-governance", label: "Roadmap × Governance", icon: Map },
+      { to: "/app/roadmap-analytics", label: "Roadmap Analytics", icon: TrendingUp },
       { to: "/app/stage-gates", label: "Stage Gates (Waterfall)", icon: Flag },
       { to: "/app/agile", label: "Agile / Sprints", icon: Zap },
       { to: "/app/governance-channels", label: "Governance Channel", icon: Radio },
@@ -111,8 +120,11 @@ const navGroups: { heading: string; items: NavItem[] }[] = [
     heading: "Governance",
     items: [
       { to: "/app/risks", label: "Risks", icon: AlertTriangle },
+      { to: "/app/issues", label: "Issues", icon: AlertTriangle },
       { to: "/app/decisions", label: "Decisions", icon: Gavel },
       { to: "/app/actions", label: "Actions", icon: ListChecks },
+      { to: "/app/stakeholders", label: "Stakeholders", icon: CircleUser },
+      { to: "/app/lessons", label: "Lessons Learned", icon: BookOpen },
       { to: "/app/release-register", label: "Release Register", icon: Package },
       { to: "/app/executive-reports", label: "Executive Reports", icon: FileBarChart },
       { to: "/app/data-editor", label: "Data Editor", icon: Table2 },

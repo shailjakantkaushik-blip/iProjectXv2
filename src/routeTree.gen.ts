@@ -21,6 +21,7 @@ import { Route as AuthenticatedAppIndexRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedAppAboutRouteImport } from './routes/_authenticated/app.about'
 import { Route as AuthenticatedAppActionsRouteImport } from './routes/_authenticated/app.actions'
 import { Route as AuthenticatedAppAgileRouteImport } from './routes/_authenticated/app.agile'
+import { Route as AuthenticatedAppAiAssistRouteImport } from './routes/_authenticated/app.ai-assist'
 import { Route as AuthenticatedAppBenefitsRouteImport } from './routes/_authenticated/app.benefits'
 import { Route as AuthenticatedAppBillingRouteImport } from './routes/_authenticated/app.billing'
 import { Route as AuthenticatedAppBusinessUnitsRouteImport } from './routes/_authenticated/app.business-units'
@@ -37,7 +38,10 @@ import { Route as AuthenticatedAppExecutiveReportsRouteImport } from './routes/_
 import { Route as AuthenticatedAppFinancialsRouteImport } from './routes/_authenticated/app.financials'
 import { Route as AuthenticatedAppFyAllocationRouteImport } from './routes/_authenticated/app.fy-allocation'
 import { Route as AuthenticatedAppGovernanceChannelsRouteImport } from './routes/_authenticated/app.governance-channels'
+import { Route as AuthenticatedAppIssuesRouteImport } from './routes/_authenticated/app.issues'
 import { Route as AuthenticatedAppLatestUpdatesRouteImport } from './routes/_authenticated/app.latest-updates'
+import { Route as AuthenticatedAppLessonsRouteImport } from './routes/_authenticated/app.lessons'
+import { Route as AuthenticatedAppMyWorkRouteImport } from './routes/_authenticated/app.my-work'
 import { Route as AuthenticatedAppPermissionsRouteImport } from './routes/_authenticated/app.permissions'
 import { Route as AuthenticatedAppPhaseFinancialsRouteImport } from './routes/_authenticated/app.phase-financials'
 import { Route as AuthenticatedAppPortfolioMovementsRouteImport } from './routes/_authenticated/app.portfolio-movements'
@@ -55,8 +59,10 @@ import { Route as AuthenticatedAppRoadmapGovernanceRouteImport } from './routes/
 import { Route as AuthenticatedAppSettingsRouteImport } from './routes/_authenticated/app.settings'
 import { Route as AuthenticatedAppStageGateConfigRouteImport } from './routes/_authenticated/app.stage-gate-config'
 import { Route as AuthenticatedAppStageGatesRouteImport } from './routes/_authenticated/app.stage-gates'
+import { Route as AuthenticatedAppStakeholdersRouteImport } from './routes/_authenticated/app.stakeholders'
 import { Route as AuthenticatedAppTeamRouteImport } from './routes/_authenticated/app.team'
 import { Route as AuthenticatedAppTimelineRouteImport } from './routes/_authenticated/app.timeline'
+import { Route as AuthenticatedAppWorkItemsRouteImport } from './routes/_authenticated/app.work-items'
 import { Route as AuthenticatedPlatformBrandingRouteImport } from './routes/_authenticated/platform.branding'
 import { Route as AuthenticatedPlatformExpensesRouteImport } from './routes/_authenticated/platform.expenses'
 import { Route as AuthenticatedPlatformFinanceRouteImport } from './routes/_authenticated/platform.finance'
@@ -132,6 +138,12 @@ const AuthenticatedAppAgileRoute = AuthenticatedAppAgileRouteImport.update({
   path: '/agile',
   getParentRoute: () => AuthenticatedAppRoute,
 } as any)
+const AuthenticatedAppAiAssistRoute =
+  AuthenticatedAppAiAssistRouteImport.update({
+    id: '/ai-assist',
+    path: '/ai-assist',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
 const AuthenticatedAppBenefitsRoute =
   AuthenticatedAppBenefitsRouteImport.update({
     id: '/benefits',
@@ -227,12 +239,27 @@ const AuthenticatedAppGovernanceChannelsRoute =
     path: '/governance-channels',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
+const AuthenticatedAppIssuesRoute = AuthenticatedAppIssuesRouteImport.update({
+  id: '/issues',
+  path: '/issues',
+  getParentRoute: () => AuthenticatedAppRoute,
+} as any)
 const AuthenticatedAppLatestUpdatesRoute =
   AuthenticatedAppLatestUpdatesRouteImport.update({
     id: '/latest-updates',
     path: '/latest-updates',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
+const AuthenticatedAppLessonsRoute = AuthenticatedAppLessonsRouteImport.update({
+  id: '/lessons',
+  path: '/lessons',
+  getParentRoute: () => AuthenticatedAppRoute,
+} as any)
+const AuthenticatedAppMyWorkRoute = AuthenticatedAppMyWorkRouteImport.update({
+  id: '/my-work',
+  path: '/my-work',
+  getParentRoute: () => AuthenticatedAppRoute,
+} as any)
 const AuthenticatedAppPermissionsRoute =
   AuthenticatedAppPermissionsRouteImport.update({
     id: '/permissions',
@@ -334,6 +361,12 @@ const AuthenticatedAppStageGatesRoute =
     path: '/stage-gates',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
+const AuthenticatedAppStakeholdersRoute =
+  AuthenticatedAppStakeholdersRouteImport.update({
+    id: '/stakeholders',
+    path: '/stakeholders',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
 const AuthenticatedAppTeamRoute = AuthenticatedAppTeamRouteImport.update({
   id: '/team',
   path: '/team',
@@ -343,6 +376,12 @@ const AuthenticatedAppTimelineRoute =
   AuthenticatedAppTimelineRouteImport.update({
     id: '/timeline',
     path: '/timeline',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
+const AuthenticatedAppWorkItemsRoute =
+  AuthenticatedAppWorkItemsRouteImport.update({
+    id: '/work-items',
+    path: '/work-items',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
 const AuthenticatedPlatformBrandingRoute =
@@ -447,6 +486,7 @@ export interface FileRoutesByFullPath {
   '/app/about': typeof AuthenticatedAppAboutRoute
   '/app/actions': typeof AuthenticatedAppActionsRoute
   '/app/agile': typeof AuthenticatedAppAgileRoute
+  '/app/ai-assist': typeof AuthenticatedAppAiAssistRoute
   '/app/benefits': typeof AuthenticatedAppBenefitsRoute
   '/app/billing': typeof AuthenticatedAppBillingRoute
   '/app/business-units': typeof AuthenticatedAppBusinessUnitsRoute
@@ -463,7 +503,10 @@ export interface FileRoutesByFullPath {
   '/app/financials': typeof AuthenticatedAppFinancialsRoute
   '/app/fy-allocation': typeof AuthenticatedAppFyAllocationRoute
   '/app/governance-channels': typeof AuthenticatedAppGovernanceChannelsRoute
+  '/app/issues': typeof AuthenticatedAppIssuesRoute
   '/app/latest-updates': typeof AuthenticatedAppLatestUpdatesRoute
+  '/app/lessons': typeof AuthenticatedAppLessonsRoute
+  '/app/my-work': typeof AuthenticatedAppMyWorkRoute
   '/app/permissions': typeof AuthenticatedAppPermissionsRoute
   '/app/phase-financials': typeof AuthenticatedAppPhaseFinancialsRoute
   '/app/portfolio-movements': typeof AuthenticatedAppPortfolioMovementsRoute
@@ -481,8 +524,10 @@ export interface FileRoutesByFullPath {
   '/app/settings': typeof AuthenticatedAppSettingsRoute
   '/app/stage-gate-config': typeof AuthenticatedAppStageGateConfigRoute
   '/app/stage-gates': typeof AuthenticatedAppStageGatesRoute
+  '/app/stakeholders': typeof AuthenticatedAppStakeholdersRoute
   '/app/team': typeof AuthenticatedAppTeamRoute
   '/app/timeline': typeof AuthenticatedAppTimelineRoute
+  '/app/work-items': typeof AuthenticatedAppWorkItemsRoute
   '/platform/branding': typeof AuthenticatedPlatformBrandingRoute
   '/platform/expenses': typeof AuthenticatedPlatformExpensesRoute
   '/platform/finance': typeof AuthenticatedPlatformFinanceRoute
@@ -510,6 +555,7 @@ export interface FileRoutesByTo {
   '/app/about': typeof AuthenticatedAppAboutRoute
   '/app/actions': typeof AuthenticatedAppActionsRoute
   '/app/agile': typeof AuthenticatedAppAgileRoute
+  '/app/ai-assist': typeof AuthenticatedAppAiAssistRoute
   '/app/benefits': typeof AuthenticatedAppBenefitsRoute
   '/app/billing': typeof AuthenticatedAppBillingRoute
   '/app/business-units': typeof AuthenticatedAppBusinessUnitsRoute
@@ -526,7 +572,10 @@ export interface FileRoutesByTo {
   '/app/financials': typeof AuthenticatedAppFinancialsRoute
   '/app/fy-allocation': typeof AuthenticatedAppFyAllocationRoute
   '/app/governance-channels': typeof AuthenticatedAppGovernanceChannelsRoute
+  '/app/issues': typeof AuthenticatedAppIssuesRoute
   '/app/latest-updates': typeof AuthenticatedAppLatestUpdatesRoute
+  '/app/lessons': typeof AuthenticatedAppLessonsRoute
+  '/app/my-work': typeof AuthenticatedAppMyWorkRoute
   '/app/permissions': typeof AuthenticatedAppPermissionsRoute
   '/app/phase-financials': typeof AuthenticatedAppPhaseFinancialsRoute
   '/app/portfolio-movements': typeof AuthenticatedAppPortfolioMovementsRoute
@@ -544,8 +593,10 @@ export interface FileRoutesByTo {
   '/app/settings': typeof AuthenticatedAppSettingsRoute
   '/app/stage-gate-config': typeof AuthenticatedAppStageGateConfigRoute
   '/app/stage-gates': typeof AuthenticatedAppStageGatesRoute
+  '/app/stakeholders': typeof AuthenticatedAppStakeholdersRoute
   '/app/team': typeof AuthenticatedAppTeamRoute
   '/app/timeline': typeof AuthenticatedAppTimelineRoute
+  '/app/work-items': typeof AuthenticatedAppWorkItemsRoute
   '/platform/branding': typeof AuthenticatedPlatformBrandingRoute
   '/platform/expenses': typeof AuthenticatedPlatformExpensesRoute
   '/platform/finance': typeof AuthenticatedPlatformFinanceRoute
@@ -576,6 +627,7 @@ export interface FileRoutesById {
   '/_authenticated/app/about': typeof AuthenticatedAppAboutRoute
   '/_authenticated/app/actions': typeof AuthenticatedAppActionsRoute
   '/_authenticated/app/agile': typeof AuthenticatedAppAgileRoute
+  '/_authenticated/app/ai-assist': typeof AuthenticatedAppAiAssistRoute
   '/_authenticated/app/benefits': typeof AuthenticatedAppBenefitsRoute
   '/_authenticated/app/billing': typeof AuthenticatedAppBillingRoute
   '/_authenticated/app/business-units': typeof AuthenticatedAppBusinessUnitsRoute
@@ -592,7 +644,10 @@ export interface FileRoutesById {
   '/_authenticated/app/financials': typeof AuthenticatedAppFinancialsRoute
   '/_authenticated/app/fy-allocation': typeof AuthenticatedAppFyAllocationRoute
   '/_authenticated/app/governance-channels': typeof AuthenticatedAppGovernanceChannelsRoute
+  '/_authenticated/app/issues': typeof AuthenticatedAppIssuesRoute
   '/_authenticated/app/latest-updates': typeof AuthenticatedAppLatestUpdatesRoute
+  '/_authenticated/app/lessons': typeof AuthenticatedAppLessonsRoute
+  '/_authenticated/app/my-work': typeof AuthenticatedAppMyWorkRoute
   '/_authenticated/app/permissions': typeof AuthenticatedAppPermissionsRoute
   '/_authenticated/app/phase-financials': typeof AuthenticatedAppPhaseFinancialsRoute
   '/_authenticated/app/portfolio-movements': typeof AuthenticatedAppPortfolioMovementsRoute
@@ -610,8 +665,10 @@ export interface FileRoutesById {
   '/_authenticated/app/settings': typeof AuthenticatedAppSettingsRoute
   '/_authenticated/app/stage-gate-config': typeof AuthenticatedAppStageGateConfigRoute
   '/_authenticated/app/stage-gates': typeof AuthenticatedAppStageGatesRoute
+  '/_authenticated/app/stakeholders': typeof AuthenticatedAppStakeholdersRoute
   '/_authenticated/app/team': typeof AuthenticatedAppTeamRoute
   '/_authenticated/app/timeline': typeof AuthenticatedAppTimelineRoute
+  '/_authenticated/app/work-items': typeof AuthenticatedAppWorkItemsRoute
   '/_authenticated/platform/branding': typeof AuthenticatedPlatformBrandingRoute
   '/_authenticated/platform/expenses': typeof AuthenticatedPlatformExpensesRoute
   '/_authenticated/platform/finance': typeof AuthenticatedPlatformFinanceRoute
@@ -642,6 +699,7 @@ export interface FileRouteTypes {
     | '/app/about'
     | '/app/actions'
     | '/app/agile'
+    | '/app/ai-assist'
     | '/app/benefits'
     | '/app/billing'
     | '/app/business-units'
@@ -658,7 +716,10 @@ export interface FileRouteTypes {
     | '/app/financials'
     | '/app/fy-allocation'
     | '/app/governance-channels'
+    | '/app/issues'
     | '/app/latest-updates'
+    | '/app/lessons'
+    | '/app/my-work'
     | '/app/permissions'
     | '/app/phase-financials'
     | '/app/portfolio-movements'
@@ -676,8 +737,10 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/stage-gate-config'
     | '/app/stage-gates'
+    | '/app/stakeholders'
     | '/app/team'
     | '/app/timeline'
+    | '/app/work-items'
     | '/platform/branding'
     | '/platform/expenses'
     | '/platform/finance'
@@ -705,6 +768,7 @@ export interface FileRouteTypes {
     | '/app/about'
     | '/app/actions'
     | '/app/agile'
+    | '/app/ai-assist'
     | '/app/benefits'
     | '/app/billing'
     | '/app/business-units'
@@ -721,7 +785,10 @@ export interface FileRouteTypes {
     | '/app/financials'
     | '/app/fy-allocation'
     | '/app/governance-channels'
+    | '/app/issues'
     | '/app/latest-updates'
+    | '/app/lessons'
+    | '/app/my-work'
     | '/app/permissions'
     | '/app/phase-financials'
     | '/app/portfolio-movements'
@@ -739,8 +806,10 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/stage-gate-config'
     | '/app/stage-gates'
+    | '/app/stakeholders'
     | '/app/team'
     | '/app/timeline'
+    | '/app/work-items'
     | '/platform/branding'
     | '/platform/expenses'
     | '/platform/finance'
@@ -770,6 +839,7 @@ export interface FileRouteTypes {
     | '/_authenticated/app/about'
     | '/_authenticated/app/actions'
     | '/_authenticated/app/agile'
+    | '/_authenticated/app/ai-assist'
     | '/_authenticated/app/benefits'
     | '/_authenticated/app/billing'
     | '/_authenticated/app/business-units'
@@ -786,7 +856,10 @@ export interface FileRouteTypes {
     | '/_authenticated/app/financials'
     | '/_authenticated/app/fy-allocation'
     | '/_authenticated/app/governance-channels'
+    | '/_authenticated/app/issues'
     | '/_authenticated/app/latest-updates'
+    | '/_authenticated/app/lessons'
+    | '/_authenticated/app/my-work'
     | '/_authenticated/app/permissions'
     | '/_authenticated/app/phase-financials'
     | '/_authenticated/app/portfolio-movements'
@@ -804,8 +877,10 @@ export interface FileRouteTypes {
     | '/_authenticated/app/settings'
     | '/_authenticated/app/stage-gate-config'
     | '/_authenticated/app/stage-gates'
+    | '/_authenticated/app/stakeholders'
     | '/_authenticated/app/team'
     | '/_authenticated/app/timeline'
+    | '/_authenticated/app/work-items'
     | '/_authenticated/platform/branding'
     | '/_authenticated/platform/expenses'
     | '/_authenticated/platform/finance'
@@ -917,6 +992,13 @@ declare module '@tanstack/react-router' {
       path: '/agile'
       fullPath: '/app/agile'
       preLoaderRoute: typeof AuthenticatedAppAgileRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/app/ai-assist': {
+      id: '/_authenticated/app/ai-assist'
+      path: '/ai-assist'
+      fullPath: '/app/ai-assist'
+      preLoaderRoute: typeof AuthenticatedAppAiAssistRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
     '/_authenticated/app/benefits': {
@@ -1031,11 +1113,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppGovernanceChannelsRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
+    '/_authenticated/app/issues': {
+      id: '/_authenticated/app/issues'
+      path: '/issues'
+      fullPath: '/app/issues'
+      preLoaderRoute: typeof AuthenticatedAppIssuesRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
     '/_authenticated/app/latest-updates': {
       id: '/_authenticated/app/latest-updates'
       path: '/latest-updates'
       fullPath: '/app/latest-updates'
       preLoaderRoute: typeof AuthenticatedAppLatestUpdatesRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/app/lessons': {
+      id: '/_authenticated/app/lessons'
+      path: '/lessons'
+      fullPath: '/app/lessons'
+      preLoaderRoute: typeof AuthenticatedAppLessonsRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/app/my-work': {
+      id: '/_authenticated/app/my-work'
+      path: '/my-work'
+      fullPath: '/app/my-work'
+      preLoaderRoute: typeof AuthenticatedAppMyWorkRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
     '/_authenticated/app/permissions': {
@@ -1157,6 +1260,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppStageGatesRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
+    '/_authenticated/app/stakeholders': {
+      id: '/_authenticated/app/stakeholders'
+      path: '/stakeholders'
+      fullPath: '/app/stakeholders'
+      preLoaderRoute: typeof AuthenticatedAppStakeholdersRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
     '/_authenticated/app/team': {
       id: '/_authenticated/app/team'
       path: '/team'
@@ -1169,6 +1279,13 @@ declare module '@tanstack/react-router' {
       path: '/timeline'
       fullPath: '/app/timeline'
       preLoaderRoute: typeof AuthenticatedAppTimelineRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/app/work-items': {
+      id: '/_authenticated/app/work-items'
+      path: '/work-items'
+      fullPath: '/app/work-items'
+      preLoaderRoute: typeof AuthenticatedAppWorkItemsRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
     '/_authenticated/platform/branding': {
@@ -1299,6 +1416,7 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppAboutRoute: typeof AuthenticatedAppAboutRoute
   AuthenticatedAppActionsRoute: typeof AuthenticatedAppActionsRoute
   AuthenticatedAppAgileRoute: typeof AuthenticatedAppAgileRoute
+  AuthenticatedAppAiAssistRoute: typeof AuthenticatedAppAiAssistRoute
   AuthenticatedAppBenefitsRoute: typeof AuthenticatedAppBenefitsRoute
   AuthenticatedAppBillingRoute: typeof AuthenticatedAppBillingRoute
   AuthenticatedAppBusinessUnitsRoute: typeof AuthenticatedAppBusinessUnitsRoute
@@ -1315,7 +1433,10 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppFinancialsRoute: typeof AuthenticatedAppFinancialsRoute
   AuthenticatedAppFyAllocationRoute: typeof AuthenticatedAppFyAllocationRoute
   AuthenticatedAppGovernanceChannelsRoute: typeof AuthenticatedAppGovernanceChannelsRoute
+  AuthenticatedAppIssuesRoute: typeof AuthenticatedAppIssuesRoute
   AuthenticatedAppLatestUpdatesRoute: typeof AuthenticatedAppLatestUpdatesRoute
+  AuthenticatedAppLessonsRoute: typeof AuthenticatedAppLessonsRoute
+  AuthenticatedAppMyWorkRoute: typeof AuthenticatedAppMyWorkRoute
   AuthenticatedAppPermissionsRoute: typeof AuthenticatedAppPermissionsRoute
   AuthenticatedAppPhaseFinancialsRoute: typeof AuthenticatedAppPhaseFinancialsRoute
   AuthenticatedAppPortfolioMovementsRoute: typeof AuthenticatedAppPortfolioMovementsRoute
@@ -1333,8 +1454,10 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppSettingsRoute: typeof AuthenticatedAppSettingsRoute
   AuthenticatedAppStageGateConfigRoute: typeof AuthenticatedAppStageGateConfigRoute
   AuthenticatedAppStageGatesRoute: typeof AuthenticatedAppStageGatesRoute
+  AuthenticatedAppStakeholdersRoute: typeof AuthenticatedAppStakeholdersRoute
   AuthenticatedAppTeamRoute: typeof AuthenticatedAppTeamRoute
   AuthenticatedAppTimelineRoute: typeof AuthenticatedAppTimelineRoute
+  AuthenticatedAppWorkItemsRoute: typeof AuthenticatedAppWorkItemsRoute
   AuthenticatedAppIndexRoute: typeof AuthenticatedAppIndexRoute
   AuthenticatedAppInvoiceIdRoute: typeof AuthenticatedAppInvoiceIdRoute
 }
@@ -1343,6 +1466,7 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppAboutRoute: AuthenticatedAppAboutRoute,
   AuthenticatedAppActionsRoute: AuthenticatedAppActionsRoute,
   AuthenticatedAppAgileRoute: AuthenticatedAppAgileRoute,
+  AuthenticatedAppAiAssistRoute: AuthenticatedAppAiAssistRoute,
   AuthenticatedAppBenefitsRoute: AuthenticatedAppBenefitsRoute,
   AuthenticatedAppBillingRoute: AuthenticatedAppBillingRoute,
   AuthenticatedAppBusinessUnitsRoute: AuthenticatedAppBusinessUnitsRoute,
@@ -1360,7 +1484,10 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppFyAllocationRoute: AuthenticatedAppFyAllocationRoute,
   AuthenticatedAppGovernanceChannelsRoute:
     AuthenticatedAppGovernanceChannelsRoute,
+  AuthenticatedAppIssuesRoute: AuthenticatedAppIssuesRoute,
   AuthenticatedAppLatestUpdatesRoute: AuthenticatedAppLatestUpdatesRoute,
+  AuthenticatedAppLessonsRoute: AuthenticatedAppLessonsRoute,
+  AuthenticatedAppMyWorkRoute: AuthenticatedAppMyWorkRoute,
   AuthenticatedAppPermissionsRoute: AuthenticatedAppPermissionsRoute,
   AuthenticatedAppPhaseFinancialsRoute: AuthenticatedAppPhaseFinancialsRoute,
   AuthenticatedAppPortfolioMovementsRoute:
@@ -1382,8 +1509,10 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppSettingsRoute: AuthenticatedAppSettingsRoute,
   AuthenticatedAppStageGateConfigRoute: AuthenticatedAppStageGateConfigRoute,
   AuthenticatedAppStageGatesRoute: AuthenticatedAppStageGatesRoute,
+  AuthenticatedAppStakeholdersRoute: AuthenticatedAppStakeholdersRoute,
   AuthenticatedAppTeamRoute: AuthenticatedAppTeamRoute,
   AuthenticatedAppTimelineRoute: AuthenticatedAppTimelineRoute,
+  AuthenticatedAppWorkItemsRoute: AuthenticatedAppWorkItemsRoute,
   AuthenticatedAppIndexRoute: AuthenticatedAppIndexRoute,
   AuthenticatedAppInvoiceIdRoute: AuthenticatedAppInvoiceIdRoute,
 }
@@ -1453,3 +1582,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
