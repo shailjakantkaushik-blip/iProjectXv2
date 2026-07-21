@@ -38,12 +38,6 @@ const CARDS = [
     desc: "Configure the stage gates used across all projects",
   },
   {
-    to: "/app/color-palette",
-    icon: Palette,
-    title: "Colour palette",
-    desc: "Organisation templates and custom hex colours (overrides platform theme)",
-  },
-  {
     to: "/app/chart-theme",
     icon: Palette,
     title: "Chart Theme",

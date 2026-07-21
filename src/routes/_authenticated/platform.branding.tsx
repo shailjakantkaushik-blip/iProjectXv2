@@ -94,8 +94,9 @@ function PlatformBrandingPage() {
           <Palette className="h-7 w-7" /> White Label & Branding
         </h1>
         <p className="text-sm text-muted-foreground">
-          Manage the display name, logo, logo sizes and colour palette for each organisation. Share
-          each org’s dedicated sign-in link so login shows only their white-label branding.
+          Manage the display name, logo, logo sizes and colour palette for each organisation
+          (platform admin only). Organisation admins cannot change the palette — it is controlled
+          here. Share each org’s dedicated sign-in link so login shows only their white-label branding.
         </p>
       </div>
 

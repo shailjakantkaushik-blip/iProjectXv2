@@ -26,6 +26,7 @@ import {
   LabelList,
 } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { ExpandablePanel } from "@/components/expandable-panel";
 
 export const Route = createFileRoute("/_authenticated/app/risk-roadmap")({
   head: () => ({
@@ -226,42 +227,43 @@ function RiskRoadmapPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <SectionFrame>
-          <SectionTitle>Probability × Impact Heatmap</SectionTitle>
-          <div className="overflow-x-auto">
-            <table className="border-collapse text-[12px]">
-              <thead>
-                <tr>
-                  <th className="p-1 text-muted-foreground">P ↓ / I →</th>
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <th key={i} className="p-1 text-center w-10">
-                      {i}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {[5, 4, 3, 2, 1].map((p) => (
-                  <tr key={p}>
-                    <td className="p-1 pr-2 text-right font-medium">{p}</td>
-                    {[1, 2, 3, 4, 5].map((i) => {
-                      const cnt = heat[p - 1][i - 1];
-                      const sev = p * i;
-                      return (
-                        <td key={i} className="p-0">
-                          <div
-                            className="m-0.5 flex h-10 w-10 items-center justify-center rounded text-white font-semibold"
-                            style={{ background: SEV_COLOR(sev), opacity: cnt > 0 ? 1 : 0.25 }}
-                          >
-                            {cnt || ""}
-                          </div>
-                        </td>
-                      );
-                    })}
+          <ExpandablePanel title="Probability × Impact Heatmap">
+            <div className="overflow-x-auto">
+              <table className="border-collapse text-[12px]">
+                <thead>
+                  <tr>
+                    <th className="p-1 text-muted-foreground">P ↓ / I →</th>
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <th key={i} className="p-1 text-center w-10">
+                        {i}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {[5, 4, 3, 2, 1].map((p) => (
+                    <tr key={p}>
+                      <td className="p-1 pr-2 text-right font-medium">{p}</td>
+                      {[1, 2, 3, 4, 5].map((i) => {
+                        const cnt = heat[p - 1][i - 1];
+                        const sev = p * i;
+                        return (
+                          <td key={i} className="p-0">
+                            <div
+                              className="m-0.5 flex h-10 w-10 items-center justify-center rounded text-white font-semibold"
+                              style={{ background: SEV_COLOR(sev), opacity: cnt > 0 ? 1 : 0.25 }}
+                            >
+                              {cnt || ""}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </ExpandablePanel>
         </SectionFrame>
 
         <SectionFrame>

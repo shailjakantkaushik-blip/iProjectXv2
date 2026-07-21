@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useAuth, isAdmin } from "@/lib/auth-context";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Palette, CalendarClock } from "lucide-react";
@@ -6,7 +6,6 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { MONTH_NAMES } from "@/lib/fiscal-year";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/_authenticated/app/settings")({
   component: SettingsPage,
@@ -86,10 +85,10 @@ function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Palette className="h-5 w-5" /> Colour palette & branding</CardTitle>
+          <CardTitle className="flex items-center gap-2"><Palette className="h-5 w-5" /> White Label & Branding</CardTitle>
           <CardDescription>
-            Organisation admins can set templates and custom hex colours under Configuration → Colour palette.
-            Your org palette overrides the platform theme in the app.
+            Brand name, logo, and colour palette are managed by the platform team under White Label &amp; Branding.
+            Organisation admins cannot edit the palette here.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
@@ -99,7 +98,7 @@ function SettingsPage() {
                 ? <img src={organization.logo_url} alt="" className="max-h-full max-w-full object-contain" />
                 : <span className="text-white text-sm font-bold">{(organization?.brand_name || organization?.name || "?").slice(0, 2).toUpperCase()}</span>}
             </div>
-            <div className="min-w-0 flex-1">
+            <div>
               <div className="font-semibold" style={{ color: organization?.primary_color || undefined }}>
                 {organization?.brand_name || organization?.name}
               </div>
@@ -107,11 +106,6 @@ function SettingsPage() {
                 Primary {organization?.primary_color ?? "—"} · Accent {organization?.accent_color ?? "—"}
               </div>
             </div>
-            {canEdit && (
-              <Button asChild size="sm" className="shrink-0">
-                <Link to="/app/color-palette">Edit palette</Link>
-              </Button>
-            )}
           </div>
         </CardContent>
       </Card>

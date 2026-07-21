@@ -27,7 +27,6 @@ import { Route as AuthenticatedAppBenefitsRouteImport } from './routes/_authenti
 import { Route as AuthenticatedAppBillingRouteImport } from './routes/_authenticated/app.billing'
 import { Route as AuthenticatedAppBusinessUnitsRouteImport } from './routes/_authenticated/app.business-units'
 import { Route as AuthenticatedAppChartThemeRouteImport } from './routes/_authenticated/app.chart-theme'
-import { Route as AuthenticatedAppColorPaletteRouteImport } from './routes/_authenticated/app.color-palette'
 import { Route as AuthenticatedAppConfigurationRouteImport } from './routes/_authenticated/app.configuration'
 import { Route as AuthenticatedAppCostVsBenefitRouteImport } from './routes/_authenticated/app.cost-vs-benefit'
 import { Route as AuthenticatedAppDataEditorRouteImport } from './routes/_authenticated/app.data-editor'
@@ -180,12 +179,6 @@ const AuthenticatedAppChartThemeRoute =
   AuthenticatedAppChartThemeRouteImport.update({
     id: '/chart-theme',
     path: '/chart-theme',
-    getParentRoute: () => AuthenticatedAppRoute,
-  } as any)
-const AuthenticatedAppColorPaletteRoute =
-  AuthenticatedAppColorPaletteRouteImport.update({
-    id: '/color-palette',
-    path: '/color-palette',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
 const AuthenticatedAppConfigurationRoute =
@@ -554,7 +547,6 @@ export interface FileRoutesByFullPath {
   '/app/billing': typeof AuthenticatedAppBillingRoute
   '/app/business-units': typeof AuthenticatedAppBusinessUnitsRoute
   '/app/chart-theme': typeof AuthenticatedAppChartThemeRoute
-  '/app/color-palette': typeof AuthenticatedAppColorPaletteRoute
   '/app/configuration': typeof AuthenticatedAppConfigurationRoute
   '/app/cost-vs-benefit': typeof AuthenticatedAppCostVsBenefitRoute
   '/app/data-editor': typeof AuthenticatedAppDataEditorRoute
@@ -632,7 +624,6 @@ export interface FileRoutesByTo {
   '/app/billing': typeof AuthenticatedAppBillingRoute
   '/app/business-units': typeof AuthenticatedAppBusinessUnitsRoute
   '/app/chart-theme': typeof AuthenticatedAppChartThemeRoute
-  '/app/color-palette': typeof AuthenticatedAppColorPaletteRoute
   '/app/configuration': typeof AuthenticatedAppConfigurationRoute
   '/app/cost-vs-benefit': typeof AuthenticatedAppCostVsBenefitRoute
   '/app/data-editor': typeof AuthenticatedAppDataEditorRoute
@@ -713,7 +704,6 @@ export interface FileRoutesById {
   '/_authenticated/app/billing': typeof AuthenticatedAppBillingRoute
   '/_authenticated/app/business-units': typeof AuthenticatedAppBusinessUnitsRoute
   '/_authenticated/app/chart-theme': typeof AuthenticatedAppChartThemeRoute
-  '/_authenticated/app/color-palette': typeof AuthenticatedAppColorPaletteRoute
   '/_authenticated/app/configuration': typeof AuthenticatedAppConfigurationRoute
   '/_authenticated/app/cost-vs-benefit': typeof AuthenticatedAppCostVsBenefitRoute
   '/_authenticated/app/data-editor': typeof AuthenticatedAppDataEditorRoute
@@ -794,7 +784,6 @@ export interface FileRouteTypes {
     | '/app/billing'
     | '/app/business-units'
     | '/app/chart-theme'
-    | '/app/color-palette'
     | '/app/configuration'
     | '/app/cost-vs-benefit'
     | '/app/data-editor'
@@ -872,7 +861,6 @@ export interface FileRouteTypes {
     | '/app/billing'
     | '/app/business-units'
     | '/app/chart-theme'
-    | '/app/color-palette'
     | '/app/configuration'
     | '/app/cost-vs-benefit'
     | '/app/data-editor'
@@ -952,7 +940,6 @@ export interface FileRouteTypes {
     | '/_authenticated/app/billing'
     | '/_authenticated/app/business-units'
     | '/_authenticated/app/chart-theme'
-    | '/_authenticated/app/color-palette'
     | '/_authenticated/app/configuration'
     | '/_authenticated/app/cost-vs-benefit'
     | '/_authenticated/app/data-editor'
@@ -1151,13 +1138,6 @@ declare module '@tanstack/react-router' {
       path: '/chart-theme'
       fullPath: '/app/chart-theme'
       preLoaderRoute: typeof AuthenticatedAppChartThemeRouteImport
-      parentRoute: typeof AuthenticatedAppRoute
-    }
-    '/_authenticated/app/color-palette': {
-      id: '/_authenticated/app/color-palette'
-      path: '/color-palette'
-      fullPath: '/app/color-palette'
-      preLoaderRoute: typeof AuthenticatedAppColorPaletteRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
     '/_authenticated/app/configuration': {
@@ -1602,7 +1582,6 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppBillingRoute: typeof AuthenticatedAppBillingRoute
   AuthenticatedAppBusinessUnitsRoute: typeof AuthenticatedAppBusinessUnitsRoute
   AuthenticatedAppChartThemeRoute: typeof AuthenticatedAppChartThemeRoute
-  AuthenticatedAppColorPaletteRoute: typeof AuthenticatedAppColorPaletteRoute
   AuthenticatedAppConfigurationRoute: typeof AuthenticatedAppConfigurationRoute
   AuthenticatedAppCostVsBenefitRoute: typeof AuthenticatedAppCostVsBenefitRoute
   AuthenticatedAppDataEditorRoute: typeof AuthenticatedAppDataEditorRoute
@@ -1658,7 +1637,6 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppBillingRoute: AuthenticatedAppBillingRoute,
   AuthenticatedAppBusinessUnitsRoute: AuthenticatedAppBusinessUnitsRoute,
   AuthenticatedAppChartThemeRoute: AuthenticatedAppChartThemeRoute,
-  AuthenticatedAppColorPaletteRoute: AuthenticatedAppColorPaletteRoute,
   AuthenticatedAppConfigurationRoute: AuthenticatedAppConfigurationRoute,
   AuthenticatedAppCostVsBenefitRoute: AuthenticatedAppCostVsBenefitRoute,
   AuthenticatedAppDataEditorRoute: AuthenticatedAppDataEditorRoute,

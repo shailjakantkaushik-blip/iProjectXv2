@@ -27,6 +27,7 @@ import {
   Cell,
 } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { ExpandablePanel } from "@/components/expandable-panel";
 
 export const Route = createFileRoute("/_authenticated/app/resources")({
   component: ResourcesPage,
@@ -231,7 +232,7 @@ function ResourcesPage() {
     under: utilisation.filter((u) => u.status === "Under").length,
   };
 
-  // Resource × Month heatmap grid
+  // Resource × Month heatmap grid (sum all project allocations in the month)
   const heatGrid = useMemo(() => {
     return resources.map((r) => {
       const row: { name: string; cells: { month: string; pct: number }[] } = {
@@ -239,8 +240,10 @@ function ResourcesPage() {
         cells: [],
       };
       months.forEach((m) => {
-        const found = allocations.find((a) => a.resource_id === r.id && a.period_month === m);
-        row.cells.push({ month: m, pct: Math.round(Number(found?.allocation_percent || 0)) });
+        const total = allocations
+          .filter((a) => a.resource_id === r.id && a.period_month === m)
+          .reduce((s, a) => s + Number(a.allocation_percent || 0), 0);
+        row.cells.push({ month: m, pct: Math.round(total) });
       });
       return row;
     });
@@ -500,55 +503,56 @@ function ResourcesPage() {
       </SectionFrame>
 
       <SectionFrame>
-        <SectionTitle>Month-wise Allocation Heatmap (Resource × Month)</SectionTitle>
-        <div className="overflow-auto max-h-[420px]">
-          <table className="border-separate border-spacing-0 text-xs">
-            <thead>
-              <tr>
-                <th className="sticky left-0 z-10 bg-background px-2 py-1 text-left">Resource</th>
-                {months.map((m) => (
-                  <th key={m} className="px-2 py-1 text-center font-normal text-muted-foreground">
-                    {monthLabel(m)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {heatGrid.map((row) => (
-                <tr key={row.name}>
-                  <td className="sticky left-0 z-10 bg-background px-2 py-1 font-medium">
-                    {row.name}
-                  </td>
-                  {row.cells.map((c, i) => (
-                    <td key={i} className="p-0">
-                      <div
-                        className="mx-0.5 my-0.5 flex h-8 min-w-[64px] items-center justify-center rounded text-[11px] font-semibold text-white"
-                        style={{
-                          background: c.pct === 0 ? "rgba(148,163,184,0.25)" : heatColor(c.pct),
-                          color: c.pct === 0 ? "#64748b" : "#fff",
-                        }}
-                        title={`${row.name} · ${monthLabel(c.month)}: ${c.pct}%`}
-                      >
-                        {c.pct}%
-                      </div>
-                    </td>
+        <ExpandablePanel title="Month-wise Allocation Heatmap (Resource × Month)">
+          <div className="overflow-auto">
+            <table className="border-separate border-spacing-0 text-xs">
+              <thead>
+                <tr>
+                  <th className="sticky left-0 z-10 bg-background px-2 py-1 text-left">Resource</th>
+                  {months.map((m) => (
+                    <th key={m} className="px-2 py-1 text-center font-normal text-muted-foreground">
+                      {monthLabel(m)}
+                    </th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
-          <span>0%</span>
-          <div
-            className="h-2 flex-1 rounded"
-            style={{
-              background:
-                "linear-gradient(to right, rgb(22,163,74), rgb(234,179,8), rgb(220,38,38))",
-            }}
-          />
-          <span>120%</span>
-        </div>
+              </thead>
+              <tbody>
+                {heatGrid.map((row) => (
+                  <tr key={row.name}>
+                    <td className="sticky left-0 z-10 bg-background px-2 py-1 font-medium">
+                      {row.name}
+                    </td>
+                    {row.cells.map((c, i) => (
+                      <td key={i} className="p-0">
+                        <div
+                          className="mx-0.5 my-0.5 flex h-8 min-w-[64px] items-center justify-center rounded text-[11px] font-semibold text-white"
+                          style={{
+                            background: c.pct === 0 ? "rgba(148,163,184,0.25)" : heatColor(c.pct),
+                            color: c.pct === 0 ? "#64748b" : "#fff",
+                          }}
+                          title={`${row.name} · ${monthLabel(c.month)}: ${c.pct}%`}
+                        >
+                          {c.pct}%
+                        </div>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
+            <span>0%</span>
+            <div
+              className="h-2 flex-1 rounded"
+              style={{
+                background:
+                  "linear-gradient(to right, rgb(22,163,74), rgb(234,179,8), rgb(220,38,38))",
+              }}
+            />
+            <span>120%</span>
+          </div>
+        </ExpandablePanel>
       </SectionFrame>
 
       <SectionFrame>
@@ -612,51 +616,52 @@ function ResourcesPage() {
         </SectionFrame>
 
         <SectionFrame>
-          <SectionTitle>Resource × Project Heatmap (total across months)</SectionTitle>
-          <div className="overflow-auto max-h-[420px]">
-            <table className="border-separate border-spacing-0 text-xs">
-              <thead>
-                <tr>
-                  <th className="sticky left-0 z-10 bg-background px-2 py-1 text-left">Resource</th>
-                  {rpGrid.projList.map((p) => (
-                    <th
-                      key={p}
-                      className="px-2 py-1 text-center font-normal text-muted-foreground max-w-[120px] truncate"
-                      title={p}
-                    >
-                      {p}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rpGrid.rows.map((row) => (
-                  <tr key={row.name}>
-                    <td className="sticky left-0 z-10 bg-background px-2 py-1 font-medium">
-                      {row.name}
-                    </td>
-                    {row.cells.map((c, i) => (
-                      <td key={i} className="p-0">
-                        <div
-                          className="mx-0.5 my-0.5 flex h-8 min-w-[80px] items-center justify-center rounded text-[11px] font-semibold"
-                          style={{
-                            background:
-                              c.pct === 0
-                                ? "rgba(148,163,184,0.2)"
-                                : heatColor(Math.min(100, c.pct / 3)),
-                            color: c.pct === 0 ? "#64748b" : "#fff",
-                          }}
-                          title={`${row.name} → ${c.project}: ${c.pct}%`}
-                        >
-                          {c.pct}%
-                        </div>
-                      </td>
+          <ExpandablePanel title="Resource × Project Heatmap (total across months)">
+            <div className="overflow-auto">
+              <table className="border-separate border-spacing-0 text-xs">
+                <thead>
+                  <tr>
+                    <th className="sticky left-0 z-10 bg-background px-2 py-1 text-left">Resource</th>
+                    {rpGrid.projList.map((p) => (
+                      <th
+                        key={p}
+                        className="px-2 py-1 text-center font-normal text-muted-foreground max-w-[120px] truncate"
+                        title={p}
+                      >
+                        {p}
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {rpGrid.rows.map((row) => (
+                    <tr key={row.name}>
+                      <td className="sticky left-0 z-10 bg-background px-2 py-1 font-medium">
+                        {row.name}
+                      </td>
+                      {row.cells.map((c, i) => (
+                        <td key={i} className="p-0">
+                          <div
+                            className="mx-0.5 my-0.5 flex h-8 min-w-[80px] items-center justify-center rounded text-[11px] font-semibold"
+                            style={{
+                              background:
+                                c.pct === 0
+                                  ? "rgba(148,163,184,0.2)"
+                                  : heatColor(Math.min(100, c.pct / 3)),
+                              color: c.pct === 0 ? "#64748b" : "#fff",
+                            }}
+                            title={`${row.name} → ${c.project}: ${c.pct}%`}
+                          >
+                            {c.pct}%
+                          </div>
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </ExpandablePanel>
         </SectionFrame>
       </div>
 
