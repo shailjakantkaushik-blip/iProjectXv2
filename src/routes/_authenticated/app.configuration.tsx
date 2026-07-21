@@ -11,6 +11,7 @@ import {
   Palette,
   Menu,
   Eye,
+  Trash2,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/app/configuration")({
@@ -75,6 +76,12 @@ const ORG_ADMIN_CARDS = [
     icon: Eye,
     title: "Project data access",
     desc: "Limit each role or user to all projects, selected programs, or specific projects",
+  },
+  {
+    to: "/app/project-purge",
+    icon: Trash2,
+    title: "Closed project purge",
+    desc: "Remove Completed/Cancelled projects older than 1 year, or act on platform notices",
   },
 ];
 

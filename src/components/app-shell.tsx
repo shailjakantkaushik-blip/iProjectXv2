@@ -54,6 +54,7 @@ import {
   Search,
   Focus,
   Eye,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth, isAdmin, isPlatformAdmin } from "@/lib/auth-context";
@@ -109,6 +110,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Settings,
   Menu,
   Eye,
+  Trash2,
   Receipt,
   ShieldCheck,
   Building2,

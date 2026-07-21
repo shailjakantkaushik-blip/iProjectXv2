@@ -102,6 +102,12 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
       { to: "/app/configuration", label: "Configuration", icon: "Settings", adminOnly: true },
       { to: "/app/navigation", label: "Navigation sequence", icon: "Menu", adminOnly: true },
       { to: "/app/project-access", label: "Project data access", icon: "Eye", adminOnly: true },
+      {
+        to: "/app/project-purge",
+        label: "Closed project purge",
+        icon: "Trash2",
+        adminOnly: true,
+      },
     ],
   },
   {
@@ -118,6 +124,12 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
         to: "/platform/organizations",
         label: "Organizations & Users",
         icon: "Building2",
+        platformOnly: true,
+      },
+      {
+        to: "/platform/project-purge",
+        label: "Closed project purge",
+        icon: "Trash2",
         platformOnly: true,
       },
       { to: "/platform/finance", label: "Finance & P&L", icon: "TrendingUp", platformOnly: true },

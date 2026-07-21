@@ -51,6 +51,7 @@ import { Route as AuthenticatedAppPortfolioSegmentationRouteImport } from './rou
 import { Route as AuthenticatedAppPrioritisationRouteImport } from './routes/_authenticated/app.prioritisation'
 import { Route as AuthenticatedAppProgramsRouteImport } from './routes/_authenticated/app.programs'
 import { Route as AuthenticatedAppProjectAccessRouteImport } from './routes/_authenticated/app.project-access'
+import { Route as AuthenticatedAppProjectPurgeRouteImport } from './routes/_authenticated/app.project-purge'
 import { Route as AuthenticatedAppProjectInfographicRouteImport } from './routes/_authenticated/app.project-infographic'
 import { Route as AuthenticatedAppProjectsRouteImport } from './routes/_authenticated/app.projects'
 import { Route as AuthenticatedAppReleaseRegisterRouteImport } from './routes/_authenticated/app.release-register'
@@ -75,6 +76,7 @@ import { Route as AuthenticatedPlatformInvoicesRouteImport } from './routes/_aut
 import { Route as AuthenticatedPlatformLandingRouteImport } from './routes/_authenticated/platform.landing'
 import { Route as AuthenticatedPlatformLimitsRouteImport } from './routes/_authenticated/platform.limits'
 import { Route as AuthenticatedPlatformOrganizationsRouteImport } from './routes/_authenticated/platform.organizations'
+import { Route as AuthenticatedPlatformProjectPurgeRouteImport } from './routes/_authenticated/platform.project-purge'
 import { Route as AuthenticatedPlatformPlansRouteImport } from './routes/_authenticated/platform.plans'
 import { Route as AuthenticatedPlatformSettingsRouteImport } from './routes/_authenticated/platform.settings'
 import { Route as AuthenticatedPlatformSubscriptionsRouteImport } from './routes/_authenticated/platform.subscriptions'
@@ -319,6 +321,12 @@ const AuthenticatedAppProjectAccessRoute =
     path: '/project-access',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
+const AuthenticatedAppProjectPurgeRoute =
+  AuthenticatedAppProjectPurgeRouteImport.update({
+    id: '/project-purge',
+    path: '/project-purge',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
 const AuthenticatedAppProjectInfographicRoute =
   AuthenticatedAppProjectInfographicRouteImport.update({
     id: '/project-infographic',
@@ -461,6 +469,12 @@ const AuthenticatedPlatformOrganizationsRoute =
     path: '/organizations',
     getParentRoute: () => AuthenticatedPlatformRoute,
   } as any)
+const AuthenticatedPlatformProjectPurgeRoute =
+  AuthenticatedPlatformProjectPurgeRouteImport.update({
+    id: '/project-purge',
+    path: '/project-purge',
+    getParentRoute: () => AuthenticatedPlatformRoute,
+  } as any)
 const AuthenticatedPlatformPlansRoute =
   AuthenticatedPlatformPlansRouteImport.update({
     id: '/plans',
@@ -551,6 +565,7 @@ export interface FileRoutesByFullPath {
   '/app/prioritisation': typeof AuthenticatedAppPrioritisationRoute
   '/app/programs': typeof AuthenticatedAppProgramsRoute
   '/app/project-access': typeof AuthenticatedAppProjectAccessRoute
+  '/app/project-purge': typeof AuthenticatedAppProjectPurgeRoute
   '/app/project-infographic': typeof AuthenticatedAppProjectInfographicRoute
   '/app/projects': typeof AuthenticatedAppProjectsRouteWithChildren
   '/app/release-register': typeof AuthenticatedAppReleaseRegisterRoute
@@ -575,6 +590,7 @@ export interface FileRoutesByFullPath {
   '/platform/landing': typeof AuthenticatedPlatformLandingRoute
   '/platform/limits': typeof AuthenticatedPlatformLimitsRoute
   '/platform/organizations': typeof AuthenticatedPlatformOrganizationsRoute
+  '/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
   '/platform/plans': typeof AuthenticatedPlatformPlansRoute
   '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
@@ -625,6 +641,7 @@ export interface FileRoutesByTo {
   '/app/prioritisation': typeof AuthenticatedAppPrioritisationRoute
   '/app/programs': typeof AuthenticatedAppProgramsRoute
   '/app/project-access': typeof AuthenticatedAppProjectAccessRoute
+  '/app/project-purge': typeof AuthenticatedAppProjectPurgeRoute
   '/app/project-infographic': typeof AuthenticatedAppProjectInfographicRoute
   '/app/projects': typeof AuthenticatedAppProjectsRouteWithChildren
   '/app/release-register': typeof AuthenticatedAppReleaseRegisterRoute
@@ -649,6 +666,7 @@ export interface FileRoutesByTo {
   '/platform/landing': typeof AuthenticatedPlatformLandingRoute
   '/platform/limits': typeof AuthenticatedPlatformLimitsRoute
   '/platform/organizations': typeof AuthenticatedPlatformOrganizationsRoute
+  '/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
   '/platform/plans': typeof AuthenticatedPlatformPlansRoute
   '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
@@ -702,6 +720,7 @@ export interface FileRoutesById {
   '/_authenticated/app/prioritisation': typeof AuthenticatedAppPrioritisationRoute
   '/_authenticated/app/programs': typeof AuthenticatedAppProgramsRoute
   '/_authenticated/app/project-access': typeof AuthenticatedAppProjectAccessRoute
+  '/_authenticated/app/project-purge': typeof AuthenticatedAppProjectPurgeRoute
   '/_authenticated/app/project-infographic': typeof AuthenticatedAppProjectInfographicRoute
   '/_authenticated/app/projects': typeof AuthenticatedAppProjectsRouteWithChildren
   '/_authenticated/app/release-register': typeof AuthenticatedAppReleaseRegisterRoute
@@ -726,6 +745,7 @@ export interface FileRoutesById {
   '/_authenticated/platform/landing': typeof AuthenticatedPlatformLandingRoute
   '/_authenticated/platform/limits': typeof AuthenticatedPlatformLimitsRoute
   '/_authenticated/platform/organizations': typeof AuthenticatedPlatformOrganizationsRoute
+  '/_authenticated/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
   '/_authenticated/platform/plans': typeof AuthenticatedPlatformPlansRoute
   '/_authenticated/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/_authenticated/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
@@ -779,6 +799,7 @@ export interface FileRouteTypes {
     | '/app/prioritisation'
     | '/app/programs'
     | '/app/project-access'
+    | '/app/project-purge'
     | '/app/project-infographic'
     | '/app/projects'
     | '/app/release-register'
@@ -803,6 +824,7 @@ export interface FileRouteTypes {
     | '/platform/landing'
     | '/platform/limits'
     | '/platform/organizations'
+    | '/platform/project-purge'
     | '/platform/plans'
     | '/platform/settings'
     | '/platform/subscriptions'
@@ -853,6 +875,7 @@ export interface FileRouteTypes {
     | '/app/prioritisation'
     | '/app/programs'
     | '/app/project-access'
+    | '/app/project-purge'
     | '/app/project-infographic'
     | '/app/projects'
     | '/app/release-register'
@@ -877,6 +900,7 @@ export interface FileRouteTypes {
     | '/platform/landing'
     | '/platform/limits'
     | '/platform/organizations'
+    | '/platform/project-purge'
     | '/platform/plans'
     | '/platform/settings'
     | '/platform/subscriptions'
@@ -929,6 +953,7 @@ export interface FileRouteTypes {
     | '/_authenticated/app/prioritisation'
     | '/_authenticated/app/programs'
     | '/_authenticated/app/project-access'
+    | '/_authenticated/app/project-purge'
     | '/_authenticated/app/project-infographic'
     | '/_authenticated/app/projects'
     | '/_authenticated/app/release-register'
@@ -953,6 +978,7 @@ export interface FileRouteTypes {
     | '/_authenticated/platform/landing'
     | '/_authenticated/platform/limits'
     | '/_authenticated/platform/organizations'
+    | '/_authenticated/platform/project-purge'
     | '/_authenticated/platform/plans'
     | '/_authenticated/platform/settings'
     | '/_authenticated/platform/subscriptions'
@@ -1269,6 +1295,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppProjectAccessRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
+    '/_authenticated/app/project-purge': {
+      id: '/_authenticated/app/project-purge'
+      path: '/project-purge'
+      fullPath: '/app/project-purge'
+      preLoaderRoute: typeof AuthenticatedAppProjectPurgeRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
     '/_authenticated/app/project-infographic': {
       id: '/_authenticated/app/project-infographic'
       path: '/project-infographic'
@@ -1437,6 +1470,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPlatformOrganizationsRouteImport
       parentRoute: typeof AuthenticatedPlatformRoute
     }
+    '/_authenticated/platform/project-purge': {
+      id: '/_authenticated/platform/project-purge'
+      path: '/project-purge'
+      fullPath: '/platform/project-purge'
+      preLoaderRoute: typeof AuthenticatedPlatformProjectPurgeRouteImport
+      parentRoute: typeof AuthenticatedPlatformRoute
+    }
     '/_authenticated/platform/plans': {
       id: '/_authenticated/platform/plans'
       path: '/plans'
@@ -1546,6 +1586,7 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppPrioritisationRoute: typeof AuthenticatedAppPrioritisationRoute
   AuthenticatedAppProgramsRoute: typeof AuthenticatedAppProgramsRoute
   AuthenticatedAppProjectAccessRoute: typeof AuthenticatedAppProjectAccessRoute
+  AuthenticatedAppProjectPurgeRoute: typeof AuthenticatedAppProjectPurgeRoute
   AuthenticatedAppProjectInfographicRoute: typeof AuthenticatedAppProjectInfographicRoute
   AuthenticatedAppProjectsRoute: typeof AuthenticatedAppProjectsRouteWithChildren
   AuthenticatedAppReleaseRegisterRoute: typeof AuthenticatedAppReleaseRegisterRoute
@@ -1603,6 +1644,7 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppPrioritisationRoute: AuthenticatedAppPrioritisationRoute,
   AuthenticatedAppProgramsRoute: AuthenticatedAppProgramsRoute,
   AuthenticatedAppProjectAccessRoute: AuthenticatedAppProjectAccessRoute,
+  AuthenticatedAppProjectPurgeRoute: AuthenticatedAppProjectPurgeRoute,
   AuthenticatedAppProjectInfographicRoute:
     AuthenticatedAppProjectInfographicRoute,
   AuthenticatedAppProjectsRoute: AuthenticatedAppProjectsRouteWithChildren,
@@ -1637,6 +1679,7 @@ interface AuthenticatedPlatformRouteChildren {
   AuthenticatedPlatformLandingRoute: typeof AuthenticatedPlatformLandingRoute
   AuthenticatedPlatformLimitsRoute: typeof AuthenticatedPlatformLimitsRoute
   AuthenticatedPlatformOrganizationsRoute: typeof AuthenticatedPlatformOrganizationsRoute
+  AuthenticatedPlatformProjectPurgeRoute: typeof AuthenticatedPlatformProjectPurgeRoute
   AuthenticatedPlatformPlansRoute: typeof AuthenticatedPlatformPlansRoute
   AuthenticatedPlatformSettingsRoute: typeof AuthenticatedPlatformSettingsRoute
   AuthenticatedPlatformSubscriptionsRoute: typeof AuthenticatedPlatformSubscriptionsRoute
@@ -1654,6 +1697,7 @@ const AuthenticatedPlatformRouteChildren: AuthenticatedPlatformRouteChildren = {
   AuthenticatedPlatformLimitsRoute: AuthenticatedPlatformLimitsRoute,
   AuthenticatedPlatformOrganizationsRoute:
     AuthenticatedPlatformOrganizationsRoute,
+  AuthenticatedPlatformProjectPurgeRoute: AuthenticatedPlatformProjectPurgeRoute,
   AuthenticatedPlatformPlansRoute: AuthenticatedPlatformPlansRoute,
   AuthenticatedPlatformSettingsRoute: AuthenticatedPlatformSettingsRoute,
   AuthenticatedPlatformSubscriptionsRoute:
