@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS public.invoice_template_config (
   updated_by uuid REFERENCES auth.users(id)
 );
 
-GRANT SELECT ON public.invoice_template_config TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.invoice_template_config TO authenticated;
 GRANT ALL ON public.invoice_template_config TO service_role;
 
 ALTER TABLE public.invoice_template_config ENABLE ROW LEVEL SECURITY;

@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS public.landing_config (
   updated_by uuid REFERENCES auth.users(id)
 );
 
-GRANT SELECT ON public.landing_config TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.landing_config TO anon, authenticated;
 GRANT ALL ON public.landing_config TO service_role;
 
 ALTER TABLE public.landing_config ENABLE ROW LEVEL SECURITY;
