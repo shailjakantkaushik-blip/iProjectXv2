@@ -667,13 +667,38 @@ export function applyPalettePreset(cfg: LandingConfig, presetId: string): Landin
   };
 }
 
+/** Browser cache so refresh paints the last known theme immediately (no navy flash). */
+export const LANDING_CONFIG_CACHE_KEY = "pmo.landingConfig.v1";
+
+export function readCachedLandingConfig(): LandingConfig | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(LANDING_CONFIG_CACHE_KEY);
+    if (!raw) return null;
+    return mergeConfig(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+export function writeCachedLandingConfig(config: LandingConfig) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LANDING_CONFIG_CACHE_KEY, JSON.stringify(config));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
 export async function fetchLandingConfig(): Promise<LandingConfig> {
   const { data } = await supabase
     .from("landing_config" as any)
     .select("config")
     .eq("id", "singleton")
     .maybeSingle();
-  return mergeConfig((data as any)?.config);
+  const cfg = mergeConfig((data as any)?.config);
+  writeCachedLandingConfig(cfg);
+  return cfg;
 }
 
 export async function saveLandingConfig(config: LandingConfig, userId?: string) {
@@ -681,6 +706,7 @@ export async function saveLandingConfig(config: LandingConfig, userId?: string) 
     .from("landing_config" as any)
     .upsert({ id: "singleton", config: config as any, updated_by: userId ?? null });
   if (error) throw error;
+  writeCachedLandingConfig(config);
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("pmo:platform-theme-change", { detail: config }));
   }

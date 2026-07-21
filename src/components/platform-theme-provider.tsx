@@ -1,8 +1,9 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import { useRouterState } from "@tanstack/react-router";
 import {
   DEFAULT_LANDING,
   fetchLandingConfig,
+  readCachedLandingConfig,
   type LandingConfig,
 } from "@/lib/landing-config";
 import {
@@ -17,7 +18,9 @@ import {
  */
 export function PlatformThemeProvider({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const [cfg, setCfg] = useState<LandingConfig>(DEFAULT_LANDING);
+  const [cfg, setCfg] = useState<LandingConfig>(
+    () => readCachedLandingConfig() ?? DEFAULT_LANDING,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -41,7 +44,8 @@ export function PlatformThemeProvider({ children }: { children: ReactNode }) {
     };
   }, [pathname]);
 
-  useEffect(() => {
+  // useLayoutEffect applies before paint — avoids a frame of default colours.
+  useLayoutEffect(() => {
     const isLanding = pathname === "/";
     const isAuth =
       pathname === "/auth" ||
@@ -50,7 +54,6 @@ export function PlatformThemeProvider({ children }: { children: ReactNode }) {
     const isApp = pathname.startsWith("/app") || pathname.startsWith("/platform");
 
     if (isLanding) {
-      // Landing paints itself; don't force global app chrome vars over it.
       clearPlatformThemeFromDocument();
       return;
     }

@@ -26,11 +26,15 @@ import {
 import {
   DEFAULT_LANDING,
   fetchLandingConfig,
+  readCachedLandingConfig,
   type LandingConfig,
   type LandingItem,
 } from "@/lib/landing-config";
 
 export const Route = createFileRoute("/")({
+  loader: async () => ({ cfg: await fetchLandingConfig() }),
+  staleTime: 30_000,
+  pendingComponent: LandingPending,
   component: LandingPage,
   head: () => ({
     meta: [
@@ -51,6 +55,15 @@ export const Route = createFileRoute("/")({
     ],
   }),
 });
+
+/** Neutral placeholder using cached palette so refresh never flashes default navy. */
+function LandingPending() {
+  const cached = typeof window !== "undefined" ? readCachedLandingConfig() : null;
+  const p = cached?.palette ?? DEFAULT_LANDING.palette;
+  const theme = cached?.theme ?? "light";
+  const bg = theme === "dark" ? p.navy : "#ffffff";
+  return <div className="min-h-screen w-full" style={{ background: bg }} aria-hidden />;
+}
 
 const HEADING = { fontFamily: "'Sora', system-ui, sans-serif" as const };
 const BODY = { fontFamily: "'Manrope', system-ui, sans-serif" as const };
@@ -156,12 +169,14 @@ function Reveal({
 }
 
 function LandingPage() {
-  const [cfg, setCfg] = useState<LandingConfig>(DEFAULT_LANDING);
+  const { cfg: loaded } = Route.useLoaderData();
+  // Prefer loader data; fall back to cache then defaults (avoids DEFAULT navy flash).
+  const [cfg, setCfg] = useState<LandingConfig>(
+    () => loaded ?? readCachedLandingConfig() ?? DEFAULT_LANDING,
+  );
   useEffect(() => {
-    fetchLandingConfig()
-      .then(setCfg)
-      .catch(() => {});
-  }, []);
+    setCfg(loaded);
+  }, [loaded]);
   const p = cfg.palette;
   const isDark = cfg.theme === "dark";
   const pageBg = isDark ? p.navy : "#ffffff";

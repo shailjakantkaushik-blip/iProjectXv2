@@ -14,6 +14,8 @@ import { AuthProvider } from "@/lib/auth-context";
 import { Toaster } from "@/components/ui/sonner";
 import { applyChartTheme } from "@/lib/chart-theme";
 import { PlatformThemeProvider } from "@/components/platform-theme-provider";
+import { getPlatformThemeBootScript } from "@/lib/platform-theme";
+import { LANDING_CONFIG_CACHE_KEY } from "@/lib/landing-config";
 
 function NotFoundComponent() {
   return (
@@ -80,10 +82,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: ReactNode }) {
+  // Blocking boot scripts: apply cached theme / landing bg before first paint.
+  const themeBoot = getPlatformThemeBootScript();
+  const landingBoot = `(function(){try{if(location.pathname!=="/")return;var raw=localStorage.getItem(${JSON.stringify(LANDING_CONFIG_CACHE_KEY)});if(!raw)return;var cfg=JSON.parse(raw);if(!cfg||!cfg.palette)return;var p=cfg.palette;var dark=cfg.theme==="dark";var bg=dark?p.navy:"#ffffff";document.documentElement.style.backgroundColor=bg;document.documentElement.style.color=p.textBody||"#1e3a5f";}catch(e){}})();`;
+
   return (
     <html lang="en">
       <head>
         <HeadContent />
+        <script dangerouslySetInnerHTML={{ __html: themeBoot }} />
+        <script dangerouslySetInnerHTML={{ __html: landingBoot }} />
       </head>
       <body>
         {children}
