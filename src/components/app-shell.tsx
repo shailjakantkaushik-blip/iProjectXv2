@@ -192,24 +192,42 @@ export function AppShell({ children }: { children: ReactNode }) {
     setMobileOpen(false);
   }, [pathname]);
 
-  // Keep the active sidebar item visible; scroll the left nav to it after navigation.
+  // Right pane / window: always start the new page at the top.
   useEffect(() => {
-    const scrollActiveIntoView = (root: HTMLElement | null) => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    const main = document.querySelector<HTMLElement>(".shell-main");
+    if (main) main.scrollTop = 0;
+  }, [pathname]);
+
+  // Left nav only: keep the selected item visible without moving the page.
+  useEffect(() => {
+    const scrollNavToActive = (root: HTMLElement | null) => {
       if (!root) return;
       const active = root.querySelector<HTMLElement>('[data-nav-active="true"]');
       if (!active) return;
+
+      const rootRect = root.getBoundingClientRect();
+      const activeRect = active.getBoundingClientRect();
+      const offset =
+        activeRect.top - rootRect.top - rootRect.height / 2 + activeRect.height / 2;
+      const nextTop = root.scrollTop + offset;
+      const max = root.scrollHeight - root.clientHeight;
+      const clamped = Math.max(0, Math.min(nextTop, max));
+
       const reduce =
         typeof window !== "undefined" &&
         window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-      active.scrollIntoView({
-        block: "center",
-        inline: "nearest",
-        behavior: reduce ? "auto" : "smooth",
-      });
+
+      if (reduce || typeof root.scrollTo !== "function") {
+        root.scrollTop = clamped;
+      } else {
+        root.scrollTo({ top: clamped, behavior: "smooth" });
+      }
     };
+
     const id = window.requestAnimationFrame(() => {
-      scrollActiveIntoView(desktopNavRef.current);
-      scrollActiveIntoView(mobileNavRef.current);
+      scrollNavToActive(desktopNavRef.current);
+      scrollNavToActive(mobileNavRef.current);
     });
     return () => window.cancelAnimationFrame(id);
   }, [pathname, navGroups, mobileOpen]);
@@ -282,7 +300,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const renderNav = (navRef: { current: HTMLElement | null }) => (
     <nav
       ref={navRef as any}
-      className="shell-nav flex-1 space-y-5 overflow-y-auto overscroll-contain px-2.5 py-3 scroll-smooth"
+      className="shell-nav min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-2.5 py-3"
     >
       {navGroups.map((group) => {
         const items = group.items.filter((n) => {
@@ -371,7 +389,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       style={brandStyle}
       data-focus-mode={focusMode ? "1" : undefined}
     >
-      <aside className="shell-sidebar hidden w-[15.5rem] shrink-0 border-r border-sidebar-border/80 bg-sidebar/95 backdrop-blur-sm md:flex md:flex-col lg:w-64">
+      <aside className="shell-sidebar sticky top-0 hidden h-svh w-[15.5rem] shrink-0 flex-col border-r border-sidebar-border/80 bg-sidebar/95 backdrop-blur-sm md:flex lg:w-64">
         {BrandBlock}
         {renderNav(desktopNavRef)}
         {Footer}
