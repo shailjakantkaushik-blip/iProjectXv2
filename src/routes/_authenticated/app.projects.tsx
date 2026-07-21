@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, canEditProjects, isAdmin } from "@/lib/auth-context";
+import { useCapabilityPermission } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +35,7 @@ function ProjectsList() {
   const { organization, roles } = useAuth();
   const canEdit = canEditProjects(roles);
   const admin = isAdmin(roles);
+  const canUploadTemplate = useCapabilityPermission("template_upload").canEdit;
   const [q, setQ] = useState("");
   const [prog, setProg] = useState("All");
   const [ragF, setRagF] = useState("All");
@@ -126,8 +128,12 @@ function ProjectsList() {
 
         actions={
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={downloadTemplate}><FileDown className="mr-2 h-4 w-4" />Template</Button>
-            {admin && (
+            {canUploadTemplate && (
+              <Button variant="outline" size="sm" onClick={downloadTemplate}>
+                <FileDown className="mr-2 h-4 w-4" />Template
+              </Button>
+            )}
+            {canUploadTemplate && (
               <>
                 <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => e.target.files?.[0] && onImport(e.target.files[0])} />
                 <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={busy}>
@@ -138,7 +144,7 @@ function ProjectsList() {
             <Button variant="outline" size="sm" onClick={() => exportProjects(filtered)} disabled={filtered.length === 0}>
               <Download className="mr-2 h-4 w-4" />Export
             </Button>
-            {admin && (
+            {(admin || canEdit) && (
               <Link to="/app/projects/new"><Button size="sm"><Plus className="mr-2 h-4 w-4" />New</Button></Link>
             )}
           </div>

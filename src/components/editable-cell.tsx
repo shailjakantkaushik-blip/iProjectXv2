@@ -17,12 +17,15 @@ type Props = {
   invalidateKeys?: string[];
   display?: (v: any) => React.ReactNode;
   className?: string;
+  /** When true, bypass table matrix (e.g. Data Editor capability grant). */
+  forceEditable?: boolean;
 };
 
 export function EditableCell({
-  table, rowId, field, value, type = "text", options, invalidateKeys, display, className,
+  table, rowId, field, value, type = "text", options, invalidateKeys, display, className, forceEditable,
 }: Props) {
-  const { canEdit } = useTablePermission(table);
+  const { canEdit: tableEdit } = useTablePermission(table);
+  const canEdit = !!forceEditable || tableEdit;
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<string>(value == null ? "" : String(value));

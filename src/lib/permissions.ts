@@ -25,6 +25,28 @@ export const EDITABLE_TABLES: { name: string; label: string }[] = [
   { name: "portfolio_scenarios", label: "Portfolio Scenarios" },
 ];
 
+/** Capability keys stored as role_table_permissions.table_name = capability::<id> */
+export const CAPABILITIES: {
+  id: string;
+  label: string;
+  description: string;
+}[] = [
+  {
+    id: "data_editor",
+    label: "Data Editor changes",
+    description: "Edit rows in Data Editor (inline cells, add/delete)",
+  },
+  {
+    id: "template_upload",
+    label: "Upload template / workbook",
+    description: "Upload Excel workbooks on Data Editor and import project templates",
+  },
+];
+
+export function capabilityKey(id: string) {
+  return `capability::${id}`;
+}
+
 // Page-level access control. Stored in role_table_permissions using
 // table_name = `page::<path>`. Admin/org_admin bypass these checks.
 export const PAGES: { path: string; label: string; group: string }[] = [
@@ -130,5 +152,28 @@ export function useTablePermission(tableName: string) {
   return {
     canView: relevant.some((r) => r.can_view),
     canEdit: relevant.some((r) => r.can_edit),
+  };
+}
+
+/**
+ * Org-admin-configurable capabilities (Data Editor, template upload, …).
+ * Stored as capability::<id> in role_table_permissions (uses can_edit as "allowed").
+ * Default when unconfigured: admin + org_admin allowed; other roles denied.
+ */
+export function useCapabilityPermission(capabilityId: string): {
+  canEdit: boolean;
+  isReady: boolean;
+} {
+  const { roles } = useAuth();
+  const { data: rows = [], isSuccess } = useRolePermissions();
+  const key = capabilityKey(capabilityId);
+  const isAdmin = roles.some((r) => r === "admin" || r === "org_admin");
+  const relevant = rows.filter((r) => roles.includes(r.role as any) && r.table_name === key);
+  if (relevant.length === 0) {
+    return { canEdit: isAdmin, isReady: isSuccess || roles.length === 0 };
+  }
+  return {
+    canEdit: relevant.some((r) => r.can_edit),
+    isReady: isSuccess || roles.length === 0,
   };
 }

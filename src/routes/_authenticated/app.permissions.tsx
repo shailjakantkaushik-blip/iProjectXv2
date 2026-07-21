@@ -3,7 +3,14 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
-import { EDITABLE_TABLES, PAGES, pageKey, useRolePermissions } from "@/lib/permissions";
+import {
+  CAPABILITIES,
+  EDITABLE_TABLES,
+  PAGES,
+  capabilityKey,
+  pageKey,
+  useRolePermissions,
+} from "@/lib/permissions";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { useMemo } from "react";
@@ -52,18 +59,77 @@ function PermissionsPage() {
     mut.mutate(payload);
   };
 
+  /** Capability defaults: admin/org_admin allowed until explicitly stored. */
+  const capabilityChecked = (role: string, capId: string) => {
+    const key = capabilityKey(capId);
+    const cur = map.get(`${role}::${key}`);
+    if (!cur) return role === "admin" || role === "org_admin";
+    return cur.can_edit;
+  };
+
   return (
     <div>
       <PageHeading icon="🔐">Role Permissions</PageHeading>
       <p className="mb-3 text-sm text-muted-foreground">
-        Configure who can view and edit each data table. Changes apply to the whole organisation.
-        Only Admins can modify this page. To limit which projects each role can see, use{" "}
+        Configure who can view and edit each data table, Data Editor tools, and pages. Changes apply
+        to the whole organisation. Only Admins can modify this page. To limit which projects each
+        role can see, use{" "}
         <Link to="/app/project-access" className="text-primary underline-offset-2 hover:underline">
           Project data access
         </Link>
         .
       </p>
 
+      <SectionFrame>
+        <SectionTitle>Data tools (Org Admin)</SectionTitle>
+        <p className="mb-3 text-[11px] text-muted-foreground">
+          Grant <strong>Org Admin</strong> (and other roles) permission to change data in the Data
+          Editor and to download/upload Excel templates. Admin &amp; Org Admin default to allowed
+          until you turn a box off.
+        </p>
+        <div className="overflow-auto">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-background">
+              <tr>
+                <th className="p-2 text-left sticky left-0 bg-background">Capability</th>
+                {ROLES.map((r) => (
+                  <th key={r.key} className="min-w-[90px] border-l p-2 text-center">
+                    {r.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {CAPABILITIES.map((cap, i) => {
+                const tname = capabilityKey(cap.id);
+                return (
+                  <tr key={cap.id} className={i % 2 ? "bg-muted/30" : ""}>
+                    <td className="sticky left-0 bg-inherit p-2 font-medium">
+                      {cap.label}
+                      <div className="text-[10px] font-normal text-muted-foreground">
+                        {cap.description}
+                      </div>
+                    </td>
+                    {ROLES.map((r) => (
+                      <td key={r.key} className="border-l p-2 text-center">
+                        <Checkbox
+                          checked={capabilityChecked(r.key, cap.id)}
+                          disabled={!isAdmin || mut.isPending}
+                          onCheckedChange={(v) =>
+                            flip(r.key, tname, "can_edit", !!v)
+                          }
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </SectionFrame>
+
+      <div className="mt-6" />
       <SectionFrame>
         <SectionTitle>Permissions Matrix</SectionTitle>
         <div className="overflow-auto max-h-[70vh]">
@@ -115,7 +181,8 @@ function PermissionsPage() {
           </table>
         </div>
         <p className="mt-2 text-[11px] text-muted-foreground">
-          Turning off <b>View</b> also removes edit access. Inline editors on every table respect these settings in real time.
+          Turning off <b>View</b> also removes edit access. Inline editors on pages respect these
+          settings. Data Editor also honours the <b>Data Editor changes</b> capability above.
         </p>
       </SectionFrame>
 

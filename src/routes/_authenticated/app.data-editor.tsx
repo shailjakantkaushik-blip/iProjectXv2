@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useRef, useState } from "react";
-import { useAuth, canEditProjects, isAdmin } from "@/lib/auth-context";
+import { useAuth, canEditProjects } from "@/lib/auth-context";
 import { PageHeading, SectionFrame } from "@/components/streamlit";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -9,13 +9,15 @@ import { toast } from "sonner";
 import { Upload, Download, Plus, Loader2 } from "lucide-react";
 import { TABLES } from "@/lib/data-tables";
 import { TableEditor } from "@/components/table-editor";
+import { useCapabilityPermission } from "@/lib/permissions";
 
 export const Route = createFileRoute("/_authenticated/app/data-editor")({ component: Page });
 
 function Page() {
   const { organization, roles } = useAuth();
   const canEdit = canEditProjects(roles);
-  const admin = isAdmin(roles);
+  const canUpload = useCapabilityPermission("template_upload").canEdit;
+  const canDataEdit = useCapabilityPermission("data_editor").canEdit;
   const [busy, setBusy] = useState<"export" | "import" | null>(null);
   const [report, setReport] = useState<ImportReport[] | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -53,14 +55,18 @@ function Page() {
       <PageHeading
         icon="✏️"
         title="Data Editor"
-        subtitle="Every table in your organization is editable here. Download the full workbook, edit offline, and (admins) re-upload to sync back to the database."
+        subtitle={
+          canDataEdit
+            ? "Edit every table here. Download the workbook, edit offline, and re-upload when permitted."
+            : "Browse organisation tables. Ask an admin for Data Editor changes permission to edit."
+        }
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" disabled={busy === "export"} onClick={handleExport}>
               {busy === "export" ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />}
               Download data
             </Button>
-            {admin && (
+            {canUpload && (
               <>
                 <input
                   ref={fileRef}
@@ -71,7 +77,7 @@ function Page() {
                 />
                 <Button variant="outline" size="sm" disabled={busy === "import"} onClick={() => fileRef.current?.click()}>
                   {busy === "import" ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Upload className="mr-1 h-4 w-4" />}
-                  {busy === "import" ? "Uploading…" : "Upload data (admin)"}
+                  {busy === "import" ? "Uploading…" : "Upload data"}
                 </Button>
               </>
             )}

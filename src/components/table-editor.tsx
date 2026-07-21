@@ -1,13 +1,14 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth, canEditProjects } from "@/lib/auth-context";
+import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { Plus, Trash2 } from "lucide-react";
 import type { TableDef, FieldDef } from "@/lib/data-tables";
 import { EditableCell } from "@/components/editable-cell";
+import { useCapabilityPermission, useTablePermission } from "@/lib/permissions";
 
 interface LookupMaps {
   projectsById: Map<string, string>;
@@ -19,8 +20,10 @@ interface LookupMaps {
 }
 
 export function TableEditor({ def }: { def: TableDef }) {
-  const { organization, roles } = useAuth();
-  const canEdit = canEditProjects(roles);
+  const { organization } = useAuth();
+  const dataEditorCap = useCapabilityPermission("data_editor");
+  const tablePerm = useTablePermission(def.key);
+  const canEdit = dataEditorCap.canEdit || tablePerm.canEdit;
   const qc = useQueryClient();
   const [q, setQ] = useState("");
   const [showAdd, setShowAdd] = useState(false);
@@ -129,7 +132,13 @@ export function TableEditor({ def }: { def: TableDef }) {
               <tr key={row.id}>
                 {def.fields.map((f) => (
                   <td key={f.key} className="align-top">
-                    <CellRenderer def={def} field={f} row={row} lookups={lookups} />
+                    <CellRenderer
+                      def={def}
+                      field={f}
+                      row={row}
+                      lookups={lookups}
+                      forceEditable={dataEditorCap.canEdit}
+                    />
                   </td>
                 ))}
                 {canEdit && (
@@ -148,7 +157,19 @@ export function TableEditor({ def }: { def: TableDef }) {
   );
 }
 
-function CellRenderer({ def, field, row, lookups }: { def: TableDef; field: FieldDef; row: any; lookups?: LookupMaps }) {
+function CellRenderer({
+  def,
+  field,
+  row,
+  lookups,
+  forceEditable,
+}: {
+  def: TableDef;
+  field: FieldDef;
+  row: any;
+  lookups?: LookupMaps;
+  forceEditable?: boolean;
+}) {
   const v = row[field.key];
   // FK columns: read-only display (change via Add row or Project register).
   if (field.fk === "project") return <span className="font-mono">{lookups?.projectsById.get(String(v)) ?? "—"}</span>;
@@ -167,6 +188,7 @@ function CellRenderer({ def, field, row, lookups }: { def: TableDef; field: Fiel
       type={type as any}
       options={options}
       display={display}
+      forceEditable={forceEditable}
     />
   );
 }
