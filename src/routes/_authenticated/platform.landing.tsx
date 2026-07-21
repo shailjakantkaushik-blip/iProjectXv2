@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2, Save, RefreshCw, ExternalLink } from "lucide-react";
+import { Plus, Trash2, Save, RefreshCw, ExternalLink, Upload, Sparkles } from "lucide-react";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,10 +11,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth-context";
 import {
   DEFAULT_LANDING,
-  FONT_PALETTE_KEYS,
+  DARK_ON_LIGHT_FONT_KEYS,
+  LIGHT_ON_DARK_FONT_KEYS,
+  PALETTE_KEY_HINTS,
   PALETTE_KEY_LABELS,
   PALETTE_PRESETS,
   SURFACE_PALETTE_KEYS,
+  applyElegantFontContrast,
   applyPalettePreset,
   fetchLandingConfig,
   saveLandingConfig,
@@ -26,12 +29,15 @@ import {
   type LandingThemeMode,
 } from "@/lib/landing-config";
 
+const MAX_LOGO_BYTES = 500 * 1024;
+
 export const Route = createFileRoute("/_authenticated/platform/landing")({
   component: LandingConfigPage,
 });
 
 function LandingConfigPage() {
   const { user } = useAuth();
+  const logoFileRef = useRef<HTMLInputElement>(null);
   const [cfg, setCfg] = useState<LandingConfig | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -60,10 +66,29 @@ function LandingConfigPage() {
     setCfg(structuredClone(DEFAULT_LANDING));
   }
 
+  function handleBrandLogoPick(file: File) {
+    if (!cfg) return;
+    if (file.size > MAX_LOGO_BYTES) {
+      toast.error("Logo must be under 500 KB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () =>
+      setCfg({ ...cfg, brand: { ...cfg.brand, logo_url: reader.result as string } });
+    reader.readAsDataURL(file);
+  }
+
   if (!cfg) return <div className="p-8 text-sm text-muted-foreground">Loading landing config…</div>;
 
   const patch = <K extends keyof LandingConfig>(k: K, v: Partial<LandingConfig[K]>) =>
     setCfg({ ...cfg, [k]: { ...(cfg[k] as any), ...v } });
+
+  const patchPalette = (partial: Partial<LandingPalette>) =>
+    setCfg({
+      ...cfg,
+      palette_preset: "custom",
+      palette: { ...cfg.palette, ...partial },
+    });
 
   return (
     <div className="space-y-6">
@@ -117,28 +142,93 @@ function LandingConfigPage() {
                   onChange={(e) => patch("brand", { tagline: e.target.value })}
                 />
               </Field>
-              <Field
-                label="iProjectX logo URL (https://…)"
-                hint="Paste a hosted PNG/SVG. Leave blank to keep the built-in diamond mark."
-              >
-                <Input
-                  value={cfg.brand.logo_url}
-                  placeholder="https://cdn.example.com/iprojectx-logo.svg"
-                  onChange={(e) => patch("brand", { logo_url: e.target.value })}
-                />
-              </Field>
-              <div className="flex items-center justify-center rounded border bg-[#0f1b3d] p-6">
-                {cfg.brand.logo_url ? (
-                  <img
-                    src={cfg.brand.logo_url}
-                    alt="Logo preview"
-                    className="max-h-16 max-w-full object-contain"
+            </div>
+
+            <div className="mt-6">
+              <Label className="text-xs font-semibold uppercase tracking-wide">
+                iProjectX logo
+              </Label>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Upload a PNG / JPG / SVG / WebP (max 500 KB), or paste a hosted URL. Leave empty to
+                keep the built-in diamond mark.
+              </p>
+              <div className="mt-3 grid gap-4 md:grid-cols-[1fr_auto]">
+                <div className="rounded-lg border p-4">
+                  <input
+                    ref={logoFileRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                    hidden
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleBrandLogoPick(f);
+                      e.target.value = "";
+                    }}
                   />
-                ) : (
-                  <span className="text-sm text-white/60">No logo — using built-in mark</span>
-                )}
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => logoFileRef.current?.click()}
+                    >
+                      <Upload className="mr-2 h-4 w-4" /> Upload logo
+                    </Button>
+                    {cfg.brand.logo_url && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => patch("brand", { logo_url: "" })}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" /> Remove
+                      </Button>
+                    )}
+                  </div>
+                  <div className="mt-3">
+                    <Field label="Or paste logo URL (https://…)">
+                      <Input
+                        value={cfg.brand.logo_url.startsWith("data:") ? "" : cfg.brand.logo_url}
+                        placeholder="https://cdn.example.com/iprojectx-logo.svg"
+                        onChange={(e) => patch("brand", { logo_url: e.target.value })}
+                      />
+                    </Field>
+                    {cfg.brand.logo_url.startsWith("data:") && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Using an uploaded logo file (embedded). Paste a URL above to replace it.
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-1">
+                  <div className="flex min-w-[160px] items-center justify-center rounded border bg-[#0f1b3d] p-5">
+                    {cfg.brand.logo_url ? (
+                      <img
+                        src={cfg.brand.logo_url}
+                        alt="Logo on dark"
+                        className="max-h-14 max-w-full object-contain"
+                      />
+                    ) : (
+                      <span className="text-center text-xs text-white/60">Dark preview</span>
+                    )}
+                  </div>
+                  <div className="flex min-w-[160px] items-center justify-center rounded border bg-white p-5">
+                    {cfg.brand.logo_url ? (
+                      <img
+                        src={cfg.brand.logo_url}
+                        alt="Logo on light"
+                        className="max-h-14 max-w-full object-contain"
+                      />
+                    ) : (
+                      <span className="text-center text-xs text-muted-foreground">
+                        Light preview
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
+
             <p className="mt-4 text-xs text-muted-foreground">
               Per-organisation white-label logos are configured separately under{" "}
               <b>Branding &amp; White Label</b>.
@@ -177,12 +267,12 @@ function LandingConfigPage() {
             </SectionFrame>
 
             <SectionFrame>
-              <SectionTitle>Predefined palettes</SectionTitle>
+              <SectionTitle>Industry palettes</SectionTitle>
               <p className="mt-1 text-sm text-muted-foreground">
-                Apply a ready-made brand palette (includes surface colours and font colours). You
-                can still tweak colours after applying.
+                One click applies surfaces, accents, and both font sets (dark text on light + light
+                text on dark). Tweak anything afterwards.
               </p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {PALETTE_PRESETS.map((preset) => {
                   const active = cfg.palette_preset === preset.id;
                   return (
@@ -198,6 +288,7 @@ function LandingConfigPage() {
                           preset.palette.accent,
                           preset.palette.surface,
                           preset.palette.textHeading,
+                          preset.palette.textOnDark,
                         ].map((c, i) => (
                           <span
                             key={i}
@@ -206,10 +297,34 @@ function LandingConfigPage() {
                           />
                         ))}
                       </div>
-                      <div className="text-sm font-semibold">{preset.name}</div>
-                      <div className="text-xs text-muted-foreground">{preset.description}</div>
-                      <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                        {preset.theme} theme
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-sm font-semibold">{preset.name}</div>
+                        <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          {preset.theme}
+                        </span>
+                      </div>
+                      <div className="mt-0.5 text-xs text-muted-foreground">
+                        {preset.description}
+                      </div>
+                      <div className="mt-2 grid grid-cols-2 gap-1 text-[10px]">
+                        <div
+                          className="rounded px-1.5 py-1 font-medium"
+                          style={{
+                            background: preset.palette.surface,
+                            color: preset.palette.textHeading,
+                          }}
+                        >
+                          Dark on light
+                        </div>
+                        <div
+                          className="rounded px-1.5 py-1 font-medium"
+                          style={{
+                            background: preset.palette.navy,
+                            color: preset.palette.textOnDark,
+                          }}
+                        >
+                          Light on dark
+                        </div>
                       </div>
                     </button>
                   );
@@ -225,61 +340,106 @@ function LandingConfigPage() {
                     key={k}
                     label={PALETTE_KEY_LABELS[k]}
                     value={cfg.palette[k]}
-                    onChange={(v) =>
-                      setCfg({
-                        ...cfg,
-                        palette_preset: "custom",
-                        palette: { ...cfg.palette, [k]: v },
-                      })
-                    }
+                    onChange={(v) => patchPalette({ [k]: v })}
                   />
                 ))}
               </div>
             </SectionFrame>
 
             <SectionFrame>
-              <SectionTitle>Font colours</SectionTitle>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Colours used for headings, body copy, muted labels, and text on dark / accent
-                surfaces.
-              </p>
-              <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {FONT_PALETTE_KEYS.map((k) => (
-                  <PaletteColorField
-                    key={k}
-                    label={PALETTE_KEY_LABELS[k]}
-                    value={cfg.palette[k]}
-                    onChange={(v) =>
-                      setCfg({
-                        ...cfg,
-                        palette_preset: "custom",
-                        palette: { ...cfg.palette, [k]: v },
-                      })
-                    }
-                    previewText={k.startsWith("textOn") ? "Aa" : "Sample text"}
-                    previewBg={
-                      k === "textOnDark"
-                        ? cfg.palette.navy
-                        : k === "textOnAccent"
-                          ? cfg.palette.accent
-                          : undefined
-                    }
-                  />
-                ))}
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <SectionTitle>Font colours & contrast</SectionTitle>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Use dark fonts on light sections and light fonts on dark / accent bands. Apply
+                    elegant defaults in one click, then fine-tune.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setCfg(applyElegantFontContrast(cfg));
+                    toast.success("Elegant font contrast applied");
+                  }}
+                >
+                  <Sparkles className="mr-1.5 h-4 w-4" /> Apply elegant fonts
+                </Button>
               </div>
-              <div className="mt-6 flex flex-wrap gap-3">
-                {(Object.keys(cfg.palette) as (keyof LandingPalette)[]).map((k) => (
-                  <div key={k} className="flex items-center gap-2 rounded border p-2 text-xs">
-                    <div
-                      className="h-8 w-8 rounded border"
-                      style={{ background: cfg.palette[k] }}
-                    />
-                    <div>
-                      <div className="font-semibold">{PALETTE_KEY_LABELS[k]}</div>
-                      <div className="text-muted-foreground">{cfg.palette[k]}</div>
+
+              <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                <div className="rounded-lg border p-4">
+                  <div className="mb-1 text-sm font-semibold">Dark text on light backgrounds</div>
+                  <p className="mb-3 text-xs text-muted-foreground">
+                    Headings, body, and muted labels over white / surface sections.
+                  </p>
+                  <div
+                    className="mb-4 rounded-md border p-3"
+                    style={{ background: cfg.palette.surface }}
+                  >
+                    <div className="text-base font-bold" style={{ color: cfg.palette.textHeading }}>
+                      Heading sample
+                    </div>
+                    <div className="mt-1 text-sm" style={{ color: cfg.palette.textBody }}>
+                      Body copy should stay readable on light surfaces.
+                    </div>
+                    <div className="mt-1 text-xs" style={{ color: cfg.palette.textMuted }}>
+                      Muted caption / nav label
                     </div>
                   </div>
-                ))}
+                  <div className="grid gap-3">
+                    {DARK_ON_LIGHT_FONT_KEYS.map((k) => (
+                      <PaletteColorField
+                        key={k}
+                        label={PALETTE_KEY_LABELS[k]}
+                        hint={PALETTE_KEY_HINTS[k]}
+                        value={cfg.palette[k]}
+                        onChange={(v) => patchPalette({ [k]: v })}
+                        previewText="Sample text"
+                        previewBg={cfg.palette.surface}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border p-4">
+                  <div className="mb-1 text-sm font-semibold">Light text on dark backgrounds</div>
+                  <p className="mb-3 text-xs text-muted-foreground">
+                    Hero, navy bands, and CTA buttons need light (or high-contrast) type.
+                  </p>
+                  <div
+                    className="mb-4 rounded-md border p-3"
+                    style={{ background: cfg.palette.navy, color: cfg.palette.textOnDark }}
+                  >
+                    <div className="text-base font-bold">Hero / dark band</div>
+                    <div className="mt-1 text-sm opacity-90">
+                      Light type on dark navy keeps the landing elegant.
+                    </div>
+                    <div
+                      className="mt-3 inline-flex rounded px-3 py-1.5 text-xs font-bold"
+                      style={{
+                        background: cfg.palette.accent,
+                        color: cfg.palette.textOnAccent,
+                      }}
+                    >
+                      CTA button text
+                    </div>
+                  </div>
+                  <div className="grid gap-3">
+                    {LIGHT_ON_DARK_FONT_KEYS.map((k) => (
+                      <PaletteColorField
+                        key={k}
+                        label={PALETTE_KEY_LABELS[k]}
+                        hint={PALETTE_KEY_HINTS[k]}
+                        value={cfg.palette[k]}
+                        onChange={(v) => patchPalette({ [k]: v })}
+                        previewText="Aa sample"
+                        previewBg={k === "textOnAccent" ? cfg.palette.accent : cfg.palette.navy}
+                      />
+                    ))}
+                  </div>
+                </div>
               </div>
             </SectionFrame>
           </div>
@@ -663,19 +823,21 @@ function Field({
 
 function PaletteColorField({
   label,
+  hint,
   value,
   onChange,
   previewText,
   previewBg,
 }: {
   label: string;
+  hint?: string;
   value: string;
   onChange: (v: string) => void;
   previewText?: string;
   previewBg?: string;
 }) {
   return (
-    <Field label={label}>
+    <Field label={label} hint={hint}>
       <div className="flex items-center gap-2">
         <Input
           type="color"

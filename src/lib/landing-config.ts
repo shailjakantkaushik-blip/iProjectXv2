@@ -87,6 +87,19 @@ export type PalettePreset = {
   palette: LandingPalette;
 };
 
+/** Dark ink on light surfaces — elegant defaults. */
+export const ELEGANT_DARK_INK = {
+  textHeading: "#0f172a",
+  textBody: "#334155",
+  textMuted: "#64748b",
+} as const;
+
+/** Light ink on dark / accent surfaces — elegant defaults. */
+export const ELEGANT_LIGHT_INK = {
+  textOnDark: "#f8fafc",
+  textOnAccent: "#ffffff",
+} as const;
+
 export const PALETTE_PRESETS: PalettePreset[] = [
   {
     id: "iprojectx",
@@ -96,9 +109,129 @@ export const PALETTE_PRESETS: PalettePreset[] = [
     palette: { ...DEFAULT_PALETTE },
   },
   {
+    id: "corporate-blue",
+    name: "Corporate Blue",
+    description: "IBM / consulting-style trust blue",
+    theme: "light",
+    palette: {
+      navy: "#0b1f3a",
+      navyLight: "#1a365d",
+      accent: "#2563eb",
+      surface: "#eef2f7",
+      danger: "#dc2626",
+      warning: "#d97706",
+      success: "#15803d",
+      textHeading: "#0b1f3a",
+      textBody: "#1e293b",
+      textMuted: "#64748b",
+      textOnDark: "#f8fafc",
+      textOnAccent: "#ffffff",
+    },
+  },
+  {
+    id: "finance-charcoal",
+    name: "Finance Charcoal",
+    description: "Banking / fintech charcoal & steel",
+    theme: "light",
+    palette: {
+      navy: "#111827",
+      navyLight: "#1f2937",
+      accent: "#4b5563",
+      surface: "#f3f4f6",
+      danger: "#b91c1c",
+      warning: "#b45309",
+      success: "#047857",
+      textHeading: "#111827",
+      textBody: "#374151",
+      textMuted: "#6b7280",
+      textOnDark: "#f9fafb",
+      textOnAccent: "#ffffff",
+    },
+  },
+  {
+    id: "swiss-minimal",
+    name: "Swiss Minimal",
+    description: "Clean monochrome with crisp black type",
+    theme: "light",
+    palette: {
+      navy: "#171717",
+      navyLight: "#404040",
+      accent: "#262626",
+      surface: "#f5f5f5",
+      danger: "#dc2626",
+      warning: "#ca8a04",
+      success: "#16a34a",
+      textHeading: "#171717",
+      textBody: "#404040",
+      textMuted: "#737373",
+      textOnDark: "#fafafa",
+      textOnAccent: "#fafafa",
+    },
+  },
+  {
+    id: "saas-sky",
+    name: "SaaS Sky",
+    description: "Modern product marketing blue",
+    theme: "light",
+    palette: {
+      navy: "#0c4a6e",
+      navyLight: "#0369a1",
+      accent: "#0284c7",
+      surface: "#f0f9ff",
+      danger: "#e11d48",
+      warning: "#ca8a04",
+      success: "#059669",
+      textHeading: "#0c4a6e",
+      textBody: "#164e63",
+      textMuted: "#64748b",
+      textOnDark: "#f0f9ff",
+      textOnAccent: "#ffffff",
+    },
+  },
+  {
+    id: "healthcare-teal",
+    name: "Healthcare Teal",
+    description: "Clinical / life-sciences teal",
+    theme: "light",
+    palette: {
+      navy: "#134e4a",
+      navyLight: "#0f766e",
+      accent: "#0d9488",
+      surface: "#f0fdfa",
+      danger: "#dc2626",
+      warning: "#d97706",
+      success: "#047857",
+      textHeading: "#134e4a",
+      textBody: "#115e59",
+      textMuted: "#64748b",
+      textOnDark: "#f0fdfa",
+      textOnAccent: "#ffffff",
+    },
+  },
+  {
+    id: "gov-indigo",
+    name: "Government Indigo",
+    description: "Public-sector formal indigo",
+    theme: "light",
+    palette: {
+      navy: "#1e1b4b",
+      navyLight: "#312e81",
+      accent: "#4338ca",
+      surface: "#eef2ff",
+      danger: "#b91c1c",
+      warning: "#b45309",
+      success: "#15803d",
+      textHeading: "#1e1b4b",
+      textBody: "#312e81",
+      textMuted: "#64748b",
+      textOnDark: "#eef2ff",
+      textOnAccent: "#ffffff",
+    },
+  },
+  {
     id: "light-slate",
     name: "Light Slate",
-    description: "Clean light theme with slate accents",
+    description: "Neutral slate with sky accent",
     theme: "light",
     palette: {
       navy: "#0f172a",
@@ -113,6 +246,66 @@ export const PALETTE_PRESETS: PalettePreset[] = [
       textMuted: "#64748b",
       textOnDark: "#f8fafc",
       textOnAccent: "#ffffff",
+    },
+  },
+  {
+    id: "ocean",
+    name: "Ocean",
+    description: "Cool teal / cyan palette",
+    theme: "light",
+    palette: {
+      navy: "#0c4a6e",
+      navyLight: "#075985",
+      accent: "#0891b2",
+      surface: "#e0f2fe",
+      danger: "#e11d48",
+      warning: "#ca8a04",
+      success: "#059669",
+      textHeading: "#0c4a6e",
+      textBody: "#155e75",
+      textMuted: "#64748b",
+      textOnDark: "#ecfeff",
+      textOnAccent: "#ffffff",
+    },
+  },
+  {
+    id: "forest",
+    name: "Forest",
+    description: "ESG / sustainability green",
+    theme: "light",
+    palette: {
+      navy: "#14532d",
+      navyLight: "#166534",
+      accent: "#16a34a",
+      surface: "#ecfdf5",
+      danger: "#dc2626",
+      warning: "#ca8a04",
+      success: "#15803d",
+      textHeading: "#14532d",
+      textBody: "#166534",
+      textMuted: "#6b7280",
+      textOnDark: "#f0fdf4",
+      textOnAccent: "#ffffff",
+    },
+  },
+  {
+    id: "midnight-executive",
+    name: "Midnight Executive",
+    description: "Boardroom dark with bright CTA text",
+    theme: "dark",
+    palette: {
+      navy: "#020617",
+      navyLight: "#0f172a",
+      accent: "#38bdf8",
+      surface: "#1e293b",
+      danger: "#f87171",
+      warning: "#fbbf24",
+      success: "#4ade80",
+      textHeading: "#f8fafc",
+      textBody: "#cbd5e1",
+      textMuted: "#94a3b8",
+      textOnDark: "#f8fafc",
+      textOnAccent: "#0f172a",
     },
   },
   {
@@ -156,43 +349,23 @@ export const PALETTE_PRESETS: PalettePreset[] = [
     },
   },
   {
-    id: "ocean",
-    name: "Ocean",
-    description: "Cool teal / cyan palette",
-    theme: "light",
+    id: "obsidian-gold",
+    name: "Obsidian Gold",
+    description: "Luxury dark with refined gold accent",
+    theme: "dark",
     palette: {
-      navy: "#0c4a6e",
-      navyLight: "#075985",
-      accent: "#0891b2",
-      surface: "#e0f2fe",
-      danger: "#e11d48",
-      warning: "#ca8a04",
-      success: "#059669",
-      textHeading: "#0c4a6e",
-      textBody: "#155e75",
-      textMuted: "#64748b",
-      textOnDark: "#ecfeff",
-      textOnAccent: "#ffffff",
-    },
-  },
-  {
-    id: "forest",
-    name: "Forest",
-    description: "Green-forward governance palette",
-    theme: "light",
-    palette: {
-      navy: "#14532d",
-      navyLight: "#166534",
-      accent: "#16a34a",
-      surface: "#ecfdf5",
-      danger: "#dc2626",
-      warning: "#ca8a04",
-      success: "#15803d",
-      textHeading: "#14532d",
-      textBody: "#166534",
-      textMuted: "#6b7280",
-      textOnDark: "#f0fdf4",
-      textOnAccent: "#ffffff",
+      navy: "#0a0a0a",
+      navyLight: "#171717",
+      accent: "#d4a017",
+      surface: "#262626",
+      danger: "#f87171",
+      warning: "#fbbf24",
+      success: "#4ade80",
+      textHeading: "#fafafa",
+      textBody: "#d4d4d4",
+      textMuted: "#a3a3a3",
+      textOnDark: "#fafafa",
+      textOnAccent: "#171717",
     },
   },
 ];
@@ -388,29 +561,74 @@ export const SURFACE_PALETTE_KEYS = [
   "success",
 ] as const satisfies ReadonlyArray<keyof LandingPalette>;
 
-/** Font color keys shown separately in the palette editor. */
-export const FONT_PALETTE_KEYS = [
+/** Dark fonts used on light / surface backgrounds. */
+export const DARK_ON_LIGHT_FONT_KEYS = [
   "textHeading",
   "textBody",
   "textMuted",
+] as const satisfies ReadonlyArray<keyof LandingPalette>;
+
+/** Light fonts used on dark / accent backgrounds. */
+export const LIGHT_ON_DARK_FONT_KEYS = [
   "textOnDark",
   "textOnAccent",
 ] as const satisfies ReadonlyArray<keyof LandingPalette>;
 
+/** All font color keys (dark-on-light + light-on-dark). */
+export const FONT_PALETTE_KEYS = [
+  ...DARK_ON_LIGHT_FONT_KEYS,
+  ...LIGHT_ON_DARK_FONT_KEYS,
+] as const satisfies ReadonlyArray<keyof LandingPalette>;
+
 export const PALETTE_KEY_LABELS: Record<keyof LandingPalette, string> = {
-  navy: "Navy",
+  navy: "Navy / dark surface",
   navyLight: "Navy light",
-  accent: "Accent",
-  surface: "Surface",
+  accent: "Accent / CTA",
+  surface: "Light surface",
   danger: "Danger",
   warning: "Warning",
   success: "Success",
-  textHeading: "Heading text",
-  textBody: "Body text",
-  textMuted: "Muted text",
-  textOnDark: "Text on dark",
-  textOnAccent: "Text on accent",
+  textHeading: "Heading (dark on light)",
+  textBody: "Body (dark on light)",
+  textMuted: "Muted (dark on light)",
+  textOnDark: "Light text on dark",
+  textOnAccent: "Light text on accent",
 };
+
+export const PALETTE_KEY_HINTS: Partial<Record<keyof LandingPalette, string>> = {
+  textHeading: "Primary titles on white / light sections",
+  textBody: "Paragraph copy on light backgrounds",
+  textMuted: "Secondary labels, nav, captions",
+  textOnDark: "Hero, navy bands, dark footers",
+  textOnAccent: "Buttons and accent fills",
+};
+
+/** One-click elegant font contrast for the current theme. */
+export function applyElegantFontContrast(cfg: LandingConfig): LandingConfig {
+  if (cfg.theme === "dark") {
+    return {
+      ...cfg,
+      palette_preset: "custom",
+      palette: {
+        ...cfg.palette,
+        textHeading: "#f8fafc",
+        textBody: "#cbd5e1",
+        textMuted: "#94a3b8",
+        textOnDark: "#f8fafc",
+        textOnAccent: "#0f172a",
+      },
+    };
+  }
+  return {
+    ...cfg,
+    palette_preset: "custom",
+    palette: {
+      ...cfg.palette,
+      ...ELEGANT_DARK_INK,
+      ...ELEGANT_LIGHT_INK,
+    },
+  };
+}
 
 // Deep merge with defaults so partial saved configs still render fully.
 export function mergeConfig(partial: any): LandingConfig {
