@@ -14,7 +14,9 @@ import { AuthProvider } from "@/lib/auth-context";
 import { Toaster } from "@/components/ui/sonner";
 import { applyChartTheme } from "@/lib/chart-theme";
 import { PlatformThemeProvider } from "@/components/platform-theme-provider";
+import { OrgThemeProvider } from "@/components/org-theme-provider";
 import { getPlatformThemeBootScript } from "@/lib/platform-theme";
+import { getOrgThemeBootScript } from "@/lib/org-theme";
 import { LANDING_CONFIG_CACHE_KEY } from "@/lib/landing-config";
 import {
   installChunkLoadRecovery,
@@ -121,8 +123,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: ReactNode }) {
-  // Blocking boot scripts: apply cached theme / landing bg before first paint.
+  // Blocking boot scripts: apply cached themes before first paint (no colour flash).
+  // Order: platform first, then org (org wins on /app).
   const themeBoot = getPlatformThemeBootScript();
+  const orgThemeBoot = getOrgThemeBootScript();
   const landingBoot = `(function(){try{if(location.pathname!=="/")return;var raw=localStorage.getItem(${JSON.stringify(LANDING_CONFIG_CACHE_KEY)});if(!raw)return;var cfg=JSON.parse(raw);if(!cfg||!cfg.palette)return;var p=cfg.palette;var dark=cfg.theme==="dark";var bg=dark?p.navy:"#ffffff";document.documentElement.style.backgroundColor=bg;document.documentElement.style.color=p.textBody||"#1e3a5f";}catch(e){}})();`;
 
   return (
@@ -130,6 +134,7 @@ function RootShell({ children }: { children: ReactNode }) {
       <head>
         <HeadContent />
         <script dangerouslySetInnerHTML={{ __html: themeBoot }} />
+        <script dangerouslySetInnerHTML={{ __html: orgThemeBoot }} />
         <script dangerouslySetInnerHTML={{ __html: landingBoot }} />
       </head>
       <body>
@@ -153,8 +158,10 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <PlatformThemeProvider>
-          <Outlet />
-          <Toaster richColors closeButton />
+          <OrgThemeProvider>
+            <Outlet />
+            <Toaster richColors closeButton />
+          </OrgThemeProvider>
         </PlatformThemeProvider>
       </AuthProvider>
     </QueryClientProvider>

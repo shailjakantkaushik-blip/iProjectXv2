@@ -33,6 +33,13 @@ export interface Organization {
       logo_size_app?: string;
       logo_custom_app?: { heightPx: number; maxWidthPx: number };
     };
+    /** Organisation colour palette — overrides platform theme in /app when enabled. */
+    color_theme?: {
+      enabled?: boolean;
+      theme?: "light" | "dark";
+      palette_preset?: string;
+      palette?: Record<string, string>;
+    };
     project_visibility?: {
       rules?: Array<{
         role: string;
