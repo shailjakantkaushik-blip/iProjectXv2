@@ -41,10 +41,17 @@ export async function exportElementPNG(el: HTMLElement, name: string) {
   } catch (e: any) { toast.error(`PNG export failed: ${e.message ?? e}`); }
 }
 
-export async function exportElementPDF(el: HTMLElement, name: string) {
+export async function exportElementPDF(
+  el: HTMLElement,
+  name: string,
+  /** Title (ignored for PDF) or options — DownloadMenu may pass a title string */
+  titleOrOpts?: string | { orientation?: "portrait" | "landscape" },
+) {
   try {
     const { dataUrl, width, height } = await snapshotDataUrl(el);
-    const pdf = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+    const opts = typeof titleOrOpts === "object" && titleOrOpts ? titleOrOpts : undefined;
+    const orientation = opts?.orientation ?? "landscape";
+    const pdf = new jsPDF({ orientation, unit: "pt", format: "a4" });
     const pw = pdf.internal.pageSize.getWidth();
     const ph = pdf.internal.pageSize.getHeight();
     const ratio = pw / width;
@@ -58,13 +65,13 @@ export async function exportElementPDF(el: HTMLElement, name: string) {
       first = false;
       const sliceH = Math.min(pageCanvasH, height - y);
       const c = document.createElement("canvas");
-      c.width = width; c.height = sliceH;
+      c.width = width; c.height = Math.max(1, Math.floor(sliceH));
       c.getContext("2d")!.drawImage(src, 0, y, width, sliceH, 0, 0, width, sliceH);
       pdf.addImage(c.toDataURL("image/png"), "PNG", 0, 0, pw, sliceH * ratio);
       y += pageCanvasH;
     }
     pdf.save(`${name}.pdf`);
-  } catch (e: any) { toast.error(`PDF export failed: ${e.message ?? e}`); }
+  } catch (e: any) { toast.error(`PDF export failed: ${e.message ?? e}`); throw e; }
 }
 
 export async function exportElementPPT(el: HTMLElement, name: string, title?: string) {

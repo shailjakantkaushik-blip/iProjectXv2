@@ -9,8 +9,8 @@ import {
 import { SectionFrame, SectionTitle, RagChip } from "@/components/streamlit";
 import { ChartLegendList, legendItemsFromCounts } from "@/components/chart-legend-list";
 import { useAuth } from "@/lib/auth-context";
-import jsPDF from "jspdf";
-import html2canvas from "html2canvas";
+import { toast } from "sonner";
+import { exportElementPDF } from "@/components/page-export";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { RAG_COLORS, PRIORITY_COLORS, CHART_SERIES } from "@/lib/chart-theme";
 
@@ -350,31 +350,46 @@ function ExecutiveDashboard() {
   }));
 
   const exportPdf = async () => {
-    if (!reportRef.current) return;
+    if (!reportRef.current) {
+      toast.error("Dashboard is not ready to export yet.");
+      return;
+    }
     setExporting(true);
+    toast.info("Generating executive PDF…");
     try {
-      const canvas = await html2canvas(reportRef.current, { scale: 1.5, backgroundColor: "#f4f6fa", useCORS: true });
-      const img = canvas.toDataURL("image/jpeg", 0.9);
-      const pdf = new jsPDF("p", "mm", "a4");
-      const pageW = pdf.internal.pageSize.getWidth();
-      const pageH = pdf.internal.pageSize.getHeight();
-      const imgW = pageW;
-      const imgH = (canvas.height * imgW) / canvas.width;
-      let y = 0; let rem = imgH;
-      while (rem > 0) {
-        pdf.addImage(img, "JPEG", 0, y ? -y : 0, imgW, imgH);
-        rem -= pageH;
-        if (rem > 0) { y += pageH; pdf.addPage(); }
-      }
-      pdf.save(`executive-dashboard-${new Date().toISOString().slice(0, 10)}.pdf`);
-    } finally { setExporting(false); }
+      await exportElementPDF(
+        reportRef.current,
+        `executive-dashboard-${new Date().toISOString().slice(0, 10)}`,
+        { orientation: "portrait" },
+      );
+      toast.success("PDF downloaded");
+    } catch {
+      /* exportElementPDF already toasts the error */
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
-    <div ref={reportRef}>
+    <div>
       {/* Header + filters */}
       <SectionFrame>
-        <div className="mb-3 page-heading">📊 PMO Portfolio — Executive Summary</div>
+        <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+          <div className="page-heading">📊 PMO Portfolio — Executive Summary</div>
+          <button
+            type="button"
+            onClick={() => void exportPdf()}
+            disabled={exporting}
+            className="print:hidden rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:opacity-90 disabled:opacity-60"
+          >
+            {exporting ? "Generating…" : "Generate Executive Dashboard PDF"}
+          </button>
+        </div>
+      </SectionFrame>
+
+      <div ref={reportRef}>
+      <SectionFrame>
+        <div className="mb-3 page-heading text-base font-semibold">Portfolio filters</div>
         <div className="flex flex-wrap items-center gap-2">
           {[
             ["Program", program, setProgram, opts("program")],
@@ -663,13 +678,7 @@ function ExecutiveDashboard() {
         )}
       </SectionFrame>
 
-      <SectionFrame>
-        <div className="mb-2 text-sm text-muted-foreground">📄 Full Dashboard PDF — replica + expanded project timelines</div>
-        <button onClick={exportPdf} disabled={exporting}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:opacity-90 disabled:opacity-60">
-          {exporting ? "Generating…" : "📥 Generate Executive Dashboard PDF"}
-        </button>
-      </SectionFrame>
+      </div>
     </div>
   );
 }

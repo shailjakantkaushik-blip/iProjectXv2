@@ -398,13 +398,15 @@ function Nav({ cfg }: { cfg: LandingConfig }) {
           >
             Sign in
           </Link>
-          <Link
-            to="/auth"
-            style={{ ...HEADING, background: p.navy, color: p.textOnDark }}
-            className="rounded-md px-4 py-2.5 text-sm font-bold transition-opacity hover:opacity-90"
-          >
-            Get started
-          </Link>
+          {cfg.signup_enabled !== false && (
+            <Link
+              to="/auth"
+              style={{ ...HEADING, background: p.navy, color: p.textOnDark }}
+              className="rounded-md px-4 py-2.5 text-sm font-bold transition-opacity hover:opacity-90"
+            >
+              Get started
+            </Link>
+          )}
         </div>
 
         <button
@@ -452,14 +454,16 @@ function Nav({ cfg }: { cfg: LandingConfig }) {
             >
               Sign in
             </Link>
-            <Link
-              to="/auth"
-              onClick={() => setOpen(false)}
-              style={{ ...HEADING, background: p.accent, color: p.textOnAccent }}
-              className="rounded-md px-3 py-3 text-center text-sm font-bold"
-            >
-              Get started
-            </Link>
+            {cfg.signup_enabled !== false && (
+              <Link
+                to="/auth"
+                onClick={() => setOpen(false)}
+                style={{ ...HEADING, background: p.accent, color: p.textOnAccent }}
+                className="rounded-md px-3 py-3 text-center text-sm font-bold"
+              >
+                Get started
+              </Link>
+            )}
           </div>
         </div>
       )}

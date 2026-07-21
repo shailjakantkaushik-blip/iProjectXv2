@@ -41,6 +41,7 @@ export const PAGES: { path: string; label: string; group: string }[] = [
   { path: "/app/prioritisation", label: "Prioritisation", group: "Portfolio" },
   { path: "/app/portfolio-movements", label: "Movements", group: "Portfolio" },
   { path: "/app/demand-pipeline", label: "Demand Pipeline", group: "Portfolio" },
+  { path: "/app/scenarios", label: "Portfolio Scenarios", group: "Portfolio" },
   { path: "/app/work-items", label: "Work Items", group: "Delivery" },
   { path: "/app/timeline", label: "Timeline", group: "Delivery" },
   { path: "/app/roadmap-governance", label: "Roadmap × Governance", group: "Delivery" },
@@ -64,6 +65,7 @@ export const PAGES: { path: string; label: string; group: string }[] = [
   { path: "/app/lessons", label: "Lessons Learned", group: "Governance" },
   { path: "/app/release-register", label: "Release Register", group: "Governance" },
   { path: "/app/executive-reports", label: "Executive Reports", group: "Governance" },
+  { path: "/app/audit-log", label: "Audit Log", group: "Governance" },
   { path: "/app/data-editor", label: "Data Editor", group: "Governance" },
   { path: "/app/configuration", label: "Configuration", group: "Governance" },
 ];

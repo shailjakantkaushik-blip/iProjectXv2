@@ -22,6 +22,7 @@ import { Route as AuthenticatedAppAboutRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedAppActionsRouteImport } from './routes/_authenticated/app.actions'
 import { Route as AuthenticatedAppAgileRouteImport } from './routes/_authenticated/app.agile'
 import { Route as AuthenticatedAppAiAssistRouteImport } from './routes/_authenticated/app.ai-assist'
+import { Route as AuthenticatedAppAuditLogRouteImport } from './routes/_authenticated/app.audit-log'
 import { Route as AuthenticatedAppBenefitsRouteImport } from './routes/_authenticated/app.benefits'
 import { Route as AuthenticatedAppBillingRouteImport } from './routes/_authenticated/app.billing'
 import { Route as AuthenticatedAppBusinessUnitsRouteImport } from './routes/_authenticated/app.business-units'
@@ -56,6 +57,7 @@ import { Route as AuthenticatedAppRiskRoadmapRouteImport } from './routes/_authe
 import { Route as AuthenticatedAppRisksRouteImport } from './routes/_authenticated/app.risks'
 import { Route as AuthenticatedAppRoadmapAnalyticsRouteImport } from './routes/_authenticated/app.roadmap-analytics'
 import { Route as AuthenticatedAppRoadmapGovernanceRouteImport } from './routes/_authenticated/app.roadmap-governance'
+import { Route as AuthenticatedAppScenariosRouteImport } from './routes/_authenticated/app.scenarios'
 import { Route as AuthenticatedAppSettingsRouteImport } from './routes/_authenticated/app.settings'
 import { Route as AuthenticatedAppStageGateConfigRouteImport } from './routes/_authenticated/app.stage-gate-config'
 import { Route as AuthenticatedAppStageGatesRouteImport } from './routes/_authenticated/app.stage-gates'
@@ -72,6 +74,7 @@ import { Route as AuthenticatedPlatformLandingRouteImport } from './routes/_auth
 import { Route as AuthenticatedPlatformLimitsRouteImport } from './routes/_authenticated/platform.limits'
 import { Route as AuthenticatedPlatformOrganizationsRouteImport } from './routes/_authenticated/platform.organizations'
 import { Route as AuthenticatedPlatformPlansRouteImport } from './routes/_authenticated/platform.plans'
+import { Route as AuthenticatedPlatformSettingsRouteImport } from './routes/_authenticated/platform.settings'
 import { Route as AuthenticatedPlatformSubscriptionsRouteImport } from './routes/_authenticated/platform.subscriptions'
 import { Route as AuthenticatedAppInvoiceIdRouteImport } from './routes/_authenticated/app.invoice.$id'
 import { Route as AuthenticatedAppProjectsIdRouteImport } from './routes/_authenticated/app.projects.$id'
@@ -142,6 +145,12 @@ const AuthenticatedAppAiAssistRoute =
   AuthenticatedAppAiAssistRouteImport.update({
     id: '/ai-assist',
     path: '/ai-assist',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
+const AuthenticatedAppAuditLogRoute =
+  AuthenticatedAppAuditLogRouteImport.update({
+    id: '/audit-log',
+    path: '/audit-log',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
 const AuthenticatedAppBenefitsRoute =
@@ -343,6 +352,12 @@ const AuthenticatedAppRoadmapGovernanceRoute =
     path: '/roadmap-governance',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
+const AuthenticatedAppScenariosRoute =
+  AuthenticatedAppScenariosRouteImport.update({
+    id: '/scenarios',
+    path: '/scenarios',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
 const AuthenticatedAppSettingsRoute =
   AuthenticatedAppSettingsRouteImport.update({
     id: '/settings',
@@ -438,6 +453,12 @@ const AuthenticatedPlatformPlansRoute =
     path: '/plans',
     getParentRoute: () => AuthenticatedPlatformRoute,
   } as any)
+const AuthenticatedPlatformSettingsRoute =
+  AuthenticatedPlatformSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => AuthenticatedPlatformRoute,
+  } as any)
 const AuthenticatedPlatformSubscriptionsRoute =
   AuthenticatedPlatformSubscriptionsRouteImport.update({
     id: '/subscriptions',
@@ -487,6 +508,7 @@ export interface FileRoutesByFullPath {
   '/app/actions': typeof AuthenticatedAppActionsRoute
   '/app/agile': typeof AuthenticatedAppAgileRoute
   '/app/ai-assist': typeof AuthenticatedAppAiAssistRoute
+  '/app/audit-log': typeof AuthenticatedAppAuditLogRoute
   '/app/benefits': typeof AuthenticatedAppBenefitsRoute
   '/app/billing': typeof AuthenticatedAppBillingRoute
   '/app/business-units': typeof AuthenticatedAppBusinessUnitsRoute
@@ -521,6 +543,7 @@ export interface FileRoutesByFullPath {
   '/app/risks': typeof AuthenticatedAppRisksRoute
   '/app/roadmap-analytics': typeof AuthenticatedAppRoadmapAnalyticsRoute
   '/app/roadmap-governance': typeof AuthenticatedAppRoadmapGovernanceRoute
+  '/app/scenarios': typeof AuthenticatedAppScenariosRoute
   '/app/settings': typeof AuthenticatedAppSettingsRoute
   '/app/stage-gate-config': typeof AuthenticatedAppStageGateConfigRoute
   '/app/stage-gates': typeof AuthenticatedAppStageGatesRoute
@@ -537,6 +560,7 @@ export interface FileRoutesByFullPath {
   '/platform/limits': typeof AuthenticatedPlatformLimitsRoute
   '/platform/organizations': typeof AuthenticatedPlatformOrganizationsRoute
   '/platform/plans': typeof AuthenticatedPlatformPlansRoute
+  '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
   '/app/': typeof AuthenticatedAppIndexRoute
   '/app/invoice/$id': typeof AuthenticatedAppInvoiceIdRoute
@@ -556,6 +580,7 @@ export interface FileRoutesByTo {
   '/app/actions': typeof AuthenticatedAppActionsRoute
   '/app/agile': typeof AuthenticatedAppAgileRoute
   '/app/ai-assist': typeof AuthenticatedAppAiAssistRoute
+  '/app/audit-log': typeof AuthenticatedAppAuditLogRoute
   '/app/benefits': typeof AuthenticatedAppBenefitsRoute
   '/app/billing': typeof AuthenticatedAppBillingRoute
   '/app/business-units': typeof AuthenticatedAppBusinessUnitsRoute
@@ -590,6 +615,7 @@ export interface FileRoutesByTo {
   '/app/risks': typeof AuthenticatedAppRisksRoute
   '/app/roadmap-analytics': typeof AuthenticatedAppRoadmapAnalyticsRoute
   '/app/roadmap-governance': typeof AuthenticatedAppRoadmapGovernanceRoute
+  '/app/scenarios': typeof AuthenticatedAppScenariosRoute
   '/app/settings': typeof AuthenticatedAppSettingsRoute
   '/app/stage-gate-config': typeof AuthenticatedAppStageGateConfigRoute
   '/app/stage-gates': typeof AuthenticatedAppStageGatesRoute
@@ -606,6 +632,7 @@ export interface FileRoutesByTo {
   '/platform/limits': typeof AuthenticatedPlatformLimitsRoute
   '/platform/organizations': typeof AuthenticatedPlatformOrganizationsRoute
   '/platform/plans': typeof AuthenticatedPlatformPlansRoute
+  '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
   '/app': typeof AuthenticatedAppIndexRoute
   '/app/invoice/$id': typeof AuthenticatedAppInvoiceIdRoute
@@ -628,6 +655,7 @@ export interface FileRoutesById {
   '/_authenticated/app/actions': typeof AuthenticatedAppActionsRoute
   '/_authenticated/app/agile': typeof AuthenticatedAppAgileRoute
   '/_authenticated/app/ai-assist': typeof AuthenticatedAppAiAssistRoute
+  '/_authenticated/app/audit-log': typeof AuthenticatedAppAuditLogRoute
   '/_authenticated/app/benefits': typeof AuthenticatedAppBenefitsRoute
   '/_authenticated/app/billing': typeof AuthenticatedAppBillingRoute
   '/_authenticated/app/business-units': typeof AuthenticatedAppBusinessUnitsRoute
@@ -662,6 +690,7 @@ export interface FileRoutesById {
   '/_authenticated/app/risks': typeof AuthenticatedAppRisksRoute
   '/_authenticated/app/roadmap-analytics': typeof AuthenticatedAppRoadmapAnalyticsRoute
   '/_authenticated/app/roadmap-governance': typeof AuthenticatedAppRoadmapGovernanceRoute
+  '/_authenticated/app/scenarios': typeof AuthenticatedAppScenariosRoute
   '/_authenticated/app/settings': typeof AuthenticatedAppSettingsRoute
   '/_authenticated/app/stage-gate-config': typeof AuthenticatedAppStageGateConfigRoute
   '/_authenticated/app/stage-gates': typeof AuthenticatedAppStageGatesRoute
@@ -678,6 +707,7 @@ export interface FileRoutesById {
   '/_authenticated/platform/limits': typeof AuthenticatedPlatformLimitsRoute
   '/_authenticated/platform/organizations': typeof AuthenticatedPlatformOrganizationsRoute
   '/_authenticated/platform/plans': typeof AuthenticatedPlatformPlansRoute
+  '/_authenticated/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/_authenticated/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
   '/_authenticated/app/': typeof AuthenticatedAppIndexRoute
   '/_authenticated/app/invoice/$id': typeof AuthenticatedAppInvoiceIdRoute
@@ -700,6 +730,7 @@ export interface FileRouteTypes {
     | '/app/actions'
     | '/app/agile'
     | '/app/ai-assist'
+    | '/app/audit-log'
     | '/app/benefits'
     | '/app/billing'
     | '/app/business-units'
@@ -734,6 +765,7 @@ export interface FileRouteTypes {
     | '/app/risks'
     | '/app/roadmap-analytics'
     | '/app/roadmap-governance'
+    | '/app/scenarios'
     | '/app/settings'
     | '/app/stage-gate-config'
     | '/app/stage-gates'
@@ -750,6 +782,7 @@ export interface FileRouteTypes {
     | '/platform/limits'
     | '/platform/organizations'
     | '/platform/plans'
+    | '/platform/settings'
     | '/platform/subscriptions'
     | '/app/'
     | '/app/invoice/$id'
@@ -769,6 +802,7 @@ export interface FileRouteTypes {
     | '/app/actions'
     | '/app/agile'
     | '/app/ai-assist'
+    | '/app/audit-log'
     | '/app/benefits'
     | '/app/billing'
     | '/app/business-units'
@@ -803,6 +837,7 @@ export interface FileRouteTypes {
     | '/app/risks'
     | '/app/roadmap-analytics'
     | '/app/roadmap-governance'
+    | '/app/scenarios'
     | '/app/settings'
     | '/app/stage-gate-config'
     | '/app/stage-gates'
@@ -819,6 +854,7 @@ export interface FileRouteTypes {
     | '/platform/limits'
     | '/platform/organizations'
     | '/platform/plans'
+    | '/platform/settings'
     | '/platform/subscriptions'
     | '/app'
     | '/app/invoice/$id'
@@ -840,6 +876,7 @@ export interface FileRouteTypes {
     | '/_authenticated/app/actions'
     | '/_authenticated/app/agile'
     | '/_authenticated/app/ai-assist'
+    | '/_authenticated/app/audit-log'
     | '/_authenticated/app/benefits'
     | '/_authenticated/app/billing'
     | '/_authenticated/app/business-units'
@@ -874,6 +911,7 @@ export interface FileRouteTypes {
     | '/_authenticated/app/risks'
     | '/_authenticated/app/roadmap-analytics'
     | '/_authenticated/app/roadmap-governance'
+    | '/_authenticated/app/scenarios'
     | '/_authenticated/app/settings'
     | '/_authenticated/app/stage-gate-config'
     | '/_authenticated/app/stage-gates'
@@ -890,6 +928,7 @@ export interface FileRouteTypes {
     | '/_authenticated/platform/limits'
     | '/_authenticated/platform/organizations'
     | '/_authenticated/platform/plans'
+    | '/_authenticated/platform/settings'
     | '/_authenticated/platform/subscriptions'
     | '/_authenticated/app/'
     | '/_authenticated/app/invoice/$id'
@@ -999,6 +1038,13 @@ declare module '@tanstack/react-router' {
       path: '/ai-assist'
       fullPath: '/app/ai-assist'
       preLoaderRoute: typeof AuthenticatedAppAiAssistRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/app/audit-log': {
+      id: '/_authenticated/app/audit-log'
+      path: '/audit-log'
+      fullPath: '/app/audit-log'
+      preLoaderRoute: typeof AuthenticatedAppAuditLogRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
     '/_authenticated/app/benefits': {
@@ -1239,6 +1285,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppRoadmapGovernanceRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
+    '/_authenticated/app/scenarios': {
+      id: '/_authenticated/app/scenarios'
+      path: '/scenarios'
+      fullPath: '/app/scenarios'
+      preLoaderRoute: typeof AuthenticatedAppScenariosRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
     '/_authenticated/app/settings': {
       id: '/_authenticated/app/settings'
       path: '/settings'
@@ -1351,6 +1404,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPlatformPlansRouteImport
       parentRoute: typeof AuthenticatedPlatformRoute
     }
+    '/_authenticated/platform/settings': {
+      id: '/_authenticated/platform/settings'
+      path: '/settings'
+      fullPath: '/platform/settings'
+      preLoaderRoute: typeof AuthenticatedPlatformSettingsRouteImport
+      parentRoute: typeof AuthenticatedPlatformRoute
+    }
     '/_authenticated/platform/subscriptions': {
       id: '/_authenticated/platform/subscriptions'
       path: '/subscriptions'
@@ -1417,6 +1477,7 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppActionsRoute: typeof AuthenticatedAppActionsRoute
   AuthenticatedAppAgileRoute: typeof AuthenticatedAppAgileRoute
   AuthenticatedAppAiAssistRoute: typeof AuthenticatedAppAiAssistRoute
+  AuthenticatedAppAuditLogRoute: typeof AuthenticatedAppAuditLogRoute
   AuthenticatedAppBenefitsRoute: typeof AuthenticatedAppBenefitsRoute
   AuthenticatedAppBillingRoute: typeof AuthenticatedAppBillingRoute
   AuthenticatedAppBusinessUnitsRoute: typeof AuthenticatedAppBusinessUnitsRoute
@@ -1451,6 +1512,7 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppRisksRoute: typeof AuthenticatedAppRisksRoute
   AuthenticatedAppRoadmapAnalyticsRoute: typeof AuthenticatedAppRoadmapAnalyticsRoute
   AuthenticatedAppRoadmapGovernanceRoute: typeof AuthenticatedAppRoadmapGovernanceRoute
+  AuthenticatedAppScenariosRoute: typeof AuthenticatedAppScenariosRoute
   AuthenticatedAppSettingsRoute: typeof AuthenticatedAppSettingsRoute
   AuthenticatedAppStageGateConfigRoute: typeof AuthenticatedAppStageGateConfigRoute
   AuthenticatedAppStageGatesRoute: typeof AuthenticatedAppStageGatesRoute
@@ -1467,6 +1529,7 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppActionsRoute: AuthenticatedAppActionsRoute,
   AuthenticatedAppAgileRoute: AuthenticatedAppAgileRoute,
   AuthenticatedAppAiAssistRoute: AuthenticatedAppAiAssistRoute,
+  AuthenticatedAppAuditLogRoute: AuthenticatedAppAuditLogRoute,
   AuthenticatedAppBenefitsRoute: AuthenticatedAppBenefitsRoute,
   AuthenticatedAppBillingRoute: AuthenticatedAppBillingRoute,
   AuthenticatedAppBusinessUnitsRoute: AuthenticatedAppBusinessUnitsRoute,
@@ -1506,6 +1569,7 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppRoadmapAnalyticsRoute: AuthenticatedAppRoadmapAnalyticsRoute,
   AuthenticatedAppRoadmapGovernanceRoute:
     AuthenticatedAppRoadmapGovernanceRoute,
+  AuthenticatedAppScenariosRoute: AuthenticatedAppScenariosRoute,
   AuthenticatedAppSettingsRoute: AuthenticatedAppSettingsRoute,
   AuthenticatedAppStageGateConfigRoute: AuthenticatedAppStageGateConfigRoute,
   AuthenticatedAppStageGatesRoute: AuthenticatedAppStageGatesRoute,
@@ -1530,6 +1594,7 @@ interface AuthenticatedPlatformRouteChildren {
   AuthenticatedPlatformLimitsRoute: typeof AuthenticatedPlatformLimitsRoute
   AuthenticatedPlatformOrganizationsRoute: typeof AuthenticatedPlatformOrganizationsRoute
   AuthenticatedPlatformPlansRoute: typeof AuthenticatedPlatformPlansRoute
+  AuthenticatedPlatformSettingsRoute: typeof AuthenticatedPlatformSettingsRoute
   AuthenticatedPlatformSubscriptionsRoute: typeof AuthenticatedPlatformSubscriptionsRoute
   AuthenticatedPlatformInvoiceIdRoute: typeof AuthenticatedPlatformInvoiceIdRoute
 }
@@ -1546,6 +1611,7 @@ const AuthenticatedPlatformRouteChildren: AuthenticatedPlatformRouteChildren = {
   AuthenticatedPlatformOrganizationsRoute:
     AuthenticatedPlatformOrganizationsRoute,
   AuthenticatedPlatformPlansRoute: AuthenticatedPlatformPlansRoute,
+  AuthenticatedPlatformSettingsRoute: AuthenticatedPlatformSettingsRoute,
   AuthenticatedPlatformSubscriptionsRoute:
     AuthenticatedPlatformSubscriptionsRoute,
   AuthenticatedPlatformInvoiceIdRoute: AuthenticatedPlatformInvoiceIdRoute,
@@ -1582,13 +1648,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

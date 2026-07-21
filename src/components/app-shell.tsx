@@ -89,6 +89,7 @@ const navGroups: { heading: string; items: NavItem[] }[] = [
       { to: "/app/prioritisation", label: "Prioritisation", icon: Trophy },
       { to: "/app/portfolio-movements", label: "Movements", icon: ArrowLeftRight },
       { to: "/app/demand-pipeline", label: "Demand Pipeline", icon: Inbox },
+      { to: "/app/scenarios", label: "Portfolio Scenarios", icon: Scale },
     ],
   },
   {
@@ -127,6 +128,7 @@ const navGroups: { heading: string; items: NavItem[] }[] = [
       { to: "/app/lessons", label: "Lessons Learned", icon: BookOpen },
       { to: "/app/release-register", label: "Release Register", icon: Package },
       { to: "/app/executive-reports", label: "Executive Reports", icon: FileBarChart },
+      { to: "/app/audit-log", label: "Audit Log", icon: FileText },
       { to: "/app/data-editor", label: "Data Editor", icon: Table2 },
       { to: "/app/configuration", label: "Configuration", icon: Settings },
       { to: "/app/billing", label: "Billing & Invoices", icon: Receipt, adminOnly: true },
@@ -137,6 +139,12 @@ const navGroups: { heading: string; items: NavItem[] }[] = [
   {
     heading: "Platform",
     items: [
+      {
+        to: "/platform/settings",
+        label: "Platform Settings",
+        icon: Settings,
+        platformOnly: true,
+      },
       {
         to: "/platform/organizations",
         label: "Organizations & Users",

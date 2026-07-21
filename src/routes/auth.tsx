@@ -33,6 +33,7 @@ function AuthPage() {
   const [mode, setMode] = useState<"auth" | "forgot">("auth");
   const [forgotEmail, setForgotEmail] = useState("");
   const [platformBrand, setPlatformBrand] = useState(DEFAULT_LANDING.brand);
+  const [signupEnabled, setSignupEnabled] = useState(DEFAULT_LANDING.signup_enabled);
   const [orgBrand, setOrgBrand] = useState<AuthOrgBrand>(null);
   const captchaRequired = isTurnstileEnabled();
 
@@ -45,7 +46,10 @@ function AuthPage() {
     (async () => {
       try {
         const cfg = await fetchLandingConfig();
-        if (!cancelled) setPlatformBrand(cfg.brand);
+        if (!cancelled) {
+          setPlatformBrand(cfg.brand);
+          setSignupEnabled(cfg.signup_enabled !== false);
+        }
       } catch {
         /* keep defaults */
       }
@@ -139,24 +143,39 @@ function AuthPage() {
 
   const onSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const fd = new FormData(e.currentTarget);
     setBusy(true);
-    if (!(await ensureCaptcha())) {
+    try {
+      let allowed = signupEnabled;
+      try {
+        const latest = await fetchLandingConfig();
+        allowed = latest.signup_enabled !== false;
+        setSignupEnabled(allowed);
+      } catch {
+        /* keep current UI flag */
+      }
+      if (!allowed) {
+        toast.error("Public signup is disabled. Contact your administrator for an invite.");
+        return;
+      }
+      if (!(await ensureCaptcha())) return;
+      const fd = new FormData(e.currentTarget);
+      const { error } = await supabase.auth.signUp({
+        email: String(fd.get("email")),
+        password: String(fd.get("password")),
+        options: {
+          emailRedirectTo: `${window.location.origin}/app`,
+          data: { full_name: String(fd.get("full_name") || "") },
+        },
+      });
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+      toast.success("Account created — check email if confirmation is required.");
+      navigate({ to: "/app", replace: true });
+    } finally {
       setBusy(false);
-      return;
     }
-    const { error } = await supabase.auth.signUp({
-      email: String(fd.get("email")),
-      password: String(fd.get("password")),
-      options: {
-        emailRedirectTo: `${window.location.origin}/app`,
-        data: { full_name: String(fd.get("full_name") || "") },
-      },
-    });
-    setBusy(false);
-    if (error) return toast.error(error.message);
-    toast.success("Account created — check email if confirmation is required.");
-    navigate({ to: "/app", replace: true });
   };
 
   const submitDisabled = busy || (captchaRequired && !captchaToken);
@@ -206,7 +225,11 @@ function AuthPage() {
       platform={brand}
       org={orgBrand}
       title={orgBrand ? `Welcome to ${orgBrand.name}` : "Welcome back"}
-      description="Sign in to continue, or create an account to get started."
+      description={
+        signupEnabled
+          ? "Sign in to continue, or create an account to get started."
+          : "Sign in with your organisation account. Public signup is currently disabled."
+      }
       footer={
         <span>
           By continuing you agree to the{" "}
@@ -217,92 +240,132 @@ function AuthPage() {
         </span>
       }
     >
-      <Tabs defaultValue="signin">
-        <TabsList className="grid h-10 w-full grid-cols-2">
-          <TabsTrigger value="signin">Sign in</TabsTrigger>
-          <TabsTrigger value="signup">Sign up</TabsTrigger>
-        </TabsList>
-        <TabsContent value="signin" className="mt-0">
-          <form onSubmit={onSignIn} className="space-y-4 pt-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                required
-                autoComplete="email"
-                placeholder="you@company.com"
-                className="h-10"
-              />
-            </div>
-            <PasswordField
-              id="password"
-              name="password"
-              label="Password"
-              required
-              autoComplete="current-password"
+      {signupEnabled ? (
+        <Tabs defaultValue="signin">
+          <TabsList className="grid h-10 w-full grid-cols-2">
+            <TabsTrigger value="signin">Sign in</TabsTrigger>
+            <TabsTrigger value="signup">Sign up</TabsTrigger>
+          </TabsList>
+          <TabsContent value="signin" className="mt-0">
+            <SignInForm
+              onSignIn={onSignIn}
+              onForgot={() => setMode("forgot")}
+              captchaRequired={captchaRequired}
+              onToken={handleToken}
+              onExpire={handleExpire}
+              submitDisabled={submitDisabled}
+              busy={busy}
             />
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setMode("forgot")}
-                className="text-xs font-medium text-primary hover:underline"
-              >
-                Forgot password?
-              </button>
-            </div>
-            {captchaRequired && (
-              <TurnstileWidget onToken={handleToken} onExpire={handleExpire} />
-            )}
-            <Button type="submit" className="h-10 w-full" disabled={submitDisabled}>
-              {busy ? "Signing in…" : "Sign in"}
-            </Button>
-          </form>
-        </TabsContent>
-        <TabsContent value="signup" className="mt-0">
-          <form onSubmit={onSignUp} className="space-y-4 pt-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="full_name">Full name</Label>
-              <Input
-                id="full_name"
-                name="full_name"
+          </TabsContent>
+          <TabsContent value="signup" className="mt-0">
+            <form onSubmit={onSignUp} className="space-y-4 pt-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="full_name">Full name</Label>
+                <Input
+                  id="full_name"
+                  name="full_name"
+                  required
+                  autoComplete="name"
+                  placeholder="Jane Smith"
+                  className="h-10"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="email2">Email</Label>
+                <Input
+                  id="email2"
+                  name="email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  placeholder="you@company.com"
+                  className="h-10"
+                />
+              </div>
+              <PasswordField
+                id="password2"
+                name="password"
+                label="Password"
                 required
-                autoComplete="name"
-                placeholder="Jane Smith"
-                className="h-10"
+                minLength={6}
+                autoComplete="new-password"
+                placeholder="At least 6 characters"
               />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="email2">Email</Label>
-              <Input
-                id="email2"
-                name="email"
-                type="email"
-                required
-                autoComplete="email"
-                placeholder="you@company.com"
-                className="h-10"
-              />
-            </div>
-            <PasswordField
-              id="password2"
-              name="password"
-              label="Password"
-              required
-              minLength={6}
-              autoComplete="new-password"
-              placeholder="At least 6 characters"
-            />
-            {captchaRequired && (
-              <TurnstileWidget onToken={handleToken} onExpire={handleExpire} />
-            )}
-            <Button type="submit" className="h-10 w-full" disabled={submitDisabled}>
-              {busy ? "Creating…" : "Create account"}
-            </Button>
-          </form>
-        </TabsContent>
-      </Tabs>
+              {captchaRequired && (
+                <TurnstileWidget onToken={handleToken} onExpire={handleExpire} />
+              )}
+              <Button type="submit" className="h-10 w-full" disabled={submitDisabled}>
+                {busy ? "Creating…" : "Create account"}
+              </Button>
+            </form>
+          </TabsContent>
+        </Tabs>
+      ) : (
+        <SignInForm
+          onSignIn={onSignIn}
+          onForgot={() => setMode("forgot")}
+          captchaRequired={captchaRequired}
+          onToken={handleToken}
+          onExpire={handleExpire}
+          submitDisabled={submitDisabled}
+          busy={busy}
+        />
+      )}
     </AuthLayout>
+  );
+}
+
+function SignInForm({
+  onSignIn,
+  onForgot,
+  captchaRequired,
+  onToken,
+  onExpire,
+  submitDisabled,
+  busy,
+}: {
+  onSignIn: (e: React.FormEvent<HTMLFormElement>) => void;
+  onForgot: () => void;
+  captchaRequired: boolean;
+  onToken: (t: string) => void;
+  onExpire: () => void;
+  submitDisabled: boolean;
+  busy: boolean;
+}) {
+  return (
+    <form onSubmit={onSignIn} className="space-y-4 pt-4">
+      <div className="space-y-1.5">
+        <Label htmlFor="email">Email</Label>
+        <Input
+          id="email"
+          name="email"
+          type="email"
+          required
+          autoComplete="email"
+          placeholder="you@company.com"
+          className="h-10"
+        />
+      </div>
+      <PasswordField
+        id="password"
+        name="password"
+        label="Password"
+        required
+        autoComplete="current-password"
+      />
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={onForgot}
+          className="text-xs font-medium text-primary hover:underline"
+        >
+          Forgot password?
+        </button>
+      </div>
+      {captchaRequired && <TurnstileWidget onToken={onToken} onExpire={onExpire} />}
+      <Button type="submit" className="h-10 w-full" disabled={submitDisabled}>
+        {busy ? "Signing in…" : "Sign in"}
+      </Button>
+    </form>
   );
 }

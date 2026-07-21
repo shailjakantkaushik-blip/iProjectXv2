@@ -39,6 +39,11 @@ export type LandingConfig = {
   apply_theme_to_auth: boolean;
   /** Apply light/dark + palette to post-login app & platform pages */
   apply_theme_to_app: boolean;
+  /**
+   * When false, public self-service Sign up is hidden/blocked.
+   * Platform admins can still create users from Organizations & Users.
+   */
+  signup_enabled: boolean;
   /** Name of the last applied predefined palette, if any */
   palette_preset: string;
   palette: LandingPalette;
@@ -383,6 +388,7 @@ export const DEFAULT_LANDING: LandingConfig = {
   theme: "light",
   apply_theme_to_auth: true,
   apply_theme_to_app: true,
+  signup_enabled: true,
   palette_preset: "iprojectx",
   palette: { ...DEFAULT_PALETTE },
   hero: {
@@ -653,6 +659,7 @@ export function mergeConfig(partial: any): LandingConfig {
   if (typeof merged.palette_preset !== "string") merged.palette_preset = "custom";
   if (typeof merged.apply_theme_to_auth !== "boolean") merged.apply_theme_to_auth = true;
   if (typeof merged.apply_theme_to_app !== "boolean") merged.apply_theme_to_app = true;
+  if (typeof merged.signup_enabled !== "boolean") merged.signup_enabled = true;
   return merged as LandingConfig;
 }
 
