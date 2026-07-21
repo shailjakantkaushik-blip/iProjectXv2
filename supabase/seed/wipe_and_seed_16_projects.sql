@@ -248,7 +248,7 @@ BEGIN
           p_budget := 1320000; p_capex := 860000; p_opex := 460000;
           p_ben_t := 1700000; p_ben_r := 260000; gates_approved := 5;
         WHEN 11 THEN
-          p_code := 'IN-419'; p_name := 'Branch Network Wi‑Fi Refresh';
+          p_code := 'IN-419'; p_name := 'Branch Network Wi-Fi Refresh';
           p_program := 'Infrastructure'; p_sponsor := 'James Whitfield';
           p_priority := 'Low'; p_status := 'Not Started'; p_rag := 'Green';
           p_method := 'Waterfall'; p_phase := 'Discovery';
@@ -257,7 +257,7 @@ BEGIN
           p_budget := 540000; p_capex := 480000; p_opex := 60000;
           p_ben_t := 700000; p_ben_r := 0; gates_approved := 0;
         WHEN 12 THEN
-          p_code := 'OPS-071'; p_name := 'Vendor Invoice e‑Workflow';
+          p_code := 'OPS-071'; p_name := 'Vendor Invoice e-Workflow';
           p_program := 'Operations Excellence'; p_sponsor := 'Helen Park';
           p_priority := 'Medium'; p_status := 'In Progress'; p_rag := 'Green';
           p_method := 'Hybrid'; p_phase := 'Build';
@@ -293,7 +293,7 @@ BEGIN
           p_budget := 860000; p_capex := 520000; p_opex := 340000;
           p_ben_t := 2400000; p_ben_r := 1980000; gates_approved := 8;
         ELSE
-          p_code := 'RC-155'; p_name := 'Third‑Party Risk Portal';
+          p_code := 'RC-155'; p_name := 'Third-Party Risk Portal';
           p_program := 'Risk & Compliance'; p_sponsor := 'Sofia Alvarez';
           p_priority := 'Medium'; p_status := 'Not Started'; p_rag := 'Green';
           p_method := 'Waterfall'; p_phase := 'Business Case / Seed Funding';
