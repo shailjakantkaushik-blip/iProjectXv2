@@ -29,11 +29,13 @@ import {
   type LandingItem,
   type LandingLogo,
   type LandingPalette,
+  type LandingPersonCard,
   type LandingStat,
   type LandingThemeMode,
 } from "@/lib/landing-config";
 
 const MAX_LOGO_BYTES = 500 * 1024;
+const MAX_PHOTO_BYTES = 1024 * 1024;
 
 export const Route = createFileRoute("/_authenticated/platform/landing")({
   component: LandingConfigPage,
@@ -127,6 +129,9 @@ function LandingConfigPage() {
           <TabsTrigger value="capabilities">Capabilities</TabsTrigger>
           <TabsTrigger value="stats">Stats</TabsTrigger>
           <TabsTrigger value="trusted">Trusted-by Logos</TabsTrigger>
+          <TabsTrigger value="ceo">CEO Message</TabsTrigger>
+          <TabsTrigger value="testimonials">Testimonials</TabsTrigger>
+          <TabsTrigger value="board">iProjectX Board</TabsTrigger>
           <TabsTrigger value="footer">Final CTA & Footer</TabsTrigger>
         </TabsList>
 
@@ -855,6 +860,206 @@ function LandingConfigPage() {
           </SectionFrame>
         </TabsContent>
 
+        {/* CEO MESSAGE */}
+        <TabsContent value="ceo">
+          <SectionFrame>
+            <SectionTitle>CEO Message</SectionTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Show a featured message with photo on the public landing page. Upload a headshot
+              (under 1 MB) or paste an image URL.
+            </p>
+            <label className="mt-4 flex items-center justify-between gap-4 rounded-lg border px-4 py-3">
+              <div>
+                <div className="text-sm font-medium">Show CEO message section</div>
+                <div className="text-xs text-muted-foreground">Hidden until enabled and message is set.</div>
+              </div>
+              <Switch
+                checked={cfg.ceo_message.enabled}
+                onCheckedChange={(v) => patch("ceo_message", { enabled: v })}
+              />
+            </label>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <Field label="Title">
+                <Input
+                  value={cfg.ceo_message.title}
+                  onChange={(e) => patch("ceo_message", { title: e.target.value })}
+                />
+              </Field>
+              <Field label="Subtitle">
+                <Input
+                  value={cfg.ceo_message.subtitle}
+                  onChange={(e) => patch("ceo_message", { subtitle: e.target.value })}
+                />
+              </Field>
+              <Field label="Name">
+                <Input
+                  value={cfg.ceo_message.name}
+                  onChange={(e) => patch("ceo_message", { name: e.target.value })}
+                />
+              </Field>
+              <Field label="Role / title">
+                <Input
+                  value={cfg.ceo_message.role}
+                  onChange={(e) => patch("ceo_message", { role: e.target.value })}
+                />
+              </Field>
+            </div>
+            <div className="mt-3">
+              <Field label="Message">
+                <Textarea
+                  rows={5}
+                  value={cfg.ceo_message.message}
+                  onChange={(e) => patch("ceo_message", { message: e.target.value })}
+                />
+              </Field>
+            </div>
+            <div className="mt-4">
+              <PhotoUrlField
+                label="Photo"
+                url={cfg.ceo_message.photo_url}
+                onUrlChange={(photo_url) => patch("ceo_message", { photo_url })}
+                onFile={(file) =>
+                  readPhotoFile(file, (photo_url) => patch("ceo_message", { photo_url }))
+                }
+              />
+            </div>
+          </SectionFrame>
+        </TabsContent>
+
+        {/* TESTIMONIALS */}
+        <TabsContent value="testimonials">
+          <SectionFrame>
+            <SectionTitle>Testimonials</SectionTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Add quotes with title, subtitle, message, and photo for each person.
+            </p>
+            <label className="mt-4 flex items-center justify-between gap-4 rounded-lg border px-4 py-3">
+              <div>
+                <div className="text-sm font-medium">Show testimonials section</div>
+                <div className="text-xs text-muted-foreground">Needs at least one item with a message.</div>
+              </div>
+              <Switch
+                checked={cfg.testimonials.enabled}
+                onCheckedChange={(v) => patch("testimonials", { enabled: v })}
+              />
+            </label>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <Field label="Section title">
+                <Input
+                  value={cfg.testimonials.title}
+                  onChange={(e) => patch("testimonials", { title: e.target.value })}
+                />
+              </Field>
+              <Field label="Section subtitle">
+                <Input
+                  value={cfg.testimonials.subtitle}
+                  onChange={(e) => patch("testimonials", { subtitle: e.target.value })}
+                />
+              </Field>
+            </div>
+            <div className="mt-4 space-y-4">
+              {cfg.testimonials.items.map((item, i) => (
+                <PersonCardEditor
+                  key={i}
+                  index={i}
+                  item={item}
+                  onChange={(partial) =>
+                    updateArr(cfg.testimonials.items, i, partial, (a) =>
+                      patch("testimonials", { items: a }),
+                    )
+                  }
+                  onRemove={() =>
+                    patch("testimonials", {
+                      items: cfg.testimonials.items.filter((_, j) => j !== i),
+                    })
+                  }
+                />
+              ))}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  patch("testimonials", {
+                    items: [
+                      ...cfg.testimonials.items,
+                      emptyPersonCard("New testimonial"),
+                    ],
+                  })
+                }
+              >
+                <Plus className="mr-1 h-4 w-4" /> Add testimonial
+              </Button>
+            </div>
+          </SectionFrame>
+        </TabsContent>
+
+        {/* BOARD */}
+        <TabsContent value="board">
+          <SectionFrame>
+            <SectionTitle>iProjectX Board</SectionTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Important board statements — each with title, subtitle, message, and photo.
+            </p>
+            <label className="mt-4 flex items-center justify-between gap-4 rounded-lg border px-4 py-3">
+              <div>
+                <div className="text-sm font-medium">Show iProjectX Board section</div>
+                <div className="text-xs text-muted-foreground">Needs at least one statement with a message.</div>
+              </div>
+              <Switch
+                checked={cfg.board_statements.enabled}
+                onCheckedChange={(v) => patch("board_statements", { enabled: v })}
+              />
+            </label>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <Field label="Section title">
+                <Input
+                  value={cfg.board_statements.title}
+                  onChange={(e) => patch("board_statements", { title: e.target.value })}
+                />
+              </Field>
+              <Field label="Section subtitle">
+                <Input
+                  value={cfg.board_statements.subtitle}
+                  onChange={(e) => patch("board_statements", { subtitle: e.target.value })}
+                />
+              </Field>
+            </div>
+            <div className="mt-4 space-y-4">
+              {cfg.board_statements.items.map((item, i) => (
+                <PersonCardEditor
+                  key={i}
+                  index={i}
+                  item={item}
+                  onChange={(partial) =>
+                    updateArr(cfg.board_statements.items, i, partial, (a) =>
+                      patch("board_statements", { items: a }),
+                    )
+                  }
+                  onRemove={() =>
+                    patch("board_statements", {
+                      items: cfg.board_statements.items.filter((_, j) => j !== i),
+                    })
+                  }
+                />
+              ))}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  patch("board_statements", {
+                    items: [
+                      ...cfg.board_statements.items,
+                      emptyPersonCard("Board statement"),
+                    ],
+                  })
+                }
+              >
+                <Plus className="mr-1 h-4 w-4" /> Add board statement
+              </Button>
+            </div>
+          </SectionFrame>
+        </TabsContent>
+
         {/* FOOTER */}
         <TabsContent value="footer">
           <SectionFrame>
@@ -1009,6 +1214,126 @@ function ItemList({
       >
         <Plus className="mr-1 h-4 w-4" /> Add item
       </Button>
+    </div>
+  );
+}
+
+function emptyPersonCard(title: string): LandingPersonCard {
+  return { title, subtitle: "", message: "", photo_url: "", name: "", role: "" };
+}
+
+function readPhotoFile(file: File, onDone: (dataUrl: string) => void) {
+  if (file.size > MAX_PHOTO_BYTES) {
+    toast.error("Photo must be under 1 MB.");
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => onDone(reader.result as string);
+  reader.readAsDataURL(file);
+}
+
+function PhotoUrlField({
+  label,
+  url,
+  onUrlChange,
+  onFile,
+}: {
+  label: string;
+  url: string;
+  onUrlChange: (url: string) => void;
+  onFile: (file: File) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  return (
+    <div className="space-y-2">
+      <Label className="text-xs">{label}</Label>
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border bg-muted">
+          {url ? (
+            <img src={url} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <span className="text-[10px] text-muted-foreground">No photo</span>
+          )}
+        </div>
+        <div className="min-w-[220px] flex-1 space-y-2">
+          <Input
+            value={url.startsWith("data:") ? "" : url}
+            placeholder="https://… or upload below"
+            onChange={(e) => onUrlChange(e.target.value)}
+          />
+          <div className="flex gap-2">
+            <input
+              ref={ref}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/svg+xml"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) onFile(f);
+                e.target.value = "";
+              }}
+            />
+            <Button type="button" variant="outline" size="sm" onClick={() => ref.current?.click()}>
+              <Upload className="mr-1.5 h-3.5 w-3.5" /> Upload photo
+            </Button>
+            {url && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => onUrlChange("")}>
+                Clear
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PersonCardEditor({
+  index,
+  item,
+  onChange,
+  onRemove,
+}: {
+  index: number;
+  item: LandingPersonCard;
+  onChange: (partial: Partial<LandingPersonCard>) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="space-y-3 rounded-lg border p-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm font-semibold">Item {index + 1}</div>
+        <Button type="button" variant="outline" size="icon" onClick={onRemove}>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field label="Title">
+          <Input value={item.title} onChange={(e) => onChange({ title: e.target.value })} />
+        </Field>
+        <Field label="Subtitle">
+          <Input value={item.subtitle} onChange={(e) => onChange({ subtitle: e.target.value })} />
+        </Field>
+        <Field label="Name (optional)">
+          <Input value={item.name ?? ""} onChange={(e) => onChange({ name: e.target.value })} />
+        </Field>
+        <Field label="Role (optional)">
+          <Input value={item.role ?? ""} onChange={(e) => onChange({ role: e.target.value })} />
+        </Field>
+      </div>
+      <Field label="Message">
+        <Textarea
+          rows={3}
+          value={item.message}
+          onChange={(e) => onChange({ message: e.target.value })}
+        />
+      </Field>
+      <PhotoUrlField
+        label="Photo"
+        url={item.photo_url}
+        onUrlChange={(photo_url) => onChange({ photo_url })}
+        onFile={(file) => readPhotoFile(file, (photo_url) => onChange({ photo_url }))}
+      />
     </div>
   );
 }

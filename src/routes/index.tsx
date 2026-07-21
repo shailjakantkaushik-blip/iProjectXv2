@@ -272,11 +272,14 @@ function LandingPage() {
         {cfg.hero.alert && <InsightBar cfg={cfg} />}
         <TrustStrip />
         <TrustedBy cfg={cfg} sectionBg={sectionBg} />
+        <CeoMessage cfg={cfg} sectionBg={sectionBg} />
         <FailureVsSuccess cfg={cfg} />
         <ExecutiveCockpitTour cfg={cfg} sectionBg={sectionBg} />
         <PortfolioTimelineTour cfg={cfg} />
         <RaidTour cfg={cfg} sectionBg={sectionBg} />
         <CapabilityBento cfg={cfg} />
+        <Testimonials cfg={cfg} sectionBg={sectionBg} />
+        <BoardStatements cfg={cfg} />
         <StatsStrip cfg={cfg} />
         <FinalCta cfg={cfg} />
       </main>
@@ -795,6 +798,215 @@ function TrustedBy({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string }
               alt={l.name}
               className="h-9 max-w-[130px] object-contain opacity-70 grayscale transition duration-300 hover:opacity-100 hover:grayscale-0"
             />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CeoMessage({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string }) {
+  const m = cfg.ceo_message;
+  if (!m?.enabled || !m.message?.trim()) return null;
+  const p = cfg.palette;
+  return (
+    <section className="border-b py-16 sm:py-20" style={{ borderColor: p.surface, background: sectionBg }}>
+      <div className="mx-auto max-w-5xl px-5 sm:px-6">
+        <Reveal>
+          <div className="grid items-center gap-10 md:grid-cols-[minmax(0,200px)_1fr] md:gap-14">
+            <div className="mx-auto md:mx-0">
+              <div
+                className="h-40 w-40 overflow-hidden rounded-2xl border shadow-sm sm:h-48 sm:w-48"
+                style={{ borderColor: p.surface, background: p.surface }}
+              >
+                {m.photo_url ? (
+                  <img src={m.photo_url} alt={m.name || "CEO"} className="h-full w-full object-cover" />
+                ) : (
+                  <div
+                    className="flex h-full w-full items-center justify-center text-3xl font-bold"
+                    style={{ color: p.textMuted }}
+                  >
+                    {(m.name || "CEO").slice(0, 1)}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div>
+              {m.subtitle && (
+                <div
+                  className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em]"
+                  style={{ color: p.accent }}
+                >
+                  {m.subtitle}
+                </div>
+              )}
+              <h2 className="text-2xl font-bold tracking-tight sm:text-3xl" style={{ ...HEADING, color: p.textHeading }}>
+                {m.title}
+              </h2>
+              <p className="mt-5 text-base leading-relaxed whitespace-pre-line sm:text-lg" style={{ color: p.textBody }}>
+                {m.message}
+              </p>
+              {(m.name || m.role) && (
+                <div className="mt-6">
+                  {m.name && (
+                    <div className="font-semibold" style={{ ...HEADING, color: p.textHeading }}>
+                      {m.name}
+                    </div>
+                  )}
+                  {m.role && (
+                    <div className="text-sm" style={{ color: p.textMuted }}>
+                      {m.role}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
+function Testimonials({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string }) {
+  const t = cfg.testimonials;
+  const items = (t?.items ?? []).filter((i) => i.message?.trim());
+  if (!t?.enabled || items.length === 0) return null;
+  const p = cfg.palette;
+  return (
+    <section className="border-b py-16 sm:py-24" style={{ borderColor: p.surface, background: sectionBg }}>
+      <div className="mx-auto max-w-7xl px-5 sm:px-6">
+        <Reveal>
+          <div className="mx-auto mb-12 max-w-2xl text-center">
+            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl" style={{ ...HEADING, color: p.textHeading }}>
+              {t.title}
+            </h2>
+            {t.subtitle && (
+              <p className="mt-3 text-base leading-relaxed" style={{ color: p.textMuted }}>
+                {t.subtitle}
+              </p>
+            )}
+          </div>
+        </Reveal>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {items.map((item, i) => (
+            <Reveal key={i} delay={i * 60}>
+              <article
+                className="flex h-full flex-col rounded-2xl border p-6 shadow-sm"
+                style={{ borderColor: p.surface, background: p.surface }}
+              >
+                {(item.title || item.subtitle) && (
+                  <div className="mb-4">
+                    {item.title && (
+                      <h3 className="text-lg font-semibold" style={{ ...HEADING, color: p.textHeading }}>
+                        {item.title}
+                      </h3>
+                    )}
+                    {item.subtitle && (
+                      <p className="mt-1 text-sm" style={{ color: p.textMuted }}>
+                        {item.subtitle}
+                      </p>
+                    )}
+                  </div>
+                )}
+                <p className="flex-1 text-sm leading-relaxed whitespace-pre-line" style={{ color: p.textBody }}>
+                  “{item.message}”
+                </p>
+                <div className="mt-6 flex items-center gap-3 border-t pt-4" style={{ borderColor: p.surface }}>
+                  <div
+                    className="h-12 w-12 shrink-0 overflow-hidden rounded-full border"
+                    style={{ borderColor: p.surface, background: p.surface }}
+                  >
+                    {item.photo_url ? (
+                      <img
+                        src={item.photo_url}
+                        alt={item.name || item.title}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div
+                        className="flex h-full w-full items-center justify-center text-sm font-bold"
+                        style={{ color: p.textMuted }}
+                      >
+                        {(item.name || item.title || "?").slice(0, 1)}
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    {(item.name || item.title) && (
+                      <div className="truncate text-sm font-semibold" style={{ color: p.textHeading }}>
+                        {item.name || item.title}
+                      </div>
+                    )}
+                    {(item.role || item.subtitle) && (
+                      <div className="truncate text-xs" style={{ color: p.textMuted }}>
+                        {item.role || item.subtitle}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </article>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function BoardStatements({ cfg }: { cfg: LandingConfig }) {
+  const b = cfg.board_statements;
+  const items = (b?.items ?? []).filter((i) => i.message?.trim());
+  if (!b?.enabled || items.length === 0) return null;
+  const p = cfg.palette;
+  return (
+    <section className="py-16 sm:py-24" style={{ background: p.navy, color: p.textOnDark }}>
+      <div className="mx-auto max-w-7xl px-5 sm:px-6">
+        <Reveal>
+          <div className="mx-auto mb-12 max-w-2xl text-center">
+            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl" style={{ ...HEADING, color: p.textOnDark }}>
+              {b.title}
+            </h2>
+            {b.subtitle && (
+              <p className="mt-3 text-base leading-relaxed opacity-80">{b.subtitle}</p>
+            )}
+          </div>
+        </Reveal>
+        <div className="grid gap-8 md:grid-cols-2">
+          {items.map((item, i) => (
+            <Reveal key={i} delay={i * 70}>
+              <article className="flex gap-5 rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm">
+                <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-white/10">
+                  {item.photo_url ? (
+                    <img
+                      src={item.photo_url}
+                      alt={item.name || item.title}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-lg font-bold opacity-70">
+                      {(item.name || item.title || "B").slice(0, 1)}
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  {item.title && (
+                    <h3 className="text-lg font-semibold" style={{ ...HEADING }}>
+                      {item.title}
+                    </h3>
+                  )}
+                  {item.subtitle && <p className="mt-1 text-sm opacity-70">{item.subtitle}</p>}
+                  <p className="mt-3 text-sm leading-relaxed whitespace-pre-line opacity-90">
+                    {item.message}
+                  </p>
+                  {(item.name || item.role) && (
+                    <div className="mt-4 text-xs opacity-70">
+                      {[item.name, item.role].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
+                </div>
+              </article>
+            </Reveal>
           ))}
         </div>
       </div>

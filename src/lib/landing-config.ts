@@ -35,6 +35,26 @@ export type LandingCap = { title: string; desc: string; icon?: string };
 export type LandingStat = { value: number; suffix?: string; label: string };
 export type LandingLogo = { name: string; logo_url: string };
 
+/** Shared shape for testimonials and board statements. */
+export type LandingPersonCard = {
+  title: string;
+  subtitle: string;
+  message: string;
+  photo_url: string;
+  name?: string;
+  role?: string;
+};
+
+export type LandingCeoMessage = {
+  enabled: boolean;
+  title: string;
+  subtitle: string;
+  message: string;
+  name: string;
+  role: string;
+  photo_url: string;
+};
+
 export type LandingConfig = {
   brand: {
     name: string;
@@ -86,6 +106,22 @@ export type LandingConfig = {
   capabilities: { heading: string; subtitle: string; items: LandingCap[] };
   stats: LandingStat[];
   trusted: { heading: string; logos: LandingLogo[] };
+  /** CEO / executive message band with photo. */
+  ceo_message: LandingCeoMessage;
+  /** Customer / leader testimonials. */
+  testimonials: {
+    enabled: boolean;
+    title: string;
+    subtitle: string;
+    items: LandingPersonCard[];
+  };
+  /** iProjectX Board — important statements. */
+  board_statements: {
+    enabled: boolean;
+    title: string;
+    subtitle: string;
+    items: LandingPersonCard[];
+  };
   final_cta: { title: string; body: string; primary: string; secondary: string };
   footer: { text: string };
 };
@@ -573,6 +609,27 @@ export const DEFAULT_LANDING: LandingConfig = {
     { value: 21, label: "Editable data tables" },
   ],
   trusted: { heading: "Trusted by enterprise PMOs", logos: [] },
+  ceo_message: {
+    enabled: false,
+    title: "A message from our CEO",
+    subtitle: "Why enterprise PMOs choose iProjectX",
+    message: "",
+    name: "",
+    role: "Chief Executive Officer",
+    photo_url: "",
+  },
+  testimonials: {
+    enabled: false,
+    title: "What leaders say",
+    subtitle: "Voices from portfolio executives and delivery leads",
+    items: [],
+  },
+  board_statements: {
+    enabled: false,
+    title: "iProjectX Board",
+    subtitle: "Important statements from the board",
+    items: [],
+  },
   final_cta: {
     title: "Secure the portfolio outcome.",
     body: "Deploy iProjectX in weeks, not months. White-label ready, multi-tenant by design, and architected for the most complex enterprise PMOs — Agile, Waterfall, and everything in between.",
@@ -682,6 +739,33 @@ export function mergeConfig(partial: any): LandingConfig {
   if (typeof merged.signup_enabled !== "boolean") merged.signup_enabled = true;
   if (typeof merged.cartoons_enabled !== "boolean") merged.cartoons_enabled = true;
   merged.navigation = mergeNavigationConfig(merged.navigation);
+  // Nested section arrays must come from saved config when present
+  if (partial.testimonials && typeof partial.testimonials === "object") {
+    merged.testimonials = {
+      ...merged.testimonials,
+      ...partial.testimonials,
+      items: Array.isArray(partial.testimonials.items)
+        ? partial.testimonials.items
+        : merged.testimonials.items,
+    };
+  }
+  if (partial.board_statements && typeof partial.board_statements === "object") {
+    merged.board_statements = {
+      ...merged.board_statements,
+      ...partial.board_statements,
+      items: Array.isArray(partial.board_statements.items)
+        ? partial.board_statements.items
+        : merged.board_statements.items,
+    };
+  }
+  if (partial.ceo_message && typeof partial.ceo_message === "object") {
+    merged.ceo_message = { ...merged.ceo_message, ...partial.ceo_message };
+  }
+  if (typeof merged.ceo_message?.enabled !== "boolean") merged.ceo_message.enabled = false;
+  if (typeof merged.testimonials?.enabled !== "boolean") merged.testimonials.enabled = false;
+  if (typeof merged.board_statements?.enabled !== "boolean") {
+    merged.board_statements.enabled = false;
+  }
   return merged as LandingConfig;
 }
 
