@@ -10,7 +10,7 @@ import { NavSequenceEditor } from "@/components/nav-sequence-editor";
 import {
   APP_NAV_GROUPS,
   defaultAppNavigationConfig,
-  mergeNavigationConfig,
+  scopeNavigationToCatalog,
   type NavigationConfig,
 } from "@/lib/navigation-config";
 import { fetchLandingConfig } from "@/lib/landing-config";
@@ -46,11 +46,11 @@ function OrgNavigationPage() {
         .maybeSingle();
       const ui = ((data as any)?.ui_config ?? {}) as OrgUiConfig;
       if (ui.navigation) {
-        setNav(mergeNavigationConfig(ui.navigation, APP_NAV_GROUPS));
+        setNav(scopeNavigationToCatalog(ui.navigation, APP_NAV_GROUPS));
       } else {
-        // Seed from platform defaults (app groups only)
+        // Seed from platform defaults — workspace groups only (never Platform)
         const platform = await fetchLandingConfig();
-        setNav(mergeNavigationConfig(platform.navigation, APP_NAV_GROUPS));
+        setNav(scopeNavigationToCatalog(platform.navigation ?? {}, APP_NAV_GROUPS));
       }
     } finally {
       setLoading(false);
@@ -67,7 +67,10 @@ function OrgNavigationPage() {
         .eq("id", organization.id)
         .maybeSingle();
       const prev = ((existing as any)?.ui_config ?? {}) as OrgUiConfig;
-      const next: OrgUiConfig = { ...prev, navigation: nav };
+      const next: OrgUiConfig = {
+        ...prev,
+        navigation: scopeNavigationToCatalog(nav, APP_NAV_GROUPS),
+      };
       const { error } = await supabase
         .from("organizations")
         .update({ ui_config: next as any })
@@ -92,7 +95,7 @@ function OrgNavigationPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeading
           title="Navigation sequence"
-          subtitle={`Sidebar order for ${organization.name}. Org settings override the platform default for workspace pages.`}
+          subtitle={`Sidebar order for ${organization.name}. Workspace pages only — Platform admin links are not shown or editable here.`}
         />
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>

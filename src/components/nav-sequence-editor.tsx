@@ -53,14 +53,15 @@ export function NavSequenceEditor({
 }: Props) {
   const nav = mergeNavigationConfig(value, catalog);
   const allItems = flattenNavItems(catalog);
+  const catalogHeadings = new Set(catalog.map((g) => g.heading));
+  const allowPlatform = catalogHeadings.has("Platform");
 
   const groupOrder = (() => {
-    const ordered = [...nav.group_order];
-    // Ensure catalog defaults appear if somehow missing
+    const cleaned = nav.group_order.filter((h) => allowPlatform || h !== "Platform");
     for (const g of catalog) {
-      if (!ordered.includes(g.heading)) ordered.push(g.heading);
+      if (!cleaned.includes(g.heading)) cleaned.push(g.heading);
     }
-    return ordered;
+    return cleaned;
   })();
 
   const hidden = new Set(nav.hidden);
@@ -86,7 +87,9 @@ export function NavSequenceEditor({
   const reset = () => onChange(defaultNavigationConfig(catalog));
 
   const addSection = () => {
-    const next = addNavGroup(nav, newSection);
+    const name = newSection.trim();
+    if (!allowPlatform && /^platform$/i.test(name)) return;
+    const next = addNavGroup(nav, name);
     if (next === nav) return;
     onChange(next);
     setNewSection("");
@@ -99,7 +102,9 @@ export function NavSequenceEditor({
 
   const commitRename = () => {
     if (!renaming) return;
-    onChange(renameNavGroup(nav, renaming, renameValue));
+    const name = renameValue.trim();
+    if (!allowPlatform && /^platform$/i.test(name)) return;
+    onChange(renameNavGroup(nav, renaming, name));
     setRenaming(null);
     setRenameValue("");
   };

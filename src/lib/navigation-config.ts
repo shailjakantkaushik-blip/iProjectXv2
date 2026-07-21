@@ -197,9 +197,15 @@ export function mergeNavigationConfig(
   const catalogHeadings = new Set(catalog.map((g) => g.heading));
   const allPaths = new Set(flattenNavItems(catalog).keys());
 
+  const allowPlatform = catalogHeadings.has("Platform");
+
   let group_order: string[];
   if (Array.isArray(partial.group_order) && partial.group_order.length > 0) {
-    group_order = partial.group_order.map(String).filter(Boolean);
+    group_order = partial.group_order
+      .map(String)
+      .filter(Boolean)
+      // Org catalogs must never inherit the Platform section from platform defaults
+      .filter((h) => allowPlatform || h !== "Platform");
     // Keep any new catalog headings that were added in code after config was saved
     for (const h of catalog.map((g) => g.heading)) {
       if (!group_order.includes(h)) group_order.push(h);
@@ -212,6 +218,7 @@ export function mergeNavigationConfig(
   // Seed from partial first (preserves custom placement)
   if (partial.item_order && typeof partial.item_order === "object") {
     for (const [k, v] of Object.entries(partial.item_order)) {
+      if (!allowPlatform && k === "Platform") continue;
       if (Array.isArray(v)) {
         item_order[k] = (v as unknown[]).map(String).filter((p) => allPaths.has(p));
       }
@@ -252,10 +259,24 @@ export function mergeNavigationConfig(
   }
 
   const hidden = Array.isArray(partial.hidden)
-    ? partial.hidden.map(String).filter(Boolean)
+    ? partial.hidden.map(String).filter((p) => allPaths.has(String(p)))
     : [];
 
+  // Final scrub: never keep Platform (or its paths) when the catalog excludes it
+  if (!allowPlatform) {
+    group_order = group_order.filter((h) => h !== "Platform");
+    delete item_order["Platform"];
+  }
+
   return { group_order, item_order, hidden };
+}
+
+/** Keep only workspace sections/items (drops Platform for org-admin editors). */
+export function scopeNavigationToCatalog(
+  config: NavigationConfig,
+  catalog: NavGroupDef[] = APP_NAV_GROUPS,
+): NavigationConfig {
+  return mergeNavigationConfig(config, catalog);
 }
 
 /** Apply navigation sequence + hidden flags onto a catalog (supports custom sections). */
