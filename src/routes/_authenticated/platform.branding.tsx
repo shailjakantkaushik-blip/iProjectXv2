@@ -246,9 +246,10 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
             White-label sign-in link
           </Label>
           <p className="mt-1 text-xs text-muted-foreground">
-            Share this URL with the organisation. It opens the sign-in page with their logo and
-            brand name only — generic <code className="rounded bg-muted px-1">/auth</code> keeps
-            the platform logo. Canonical:{" "}
+            Share this URL with the organisation. It opens their branded sign-in page and{" "}
+            <b>only members of this organisation</b> can sign in. Generic{" "}
+            <code className="rounded bg-muted px-1">/auth</code> stays platform-branded with no
+            org lock. Canonical:{" "}
             <code className="rounded bg-muted px-1 py-0.5 text-[11px]">
               {authQueryPath || "/auth?org=&lt;slug&gt;"}
             </code>

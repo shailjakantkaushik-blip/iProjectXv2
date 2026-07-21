@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,10 @@ import {
   resolveBrandLogoUrl,
   type LandingConfig,
 } from "@/lib/landing-config";
-import { getOrgBranding } from "@/lib/org-branding.functions";
+import {
+  assertUserBelongsToOrgSlug,
+  getOrgBranding,
+} from "@/lib/org-branding.functions";
 import {
   AuthLayout,
   PasswordField,
@@ -125,15 +129,63 @@ function AuthPage() {
   const { platformBrand, signupEnabled, orgBrand, orgRequested } = Route.useLoaderData();
   const { session, loading } = useAuth();
   const navigate = useNavigate();
+  const assertOrgMembership = useServerFn(assertUserBelongsToOrgSlug);
   const [busy, setBusy] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [mode, setMode] = useState<"auth" | "forgot">("auth");
   const [forgotEmail, setForgotEmail] = useState("");
   const captchaRequired = isTurnstileEnabled();
+  // Org white-label links are invite-style: no public self-signup.
+  const allowSignup = signupEnabled && !orgRequested;
+  const targetOrgSlug = orgBrand?.slug || (orgRequested ? readOrgFromLocation() : undefined);
+
+  const rejectWrongOrgSession = useCallback(
+    async (slug: string): Promise<boolean> => {
+      try {
+        const result = await assertOrgMembership({ data: { slug } });
+        if (result.allowed) {
+          try {
+            window.localStorage.setItem(ORG_SLUG_KEY, result.orgSlug);
+          } catch {
+            /* ignore */
+          }
+          return true;
+        }
+        await supabase.auth.signOut();
+        toast.error(result.message);
+        return false;
+      } catch (e) {
+        await supabase.auth.signOut();
+        toast.error(
+          e instanceof Error
+            ? e.message
+            : "Could not verify organisation membership. Please try again.",
+        );
+        return false;
+      }
+    },
+    [assertOrgMembership],
+  );
 
   useEffect(() => {
-    if (!loading && session) navigate({ to: "/app", replace: true });
-  }, [session, loading, navigate]);
+    if (loading || !session) return;
+    let cancelled = false;
+    (async () => {
+      if (orgRequested) {
+        if (!targetOrgSlug) {
+          await supabase.auth.signOut();
+          if (!cancelled) toast.error("Invalid organisation sign-in link.");
+          return;
+        }
+        const ok = await rejectWrongOrgSession(targetOrgSlug);
+        if (cancelled || !ok) return;
+      }
+      if (!cancelled) navigate({ to: "/app", replace: true });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [session, loading, orgRequested, targetOrgSlug, rejectWrongOrgSession, navigate]);
 
   useEffect(() => {
     if (orgRequested && orgBrand?.slug) {
@@ -189,8 +241,25 @@ function AuthPage() {
       email: String(fd.get("email")),
       password: String(fd.get("password")),
     });
-    setBusy(false);
-    if (error) return toast.error(error.message);
+    if (error) {
+      setBusy(false);
+      return toast.error(error.message);
+    }
+
+    if (orgRequested) {
+      if (!targetOrgSlug) {
+        await supabase.auth.signOut();
+        setBusy(false);
+        return toast.error("Invalid organisation sign-in link.");
+      }
+      const ok = await rejectWrongOrgSession(targetOrgSlug);
+      setBusy(false);
+      if (!ok) return;
+      toast.success("Signed in");
+      navigate({ to: "/app", replace: true });
+      return;
+    }
+
     try {
       const { data: userRes } = await supabase.auth.getUser();
       const uid = userRes.user?.id;
@@ -214,6 +283,7 @@ function AuthPage() {
     } catch {
       /* ignore */
     }
+    setBusy(false);
     toast.success("Signed in");
     navigate({ to: "/app", replace: true });
   };
@@ -222,6 +292,12 @@ function AuthPage() {
     e.preventDefault();
     setBusy(true);
     try {
+      if (orgRequested) {
+        toast.error(
+          "Self-signup is not available on organisation sign-in links. Ask your administrator for an account.",
+        );
+        return;
+      }
       let allowed = signupEnabled;
       try {
         const latest = await fetchLandingConfig();
@@ -255,6 +331,9 @@ function AuthPage() {
 
   const submitDisabled = busy || (captchaRequired && !captchaToken);
   const brand = platformBrand;
+  const orgLoginDescription = orgBrand
+    ? `Sign in with your ${orgBrand.name} account. Only members of this organisation can use this link.`
+    : "Sign in with your organisation account. Only members of this organisation can use this link.";
 
   if (mode === "forgot") {
     return (
@@ -303,9 +382,11 @@ function AuthPage() {
       orgRequested={orgRequested}
       title={orgRequested && orgBrand ? `Welcome to ${orgBrand.name}` : "Welcome back"}
       description={
-        signupEnabled
-          ? "Sign in to continue, or create an account to get started."
-          : "Sign in with your organisation account. Public signup is currently disabled."
+        orgRequested
+          ? orgLoginDescription
+          : allowSignup
+            ? "Sign in to continue, or create an account to get started."
+            : "Sign in with your organisation account. Public signup is currently disabled."
       }
       footer={
         <span>
@@ -317,7 +398,7 @@ function AuthPage() {
         </span>
       }
     >
-      {signupEnabled ? (
+      {allowSignup ? (
         <Tabs defaultValue="signin">
           <TabsList className="grid h-10 w-full grid-cols-2">
             <TabsTrigger value="signin">Sign in</TabsTrigger>
