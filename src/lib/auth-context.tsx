@@ -77,20 +77,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .select("id,email,full_name,org_id,must_change_password,is_active")
       .eq("id", userId)
       .maybeSingle();
-    setProfile((p as Profile) ?? null);
-
 
     // Load ALL roles for this user (platform_admin may have no org)
     const { data: allRoles } = await supabase.from("user_roles").select("role,org_id").eq("user_id", userId);
     const roleList = (allRoles ?? []).map((r) => r.role as AppRole);
-    setRoles(roleList);
 
+    // Resolve org before publishing profile — otherwise /app briefly sees
+    // profile without organization and redirects to the create-org screen.
+    let org: Organization | null = null;
     if (p?.org_id) {
-      const { data: org } = await supabase.from("organizations").select("id,name,slug,plan,brand_name,logo_url,primary_color,accent_color,fy_start_month,ui_config").eq("id", p.org_id).maybeSingle();
-      setOrganization((org as Organization) ?? null);
-    } else {
-      setOrganization(null);
+      const { data: orgRow } = await supabase
+        .from("organizations")
+        .select("id,name,slug,plan,brand_name,logo_url,primary_color,accent_color,fy_start_month,ui_config")
+        .eq("id", p.org_id)
+        .maybeSingle();
+      org = (orgRow as Organization) ?? null;
     }
+
+    setProfile((p as Profile) ?? null);
+    setRoles(roleList);
+    setOrganization(org);
   };
 
   const refresh = async () => {
@@ -98,24 +104,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange((_evt, s) => {
+    let cancelled = false;
+
+    const { data: sub } = supabase.auth.onAuthStateChange((evt, s) => {
       setSession(s);
       if (s?.user) {
-        setTimeout(() => loadProfile(s.user.id), 0);
+        // Only block the UI for real session establishment — not token refresh.
+        const blockUi = evt === "SIGNED_IN" || evt === "INITIAL_SESSION";
+        if (blockUi) setLoading(true);
+        // Defer out of the auth callback (Supabase client lock).
+        setTimeout(() => {
+          void loadProfile(s.user.id).finally(() => {
+            if (!cancelled && blockUi) setLoading(false);
+          });
+        }, 0);
       } else {
         setProfile(null);
         setOrganization(null);
         setRoles([]);
+        setLoading(false);
       }
     });
 
     supabase.auth.getSession().then(async ({ data }) => {
+      if (cancelled) return;
       setSession(data.session);
       if (data.session?.user) await loadProfile(data.session.user.id);
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     });
 
-    return () => sub.subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
   const signOut = async () => {

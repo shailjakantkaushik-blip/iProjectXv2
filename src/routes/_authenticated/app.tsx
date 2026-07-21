@@ -14,16 +14,23 @@ function AppLayout() {
   const navigate = useNavigate();
   useLiveSync(organization?.id);
 
+  // Only send users who truly have no org membership to create-org.
+  // Do not treat a still-loading organization object as "needs onboarding".
+  const needsOnboarding = Boolean(profile && !profile.org_id && !organization);
+
   useEffect(() => {
-    if (!loading && profile && !organization) {
+    if (!loading && needsOnboarding) {
       navigate({ to: "/onboarding", replace: true });
     }
-  }, [profile, organization, loading, navigate]);
+  }, [loading, needsOnboarding, navigate]);
 
   if (loading || !profile) {
     return <PageLoading label="Loading workspace…" />;
   }
-  if (!organization) return null;
+  if (profile.org_id && !organization) {
+    return <PageLoading label="Loading workspace…" />;
+  }
+  if (needsOnboarding) return null;
 
   return (
     <AppShell>
