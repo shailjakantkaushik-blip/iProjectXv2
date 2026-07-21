@@ -15,13 +15,15 @@ import {
   Gauge,
   BadgeCheck,
   ArrowRight,
-  Sparkles,
   FileSpreadsheet,
   Lock,
   Palette,
   GitBranch,
   Calendar,
   Flag,
+  Menu,
+  X,
+  Check,
 } from "lucide-react";
 import {
   DEFAULT_LANDING,
@@ -38,7 +40,9 @@ export const Route = createFileRoute("/")({
   component: LandingPage,
   head: () => ({
     meta: [
-      { title: "iProjectX — Enterprise PMO command center for portfolios that must not fail" },
+      {
+        title: "iProjectX — Enterprise PMO command center for portfolios that must not fail",
+      },
       {
         name: "description",
         content:
@@ -56,7 +60,6 @@ export const Route = createFileRoute("/")({
   }),
 });
 
-/** Neutral placeholder using cached palette so refresh never flashes default navy. */
 function LandingPending() {
   const cached = typeof window !== "undefined" ? readCachedLandingConfig() : null;
   const p = cached?.palette ?? DEFAULT_LANDING.palette;
@@ -68,7 +71,6 @@ function LandingPending() {
 const HEADING = { fontFamily: "'Sora', system-ui, sans-serif" as const };
 const BODY = { fontFamily: "'Manrope', system-ui, sans-serif" as const };
 
-// map failure/win/capability titles → icons (with a safe fallback)
 const FAILURE_ICONS: Record<string, any> = {
   "Executives fly blind": EyeOff,
   "Budget discovered late": Wallet,
@@ -100,7 +102,13 @@ const CAP_ICONS: Record<string, any> = {
   "Benefits Realisation": BadgeCheck,
 };
 
-// ---------- utilities ----------
+const NAV_LINKS = [
+  ["#cockpit", "Cockpit"],
+  ["#timeline", "Timeline"],
+  ["#raid", "Governance"],
+  ["#capabilities", "Capabilities"],
+] as const;
+
 function useCountUp(target: number, duration = 1400) {
   const [val, setVal] = useState(0);
   const ref = useRef<HTMLSpanElement | null>(null);
@@ -148,7 +156,7 @@ function Reveal({
         es.forEach((e) => {
           if (e.isIntersecting) setShown(true);
         }),
-      { threshold: 0.15 },
+      { threshold: 0.12 },
     );
     io.observe(ref.current);
     return () => io.disconnect();
@@ -159,8 +167,8 @@ function Reveal({
       className={className}
       style={{
         opacity: shown ? 1 : 0,
-        transform: shown ? "translateY(0)" : "translateY(16px)",
-        transition: `opacity 700ms ease ${delay}ms, transform 700ms cubic-bezier(.2,.7,.2,1) ${delay}ms`,
+        transform: shown ? "translateY(0)" : "translateY(18px)",
+        transition: `opacity 750ms ease ${delay}ms, transform 750ms cubic-bezier(.2,.7,.2,1) ${delay}ms`,
       }}
     >
       {children}
@@ -168,20 +176,69 @@ function Reveal({
   );
 }
 
+function BrandMark({
+  cfg,
+  size = "md",
+  onDark = false,
+}: {
+  cfg: LandingConfig;
+  size?: "sm" | "md" | "lg";
+  onDark?: boolean;
+}) {
+  const p = cfg.palette;
+  const box = size === "lg" ? "h-11 w-11" : size === "sm" ? "h-7 w-7" : "h-8 w-8";
+  const diamond = size === "lg" ? "h-5 w-5" : size === "sm" ? "h-3 w-3" : "h-4 w-4";
+  const text = size === "lg" ? "text-2xl" : size === "sm" ? "text-base" : "text-xl";
+  const imgH = size === "lg" ? "h-10" : size === "sm" ? "h-6" : "h-8";
+
+  if (cfg.brand.logo_url) {
+    return (
+      <img
+        src={cfg.brand.logo_url}
+        alt={cfg.brand.name}
+        className={`${imgH} max-w-[180px] object-contain`}
+      />
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-2.5">
+      <span
+        className={`flex ${box} items-center justify-center rounded-md`}
+        style={{ background: onDark ? "rgba(255,255,255,0.12)" : p.navy }}
+      >
+        <span className={`${diamond} rotate-45 border-2`} style={{ borderColor: p.accent }} />
+      </span>
+      <span
+        className={`${text} font-bold tracking-tight`}
+        style={{ ...HEADING, color: onDark ? p.textOnDark : p.textHeading }}
+      >
+        {cfg.brand.name}
+      </span>
+    </span>
+  );
+}
+
 function LandingPage() {
   const { cfg: loaded } = Route.useLoaderData();
-  // Prefer loader data; fall back to cache then defaults (avoids DEFAULT navy flash).
   const [cfg, setCfg] = useState<LandingConfig>(
     () => loaded ?? readCachedLandingConfig() ?? DEFAULT_LANDING,
   );
   useEffect(() => {
     setCfg(loaded);
   }, [loaded]);
+
+  useEffect(() => {
+    document.documentElement.style.scrollBehavior = "smooth";
+    return () => {
+      document.documentElement.style.scrollBehavior = "";
+    };
+  }, []);
+
   const p = cfg.palette;
   const isDark = cfg.theme === "dark";
-  const pageBg = isDark ? p.navy : "#ffffff";
+  const pageBg = isDark ? p.navy : "#fafbfc";
+  const sectionBg = isDark ? p.navyLight : "#ffffff";
 
-  // Expose palette as CSS custom properties so nested components can use var(--lp-*).
   const cssVars = {
     ["--lp-navy" as any]: p.navy,
     ["--lp-navyLight" as any]: p.navyLight,
@@ -203,183 +260,301 @@ function LandingPage() {
       data-theme={cfg.theme}
       style={{ ...cssVars, ...BODY, color: p.textBody, background: pageBg }}
     >
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:shadow"
+      >
+        Skip to content
+      </a>
       <Nav cfg={cfg} />
-      <Hero cfg={cfg} />
-      <MarqueeStat />
-      <TrustedBy cfg={cfg} />
-      <FailureVsSuccess cfg={cfg} />
-      <ExecutiveCockpitTour cfg={cfg} />
-      <PortfolioTimelineTour cfg={cfg} />
-      <RaidTour cfg={cfg} />
-      <CapabilityBento cfg={cfg} />
-      <StatsStrip cfg={cfg} />
-      <FinalCta cfg={cfg} />
+      <main id="main">
+        <Hero cfg={cfg} />
+        {cfg.hero.alert && <InsightBar cfg={cfg} />}
+        <TrustStrip />
+        <TrustedBy cfg={cfg} sectionBg={sectionBg} />
+        <FailureVsSuccess cfg={cfg} />
+        <ExecutiveCockpitTour cfg={cfg} sectionBg={sectionBg} />
+        <PortfolioTimelineTour cfg={cfg} />
+        <RaidTour cfg={cfg} sectionBg={sectionBg} />
+        <CapabilityBento cfg={cfg} />
+        <StatsStrip cfg={cfg} />
+        <FinalCta cfg={cfg} />
+      </main>
       <Footer cfg={cfg} />
     </div>
   );
 }
 
-function CtaGetStarted({ children }: { children: React.ReactNode }) {
-  return (
-    <Link
-      to="/auth"
-      style={{ ...HEADING, background: "var(--lp-accent)", color: "var(--lp-textOnAccent)" }}
-      className="inline-flex items-center gap-2 rounded px-7 py-3.5 text-sm font-bold shadow-xl transition-all hover:-translate-y-0.5 hover:shadow-2xl active:translate-y-0"
-    >
-      {children} <ArrowRight className="h-4 w-4" />
-    </Link>
-  );
-}
-function CtaSecondary({ children, dark = false }: { children: React.ReactNode; dark?: boolean }) {
+function CtaPrimary({ children }: { children: React.ReactNode }) {
   return (
     <Link
       to="/auth"
       style={{
         ...HEADING,
-        color: dark ? "var(--lp-textOnDark)" : "var(--lp-textHeading)",
-        borderColor: dark
-          ? "rgba(255,255,255,0.2)"
-          : "color-mix(in srgb, var(--lp-navy) 15%, transparent)",
+        background: "var(--lp-accent)",
+        color: "var(--lp-textOnAccent)",
       }}
-      className={
-        "inline-flex items-center gap-2 rounded px-7 py-3.5 text-sm font-bold transition-all border " +
-        (dark ? "hover:bg-white/10" : "hover:bg-[color:var(--lp-surface)]")
-      }
+      className="inline-flex items-center gap-2 rounded-md px-7 py-3.5 text-sm font-bold transition-transform duration-200 hover:-translate-y-0.5 active:translate-y-0"
     >
+      {children} <ArrowRight className="h-4 w-4" />
+    </Link>
+  );
+}
+
+function CtaSecondary({
+  children,
+  href = "#capabilities",
+  dark = false,
+}: {
+  children: React.ReactNode;
+  href?: string;
+  dark?: boolean;
+}) {
+  const className =
+    "inline-flex items-center gap-2 rounded-md border px-7 py-3.5 text-sm font-bold transition-colors " +
+    (dark ? "hover:bg-white/10" : "hover:bg-[color:var(--lp-surface)]");
+  const style = {
+    ...HEADING,
+    color: dark ? "var(--lp-textOnDark)" : "var(--lp-textHeading)",
+    borderColor: dark
+      ? "rgba(255,255,255,0.22)"
+      : "color-mix(in srgb, var(--lp-navy) 16%, transparent)",
+  } as React.CSSProperties;
+
+  if (href.startsWith("#")) {
+    return (
+      <a href={href} style={style} className={className}>
+        {children}
+      </a>
+    );
+  }
+  return (
+    <Link to={href as any} style={style} className={className}>
       {children}
     </Link>
   );
 }
 
-// ---------- nav ----------
 function Nav({ cfg }: { cfg: LandingConfig }) {
   const p = cfg.palette;
-  const navBg = cfg.theme === "dark" ? `${p.navy}d9` : "rgba(255,255,255,0.85)";
+  const [scrolled, setScrolled] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 12);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    document.body.style.overflow = open ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [open]);
+
+  const navBg =
+    cfg.theme === "dark"
+      ? scrolled
+        ? `${p.navy}f2`
+        : `${p.navy}cc`
+      : scrolled
+        ? "rgba(255,255,255,0.92)"
+        : "rgba(255,255,255,0.78)";
+
   return (
     <nav
-      className="sticky top-0 z-50 w-full border-b backdrop-blur-md"
-      style={{ borderColor: p.surface, background: navBg }}
+      className="sticky top-0 z-50 w-full border-b backdrop-blur-xl transition-[background,box-shadow] duration-300"
+      style={{
+        borderColor: scrolled ? p.surface : "transparent",
+        background: navBg,
+        boxShadow: scrolled ? "0 1px 0 rgba(15,27,61,0.06)" : "none",
+      }}
     >
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
-        <Link to="/" className="flex items-center gap-2">
-          {cfg.brand.logo_url ? (
-            <img
-              src={cfg.brand.logo_url}
-              alt={cfg.brand.name}
-              className="h-8 max-w-[160px] object-contain"
-            />
-          ) : (
-            <>
-              <div
-                className="flex h-8 w-8 items-center justify-center rounded"
-                style={{ background: p.navy }}
-              >
-                <div className="h-4 w-4 rotate-45 border-2" style={{ borderColor: p.accent }} />
-              </div>
-              <span
-                className="text-xl font-bold tracking-tight"
-                style={{ ...HEADING, color: p.textHeading }}
-              >
-                {cfg.brand.name}
-              </span>
-            </>
-          )}
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-6">
+        <Link to="/" className="relative z-10" onClick={() => setOpen(false)}>
+          <BrandMark cfg={cfg} />
         </Link>
-        <div className="hidden items-center gap-7 md:flex">
-          {[
-            ["#cockpit", "Executive Cockpit"],
-            ["#timeline", "Portfolio Timeline"],
-            ["#raid", "Governance"],
-            ["#capabilities", "Capabilities"],
-          ].map(([href, label]) => (
+
+        <div className="hidden items-center gap-8 md:flex">
+          {NAV_LINKS.map(([href, label]) => (
             <a
               key={href}
               href={href}
-              className="text-sm font-semibold hover:opacity-80"
+              className="text-sm font-semibold tracking-tight transition-opacity hover:opacity-70"
               style={{ color: p.textMuted }}
             >
               {label}
             </a>
           ))}
         </div>
-        <div className="flex items-center gap-3">
-          <Link to="/auth" className="text-sm font-semibold" style={{ color: p.textMuted }}>
+
+        <div className="hidden items-center gap-4 md:flex">
+          <Link
+            to="/auth"
+            className="text-sm font-semibold transition-opacity hover:opacity-70"
+            style={{ color: p.textMuted }}
+          >
             Sign in
           </Link>
           <Link
             to="/auth"
             style={{ ...HEADING, background: p.navy, color: p.textOnDark }}
-            className="rounded px-5 py-2.5 text-sm font-bold shadow-lg transition-all hover:opacity-90 active:scale-95"
+            className="rounded-md px-4 py-2.5 text-sm font-bold transition-opacity hover:opacity-90"
           >
             Get started
           </Link>
         </div>
+
+        <button
+          type="button"
+          className="relative z-10 inline-flex h-10 w-10 items-center justify-center rounded-md border md:hidden"
+          style={{ borderColor: p.surface, color: p.textHeading }}
+          aria-label={open ? "Close menu" : "Open menu"}
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </button>
       </div>
+
+      {open && (
+        <div
+          className="border-t px-5 py-5 md:hidden"
+          style={{
+            borderColor: p.surface,
+            background: cfg.theme === "dark" ? p.navy : "#ffffff",
+          }}
+        >
+          <div className="flex flex-col gap-1">
+            {NAV_LINKS.map(([href, label]) => (
+              <a
+                key={href}
+                href={href}
+                onClick={() => setOpen(false)}
+                className="rounded-md px-3 py-3 text-sm font-semibold"
+                style={{ color: p.textHeading }}
+              >
+                {label}
+              </a>
+            ))}
+          </div>
+          <div
+            className="mt-4 flex flex-col gap-2 border-t pt-4"
+            style={{ borderColor: p.surface }}
+          >
+            <Link
+              to="/auth"
+              onClick={() => setOpen(false)}
+              className="rounded-md px-3 py-3 text-center text-sm font-semibold"
+              style={{ color: p.textMuted }}
+            >
+              Sign in
+            </Link>
+            <Link
+              to="/auth"
+              onClick={() => setOpen(false)}
+              style={{ ...HEADING, background: p.accent, color: p.textOnAccent }}
+              className="rounded-md px-3 py-3 text-center text-sm font-bold"
+            >
+              Get started
+            </Link>
+          </div>
+        </div>
+      )}
     </nav>
   );
 }
 
-// ---------- hero ----------
 function Hero({ cfg }: { cfg: LandingConfig }) {
   const p = cfg.palette;
   return (
     <section
-      className="relative overflow-hidden py-24"
+      className="relative min-h-[min(92vh,880px)] overflow-hidden"
       style={{ background: p.navy, color: p.textOnDark }}
     >
+      {/* Atmosphere: soft gradient + grid, not flat fill */}
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.08]"
+        className="pointer-events-none absolute inset-0"
         style={{
-          backgroundImage: `radial-gradient(${p.accent} 1px, transparent 1px)`,
-          backgroundSize: "40px 40px",
+          background: `
+            radial-gradient(ellipse 80% 60% at 70% 20%, ${p.accent}33 0%, transparent 55%),
+            radial-gradient(ellipse 50% 40% at 10% 80%, ${p.navyLight}88 0%, transparent 50%),
+            linear-gradient(165deg, ${p.navy} 0%, ${p.navyLight} 100%)
+          `,
         }}
       />
-      <div className="relative mx-auto max-w-7xl px-6">
-        <div className="grid gap-12 lg:grid-cols-12 lg:items-center lg:gap-16">
-          <div className="lg:col-span-5">
+      <div
+        className="pointer-events-none absolute inset-0 opacity-[0.07]"
+        style={{
+          backgroundImage: `linear-gradient(${p.textOnDark} 1px, transparent 1px), linear-gradient(90deg, ${p.textOnDark} 1px, transparent 1px)`,
+          backgroundSize: "64px 64px",
+          maskImage: "linear-gradient(to bottom, black 20%, transparent 95%)",
+        }}
+      />
+
+      <div className="relative mx-auto grid max-w-7xl gap-12 px-5 pb-16 pt-14 sm:px-6 lg:grid-cols-12 lg:items-center lg:gap-10 lg:pb-24 lg:pt-20">
+        <div className="lg:col-span-5">
+          <Reveal>
             <div
-              className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest"
-              style={{ color: p.textOnDark, opacity: 0.85 }}
+              className="mb-5 text-[11px] font-bold uppercase tracking-[0.22em]"
+              style={{ color: p.accent }}
             >
-              <Sparkles className="h-3.5 w-3.5" style={{ color: p.accent }} /> {cfg.hero.eyebrow}
+              {cfg.brand.name}
             </div>
+            <p
+              className="mb-4 text-sm font-medium tracking-wide"
+              style={{ color: p.textOnDark, opacity: 0.72 }}
+            >
+              {cfg.hero.eyebrow || cfg.brand.tagline}
+            </p>
             <h1
-              className="text-5xl font-bold leading-[1.05] tracking-tight lg:text-6xl"
+              className="text-[2.75rem] font-bold leading-[1.05] tracking-tight sm:text-5xl lg:text-[3.35rem]"
               style={{ ...HEADING, color: p.textOnDark }}
             >
-              {cfg.hero.title} <span style={{ color: p.accent }}>{cfg.hero.title_accent}</span>{" "}
-              Horizon.
+              {cfg.hero.title} <span style={{ color: p.accent }}>{cfg.hero.title_accent}</span>
             </h1>
             <p
-              className="mt-6 max-w-xl text-lg leading-relaxed"
-              style={{ color: p.textOnDark, opacity: 0.85 }}
+              className="mt-6 max-w-lg text-base leading-relaxed sm:text-lg"
+              style={{ color: p.textOnDark, opacity: 0.82 }}
             >
               {cfg.hero.subtitle}
             </p>
-            <div className="mt-10 flex flex-wrap gap-4">
-              <CtaGetStarted>{cfg.hero.primary_cta}</CtaGetStarted>
-              <CtaSecondary dark>{cfg.hero.secondary_cta}</CtaSecondary>
+            <div className="mt-9 flex flex-wrap gap-3">
+              <CtaPrimary>{cfg.hero.primary_cta}</CtaPrimary>
+              <CtaSecondary dark href="#capabilities">
+                {cfg.hero.secondary_cta}
+              </CtaSecondary>
             </div>
-            {cfg.hero.alert && (
-              <div
-                className="mt-8 flex items-start gap-2 rounded-md px-4 py-3 text-sm text-white/90"
-                style={{
-                  borderWidth: 1,
-                  borderColor: `${p.danger}40`,
-                  background: `${p.danger}1a`,
-                }}
-              >
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" style={{ color: p.danger }} />
-                <span>{cfg.hero.alert}</span>
-              </div>
-            )}
-          </div>
-          <div className="lg:col-span-7">
+          </Reveal>
+        </div>
+
+        <div className="lg:col-span-7">
+          <Reveal delay={120}>
             <HeroDashboard cfg={cfg} />
-          </div>
+          </Reveal>
         </div>
       </div>
     </section>
+  );
+}
+
+function InsightBar({ cfg }: { cfg: LandingConfig }) {
+  const p = cfg.palette;
+  return (
+    <div
+      className="border-b"
+      style={{
+        borderColor: `${p.danger}33`,
+        background: cfg.theme === "dark" ? `${p.danger}18` : `${p.danger}0d`,
+      }}
+    >
+      <div className="mx-auto flex max-w-7xl items-start gap-3 px-5 py-3.5 text-sm sm:px-6 sm:items-center">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 sm:mt-0" style={{ color: p.danger }} />
+        <p style={{ color: p.textBody }}>{cfg.hero.alert}</p>
+      </div>
+    </div>
   );
 }
 
@@ -387,41 +562,53 @@ function HeroDashboard({ cfg }: { cfg: LandingConfig }) {
   const p = cfg.palette;
   return (
     <div
-      className="rounded-xl border border-white/10 p-4 shadow-2xl backdrop-blur-sm"
-      style={{ background: `${p.navyLight}66` }}
+      className="overflow-hidden rounded-xl border"
+      style={{
+        borderColor: "rgba(255,255,255,0.12)",
+        background: "rgba(255,255,255,0.04)",
+      }}
     >
-      <div className="mb-3 flex items-center justify-between px-1">
-        <div className="flex gap-1.5">
-          <div className="h-2.5 w-2.5 rounded-full" style={{ background: p.danger }} />
-          <div className="h-2.5 w-2.5 rounded-full" style={{ background: p.warning }} />
-          <div className="h-2.5 w-2.5 rounded-full" style={{ background: p.success }} />
+      <div
+        className="flex items-center justify-between border-b px-4 py-3"
+        style={{ borderColor: "rgba(255,255,255,0.08)" }}
+      >
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full" style={{ background: p.danger }} />
+          <span className="h-2 w-2 rounded-full" style={{ background: p.warning }} />
+          <span className="h-2 w-2 rounded-full" style={{ background: p.success }} />
         </div>
-        <div className="text-[10px] font-bold uppercase tracking-widest text-white/50">
-          Portfolio Timeline · Executive View
+        <div
+          className="text-[10px] font-bold uppercase tracking-[0.16em]"
+          style={{ color: p.textOnDark, opacity: 0.45 }}
+        >
+          Portfolio timeline · Live
         </div>
       </div>
-      <div
-        className="rounded-lg p-5 shadow-inner ring-1 ring-white/5"
-        style={{ background: p.navy }}
-      >
-        <div className="mb-5 grid grid-cols-4 gap-2 text-white">
+      <div className="p-4 sm:p-5" style={{ background: `${p.navy}cc` }}>
+        <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
           <MiniKpi p={p} label="Portfolio" value="$42.4M" delta="68% used" tone="ok" />
           <MiniKpi p={p} label="Gate pass" value="92%" delta="+4 pts QoQ" tone="ok" />
           <MiniKpi p={p} label="Capacity" value="114%" delta="Q3 crunch" tone="bad" />
           <MiniKpi p={p} label="Benefits" value="$14.2M" delta="run-rate" tone="mid" />
         </div>
         <div className="relative">
-          <div className="mb-3 flex border-b border-white/5 pb-2">
-            <div className="w-32 shrink-0" />
-            <div className="flex w-full justify-between text-[10px] font-bold tracking-wider text-white/30">
+          <div
+            className="mb-3 flex border-b pb-2"
+            style={{ borderColor: "rgba(255,255,255,0.08)" }}
+          >
+            <div className="w-28 shrink-0 sm:w-32" />
+            <div
+              className="flex w-full justify-between text-[10px] font-bold tracking-wider"
+              style={{ color: p.textOnDark, opacity: 0.35 }}
+            >
               {["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL"].map((m, i) => (
-                <span key={m} style={i === 4 ? { color: p.accent } : undefined}>
-                  {i === 4 ? "MAY · TODAY" : m}
+                <span key={m} style={i === 4 ? { color: p.accent, opacity: 1 } : undefined}>
+                  {i === 4 ? "TODAY" : m}
                 </span>
               ))}
             </div>
           </div>
-          <div className="space-y-4">
+          <div className="space-y-3.5">
             <TimelineRow
               p={p}
               name="ERP Migration"
@@ -450,7 +637,7 @@ function HeroDashboard({ cfg }: { cfg: LandingConfig }) {
               gateAt="45%"
               gateColor={p.surface}
               status="INITIATED"
-              statusColor="rgba(255,255,255,0.35)"
+              statusColor="rgba(255,255,255,0.4)"
             />
             <TimelineRow
               p={p}
@@ -464,8 +651,12 @@ function HeroDashboard({ cfg }: { cfg: LandingConfig }) {
             />
           </div>
           <div
-            className="pointer-events-none absolute inset-y-0 left-[calc(128px+((100%-128px)*4/6))] w-px"
-            style={{ background: `${p.accent}99`, boxShadow: `0 0 15px ${p.accent}` }}
+            className="pointer-events-none absolute inset-y-0 w-px"
+            style={{
+              left: "calc(7.5rem + ((100% - 7.5rem) * 4 / 6))",
+              background: p.accent,
+              opacity: 0.7,
+            }}
           />
         </div>
       </div>
@@ -488,9 +679,17 @@ function MiniKpi({
 }) {
   const tc = tone === "ok" ? p.success : tone === "bad" ? p.danger : p.warning;
   return (
-    <div className="rounded-md border border-white/10 bg-white/[0.03] p-2.5">
-      <div className="text-[9px] font-bold uppercase tracking-widest text-white/40">{label}</div>
-      <div className="mt-0.5 text-lg font-bold text-white" style={HEADING}>
+    <div
+      className="rounded-md border p-2.5"
+      style={{ borderColor: "rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.03)" }}
+    >
+      <div
+        className="text-[9px] font-bold uppercase tracking-widest"
+        style={{ color: p.textOnDark, opacity: 0.4 }}
+      >
+        {label}
+      </div>
+      <div className="mt-0.5 text-lg font-bold" style={{ ...HEADING, color: p.textOnDark }}>
         {value}
       </div>
       <div className="text-[10px] font-semibold" style={{ color: tc }}>
@@ -502,84 +701,95 @@ function MiniKpi({
 
 function TimelineRow({ p, name, left, width, gateAt, gateColor, status, statusColor }: any) {
   return (
-    <div className="group flex items-center">
-      <div className="w-32 truncate text-xs font-semibold text-white/70">{name}</div>
+    <div className="flex items-center">
+      <div
+        className="w-28 truncate text-xs font-semibold sm:w-32"
+        style={{ color: p.textOnDark, opacity: 0.7 }}
+      >
+        {name}
+      </div>
       <div className="relative h-3 flex-1">
         <div
-          className="absolute h-full rounded-full border"
-          style={{ left, width, borderColor: `${p.accent}66`, background: p.navyLight }}
+          className="absolute h-full rounded-sm border"
+          style={{
+            left,
+            width,
+            borderColor: `${p.accent}55`,
+            background: p.navyLight,
+          }}
         >
           <div
-            className="absolute -top-1 h-5 w-1"
+            className="absolute -top-1 h-5 w-0.5"
             style={{
               left: gateAt === "right" ? "auto" : gateAt,
-              right: gateAt === "right" ? "-2px" : "auto",
+              right: gateAt === "right" ? "-1px" : "auto",
               background: gateColor,
-              boxShadow: `0 0 8px ${gateColor}`,
             }}
           />
         </div>
       </div>
-      <div className="ml-4 w-20 text-right text-[10px] font-bold" style={{ color: statusColor }}>
+      <div
+        className="ml-3 w-[4.5rem] text-right text-[10px] font-bold tracking-wide"
+        style={{ color: statusColor }}
+      >
         {status}
       </div>
     </div>
   );
 }
 
-function MarqueeStat() {
+function TrustStrip() {
+  const items = [
+    { icon: Lock, label: "Multi-tenant RLS" },
+    { icon: FileSpreadsheet, label: "Excel-native" },
+    { icon: GitBranch, label: "Agile + Waterfall" },
+    { icon: Palette, label: "White-label ready" },
+  ];
   return (
     <section
       className="border-y"
-      style={{ background: "var(--lp-navy)", borderColor: "var(--lp-surface)" }}
+      style={{
+        background: "var(--lp-navy)",
+        borderColor: "color-mix(in srgb, var(--lp-surface) 40%, transparent)",
+      }}
     >
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-6 px-6 py-4 text-xs font-semibold uppercase tracking-widest text-white/70">
-        <span className="flex items-center gap-2">
-          <Lock className="h-3.5 w-3.5" style={{ color: "var(--lp-accent)" }} /> Multi-tenant ·
-          Row-level security
-        </span>
-        <span className="flex items-center gap-2">
-          <FileSpreadsheet className="h-3.5 w-3.5" style={{ color: "var(--lp-accent)" }} />{" "}
-          Excel-native import & export
-        </span>
-        <span className="flex items-center gap-2">
-          <GitBranch className="h-3.5 w-3.5" style={{ color: "var(--lp-accent)" }} /> Agile +
-          Waterfall in one register
-        </span>
-        <span className="flex items-center gap-2">
-          <Palette className="h-3.5 w-3.5" style={{ color: "var(--lp-accent)" }} /> White-label per
-          organisation
-        </span>
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-8 gap-y-3 px-5 py-3.5 sm:px-6">
+        {items.map(({ icon: Icon, label }) => (
+          <span
+            key={label}
+            className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em]"
+            style={{ color: "var(--lp-textOnDark)", opacity: 0.72 }}
+          >
+            <Icon className="h-3.5 w-3.5" style={{ color: "var(--lp-accent)" }} />
+            {label}
+          </span>
+        ))}
       </div>
     </section>
   );
 }
 
-// ---------- trusted by (client logos) ----------
-function TrustedBy({ cfg }: { cfg: LandingConfig }) {
+function TrustedBy({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string }) {
   if (!cfg.trusted?.logos?.length) return null;
   return (
     <section
-      className="py-12 border-b"
-      style={{
-        borderColor: cfg.palette.surface,
-        background: cfg.theme === "dark" ? cfg.palette.navyLight : "#ffffff",
-      }}
+      className="border-b py-14"
+      style={{ borderColor: cfg.palette.surface, background: sectionBg }}
     >
-      <div className="mx-auto max-w-7xl px-6 text-center">
+      <div className="mx-auto max-w-7xl px-5 text-center sm:px-6">
         <div
-          className="mb-6 text-[11px] font-bold uppercase tracking-widest"
+          className="mb-8 text-[11px] font-bold uppercase tracking-[0.2em]"
           style={{ color: cfg.palette.textMuted }}
         >
           {cfg.trusted.heading}
         </div>
-        <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-6 opacity-80">
+        <div className="flex flex-wrap items-center justify-center gap-x-12 gap-y-8">
           {cfg.trusted.logos.map((l) => (
             <img
               key={l.name + l.logo_url}
               src={l.logo_url}
               alt={l.name}
-              className="h-10 max-w-[140px] object-contain grayscale transition hover:grayscale-0"
+              className="h-9 max-w-[130px] object-contain opacity-70 grayscale transition duration-300 hover:opacity-100 hover:grayscale-0"
             />
           ))}
         </div>
@@ -588,32 +798,28 @@ function TrustedBy({ cfg }: { cfg: LandingConfig }) {
   );
 }
 
-// ---------- failure vs success ----------
 function FailureVsSuccess({ cfg }: { cfg: LandingConfig }) {
   const p = cfg.palette;
   return (
-    <section className="py-24" style={{ background: p.surface }}>
-      <div className="mx-auto max-w-7xl px-6">
+    <section className="py-20 sm:py-28" style={{ background: p.surface }}>
+      <div className="mx-auto max-w-7xl px-5 sm:px-6">
         <Reveal>
-          <div className="mb-14 text-center">
-            <div
-              className="mb-3 inline-block rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-widest"
-              style={{ background: `${p.navy}0d`, color: p.textMuted }}
-            >
-              The critical transformation gap
-            </div>
+          <div className="mx-auto mb-14 max-w-3xl text-center">
             <h2
-              className="text-3xl font-bold lg:text-4xl"
+              className="text-3xl font-bold tracking-tight sm:text-4xl"
               style={{ ...HEADING, color: p.textHeading }}
             >
               {cfg.comparison.heading}
             </h2>
-            <p className="mx-auto mt-4 max-w-2xl" style={{ color: `${p.navyLight}cc` }}>
+            <p
+              className="mx-auto mt-4 max-w-2xl text-base leading-relaxed"
+              style={{ color: p.textMuted }}
+            >
               {cfg.comparison.subtitle}
             </p>
           </div>
         </Reveal>
-        <div className="grid gap-10 lg:grid-cols-2 lg:gap-16">
+        <div className="grid gap-12 lg:grid-cols-2 lg:gap-16">
           <ItemColumn
             p={p}
             tone="danger"
@@ -652,38 +858,38 @@ function ItemColumn({
   fallback: any;
 }) {
   const c = tone === "danger" ? p.danger : p.success;
-  const Badge = tone === "danger" ? AlertTriangle : BadgeCheck;
   return (
     <div>
       <div
-        className="mb-6 inline-flex items-center gap-2 rounded px-3 py-1.5 text-xs font-bold uppercase tracking-widest"
-        style={{ background: `${c}1a`, color: c }}
+        className="mb-6 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em]"
+        style={{ color: c }}
       >
-        <Badge className="h-3.5 w-3.5" /> {label} {`iProjectX`}
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: c }} />
+        {label} iProjectX
       </div>
-      <div className="space-y-4">
+      <div className="space-y-1">
         {items.map((f, i) => {
           const Icon = iconMap[f.title] || fallback;
           return (
-            <Reveal key={f.title + i} delay={i * 60}>
+            <Reveal key={f.title + i} delay={i * 50}>
               <div
-                className="group flex gap-4 rounded-lg border p-5 transition-all hover:-translate-y-0.5 hover:shadow-lg"
-                style={{
-                  borderColor: `${c}26`,
-                  background: tone === "danger" ? "rgba(255,255,255,0.7)" : "#fff",
-                }}
+                className="flex gap-4 border-b py-5 transition-colors"
+                style={{ borderColor: `${p.navy}14` }}
               >
                 <div
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded"
-                  style={{ background: `${c}1a`, color: c }}
+                  className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md"
+                  style={{ background: `${c}14`, color: c }}
                 >
-                  <Icon className="h-5 w-5" />
+                  <Icon className="h-4 w-4" />
                 </div>
                 <div>
-                  <div className="text-sm font-bold" style={{ ...HEADING, color: p.textHeading }}>
+                  <div
+                    className="text-[15px] font-bold"
+                    style={{ ...HEADING, color: p.textHeading }}
+                  >
                     {f.title}
                   </div>
-                  <div className="mt-1 text-sm" style={{ color: `${p.navyLight}bf` }}>
+                  <div className="mt-1 text-sm leading-relaxed" style={{ color: p.textMuted }}>
                     {f.desc}
                   </div>
                 </div>
@@ -696,56 +902,53 @@ function ItemColumn({
   );
 }
 
-function ExecutiveCockpitTour({ cfg }: { cfg: LandingConfig }) {
+function ExecutiveCockpitTour({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string }) {
   const p = cfg.palette;
   return (
-    <section id="cockpit" className="overflow-hidden py-24">
-      <div className="mx-auto max-w-7xl px-6">
-        <div className="flex flex-col items-center gap-16 lg:flex-row">
+    <section
+      id="cockpit"
+      className="scroll-mt-20 overflow-hidden py-20 sm:py-28"
+      style={{ background: sectionBg }}
+    >
+      <div className="mx-auto max-w-7xl px-5 sm:px-6">
+        <div className="flex flex-col items-center gap-14 lg:flex-row lg:gap-16">
           <Reveal className="lg:w-1/2">
-            <div
-              className="mb-6 inline-block rounded-full px-4 py-1.5 text-[11px] font-bold uppercase tracking-widest"
-              style={{ background: `${p.accent}1a`, color: p.accent }}
+            <p
+              className="mb-4 text-[11px] font-bold uppercase tracking-[0.2em]"
+              style={{ color: p.accent }}
             >
               {cfg.cockpit.eyebrow}
-            </div>
+            </p>
             <h2
-              className="text-4xl font-bold leading-tight"
+              className="text-3xl font-bold tracking-tight sm:text-4xl"
               style={{ ...HEADING, color: p.textHeading }}
             >
               {cfg.cockpit.title}
             </h2>
-            <p className="mt-6 text-lg leading-relaxed" style={{ color: `${p.navyLight}cc` }}>
+            <p className="mt-5 text-lg leading-relaxed" style={{ color: p.textMuted }}>
               {cfg.cockpit.body}
             </p>
-            <ul className="mt-8 space-y-3">
+            <ul className="mt-8 space-y-3.5">
               {cfg.cockpit.bullets.map((t) => (
                 <li
                   key={t}
                   className="flex items-start gap-3 text-[15px] font-medium"
                   style={{ color: p.textHeading }}
                 >
-                  <div
-                    className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full"
-                    style={{ background: p.accent }}
-                  />
+                  <Check className="mt-0.5 h-4 w-4 shrink-0" style={{ color: p.accent }} />
                   {t}
                 </li>
               ))}
             </ul>
           </Reveal>
-          <Reveal className="relative lg:w-1/2" delay={80}>
+          <Reveal className="w-full lg:w-1/2" delay={90}>
             <div
-              className="absolute -inset-4 -rotate-2 rounded-3xl"
-              style={{ background: p.surface }}
-            />
-            <div
-              className="relative rounded-2xl border p-6 shadow-2xl"
-              style={{ borderColor: p.surface, background: "#fff" }}
+              className="rounded-xl border p-5 sm:p-6"
+              style={{ borderColor: p.surface, background: cfg.theme === "dark" ? p.navy : "#fff" }}
             >
               <div
-                className="mb-4 text-xs font-bold uppercase tracking-widest"
-                style={{ color: `${p.navyLight}99` }}
+                className="mb-5 text-[11px] font-bold uppercase tracking-[0.16em]"
+                style={{ color: p.textMuted }}
               >
                 Executive cockpit
               </div>
@@ -764,9 +967,9 @@ function ExecutiveCockpitTour({ cfg }: { cfg: LandingConfig }) {
                   chips={[p.danger, p.warning, p.surface]}
                   accent={p.accent}
                 />
-                <CockpitTile p={p} label="Say / Do ratio" value="0.92" bar={92} accent={p.accent} />
+                <CockpitTile p={p} label="Say / Do" value="0.92" bar={92} accent={p.accent} />
               </div>
-              <div className="mt-5 grid grid-cols-8 gap-1">
+              <div className="mt-5 grid grid-cols-8 gap-1.5">
                 {[
                   p.success,
                   p.success,
@@ -785,7 +988,7 @@ function ExecutiveCockpitTour({ cfg }: { cfg: LandingConfig }) {
                   p.warning,
                   p.success,
                 ].map((c, i) => (
-                  <div key={i} className="h-7 rounded" style={{ background: c }} />
+                  <div key={i} className="h-6 rounded-sm sm:h-7" style={{ background: c }} />
                 ))}
               </div>
             </div>
@@ -799,12 +1002,12 @@ function ExecutiveCockpitTour({ cfg }: { cfg: LandingConfig }) {
 function CockpitTile({ p, label, value, bar, chips, accent }: any) {
   return (
     <div
-      className="rounded-lg border-l-4 p-3"
-      style={{ borderLeftColor: accent, background: `${p.surface}80` }}
+      className="rounded-lg border-l-[3px] p-3"
+      style={{ borderLeftColor: accent, background: `${p.surface}99` }}
     >
       <div
         className="text-[10px] font-bold uppercase tracking-widest"
-        style={{ color: `${p.navyLight}99` }}
+        style={{ color: p.textMuted }}
       >
         {label}
       </div>
@@ -816,7 +1019,7 @@ function CockpitTile({ p, label, value, bar, chips, accent }: any) {
           className="mt-2 h-1 w-full overflow-hidden rounded-full"
           style={{ background: p.surface }}
         >
-          <div className="h-full" style={{ width: `${bar}%`, background: accent }} />
+          <div className="h-full rounded-full" style={{ width: `${bar}%`, background: accent }} />
         </div>
       )}
       {chips && (
@@ -833,15 +1036,26 @@ function CockpitTile({ p, label, value, bar, chips, accent }: any) {
 function PortfolioTimelineTour({ cfg }: { cfg: LandingConfig }) {
   const p = cfg.palette;
   return (
-    <section id="timeline" className="py-24" style={{ background: p.navy, color: p.textOnDark }}>
-      <div className="mx-auto max-w-7xl px-6">
-        <div className="grid gap-16 lg:grid-cols-2 lg:items-center">
+    <section
+      id="timeline"
+      className="scroll-mt-20 py-20 sm:py-28"
+      style={{ background: p.navy, color: p.textOnDark }}
+    >
+      <div className="mx-auto max-w-7xl px-5 sm:px-6">
+        <div className="grid gap-14 lg:grid-cols-2 lg:items-center lg:gap-16">
           <Reveal className="order-2 lg:order-1">
-            <div className="rounded-xl border border-white/10 bg-white/[0.04] p-6 backdrop-blur-sm shadow-2xl">
-              <div className="mb-4 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest" style={{ color: p.textOnDark, opacity: 0.5 }}>
-                <Calendar className="h-3.5 w-3.5" style={{ color: p.accent }} /> Portfolio Gantt
+            <div
+              className="rounded-xl border p-5 sm:p-6"
+              style={{ borderColor: "rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)" }}
+            >
+              <div
+                className="mb-5 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em]"
+                style={{ color: p.textOnDark, opacity: 0.45 }}
+              >
+                <Calendar className="h-3.5 w-3.5" style={{ color: p.accent }} />
+                Portfolio Gantt
               </div>
-              <div className="space-y-3">
+              <div className="space-y-3.5">
                 {[
                   { n: "ERP Migration", left: 5, w: 55, gate: 40, ok: true },
                   { n: "Customer Portal", left: 15, w: 45, gate: 35, ok: false },
@@ -850,22 +1064,27 @@ function PortfolioTimelineTour({ cfg }: { cfg: LandingConfig }) {
                   { n: "Field App v3", left: 40, w: 45, gate: 70, ok: false },
                 ].map((r) => (
                   <div key={r.n} className="flex items-center gap-3 text-xs">
-                    <div className="w-36 truncate text-white/70">{r.n}</div>
+                    <div
+                      className="w-32 truncate sm:w-36"
+                      style={{ color: p.textOnDark, opacity: 0.7 }}
+                    >
+                      {r.n}
+                    </div>
                     <div className="relative h-4 flex-1">
                       <div
-                        className="absolute top-1/2 h-2 -translate-y-1/2 rounded"
+                        className="absolute top-1/2 h-2 -translate-y-1/2 rounded-sm"
                         style={{
                           left: `${r.left}%`,
                           width: `${r.w}%`,
                           background: r.ok ? p.accent : p.danger,
+                          opacity: 0.9,
                         }}
                       />
                       <div
-                        className="absolute -top-0.5 h-5 w-1"
+                        className="absolute -top-0.5 h-5 w-0.5"
                         style={{
                           left: `${r.left + r.gate * 0.6}%`,
                           background: r.ok ? p.success : p.warning,
-                          boxShadow: `0 0 8px ${r.ok ? p.success : p.warning}`,
                         }}
                       />
                     </div>
@@ -875,22 +1094,32 @@ function PortfolioTimelineTour({ cfg }: { cfg: LandingConfig }) {
             </div>
           </Reveal>
           <Reveal className="order-1 lg:order-2" delay={80}>
-            <div
-              className="mb-6 inline-block rounded-full px-4 py-1.5 text-[11px] font-bold uppercase tracking-widest"
-              style={{ background: `${p.accent}26`, color: p.accent }}
+            <p
+              className="mb-4 text-[11px] font-bold uppercase tracking-[0.2em]"
+              style={{ color: p.accent }}
             >
               {cfg.timeline.eyebrow}
-            </div>
-            <h2 className="text-4xl font-bold leading-tight" style={{ ...HEADING, color: p.textOnDark }}>
+            </p>
+            <h2
+              className="text-3xl font-bold tracking-tight sm:text-4xl"
+              style={{ ...HEADING, color: p.textOnDark }}
+            >
               {cfg.timeline.title}
             </h2>
-            <p className="mt-6 text-lg leading-relaxed" style={{ color: p.textOnDark, opacity: 0.85 }}>
+            <p
+              className="mt-5 text-lg leading-relaxed"
+              style={{ color: p.textOnDark, opacity: 0.82 }}
+            >
               {cfg.timeline.body}
             </p>
-            <ul className="mt-8 space-y-3 text-[15px]" style={{ color: p.textOnDark, opacity: 0.92 }}>
+            <ul
+              className="mt-8 space-y-3.5 text-[15px]"
+              style={{ color: p.textOnDark, opacity: 0.9 }}
+            >
               {cfg.timeline.bullets.map((b) => (
                 <li key={b} className="flex items-start gap-3">
-                  <Flag className="mt-0.5 h-4 w-4 shrink-0" style={{ color: p.accent }} /> {b}
+                  <Flag className="mt-0.5 h-4 w-4 shrink-0" style={{ color: p.accent }} />
+                  {b}
                 </li>
               ))}
             </ul>
@@ -901,7 +1130,7 @@ function PortfolioTimelineTour({ cfg }: { cfg: LandingConfig }) {
   );
 }
 
-function RaidTour({ cfg }: { cfg: LandingConfig }) {
+function RaidTour({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string }) {
   const p = cfg.palette;
   const rows = [
     {
@@ -938,28 +1167,35 @@ function RaidTour({ cfg }: { cfg: LandingConfig }) {
     },
   ];
   return (
-    <section id="raid" className="py-24">
-      <div className="mx-auto max-w-7xl px-6">
-        <div className="grid gap-16 lg:grid-cols-12 lg:items-center">
+    <section id="raid" className="scroll-mt-20 py-20 sm:py-28" style={{ background: sectionBg }}>
+      <div className="mx-auto max-w-7xl px-5 sm:px-6">
+        <div className="grid gap-14 lg:grid-cols-12 lg:items-center lg:gap-16">
           <Reveal className="lg:col-span-5">
-            <div
-              className="mb-6 inline-block rounded-full px-4 py-1.5 text-[11px] font-bold uppercase tracking-widest"
-              style={{ background: `${p.navy}0d`, color: p.textMuted }}
+            <p
+              className="mb-4 text-[11px] font-bold uppercase tracking-[0.2em]"
+              style={{ color: p.textMuted }}
             >
               {cfg.raid.eyebrow}
-            </div>
-            <h2 className="text-4xl font-bold" style={{ ...HEADING, color: p.textHeading }}>
+            </p>
+            <h2
+              className="text-3xl font-bold tracking-tight sm:text-4xl"
+              style={{ ...HEADING, color: p.textHeading }}
+            >
               {cfg.raid.title}
             </h2>
-            <p className="mt-6 text-lg leading-relaxed" style={{ color: `${p.navyLight}cc` }}>
+            <p className="mt-5 text-lg leading-relaxed" style={{ color: p.textMuted }}>
               {cfg.raid.body}
             </p>
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="mt-8 flex flex-wrap gap-2">
               {cfg.raid.chips.map((chip) => (
                 <span
                   key={chip}
-                  className="rounded-full border bg-white px-3 py-1 text-xs font-semibold"
-                  style={{ borderColor: `${p.navy}1a`, color: p.textMuted }}
+                  className="border px-3 py-1.5 text-xs font-semibold"
+                  style={{
+                    borderColor: `${p.navy}18`,
+                    color: p.textMuted,
+                    background: cfg.theme === "dark" ? `${p.navy}66` : "transparent",
+                  }}
                 >
                   {chip}
                 </span>
@@ -968,59 +1204,71 @@ function RaidTour({ cfg }: { cfg: LandingConfig }) {
           </Reveal>
           <Reveal className="lg:col-span-7" delay={80}>
             <div
-              className="overflow-hidden rounded-xl border bg-white shadow-2xl"
-              style={{ borderColor: p.surface }}
+              className="overflow-hidden rounded-xl border"
+              style={{
+                borderColor: p.surface,
+                background: cfg.theme === "dark" ? p.navy : "#fff",
+              }}
             >
               <div
-                className="border-b px-5 py-3 text-xs font-bold uppercase tracking-widest"
-                style={{ borderColor: p.surface, background: "#f8fafc", color: `${p.navyLight}b3` }}
+                className="border-b px-5 py-3 text-[11px] font-bold uppercase tracking-[0.16em]"
+                style={{
+                  borderColor: p.surface,
+                  background: cfg.theme === "dark" ? `${p.navyLight}` : p.surface,
+                  color: p.textMuted,
+                }}
               >
                 RAID register
               </div>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr
-                    className="text-left text-[10px] font-bold uppercase tracking-widest"
-                    style={{ color: `${p.navyLight}80` }}
-                  >
-                    <th className="px-5 py-2">ID</th>
-                    <th>Type</th>
-                    <th>Title</th>
-                    <th>Owner</th>
-                    <th className="pr-5 text-right">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.id} className="border-t" style={{ borderColor: p.surface }}>
-                      <td className="px-5 py-3 font-mono text-xs" style={{ color: p.textMuted }}>
-                        {r.id}
-                      </td>
-                      <td className="py-3 text-xs font-bold" style={{ color: p.textMuted }}>
-                        {r.type}
-                      </td>
-                      <td className="py-3" style={{ color: p.textHeading }}>
-                        {r.title}
-                      </td>
-                      <td className="py-3 text-xs" style={{ color: `${p.navyLight}b3` }}>
-                        {r.owner}
-                      </td>
-                      <td className="pr-5 text-right">
-                        <span
-                          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
-                          style={{ background: r.tone + "22", color: r.tone }}
-                        >
-                          <span
-                            className="h-1.5 w-1.5 rounded-full"
-                            style={{ background: r.tone }}
-                          />{" "}
-                          {r.status}
-                        </span>
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] text-sm">
+                  <thead>
+                    <tr
+                      className="text-left text-[10px] font-bold uppercase tracking-widest"
+                      style={{ color: p.textMuted }}
+                    >
+                      <th className="px-5 py-2.5">ID</th>
+                      <th>Type</th>
+                      <th>Title</th>
+                      <th>Owner</th>
+                      <th className="pr-5 text-right">Status</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {rows.map((r) => (
+                      <tr key={r.id} className="border-t" style={{ borderColor: p.surface }}>
+                        <td
+                          className="px-5 py-3.5 font-mono text-xs"
+                          style={{ color: p.textMuted }}
+                        >
+                          {r.id}
+                        </td>
+                        <td className="py-3.5 text-xs font-bold" style={{ color: p.textMuted }}>
+                          {r.type}
+                        </td>
+                        <td className="py-3.5 pr-3" style={{ color: p.textHeading }}>
+                          {r.title}
+                        </td>
+                        <td className="py-3.5 text-xs" style={{ color: p.textMuted }}>
+                          {r.owner}
+                        </td>
+                        <td className="pr-5 text-right">
+                          <span
+                            className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider"
+                            style={{ background: r.tone + "18", color: r.tone }}
+                          >
+                            <span
+                              className="h-1.5 w-1.5 rounded-full"
+                              style={{ background: r.tone }}
+                            />
+                            {r.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </Reveal>
         </div>
@@ -1032,43 +1280,44 @@ function RaidTour({ cfg }: { cfg: LandingConfig }) {
 function CapabilityBento({ cfg }: { cfg: LandingConfig }) {
   const p = cfg.palette;
   return (
-    <section id="capabilities" className="py-24" style={{ background: p.surface }}>
-      <div className="mx-auto max-w-7xl px-6">
+    <section
+      id="capabilities"
+      className="scroll-mt-20 py-20 sm:py-28"
+      style={{ background: p.surface }}
+    >
+      <div className="mx-auto max-w-7xl px-5 sm:px-6">
         <Reveal>
-          <div className="mb-12 flex flex-wrap items-end justify-between gap-6">
-            <div>
-              <div
-                className="mb-3 inline-block rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-widest"
-                style={{ background: `${p.navy}0d`, color: p.textMuted }}
-              >
-                The full engine
-              </div>
-              <h2
-                className="text-3xl font-bold lg:text-4xl"
-                style={{ ...HEADING, color: p.textHeading }}
-              >
-                {cfg.capabilities.heading}
-              </h2>
-            </div>
-            <p className="max-w-md" style={{ color: `${p.navyLight}cc` }}>
+          <div className="mb-12 max-w-2xl">
+            <h2
+              className="text-3xl font-bold tracking-tight sm:text-4xl"
+              style={{ ...HEADING, color: p.textHeading }}
+            >
+              {cfg.capabilities.heading}
+            </h2>
+            <p className="mt-4 text-base leading-relaxed" style={{ color: p.textMuted }}>
               {cfg.capabilities.subtitle}
             </p>
           </div>
         </Reveal>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div
+          className="grid gap-px sm:grid-cols-2 lg:grid-cols-3"
+          style={{ background: `${p.navy}14` }}
+        >
           {cfg.capabilities.items.map((c, i) => {
             const Icon = CAP_ICONS[c.title] || Layers;
             return (
-              <Reveal key={c.title + i} delay={(i % 4) * 60}>
+              <Reveal key={c.title + i} delay={(i % 3) * 50}>
                 <div
-                  className="group flex h-full flex-col rounded-xl border bg-white p-5 transition-all hover:-translate-y-1 hover:shadow-xl"
-                  style={{ borderColor: `${p.navy}14` }}
+                  className="h-full p-6 transition-transform duration-300 hover:-translate-y-0.5"
+                  style={{
+                    background: cfg.theme === "dark" ? p.navyLight : "#ffffff",
+                  }}
                 >
                   <div
-                    className="mb-4 flex h-10 w-10 items-center justify-center rounded-md text-white transition-colors"
-                    style={{ background: p.navy }}
+                    className="mb-4 flex h-9 w-9 items-center justify-center rounded-md"
+                    style={{ background: p.navy, color: p.textOnDark }}
                   >
-                    <Icon className="h-5 w-5" />
+                    <Icon className="h-4 w-4" />
                   </div>
                   <div
                     className="text-[15px] font-bold"
@@ -1076,7 +1325,7 @@ function CapabilityBento({ cfg }: { cfg: LandingConfig }) {
                   >
                     {c.title}
                   </div>
-                  <div className="mt-1.5 text-sm" style={{ color: `${p.navyLight}bf` }}>
+                  <div className="mt-1.5 text-sm leading-relaxed" style={{ color: p.textMuted }}>
                     {c.desc}
                   </div>
                 </div>
@@ -1093,11 +1342,17 @@ function StatsStrip({ cfg }: { cfg: LandingConfig }) {
   const p = cfg.palette;
   return (
     <section
-      className="border-y border-white/5 py-16"
-      style={{ background: p.navy, color: p.textOnDark }}
+      className="border-y py-16 sm:py-20"
+      style={{
+        background: p.navy,
+        color: p.textOnDark,
+        borderColor: "rgba(255,255,255,0.06)",
+      }}
     >
       <div
-        className={`mx-auto grid max-w-7xl gap-8 px-6 ${cfg.stats.length >= 4 ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2"}`}
+        className={`mx-auto grid max-w-7xl gap-10 px-5 sm:px-6 ${
+          cfg.stats.length >= 4 ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2"
+        }`}
       >
         {cfg.stats.map((s, i) => (
           <StatBlock key={i} p={p} value={s.value} suffix={s.suffix} label={s.label} />
@@ -1121,11 +1376,17 @@ function StatBlock({
   const { ref, val } = useCountUp(value);
   return (
     <div className="text-center">
-      <div className="text-4xl font-bold" style={{ ...HEADING, color: p.textOnDark }}>
+      <div
+        className="text-4xl font-bold tracking-tight sm:text-5xl"
+        style={{ ...HEADING, color: p.textOnDark }}
+      >
         <span ref={ref}>{val}</span>
         {suffix ?? ""}
       </div>
-      <div className="mt-2 text-xs font-bold uppercase tracking-widest" style={{ color: p.accent }}>
+      <div
+        className="mt-2 text-[11px] font-bold uppercase tracking-[0.18em]"
+        style={{ color: p.accent }}
+      >
         {label}
       </div>
     </div>
@@ -1135,27 +1396,32 @@ function StatBlock({
 function FinalCta({ cfg }: { cfg: LandingConfig }) {
   const p = cfg.palette;
   return (
-    <section
-      className="py-28"
-      style={{ background: cfg.theme === "dark" ? cfg.palette.navyLight : "#ffffff" }}
-    >
-      <div className="mx-auto max-w-4xl px-6 text-center">
+    <section className="relative overflow-hidden py-24 sm:py-32" style={{ background: p.navy }}>
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background: `radial-gradient(ellipse 70% 80% at 50% 100%, ${p.accent}28 0%, transparent 60%)`,
+        }}
+      />
+      <div className="relative mx-auto max-w-3xl px-5 text-center sm:px-6">
         <Reveal>
           <h2
-            className="text-4xl font-bold lg:text-5xl"
-            style={{ ...HEADING, color: p.textHeading }}
+            className="text-3xl font-bold tracking-tight sm:text-5xl"
+            style={{ ...HEADING, color: p.textOnDark }}
           >
             {cfg.final_cta.title}
           </h2>
           <p
-            className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed"
-            style={{ color: p.textMuted }}
+            className="mx-auto mt-5 max-w-2xl text-base leading-relaxed sm:text-lg"
+            style={{ color: p.textOnDark, opacity: 0.8 }}
           >
             {cfg.final_cta.body}
           </p>
           <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <CtaGetStarted>{cfg.final_cta.primary}</CtaGetStarted>
-            <CtaSecondary>{cfg.final_cta.secondary}</CtaSecondary>
+            <CtaPrimary>{cfg.final_cta.primary}</CtaPrimary>
+            <CtaSecondary dark href="/auth">
+              {cfg.final_cta.secondary}
+            </CtaSecondary>
           </div>
         </Reveal>
       </div>
@@ -1168,39 +1434,40 @@ function Footer({ cfg }: { cfg: LandingConfig }) {
   return (
     <footer
       className="border-t"
-      style={{ borderColor: p.surface, background: cfg.theme === "dark" ? p.navy : "#ffffff" }}
+      style={{
+        borderColor: p.surface,
+        background: cfg.theme === "dark" ? p.navy : "#ffffff",
+      }}
     >
-      <div
-        className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-6 py-8 text-sm sm:flex-row"
-        style={{ color: p.textMuted }}
-      >
-        <div className="flex items-center gap-2">
-          {cfg.brand.logo_url ? (
-            <img
-              src={cfg.brand.logo_url}
-              alt={cfg.brand.name}
-              className="h-6 max-w-[120px] object-contain"
-            />
-          ) : (
-            <>
-              <div
-                className="flex h-6 w-6 items-center justify-center rounded"
-                style={{ background: p.navy }}
-              >
-                <div className="h-3 w-3 rotate-45 border-2" style={{ borderColor: p.accent }} />
-              </div>
-              <span className="font-bold" style={{ ...HEADING, color: p.textHeading }}>
-                {cfg.brand.name}
-              </span>
-            </>
-          )}
-          <span>· {cfg.footer.text || `© ${new Date().getFullYear()}`}</span>
+      <div className="mx-auto flex max-w-7xl flex-col gap-8 px-5 py-10 sm:px-6 md:flex-row md:items-center md:justify-between">
+        <div>
+          <BrandMark cfg={cfg} size="sm" />
+          <p className="mt-3 max-w-sm text-sm" style={{ color: p.textMuted }}>
+            {cfg.brand.tagline || "Enterprise PMO Command Center"}
+          </p>
+          <p className="mt-2 text-xs" style={{ color: p.textMuted }}>
+            {cfg.footer.text || `© ${new Date().getFullYear()} ${cfg.brand.name}`}
+          </p>
         </div>
-        <div className="flex gap-6">
-          <a href="#capabilities">Capabilities</a>
-          <a href="#cockpit">Cockpit</a>
-          <a href="#timeline">Timeline</a>
-          <Link to="/auth">Sign in</Link>
+        <div
+          className="flex flex-wrap gap-x-6 gap-y-2 text-sm font-semibold"
+          style={{ color: p.textMuted }}
+        >
+          <a href="#cockpit" className="transition-opacity hover:opacity-70">
+            Cockpit
+          </a>
+          <a href="#timeline" className="transition-opacity hover:opacity-70">
+            Timeline
+          </a>
+          <a href="#raid" className="transition-opacity hover:opacity-70">
+            Governance
+          </a>
+          <a href="#capabilities" className="transition-opacity hover:opacity-70">
+            Capabilities
+          </a>
+          <Link to="/auth" className="transition-opacity hover:opacity-70">
+            Sign in
+          </Link>
         </div>
       </div>
     </footer>
