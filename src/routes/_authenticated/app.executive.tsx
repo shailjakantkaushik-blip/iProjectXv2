@@ -7,11 +7,13 @@ import {
   Legend, LineChart, Line, CartesianGrid, LabelList,
 } from "recharts";
 import { SectionFrame, SectionTitle, RagChip } from "@/components/streamlit";
+import { ChartLegendList, legendItemsFromCounts } from "@/components/chart-legend-list";
 import { useAuth } from "@/lib/auth-context";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { RAG_COLORS, PRIORITY_COLORS, CHART_SERIES } from "@/lib/chart-theme";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/app/executive")({
   component: ExecutiveDashboard,
@@ -425,23 +427,25 @@ function ExecutiveDashboard() {
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {/* Portfolio Health — donut */}
-            <ChartBox title="Portfolio Health">
+            <ChartBox
+              title="Portfolio Health"
+              legend={
+                ragData.length > 0 ? (
+                  <ChartLegendList
+                    items={legendItemsFromCounts(ragData, RAG_COLORS)}
+                    columns={ragData.length <= 3 ? 1 : 2}
+                  />
+                ) : undefined
+              }
+            >
               {ragData.length === 0 ? <Empty /> : (
-                <PieChart margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                <PieChart margin={{ top: 4, right: 4, left: 4, bottom: 4 }}>
                   <Pie data={ragData} dataKey="value" nameKey="name"
-                    cx="50%" cy="45%" innerRadius="45%" outerRadius="70%"
+                    cx="50%" cy="50%" innerRadius="48%" outerRadius="74%"
                     paddingAngle={2} stroke="#fff" strokeWidth={2}>
                     {ragData.map((e) => <Cell key={e.name} fill={RAG_COLORS[e.name]} />)}
                   </Pie>
                   <Tooltip formatter={(v: any, n: any) => [`${v} projects`, n]} />
-                  <Legend verticalAlign="bottom" height={28} iconType="circle"
-                    wrapperStyle={{ fontSize: 11, paddingTop: 4 }}
-                    formatter={(value: string, entry: any) => {
-                      const total = ragData.reduce((s, d) => s + d.value, 0) || 1;
-                      const pct = Math.round(((entry?.payload?.value || 0) / total) * 100);
-                      return `${value} ${entry?.payload?.value ?? 0} (${pct}%)`;
-                    }}
-                  />
                 </PieChart>
               )}
             </ChartBox>
@@ -474,23 +478,22 @@ function ExecutiveDashboard() {
             </ChartBox>
 
             {/* By Theme */}
-            <ChartBox title="By Theme">
+            <ChartBox
+              title="By Theme"
+              legend={
+                themeData.length > 0 ? (
+                  <ChartLegendList items={legendItemsFromCounts(themeData, THEME_PALETTE)} />
+                ) : undefined
+              }
+            >
               {themeData.length === 0 ? <Empty /> : (
-                <PieChart margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                <PieChart margin={{ top: 4, right: 4, left: 4, bottom: 4 }}>
                   <Pie data={themeData} dataKey="value" nameKey="name"
-                    cx="50%" cy="45%" innerRadius="42%" outerRadius="68%"
+                    cx="50%" cy="50%" innerRadius="46%" outerRadius="72%"
                     paddingAngle={2} stroke="#fff" strokeWidth={2}>
                     {themeData.map((_, i) => <Cell key={i} fill={THEME_PALETTE[i % THEME_PALETTE.length]} />)}
                   </Pie>
                   <Tooltip formatter={(v: any, n: any) => [`${v} projects`, n]} />
-                  <Legend verticalAlign="bottom" height={36} iconType="circle"
-                    wrapperStyle={{ fontSize: 10, paddingTop: 4 }}
-                    formatter={(value: string, entry: any) => {
-                      const total = themeData.reduce((s, d) => s + d.value, 0) || 1;
-                      const pct = Math.round(((entry?.payload?.value || 0) / total) * 100);
-                      return `${value} ${entry?.payload?.value ?? 0} (${pct}%)`;
-                    }}
-                  />
                 </PieChart>
               )}
             </ChartBox>
@@ -672,13 +675,22 @@ function ExecutiveDashboard() {
   );
 }
 
-function ChartBox({ title, children }: { title: string; children: React.ReactElement }) {
+function ChartBox({
+  title,
+  children,
+  legend,
+}: {
+  title: string;
+  children: React.ReactElement;
+  legend?: React.ReactNode;
+}) {
   return (
-    <div className="rounded-md border border-border bg-surface p-3 shadow-sm">
-      <div className="mb-2 px-1 text-[12px] font-semibold text-foreground">{title}</div>
-      <div className="h-64">
-        <ResponsiveContainer>{children}</ResponsiveContainer>
+    <div className="flex h-full flex-col overflow-hidden rounded-md border border-border bg-surface p-3 shadow-sm">
+      <div className="mb-2 shrink-0 px-1 text-[12px] font-semibold text-foreground">{title}</div>
+      <div className={cn("min-h-0 w-full", legend ? "h-44" : "h-64")}>
+        <ResponsiveContainer width="100%" height="100%">{children}</ResponsiveContainer>
       </div>
+      {legend ? <div className="min-h-0 shrink-0">{legend}</div> : null}
     </div>
   );
 }

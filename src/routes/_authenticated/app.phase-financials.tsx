@@ -7,6 +7,7 @@ import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/com
 import { PageExport } from "@/components/page-export";
 import { PortfolioFilters, emptyFilters, applyFilters, type PortfolioFilterState } from "@/components/portfolio-filters";
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell, LabelList } from "recharts";
+import { ChartLegendList, legendItemsFromCounts } from "@/components/chart-legend-list";
 
 export const Route = createFileRoute("/_authenticated/app/phase-financials")({
   component: PhaseFinancialsPage,
@@ -103,17 +104,17 @@ function PhaseFinancialsPage() {
 
         <SectionFrame>
           <SectionTitle>Project Distribution</SectionTitle>
-          <div className="h-72">
+          <div className="h-56">
             <ResponsiveContainer>
               <PieChart>
-                <Pie data={distribution} dataKey="value" nameKey="name" cx="50%" cy="45%" innerRadius={45} outerRadius={80} paddingAngle={2}>
+                <Pie data={distribution} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={45} outerRadius={80} paddingAngle={2}>
                   {distribution.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
                 <Tooltip />
-                <Legend verticalAlign="bottom" wrapperStyle={{ fontSize: 10 }} />
               </PieChart>
             </ResponsiveContainer>
           </div>
+          <ChartLegendList items={legendItemsFromCounts(distribution, COLORS)} />
         </SectionFrame>
       </div>
 

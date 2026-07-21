@@ -9,6 +9,7 @@ import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip, Legend,
   PieChart, Pie, Cell, ReferenceLine, LabelList,
 } from "recharts";
+import { ChartLegendList } from "@/components/chart-legend-list";
 
 export const Route = createFileRoute("/_authenticated/app/roadmap-analytics")({
   component: RoadmapAnalyticsPage,
@@ -185,21 +186,31 @@ function RoadmapAnalyticsPage() {
 
       <SectionFrame>
         <SectionTitle>Investment Mix</SectionTitle>
-        <div className="h-80">
-          <ResponsiveContainer>
-            <PieChart>
-              <Pie
-                data={mix} dataKey="value" nameKey="theme"
-                innerRadius={90} outerRadius={140}
-                label={({ percent }) => `${((percent ?? 0) * 100).toFixed(0)}%`}
-                labelLine={false}
-              >
-                {mix.map((m) => <Cell key={m.theme} fill={THEME_COLORS[m.theme]} />)}
-              </Pie>
-              <Tooltip formatter={(v: number) => fmtM(v)} />
-              <Legend verticalAlign="middle" align="right" layout="vertical" iconType="square" wrapperStyle={{ fontSize: 12 }} />
-            </PieChart>
-          </ResponsiveContainer>
+        <div className="grid grid-cols-1 items-center gap-4 md:grid-cols-[1fr_12rem]">
+          <div className="h-72">
+            <ResponsiveContainer>
+              <PieChart>
+                <Pie
+                  data={mix} dataKey="value" nameKey="theme"
+                  cx="50%" cy="50%"
+                  innerRadius={70} outerRadius={110}
+                  label={({ percent }) => `${((percent ?? 0) * 100).toFixed(0)}%`}
+                  labelLine={false}
+                >
+                  {mix.map((m) => <Cell key={m.theme} fill={THEME_COLORS[m.theme]} />)}
+                </Pie>
+                <Tooltip formatter={(v: number) => fmtM(v)} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <ChartLegendList
+            columns={1}
+            items={mix.map((m) => ({
+              name: m.theme,
+              color: THEME_COLORS[m.theme] || "#64748b",
+              detail: fmtM(m.value),
+            }))}
+          />
         </div>
       </SectionFrame>
 

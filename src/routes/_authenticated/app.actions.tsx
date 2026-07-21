@@ -9,8 +9,9 @@ import { PageExport } from "@/components/page-export";
 import { EditableCell } from "@/components/editable-cell";
 import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip,
-  PieChart, Pie, Cell, Legend,
+  PieChart, Pie, Cell,
 } from "recharts";
+import { ChartLegendList, legendItemsFromCounts } from "@/components/chart-legend-list";
 
 export const Route = createFileRoute("/_authenticated/app/actions")({ component: ActionsPage });
 
@@ -100,15 +101,15 @@ function ActionsPage() {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="rounded-md border border-border bg-surface p-2">
             <div className="mb-1 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">By Priority</div>
-            <div className="h-56"><ResponsiveContainer>
+            <div className="h-44"><ResponsiveContainer>
               <PieChart>
-                <Pie data={byPriority} dataKey="value" nameKey="name" outerRadius={70} label>
+                <Pie data={byPriority} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70}>
                   {byPriority.map((e) => <Cell key={e.name} fill={PRIO_COLORS[e.name] || "#64748b"} />)}
                 </Pie>
-                <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Tooltip />
               </PieChart>
             </ResponsiveContainer></div>
+            <ChartLegendList items={legendItemsFromCounts(byPriority, PRIO_COLORS)} columns={2} />
           </div>
           <div className="rounded-md border border-border bg-surface p-2">
             <div className="mb-1 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Load by Owner (Top 8)</div>

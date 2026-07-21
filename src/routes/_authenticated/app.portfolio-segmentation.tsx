@@ -119,20 +119,23 @@ function Segmentation() {
           </Select>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="h-64">
-            <ResponsiveContainer>
-              <PieChart>
-                <Pie data={segCounts} dataKey="count" nameKey="name" innerRadius={45} outerRadius={90} paddingAngle={1}>
-                  {segCounts.map((_, i) => <Cell key={i} fill={PROG_COLORS[i % PROG_COLORS.length]} />)}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="flex flex-wrap justify-center gap-2 text-[11px] -mt-2">
+          <div>
+            <div className="h-56">
+              <ResponsiveContainer>
+                <PieChart>
+                  <Pie data={segCounts} dataKey="count" nameKey="name" cx="50%" cy="50%" innerRadius={45} outerRadius={90} paddingAngle={1}>
+                    {segCounts.map((_, i) => <Cell key={i} fill={PROG_COLORS[i % PROG_COLORS.length]} />)}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px] sm:grid-cols-3">
               {segCounts.map((s, i) => (
-                <span key={s.name} className="flex items-center gap-1">
-                  <span className="h-2 w-2 rounded-full" style={{ background: PROG_COLORS[i % PROG_COLORS.length] }} />
-                  {s.name} {s.count}
+                <span key={s.name} className="flex min-w-0 items-center gap-1.5" title={`${s.name} ${s.count}`}>
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: PROG_COLORS[i % PROG_COLORS.length] }} />
+                  <span className="truncate font-medium">{s.name}</span>
+                  <span className="shrink-0 text-muted-foreground">{s.count}</span>
                 </span>
               ))}
             </div>

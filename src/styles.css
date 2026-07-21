@@ -320,3 +320,31 @@ body { overflow-x: hidden; }
   .kpi-value { font-size: 18px; }
   .st-table thead th, .st-table tbody td { padding: 6px 8px; font-size: 12px; }
 }
+
+/* Keep Recharts legends inside their chart boxes (no absolute overflow) */
+.recharts-legend-wrapper {
+  overflow: hidden !important;
+  max-width: 100% !important;
+}
+.recharts-default-legend {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 4px 12px !important;
+  margin: 0 !important;
+  padding: 4px 0 0 !important;
+  max-width: 100%;
+}
+.recharts-legend-item {
+  display: inline-flex !important;
+  align-items: center !important;
+  margin: 0 !important;
+  max-width: 100%;
+}
+.recharts-legend-item-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 11rem;
+}
