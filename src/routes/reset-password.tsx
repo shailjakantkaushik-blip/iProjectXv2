@@ -2,15 +2,17 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
-import { BarChart3 } from "lucide-react";
 import { DEFAULT_LANDING, fetchLandingConfig } from "@/lib/landing-config";
+import { AuthLayout, PasswordField } from "@/components/auth-layout";
 
 export const Route = createFileRoute("/reset-password")({
-  head: () => ({ meta: [{ title: "Reset password — iProjectX" }, { name: "robots", content: "noindex" }] }),
+  head: () => ({
+    meta: [
+      { title: "Reset password — iProjectX" },
+      { name: "robots", content: "noindex" },
+    ],
+  }),
   component: ResetPasswordPage,
 });
 
@@ -29,14 +31,11 @@ function ResetPasswordPage() {
   }, []);
 
   useEffect(() => {
-    // Supabase auto-processes the recovery token in the URL hash and fires
-    // a PASSWORD_RECOVERY event with a temporary session. Wait for it.
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY" || (event === "SIGNED_IN" && session)) {
         setReady(true);
       }
     });
-    // If the session is already set (page revisit), allow reset immediately.
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) setReady(true);
     });
@@ -56,45 +55,51 @@ function ResetPasswordPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 px-4">
-      <div className="w-full max-w-md">
-        <Link to="/" className="mb-6 flex items-center justify-center gap-2">
-          {brand.logo_url ? (
-            <img src={brand.logo_url} alt={brand.name} className="h-10 w-auto max-w-[200px] object-contain" />
-          ) : (
-            <div className="rounded-lg bg-primary p-2 text-primary-foreground"><BarChart3 className="h-5 w-5" /></div>
-          )}
-          <span className="text-lg font-semibold">{brand.name}</span>
+    <AuthLayout
+      platform={brand}
+      title="Set a new password"
+      description={
+        ready
+          ? "Choose a strong password for your account, then continue to the app."
+          : "Validating your reset link — this usually takes a moment."
+      }
+      footer={
+        <Link to="/auth" className="font-medium text-primary hover:underline">
+          Back to sign in
         </Link>
-        <Card>
-          <CardHeader>
-            <CardTitle>Set a new password</CardTitle>
-            <CardDescription>
-              {ready
-                ? "Enter and confirm your new password below."
-                : "Validating your reset link…"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={onSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="password">New password</Label>
-                <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} autoComplete="new-password" disabled={!ready} />
-              </div>
-              <div>
-                <Label htmlFor="confirm">Confirm password</Label>
-                <Input id="confirm" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required minLength={6} autoComplete="new-password" disabled={!ready} />
-              </div>
-              <Button type="submit" className="w-full" disabled={busy || !ready}>
-                {busy ? "Updating…" : "Update password"}
-              </Button>
-              <div className="text-center text-sm">
-                <Link to="/auth" className="text-primary hover:underline">Back to sign in</Link>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+      }
+    >
+      <form onSubmit={onSubmit} className="space-y-4">
+        <PasswordField
+          id="password"
+          label="New password"
+          value={password}
+          onChange={setPassword}
+          required
+          minLength={6}
+          autoComplete="new-password"
+          disabled={!ready}
+          placeholder="At least 6 characters"
+        />
+        <PasswordField
+          id="confirm"
+          label="Confirm password"
+          value={confirm}
+          onChange={setConfirm}
+          required
+          minLength={6}
+          autoComplete="new-password"
+          disabled={!ready}
+        />
+        {!ready && (
+          <p className="text-xs text-muted-foreground">
+            If this does not become ready, open the link from your email again.
+          </p>
+        )}
+        <Button type="submit" className="h-10 w-full" disabled={busy || !ready}>
+          {busy ? "Updating…" : "Update password"}
+        </Button>
+      </form>
+    </AuthLayout>
   );
 }

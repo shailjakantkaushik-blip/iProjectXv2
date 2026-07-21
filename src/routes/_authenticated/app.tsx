@@ -20,7 +20,16 @@ function AppLayout() {
   }, [profile, organization, loading, navigate]);
 
   if (loading || !profile) {
-    return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Loading…</div>;
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background px-4">
+        <div
+          className="h-9 w-9 animate-pulse rounded-lg"
+          style={{ background: "var(--primary)" }}
+        />
+        <div className="text-sm font-medium text-foreground">Loading workspace…</div>
+        <div className="text-xs text-muted-foreground">Preparing your portfolio cockpit</div>
+      </div>
+    );
   }
   if (!organization) return null;
 

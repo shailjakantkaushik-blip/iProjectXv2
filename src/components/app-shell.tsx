@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
   BarChart3,
   LayoutDashboard,
@@ -44,6 +44,7 @@ import {
   Menu,
   X,
   FileText,
+  Home,
 } from "lucide-react";
 import { useAuth, isAdmin, isPlatformAdmin } from "@/lib/auth-context";
 import { useAllowedPages } from "@/lib/permissions";
@@ -61,8 +62,9 @@ type NavItem = {
 
 const navGroups: { heading: string; items: NavItem[] }[] = [
   {
-    heading: "🏠 Home",
+    heading: "Home",
     items: [
+      { to: "/app/", label: "Home", icon: Home, exact: true },
       { to: "/app/executive-cockpit", label: "Executive Cockpit", icon: Rocket },
       { to: "/app/executive", label: "Executive Dashboard", icon: LayoutDashboard },
       { to: "/app/latest-updates", label: "Latest Updates", icon: Bell },
@@ -70,7 +72,7 @@ const navGroups: { heading: string; items: NavItem[] }[] = [
     ],
   },
   {
-    heading: "📁 Portfolio",
+    heading: "Portfolio",
     items: [
       { to: "/app/projects", label: "Projects", icon: FolderKanban },
       { to: "/app/programs", label: "Programs", icon: Layers },
@@ -82,7 +84,7 @@ const navGroups: { heading: string; items: NavItem[] }[] = [
     ],
   },
   {
-    heading: "🚚 Delivery",
+    heading: "Delivery",
     items: [
       { to: "/app/timeline", label: "Timeline", icon: Calendar },
       { to: "/app/roadmap-governance", label: "Roadmap × Governance", icon: Map },
@@ -95,7 +97,7 @@ const navGroups: { heading: string; items: NavItem[] }[] = [
     ],
   },
   {
-    heading: "💰 Financials",
+    heading: "Financials",
     items: [
       { to: "/app/financials", label: "Financials", icon: DollarSign },
       { to: "/app/fy-allocation", label: "FY Allocation", icon: Wallet },
@@ -105,7 +107,7 @@ const navGroups: { heading: string; items: NavItem[] }[] = [
     ],
   },
   {
-    heading: "🛡️ Governance",
+    heading: "Governance",
     items: [
       { to: "/app/risks", label: "Risks", icon: AlertTriangle },
       { to: "/app/decisions", label: "Decisions", icon: Gavel },
@@ -120,7 +122,7 @@ const navGroups: { heading: string; items: NavItem[] }[] = [
     ],
   },
   {
-    heading: "🏢 iProjectX Platform",
+    heading: "Platform",
     items: [
       {
         to: "/platform/organizations",
@@ -161,6 +163,27 @@ const navGroups: { heading: string; items: NavItem[] }[] = [
   },
 ];
 
+function initials(name?: string | null, email?: string | null) {
+  const base = (name || email || "?").trim();
+  const parts = base.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return base.slice(0, 2).toUpperCase();
+}
+
+function pageTitleFromPath(pathname: string, groups: typeof navGroups) {
+  for (const group of groups) {
+    for (const item of group.items) {
+      const match = item.exact
+        ? pathname === item.to || (item.to === "/app/" && (pathname === "/app" || pathname === "/app/"))
+        : pathname === item.to || pathname.startsWith(item.to + "/");
+      if (match) return item.label;
+    }
+  }
+  if (pathname.startsWith("/platform")) return "Platform";
+  if (pathname.startsWith("/app")) return "Workspace";
+  return "App";
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const { organization, profile, roles, signOut } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -172,10 +195,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const accent = organization?.accent_color || undefined;
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  // Close drawer on route change
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
+
+  const pageTitle = useMemo(() => pageTitleFromPath(pathname, navGroups), [pathname]);
 
   const brandStyle =
     primary || accent
@@ -188,14 +212,14 @@ export function AppShell({ children }: { children: ReactNode }) {
               }
             : {}),
           ...(accent ? { ["--accent" as any]: accent } : {}),
-        } as React.CSSProperties)
+        } as CSSProperties)
       : undefined;
 
   const BrandBlock = (
-    <div className="flex items-center gap-2 border-b border-sidebar-border p-4">
+    <div className="flex items-center gap-2.5 border-b border-sidebar-border px-4 py-4">
       <div
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg overflow-hidden"
-        style={{ background: primary || "hsl(var(--primary))", color: "#fff" }}
+        className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg"
+        style={{ background: primary || "var(--primary)", color: "#fff" }}
       >
         {organization?.logo_url ? (
           <img
@@ -208,14 +232,16 @@ export function AppShell({ children }: { children: ReactNode }) {
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-semibold text-sidebar-foreground">{brandName}</div>
-        <div className="truncate text-[11px] text-muted-foreground">
-          {organization?.plan ?? "free"} plan
+        <div className="truncate text-sm font-semibold tracking-tight text-sidebar-foreground">
+          {brandName}
+        </div>
+        <div className="truncate text-[11px] capitalize text-muted-foreground">
+          {(organization?.plan ?? "free").replace(/_/g, " ")} plan
         </div>
       </div>
       <button
         type="button"
-        className="ml-1 rounded-md p-1 text-sidebar-foreground hover:bg-sidebar-accent md:hidden"
+        className="ml-1 rounded-md p-1.5 text-sidebar-foreground transition-colors hover:bg-sidebar-accent md:hidden"
         onClick={() => setMobileOpen(false)}
         aria-label="Close menu"
       >
@@ -225,9 +251,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 
   const Nav = (
-    <nav className="flex-1 space-y-4 overflow-y-auto p-3">
+    <nav className="flex-1 space-y-5 overflow-y-auto px-2.5 py-3">
       {navGroups.map((group) => {
         const items = group.items.filter((n) => {
+          if (n.to === "/app/") return true;
           if (n.platformOnly) return platform;
           if (n.adminOnly) return admin;
           return admin || canViewPage(n.to);
@@ -235,26 +262,32 @@ export function AppShell({ children }: { children: ReactNode }) {
         if (!items.length) return null;
         return (
           <div key={group.heading}>
-            <div className="mb-1 px-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            <div className="mb-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
               {group.heading}
             </div>
             <div className="space-y-0.5">
               {items.map((n) => {
                 const active = n.exact
-                  ? pathname === n.to
+                  ? pathname === n.to ||
+                    (n.to === "/app/" && (pathname === "/app" || pathname === "/app/"))
                   : pathname === n.to || pathname.startsWith(n.to + "/");
                 return (
                   <Link
                     key={n.to}
                     to={n.to}
                     className={cn(
-                      "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[12.5px] transition-colors",
+                      "group flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[12.5px] transition-colors",
                       active
-                        ? "bg-primary text-primary-foreground font-semibold"
+                        ? "bg-primary font-semibold text-primary-foreground shadow-sm"
                         : "text-sidebar-foreground hover:bg-sidebar-accent",
                     )}
                   >
-                    <n.icon className="h-3.5 w-3.5 shrink-0" />
+                    <n.icon
+                      className={cn(
+                        "h-3.5 w-3.5 shrink-0 transition-opacity",
+                        active ? "opacity-100" : "opacity-70 group-hover:opacity-100",
+                      )}
+                    />
                     <span className="truncate">{n.label}</span>
                   </Link>
                 );
@@ -268,8 +301,26 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const Footer = (
     <div className="border-t border-sidebar-border p-3">
-      <div className="mb-2 truncate text-[11px] text-muted-foreground">{profile?.email}</div>
-      <Button variant="outline" size="sm" className="w-full justify-start" onClick={signOut}>
+      <div className="mb-2.5 flex items-center gap-2.5 rounded-lg bg-sidebar-accent/50 px-2.5 py-2">
+        <div
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-primary-foreground"
+          style={{ background: primary || "var(--primary)" }}
+        >
+          {initials(profile?.full_name, profile?.email)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-xs font-medium text-sidebar-foreground">
+            {profile?.full_name || "User"}
+          </div>
+          <div className="truncate text-[11px] text-muted-foreground">{profile?.email}</div>
+        </div>
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className="w-full justify-start bg-transparent"
+        onClick={signOut}
+      >
         <LogOut className="mr-2 h-4 w-4" /> Sign out
       </Button>
     </div>
@@ -277,18 +328,19 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-background" style={brandStyle}>
-      {/* Desktop sidebar */}
-      <aside className="hidden w-64 shrink-0 border-r bg-sidebar md:flex md:flex-col">
+      <aside className="hidden w-[15.5rem] shrink-0 border-r border-sidebar-border bg-sidebar md:flex md:flex-col lg:w-64">
         {BrandBlock}
         {Nav}
         {Footer}
       </aside>
 
-      {/* Mobile drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col border-r bg-sidebar shadow-xl">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-[1px] transition-opacity"
+            onClick={() => setMobileOpen(false)}
+          />
+          <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] animate-in slide-in-from-left duration-200 flex-col border-r border-sidebar-border bg-sidebar shadow-xl">
             {BrandBlock}
             {Nav}
             {Footer}
@@ -297,20 +349,20 @@ export function AppShell({ children }: { children: ReactNode }) {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Mobile top bar */}
-        <header className="sticky top-0 z-30 flex items-center gap-2 border-b bg-background/95 px-3 py-2 backdrop-blur md:hidden">
+        <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-border/80 bg-background/90 px-3 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/75 sm:px-4 lg:px-5">
           <button
             type="button"
-            className="rounded-md p-2 hover:bg-muted"
+            className="rounded-md p-2 transition-colors hover:bg-muted md:hidden"
             onClick={() => setMobileOpen(true)}
             aria-label="Open menu"
           >
             <Menu className="h-5 w-5" />
           </button>
-          <div className="flex min-w-0 items-center gap-2">
+
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
             <div
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md overflow-hidden"
-              style={{ background: primary || "hsl(var(--primary))", color: "#fff" }}
+              className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md md:hidden"
+              style={{ background: primary || "var(--primary)", color: "#fff" }}
             >
               {organization?.logo_url ? (
                 <img
@@ -322,11 +374,31 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <BarChart3 className="h-3.5 w-3.5" />
               )}
             </div>
-            <span className="truncate text-sm font-semibold">{brandName}</span>
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold tracking-tight text-foreground">
+                {pageTitle}
+              </div>
+              <div className="hidden truncate text-[11px] text-muted-foreground sm:block">
+                {brandName}
+              </div>
+            </div>
+          </div>
+
+          <div className="hidden items-center gap-2 sm:flex">
+            <div className="rounded-full border border-border/80 bg-muted/40 px-2.5 py-1 text-[11px] capitalize text-muted-foreground">
+              {(organization?.plan ?? "free").replace(/_/g, " ")}
+            </div>
+            <div
+              className="flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-semibold text-primary-foreground"
+              style={{ background: primary || "var(--primary)" }}
+              title={profile?.email || undefined}
+            >
+              {initials(profile?.full_name, profile?.email)}
+            </div>
           </div>
         </header>
 
-        <main className="min-w-0 flex-1 overflow-x-hidden p-3 sm:p-4 lg:p-5">{children}</main>
+        <main className="min-w-0 flex-1 overflow-x-hidden p-3 sm:p-4 lg:p-6">{children}</main>
       </div>
     </div>
   );
