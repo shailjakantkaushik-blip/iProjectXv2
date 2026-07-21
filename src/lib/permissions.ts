@@ -67,9 +67,9 @@ export const PAGES: { path: string; label: string; group: string }[] = [
   { path: "/app/executive-reports", label: "Executive Reports", group: "Governance" },
   { path: "/app/audit-log", label: "Audit Log", group: "Governance" },
   { path: "/app/data-editor", label: "Data Editor", group: "Governance" },
-  { path: "/app/configuration", label: "Configuration", group: "Governance" },
-  { path: "/app/navigation", label: "Navigation sequence", group: "Governance" },
-  { path: "/app/project-access", label: "Project data access", group: "Governance" },
+  { path: "/app/configuration", label: "Configuration", group: "Org Admin" },
+  { path: "/app/navigation", label: "Navigation sequence", group: "Org Admin" },
+  { path: "/app/project-access", label: "Project data access", group: "Org Admin" },
 ];
 
 export const ADMIN_ONLY_PAGES = new Set<string>([
@@ -77,6 +77,8 @@ export const ADMIN_ONLY_PAGES = new Set<string>([
   "/app/team",
   "/app/permissions",
   "/app/project-access",
+  "/app/configuration",
+  "/app/navigation",
 ]);
 
 export function pageKey(path: string) {

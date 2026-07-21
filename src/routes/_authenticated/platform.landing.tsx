@@ -185,12 +185,13 @@ function LandingConfigPage() {
           <SectionFrame>
             <SectionTitle>Navigation sequence</SectionTitle>
             <p className="mt-1 mb-4 text-sm text-muted-foreground">
-              Reorder sidebar groups and links platform-wide. Save &amp; publish to apply for all
-              users.
+              Add or remove section headers, move links between sections, and reorder
+              platform-wide. Save &amp; publish to apply for all users.
             </p>
             <NavSequenceEditor
               value={cfg.navigation ?? defaultNavigationConfig()}
               onChange={(navigation) => setCfg({ ...cfg, navigation })}
+              structureEditable
             />
           </SectionFrame>
         </TabsContent>

@@ -127,12 +127,13 @@ function PlatformSettingsPage() {
           <SectionTitle>Navigation sequence</SectionTitle>
         </div>
         <p className="mt-1 mb-4 text-sm text-muted-foreground">
-          Configure the order of sidebar groups and links for every organisation. Also available
-          under Landing Page → Access &amp; Cartoons.
+          Add or remove section headers, move links between sections, reorder, and hide items for
+          every organisation. Also available under Landing Page → Access &amp; Cartoons.
         </p>
         <NavSequenceEditor
           value={cfg.navigation ?? defaultNavigationConfig()}
           onChange={(navigation) => setCfg({ ...cfg, navigation })}
+          structureEditable
         />
       </SectionFrame>
     </div>

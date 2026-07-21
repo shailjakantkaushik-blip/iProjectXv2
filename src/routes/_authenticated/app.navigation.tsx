@@ -117,7 +117,12 @@ function OrgNavigationPage() {
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : (
           <fieldset disabled={!canEdit} className="min-w-0">
-            <NavSequenceEditor value={nav} onChange={setNav} catalog={APP_NAV_GROUPS} />
+            <NavSequenceEditor
+              value={nav}
+              onChange={setNav}
+              catalog={APP_NAV_GROUPS}
+              structureEditable
+            />
           </fieldset>
         )}
       </SectionFrame>

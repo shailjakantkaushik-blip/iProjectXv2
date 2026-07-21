@@ -1,6 +1,6 @@
 /**
- * Shared app navigation catalog + platform-configurable ordering.
- * Order/visibility live in landing_config.navigation (JSON) — no migration.
+ * Shared app navigation catalog + platform-configurable ordering / structure.
+ * Order/visibility/section layout live in landing_config.navigation (JSON).
  */
 
 export type NavItemDef = {
@@ -19,9 +19,9 @@ export type NavGroupDef = {
 };
 
 export type NavigationConfig = {
-  /** Ordered group headings. Unknown headings are appended. */
+  /** Ordered group headings (built-in or custom). */
   group_order: string[];
-  /** Per-group ordered item paths. Missing paths are appended; extras ignored. */
+  /** Per-group ordered item paths. Items may move across groups. */
   item_order: Record<string, string[]>;
   /** Paths hidden from the sidebar (still reachable by URL if authorized). */
   hidden: string[];
@@ -91,12 +91,17 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
       { to: "/app/executive-reports", label: "Executive Reports", icon: "FileBarChart" },
       { to: "/app/audit-log", label: "Audit Log", icon: "FileText" },
       { to: "/app/data-editor", label: "Data Editor", icon: "Table2" },
-      { to: "/app/configuration", label: "Configuration", icon: "Settings" },
-      { to: "/app/navigation", label: "Navigation sequence", icon: "Menu", adminOnly: true },
-      { to: "/app/project-access", label: "Project data access", icon: "Eye", adminOnly: true },
       { to: "/app/billing", label: "Billing & Invoices", icon: "Receipt", adminOnly: true },
       { to: "/app/team", label: "Admin: Users", icon: "ShieldCheck", adminOnly: true },
       { to: "/app/permissions", label: "Admin: Permissions", icon: "ShieldCheck", adminOnly: true },
+    ],
+  },
+  {
+    heading: "Org Admin",
+    items: [
+      { to: "/app/configuration", label: "Configuration", icon: "Settings", adminOnly: true },
+      { to: "/app/navigation", label: "Navigation sequence", icon: "Menu", adminOnly: true },
+      { to: "/app/project-access", label: "Project data access", icon: "Eye", adminOnly: true },
     ],
   },
   {
@@ -147,6 +152,22 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
   },
 ];
 
+export function flattenNavItems(catalog: NavGroupDef[]): Map<string, NavItemDef> {
+  const map = new Map<string, NavItemDef>();
+  for (const g of catalog) {
+    for (const i of g.items) map.set(i.to, i);
+  }
+  return map;
+}
+
+export function defaultItemHome(catalog: NavGroupDef[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const g of catalog) {
+    for (const i of g.items) map.set(i.to, g.heading);
+  }
+  return map;
+}
+
 export function defaultNavigationConfig(
   catalog: NavGroupDef[] = DEFAULT_NAV_GROUPS,
 ): NavigationConfig {
@@ -173,15 +194,61 @@ export function mergeNavigationConfig(
   const base = defaultNavigationConfig(catalog);
   if (!partial || typeof partial !== "object") return base;
 
-  const group_order = Array.isArray(partial.group_order)
-    ? partial.group_order.map(String).filter(Boolean)
-    : base.group_order;
+  const catalogHeadings = new Set(catalog.map((g) => g.heading));
+  const allPaths = new Set(flattenNavItems(catalog).keys());
 
-  const item_order: Record<string, string[]> = { ...base.item_order };
+  let group_order: string[];
+  if (Array.isArray(partial.group_order) && partial.group_order.length > 0) {
+    group_order = partial.group_order.map(String).filter(Boolean);
+    // Keep any new catalog headings that were added in code after config was saved
+    for (const h of catalog.map((g) => g.heading)) {
+      if (!group_order.includes(h)) group_order.push(h);
+    }
+  } else {
+    group_order = [...base.group_order];
+  }
+
+  const item_order: Record<string, string[]> = {};
+  // Seed from partial first (preserves custom placement)
   if (partial.item_order && typeof partial.item_order === "object") {
     for (const [k, v] of Object.entries(partial.item_order)) {
-      if (Array.isArray(v)) item_order[k] = (v as unknown[]).map(String);
+      if (Array.isArray(v)) {
+        item_order[k] = (v as unknown[]).map(String).filter((p) => allPaths.has(p));
+      }
     }
+  }
+
+  // Ensure every group_order heading has an array. New catalog sections
+  // claim their default items (and remove them from older groups).
+  for (const h of group_order) {
+    if (!item_order[h]) {
+      const seeded = base.item_order[h] ? [...base.item_order[h]] : [];
+      item_order[h] = seeded;
+      if (seeded.length) {
+        const seededSet = new Set(seeded);
+        for (const [other, paths] of Object.entries(item_order)) {
+          if (other === h) continue;
+          item_order[other] = paths.filter((p) => !seededSet.has(p));
+        }
+      }
+    }
+  }
+
+  // Place any catalog paths that are missing from all groups into their default home
+  const assigned = new Set<string>();
+  for (const paths of Object.values(item_order)) {
+    for (const p of paths) assigned.add(p);
+  }
+  const homes = defaultItemHome(catalog);
+  for (const path of allPaths) {
+    if (assigned.has(path)) continue;
+    const home = homes.get(path) ?? group_order[0];
+    if (!home) continue;
+    if (!item_order[home]) item_order[home] = [];
+    if (!group_order.includes(home) && catalogHeadings.has(home)) {
+      group_order.push(home);
+    }
+    if (item_order[home]) item_order[home].push(path);
   }
 
   const hidden = Array.isArray(partial.hidden)
@@ -191,41 +258,31 @@ export function mergeNavigationConfig(
   return { group_order, item_order, hidden };
 }
 
-function orderByKeys<T extends { to?: string; heading?: string }>(
-  items: T[],
-  order: string[],
-  keyFn: (t: T) => string,
-): T[] {
-  const map = new Map(items.map((i) => [keyFn(i), i]));
-  const out: T[] = [];
-  for (const k of order) {
-    const hit = map.get(k);
-    if (hit) {
-      out.push(hit);
-      map.delete(k);
-    }
-  }
-  for (const rest of map.values()) out.push(rest);
-  return out;
-}
-
-/** Apply navigation sequence + hidden flags onto a catalog. */
+/** Apply navigation sequence + hidden flags onto a catalog (supports custom sections). */
 export function applyNavigationConfig(
   config: NavigationConfig | null | undefined,
   catalog: NavGroupDef[] = DEFAULT_NAV_GROUPS,
 ): NavGroupDef[] {
   const nav = mergeNavigationConfig(config, catalog);
+  const allItems = flattenNavItems(catalog);
   const hidden = new Set(nav.hidden);
+  const used = new Set<string>();
 
-  const groups = orderByKeys(catalog, nav.group_order, (g) => g.heading).map((group) => {
-    const itemOrder = nav.item_order[group.heading] ?? group.items.map((i) => i.to);
-    const items = orderByKeys(group.items, itemOrder, (i) => i.to!).filter(
-      (i) => !hidden.has(i.to),
-    );
-    return { ...group, items };
-  });
+  const groups: NavGroupDef[] = [];
+  for (const heading of nav.group_order) {
+    const paths = nav.item_order[heading] ?? [];
+    const items: NavItemDef[] = [];
+    for (const path of paths) {
+      if (used.has(path) || hidden.has(path)) continue;
+      const item = allItems.get(path);
+      if (!item) continue;
+      items.push(item);
+      used.add(path);
+    }
+    if (items.length > 0) groups.push({ heading, items });
+  }
 
-  return groups.filter((g) => g.items.length > 0);
+  return groups;
 }
 
 /**
@@ -253,4 +310,74 @@ export function moveInList<T>(list: T[], index: number, dir: -1 | 1): T[] {
   if (j < 0 || j >= next.length) return next;
   [next[index], next[j]] = [next[j], next[index]];
   return next;
+}
+
+export function moveItemToGroup(
+  nav: NavigationConfig,
+  path: string,
+  fromHeading: string,
+  toHeading: string,
+): NavigationConfig {
+  if (fromHeading === toHeading) return nav;
+  const from = (nav.item_order[fromHeading] ?? []).filter((p) => p !== path);
+  const to = [...(nav.item_order[toHeading] ?? []).filter((p) => p !== path), path];
+  return {
+    ...nav,
+    item_order: {
+      ...nav.item_order,
+      [fromHeading]: from,
+      [toHeading]: to,
+    },
+  };
+}
+
+export function addNavGroup(nav: NavigationConfig, heading: string): NavigationConfig {
+  const name = heading.trim();
+  if (!name || nav.group_order.includes(name)) return nav;
+  return {
+    ...nav,
+    group_order: [...nav.group_order, name],
+    item_order: { ...nav.item_order, [name]: [] },
+  };
+}
+
+export function removeNavGroup(
+  nav: NavigationConfig,
+  heading: string,
+  fallbackHeading?: string,
+): NavigationConfig {
+  if (!nav.group_order.includes(heading)) return nav;
+  const moving = nav.item_order[heading] ?? [];
+  const group_order = nav.group_order.filter((h) => h !== heading);
+  const item_order = { ...nav.item_order };
+  delete item_order[heading];
+
+  const target =
+    fallbackHeading && group_order.includes(fallbackHeading)
+      ? fallbackHeading
+      : group_order.find((h) => h !== "Platform") ?? group_order[0];
+
+  if (target && moving.length) {
+    item_order[target] = [...(item_order[target] ?? []), ...moving];
+  }
+
+  return { ...nav, group_order, item_order };
+}
+
+export function renameNavGroup(
+  nav: NavigationConfig,
+  from: string,
+  to: string,
+): NavigationConfig {
+  const name = to.trim();
+  if (!name || name === from || nav.group_order.includes(name)) return nav;
+  return {
+    ...nav,
+    group_order: nav.group_order.map((h) => (h === from ? name : h)),
+    item_order: {
+      ...Object.fromEntries(
+        Object.entries(nav.item_order).map(([k, v]) => (k === from ? [name, v] : [k, v])),
+      ),
+    },
+  };
 }
