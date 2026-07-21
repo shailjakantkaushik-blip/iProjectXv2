@@ -16,6 +16,11 @@ import { applyChartTheme } from "@/lib/chart-theme";
 import { PlatformThemeProvider } from "@/components/platform-theme-provider";
 import { getPlatformThemeBootScript } from "@/lib/platform-theme";
 import { LANDING_CONFIG_CACHE_KEY } from "@/lib/landing-config";
+import {
+  installChunkLoadRecovery,
+  isChunkLoadError,
+  recoverFromChunkLoadError,
+} from "@/lib/chunk-load-recovery";
 
 function NotFoundComponent() {
   return (
@@ -36,21 +41,46 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
+  const chunkError = isChunkLoadError(error);
+
+  useEffect(() => {
+    if (chunkError) recoverFromChunkLoadError(error);
+  }, [chunkError, error]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
-        <h1 className="text-xl font-semibold text-foreground">Something went wrong</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{error.message}</p>
-        <button
-          onClick={() => {
-            router.invalidate();
-            reset();
-          }}
-          className="mt-6 inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
-        >
-          Try again
-        </button>
+        <h1 className="text-xl font-semibold text-foreground">
+          {chunkError ? "Updating the app" : "Something went wrong"}
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {chunkError
+            ? "A newer version was just deployed. Reloading to load the latest files…"
+            : error.message}
+        </p>
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+          <button
+            onClick={() => {
+              if (chunkError) {
+                window.location.reload();
+                return;
+              }
+              router.invalidate();
+              reset();
+            }}
+            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+          >
+            {chunkError ? "Reload now" : "Try again"}
+          </button>
+          {chunkError ? (
+            <Link
+              to="/"
+              className="inline-flex items-center justify-center rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground"
+            >
+              Go home
+            </Link>
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -104,6 +134,7 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   useEffect(() => {
+    installChunkLoadRecovery();
     applyChartTheme();
     const handler = () => applyChartTheme();
     window.addEventListener("pmo:chart-theme-change", handler);
