@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2, Save, RefreshCw, ExternalLink, Upload, Sparkles } from "lucide-react";
+import { Plus, Trash2, Save, RefreshCw, ExternalLink, Upload, Sparkles, UserPlus } from "lucide-react";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/lib/auth-context";
+import { CartoonSettingsPreview } from "@/components/cartoon-mascots";
 import {
   DEFAULT_LANDING,
   DARK_ON_LIGHT_FONT_KEYS,
@@ -96,7 +97,7 @@ function LandingConfigPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeading
           title="Landing Page Configuration"
-          subtitle="Configure the public marketing site — logo, palette, hero, comparison, capabilities and client logos."
+          subtitle="Brand the public site, and control signup + interactive cartoons (Access & Cartoons tab)."
         />
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={resetDefaults}>
@@ -113,8 +114,9 @@ function LandingConfigPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="brand">
+      <Tabs defaultValue="experience">
         <TabsList className="flex flex-wrap">
+          <TabsTrigger value="experience">Access &amp; Cartoons</TabsTrigger>
           <TabsTrigger value="brand">Brand & Logo</TabsTrigger>
           <TabsTrigger value="palette">Color Palette</TabsTrigger>
           <TabsTrigger value="hero">Hero</TabsTrigger>
@@ -125,6 +127,59 @@ function LandingConfigPage() {
           <TabsTrigger value="trusted">Trusted-by Logos</TabsTrigger>
           <TabsTrigger value="footer">Final CTA & Footer</TabsTrigger>
         </TabsList>
+
+        {/* ACCESS & CARTOONS — most discoverable for platform toggles */}
+        <TabsContent value="experience">
+          <SectionFrame>
+            <SectionTitle>Registration</SectionTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Control public self-service signup. Platform admins can still create users from
+              Organizations &amp; Users.
+            </p>
+            <label className="mt-4 flex items-center justify-between gap-4 rounded-lg border px-4 py-3">
+              <div className="flex items-start gap-3">
+                <UserPlus className="mt-0.5 h-5 w-5 text-muted-foreground" />
+                <div>
+                  <div className="text-sm font-medium">Allow public signup</div>
+                  <div className="text-xs text-muted-foreground">
+                    When off, Sign up is hidden on /auth and marketing “Get started” is removed.
+                  </div>
+                </div>
+              </div>
+              <Switch
+                checked={cfg.signup_enabled}
+                onCheckedChange={(v) => setCfg({ ...cfg, signup_enabled: v })}
+              />
+            </label>
+          </SectionFrame>
+
+          <SectionFrame>
+            <SectionTitle>Interactive cartoons</SectionTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Animated guide character on Home and a floating companion in the app. Click for tips.
+              Turn off for a strictly corporate UI.
+            </p>
+            <label className="mt-4 flex items-center justify-between gap-4 rounded-lg border px-4 py-3">
+              <div className="flex items-start gap-3">
+                <Sparkles className="mt-0.5 h-5 w-5 text-muted-foreground" />
+                <div>
+                  <div className="text-sm font-medium">Show animated cartoons in the app</div>
+                  <div className="text-xs text-muted-foreground">
+                    Save &amp; publish, then open Home (/app) to see the guide. Users can dismiss the
+                    floating companion for the session.
+                  </div>
+                </div>
+              </div>
+              <Switch
+                checked={cfg.cartoons_enabled}
+                onCheckedChange={(v) => setCfg({ ...cfg, cartoons_enabled: v })}
+              />
+            </label>
+            <div className="mt-4">
+              <CartoonSettingsPreview enabled={cfg.cartoons_enabled} />
+            </div>
+          </SectionFrame>
+        </TabsContent>
 
         {/* BRAND */}
         <TabsContent value="brand">

@@ -142,8 +142,14 @@ const navGroups: { heading: string; items: NavItem[] }[] = [
     items: [
       {
         to: "/platform/settings",
-        label: "Platform Settings",
+        label: "Settings · Signup & Cartoons",
         icon: Settings,
+        platformOnly: true,
+      },
+      {
+        to: "/platform/landing",
+        label: "Landing Page",
+        icon: Palette,
         platformOnly: true,
       },
       {
@@ -180,7 +186,6 @@ const navGroups: { heading: string; items: NavItem[] }[] = [
         icon: Palette,
         platformOnly: true,
       },
-      { to: "/platform/landing", label: "Landing Page", icon: Palette, platformOnly: true },
     ],
   },
 ];
