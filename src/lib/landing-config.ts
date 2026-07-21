@@ -35,6 +35,35 @@ export type LandingCap = { title: string; desc: string; icon?: string };
 export type LandingStat = { value: number; suffix?: string; label: string };
 export type LandingLogo = { name: string; logo_url: string };
 
+/** Display size tokens for brand logos on each surface. */
+export type LogoDisplaySize = "sm" | "md" | "lg" | "xl";
+
+export const LOGO_SIZE_OPTIONS: {
+  value: LogoDisplaySize;
+  label: string;
+  heightPx: number;
+  maxWidthPx: number;
+}[] = [
+  { value: "sm", label: "Small", heightPx: 24, maxWidthPx: 120 },
+  { value: "md", label: "Medium", heightPx: 32, maxWidthPx: 160 },
+  { value: "lg", label: "Large", heightPx: 40, maxWidthPx: 200 },
+  { value: "xl", label: "Extra large", heightPx: 56, maxWidthPx: 280 },
+];
+
+export function normalizeLogoSize(v: unknown, fallback: LogoDisplaySize = "md"): LogoDisplaySize {
+  if (v === "sm" || v === "md" || v === "lg" || v === "xl") return v;
+  return fallback;
+}
+
+export function logoSizeDims(size: LogoDisplaySize | undefined | null): {
+  heightPx: number;
+  maxWidthPx: number;
+} {
+  const token = normalizeLogoSize(size);
+  const found = LOGO_SIZE_OPTIONS.find((o) => o.value === token) ?? LOGO_SIZE_OPTIONS[1];
+  return { heightPx: found.heightPx, maxWidthPx: found.maxWidthPx };
+}
+
 /** Shared shape for testimonials and board statements. */
 export type LandingPersonCard = {
   title: string;
@@ -60,6 +89,12 @@ export type LandingConfig = {
     name: string;
     logo_url: string;
     tagline: string;
+    /** Public landing nav / footer brand mark */
+    logo_size_landing: LogoDisplaySize;
+    /** Sign-in / auth brand panel */
+    logo_size_auth: LogoDisplaySize;
+    /** Authenticated app sidebar + mobile header */
+    logo_size_app: LogoDisplaySize;
   };
   /** Site-wide theme mode (light / dark). Palette colors still apply within the mode. */
   theme: LandingThemeMode;
@@ -438,6 +473,9 @@ export const DEFAULT_LANDING: LandingConfig = {
     name: "iProjectX",
     logo_url: "",
     tagline: "Enterprise PMO Command Center",
+    logo_size_landing: "md",
+    logo_size_auth: "lg",
+    logo_size_app: "md",
   },
   theme: "light",
   apply_theme_to_auth: true,
@@ -740,6 +778,22 @@ export function mergeConfig(partial: any): LandingConfig {
   // Fail closed — missing/legacy configs must not flash public signup on.
   if (typeof merged.signup_enabled !== "boolean") merged.signup_enabled = false;
   if (typeof merged.cartoons_enabled !== "boolean") merged.cartoons_enabled = true;
+  merged.brand = {
+    ...DEFAULT_LANDING.brand,
+    ...(merged.brand ?? {}),
+    logo_size_landing: normalizeLogoSize(
+      merged.brand?.logo_size_landing,
+      DEFAULT_LANDING.brand.logo_size_landing,
+    ),
+    logo_size_auth: normalizeLogoSize(
+      merged.brand?.logo_size_auth,
+      DEFAULT_LANDING.brand.logo_size_auth,
+    ),
+    logo_size_app: normalizeLogoSize(
+      merged.brand?.logo_size_app,
+      DEFAULT_LANDING.brand.logo_size_app,
+    ),
+  };
   merged.navigation = mergeNavigationConfig(merged.navigation);
   // Nested section arrays must come from saved config when present
   if (partial.testimonials && typeof partial.testimonials === "object") {

@@ -17,6 +17,7 @@ import {
   defaultNavigationConfig,
   DARK_ON_LIGHT_FONT_KEYS,
   LIGHT_ON_DARK_FONT_KEYS,
+  LOGO_SIZE_OPTIONS,
   PALETTE_KEY_HINTS,
   PALETTE_KEY_LABELS,
   PALETTE_PRESETS,
@@ -24,6 +25,7 @@ import {
   applyElegantFontContrast,
   applyPalettePreset,
   fetchLandingConfig,
+  logoSizeDims,
   saveLandingConfig,
   type LandingConfig,
   type LandingItem,
@@ -32,6 +34,7 @@ import {
   type LandingPersonCard,
   type LandingStat,
   type LandingThemeMode,
+  type LogoDisplaySize,
 } from "@/lib/landing-config";
 
 const MAX_LOGO_BYTES = 5 * 1024 * 1024;
@@ -305,9 +308,83 @@ function LandingConfigPage() {
               </div>
             </div>
 
+            <div className="mt-6">
+              <Label className="text-xs font-semibold uppercase tracking-wide">
+                Logo size by screen
+              </Label>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Control how large the platform logo renders on the public landing page, sign-in
+                screens, and the authenticated app shell. Organisation white-label logos use the
+                same size tokens on each surface.
+              </p>
+              <div className="mt-3 grid gap-4 md:grid-cols-3">
+                {(
+                  [
+                    {
+                      key: "logo_size_landing" as const,
+                      label: "Landing page",
+                      hint: "Nav and brand mark on the public site",
+                    },
+                    {
+                      key: "logo_size_auth" as const,
+                      label: "Sign-in / auth",
+                      hint: "Login brand panel and mobile header",
+                    },
+                    {
+                      key: "logo_size_app" as const,
+                      label: "App shell",
+                      hint: "Sidebar and mobile header after login",
+                    },
+                  ] as const
+                ).map((row) => {
+                  const value = cfg.brand[row.key] ?? "md";
+                  const dims = logoSizeDims(value);
+                  return (
+                    <div key={row.key} className="rounded-lg border p-3">
+                      <div className="text-sm font-medium">{row.label}</div>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">{row.hint}</p>
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {LOGO_SIZE_OPTIONS.map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() =>
+                              patch("brand", { [row.key]: opt.value as LogoDisplaySize })
+                            }
+                            className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
+                              value === opt.value
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "hover:bg-muted"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="mt-3 flex h-16 items-center justify-center rounded border bg-muted/40 px-3">
+                        {cfg.brand.logo_url ? (
+                          <img
+                            src={cfg.brand.logo_url}
+                            alt=""
+                            className="object-contain"
+                            style={{ height: dims.heightPx, maxWidth: dims.maxWidthPx }}
+                          />
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground">
+                            {dims.heightPx}px · upload a logo to preview
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <p className="mt-4 text-xs text-muted-foreground">
               Per-organisation white-label logos are configured separately under{" "}
-              <b>Branding &amp; White Label</b>.
+              <b>Branding &amp; White Label</b>. Share each org’s dedicated sign-in link from that
+              page so their logo and colours appear on login.
             </p>
           </SectionFrame>
         </TabsContent>

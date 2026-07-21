@@ -80,6 +80,7 @@ import { Route as AuthenticatedPlatformPlansRouteImport } from './routes/_authen
 import { Route as AuthenticatedPlatformProjectPurgeRouteImport } from './routes/_authenticated/platform.project-purge'
 import { Route as AuthenticatedPlatformSettingsRouteImport } from './routes/_authenticated/platform.settings'
 import { Route as AuthenticatedPlatformSubscriptionsRouteImport } from './routes/_authenticated/platform.subscriptions'
+import { Route as OSlugLoginRouteImport } from './routes/o.$slug.login'
 import { Route as AuthenticatedAppInvoiceIdRouteImport } from './routes/_authenticated/app.invoice.$id'
 import { Route as AuthenticatedAppProjectsIdRouteImport } from './routes/_authenticated/app.projects.$id'
 import { Route as AuthenticatedAppProjectsNewRouteImport } from './routes/_authenticated/app.projects.new'
@@ -493,6 +494,11 @@ const AuthenticatedPlatformSubscriptionsRoute =
     path: '/subscriptions',
     getParentRoute: () => AuthenticatedPlatformRoute,
   } as any)
+const OSlugLoginRoute = OSlugLoginRouteImport.update({
+  id: '/o/$slug/login',
+  path: '/o/$slug/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedAppInvoiceIdRoute =
   AuthenticatedAppInvoiceIdRouteImport.update({
     id: '/invoice/$id',
@@ -594,6 +600,7 @@ export interface FileRoutesByFullPath {
   '/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
   '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
+  '/o/$slug/login': typeof OSlugLoginRoute
   '/app/': typeof AuthenticatedAppIndexRoute
   '/app/invoice/$id': typeof AuthenticatedAppInvoiceIdRoute
   '/app/projects/$id': typeof AuthenticatedAppProjectsIdRoute
@@ -670,6 +677,7 @@ export interface FileRoutesByTo {
   '/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
   '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
+  '/o/$slug/login': typeof OSlugLoginRoute
   '/app': typeof AuthenticatedAppIndexRoute
   '/app/invoice/$id': typeof AuthenticatedAppInvoiceIdRoute
   '/app/projects/$id': typeof AuthenticatedAppProjectsIdRoute
@@ -749,6 +757,7 @@ export interface FileRoutesById {
   '/_authenticated/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
   '/_authenticated/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/_authenticated/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
+  '/o/$slug/login': typeof OSlugLoginRoute
   '/_authenticated/app/': typeof AuthenticatedAppIndexRoute
   '/_authenticated/app/invoice/$id': typeof AuthenticatedAppInvoiceIdRoute
   '/_authenticated/app/projects/$id': typeof AuthenticatedAppProjectsIdRoute
@@ -828,6 +837,7 @@ export interface FileRouteTypes {
     | '/platform/project-purge'
     | '/platform/settings'
     | '/platform/subscriptions'
+    | '/o/$slug/login'
     | '/app/'
     | '/app/invoice/$id'
     | '/app/projects/$id'
@@ -904,6 +914,7 @@ export interface FileRouteTypes {
     | '/platform/project-purge'
     | '/platform/settings'
     | '/platform/subscriptions'
+    | '/o/$slug/login'
     | '/app'
     | '/app/invoice/$id'
     | '/app/projects/$id'
@@ -982,6 +993,7 @@ export interface FileRouteTypes {
     | '/_authenticated/platform/project-purge'
     | '/_authenticated/platform/settings'
     | '/_authenticated/platform/subscriptions'
+    | '/o/$slug/login'
     | '/_authenticated/app/'
     | '/_authenticated/app/invoice/$id'
     | '/_authenticated/app/projects/$id'
@@ -996,6 +1008,7 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   ForcePasswordChangeRoute: typeof ForcePasswordChangeRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  OSlugLoginRoute: typeof OSlugLoginRoute
   ApiPublicHooksBillingRunRoute: typeof ApiPublicHooksBillingRunRoute
 }
 
@@ -1498,6 +1511,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPlatformSubscriptionsRouteImport
       parentRoute: typeof AuthenticatedPlatformRoute
     }
+    '/o/$slug/login': {
+      id: '/o/$slug/login'
+      path: '/o/$slug/login'
+      fullPath: '/o/$slug/login'
+      preLoaderRoute: typeof OSlugLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/app/invoice/$id': {
       id: '/_authenticated/app/invoice/$id'
       path: '/invoice/$id'
@@ -1732,18 +1752,9 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   ForcePasswordChangeRoute: ForcePasswordChangeRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  OSlugLoginRoute: OSlugLoginRoute,
   ApiPublicHooksBillingRunRoute: ApiPublicHooksBillingRunRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

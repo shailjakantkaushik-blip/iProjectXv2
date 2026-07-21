@@ -101,6 +101,9 @@ function AuthPage() {
         const params = new URLSearchParams(window.location.search);
         const slug = params.get("org") || window.localStorage.getItem(ORG_SLUG_KEY) || "";
         if (!slug) return;
+        if (params.get("org")) {
+          window.localStorage.setItem(ORG_SLUG_KEY, slug);
+        }
         const brand = await getOrgBranding({ data: { slug } });
         if (!cancelled && brand) setOrgBrand(brand);
       } catch {

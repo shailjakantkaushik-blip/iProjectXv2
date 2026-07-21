@@ -62,7 +62,7 @@ import { useAllowedPages } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { NotificationsBell } from "@/components/notifications-bell";
 import { CartoonCompanion } from "@/components/cartoon-mascots";
-import { fetchLandingConfig, readCachedLandingConfig } from "@/lib/landing-config";
+import { fetchLandingConfig, logoSizeDims, readCachedLandingConfig } from "@/lib/landing-config";
 import { resolveCombinedNavigation, type NavGroupDef } from "@/lib/navigation-config";
 import { useFocusMode } from "@/lib/use-focus-mode";
 import { CommandPalette, useCommandPaletteHotkey } from "@/components/command-palette";
@@ -150,9 +150,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const admin = isAdmin(roles);
   const platform = isPlatformAdmin(roles);
   const { canView: canViewPage } = useAllowedPages();
-  const brandName = organization?.brand_name || organization?.name || "PMO Enterprise";
-  const primary = organization?.primary_color || undefined;
-  const accent = organization?.accent_color || undefined;
   const [mobileOpen, setMobileOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
   const { focusMode, toggleFocusMode } = useFocusMode();
@@ -236,6 +233,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     return () => window.cancelAnimationFrame(id);
   }, [pathname, navGroups, mobileOpen]);
 
+  const brandName =
+    organization?.brand_name || organization?.name || landing?.brand?.name || "PMO Enterprise";
+  const primary = organization?.primary_color || undefined;
+  const accent = organization?.accent_color || undefined;
+  const shellLogoUrl = organization?.logo_url || landing?.brand?.logo_url || "";
+  const appLogoDims = logoSizeDims(landing?.brand?.logo_size_app ?? cached?.brand?.logo_size_app ?? "md");
+
   const pageTitle = useMemo(() => pageTitleFromPath(pathname, navGroups), [pathname, navGroups]);
 
   const visibleNavForPalette = useMemo(() => {
@@ -266,21 +270,36 @@ export function AppShell({ children }: { children: ReactNode }) {
         } as CSSProperties)
       : undefined;
 
+  const BrandMarkImg = ({ compact = false }: { compact?: boolean }) => {
+    const h = compact ? Math.min(28, appLogoDims.heightPx) : appLogoDims.heightPx;
+    const maxW = compact ? Math.min(120, appLogoDims.maxWidthPx) : appLogoDims.maxWidthPx;
+    if (shellLogoUrl) {
+      return (
+        <img
+          src={shellLogoUrl}
+          alt=""
+          className="object-contain"
+          style={{ height: h, maxWidth: maxW, width: "auto" }}
+        />
+      );
+    }
+    return <BarChart3 className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />;
+  };
+
   const BrandBlock = (
     <div className="flex items-center gap-2.5 border-b border-sidebar-border/80 px-4 py-4">
       <div
-        className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-sm ring-1 ring-black/5 transition-transform duration-300 hover:scale-[1.03]"
-        style={{ background: primary || "var(--primary)", color: "#fff" }}
-      >
-        {organization?.logo_url ? (
-          <img
-            src={organization.logo_url}
-            alt=""
-            className="max-h-full max-w-full object-contain"
-          />
-        ) : (
-          <BarChart3 className="h-4 w-4" />
+        className={cn(
+          "flex shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-sm ring-1 ring-black/5 transition-transform duration-300 hover:scale-[1.03]",
+          !shellLogoUrl && "h-9 w-9",
         )}
+        style={
+          shellLogoUrl
+            ? { background: "transparent" }
+            : { background: primary || "var(--primary)", color: "#fff" }
+        }
+      >
+        <BrandMarkImg />
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold tracking-tight text-sidebar-foreground">
@@ -426,18 +445,17 @@ export function AppShell({ children }: { children: ReactNode }) {
 
           <div className="flex min-w-0 flex-1 items-center gap-2.5">
             <div
-              className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg shadow-sm md:hidden"
-              style={{ background: primary || "var(--primary)", color: "#fff" }}
-            >
-              {organization?.logo_url ? (
-                <img
-                  src={organization.logo_url}
-                  alt=""
-                  className="max-h-full max-w-full object-contain"
-                />
-              ) : (
-                <BarChart3 className="h-3.5 w-3.5" />
+              className={cn(
+                "flex shrink-0 items-center justify-center overflow-hidden rounded-lg shadow-sm md:hidden",
+                !shellLogoUrl && "h-8 w-8",
               )}
+              style={
+                shellLogoUrl
+                  ? { background: "transparent" }
+                  : { background: primary || "var(--primary)", color: "#fff" }
+              }
+            >
+              <BrandMarkImg compact />
             </div>
             <div className="min-w-0">
               <div

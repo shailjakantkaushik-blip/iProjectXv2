@@ -28,6 +28,8 @@ import {
 import {
   DEFAULT_LANDING,
   fetchLandingConfig,
+  logoSizeDims,
+  readCachedLandingConfig,
   readCachedLandingConfigForPaint,
   type LandingConfig,
   type LandingItem,
@@ -179,25 +181,29 @@ function Reveal({
 
 function BrandMark({
   cfg,
-  size = "md",
+  size,
   onDark = false,
 }: {
   cfg: LandingConfig;
-  size?: "sm" | "md" | "lg";
+  /** Override; defaults to configured landing logo size. */
+  size?: "sm" | "md" | "lg" | "xl";
   onDark?: boolean;
 }) {
   const p = cfg.palette;
-  const box = size === "lg" ? "h-11 w-11" : size === "sm" ? "h-7 w-7" : "h-8 w-8";
-  const diamond = size === "lg" ? "h-5 w-5" : size === "sm" ? "h-3 w-3" : "h-4 w-4";
-  const text = size === "lg" ? "text-2xl" : size === "sm" ? "text-base" : "text-xl";
-  const imgH = size === "lg" ? "h-10" : size === "sm" ? "h-6" : "h-8";
+  const token = size ?? cfg.brand.logo_size_landing ?? "md";
+  const dims = logoSizeDims(token);
+  const box = token === "xl" ? "h-12 w-12" : token === "lg" ? "h-11 w-11" : token === "sm" ? "h-7 w-7" : "h-8 w-8";
+  const diamond = token === "xl" || token === "lg" ? "h-5 w-5" : token === "sm" ? "h-3 w-3" : "h-4 w-4";
+  const text =
+    token === "xl" ? "text-3xl" : token === "lg" ? "text-2xl" : token === "sm" ? "text-base" : "text-xl";
 
   if (cfg.brand.logo_url) {
     return (
       <img
         src={cfg.brand.logo_url}
         alt={cfg.brand.name}
-        className={`${imgH} max-w-[180px] object-contain`}
+        className="object-contain"
+        style={{ height: dims.heightPx, maxWidth: dims.maxWidthPx, width: "auto" }}
       />
     );
   }

@@ -2,11 +2,13 @@ import { Link } from "@tanstack/react-router";
 import { useState, type ChangeEvent, type ReactNode } from "react";
 import { ArrowLeft, BarChart3, Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { logoSizeDims, type LogoDisplaySize } from "@/lib/landing-config";
 
 export type AuthBrand = {
   name: string;
   logo_url?: string;
   tagline?: string;
+  logo_size_auth?: LogoDisplaySize;
 };
 
 export type AuthOrgBrand = {
@@ -32,24 +34,27 @@ function LogoMark({
 }: {
   name: string;
   logoUrl?: string;
-  size?: "sm" | "md" | "lg";
+  size?: LogoDisplaySize;
 }) {
+  const dims = logoSizeDims(size);
   const box =
-    size === "lg" ? "h-12 w-12" : size === "sm" ? "h-8 w-8" : "h-10 w-10";
-  const icon = size === "lg" ? "h-6 w-6" : size === "sm" ? "h-4 w-4" : "h-5 w-5";
-  const img =
-    size === "lg"
-      ? "h-10 max-w-[160px]"
-      : size === "sm"
-        ? "h-7 max-w-[120px]"
-        : "h-9 max-w-[140px]";
+    size === "xl"
+      ? "h-14 w-14"
+      : size === "lg"
+        ? "h-12 w-12"
+        : size === "sm"
+          ? "h-8 w-8"
+          : "h-10 w-10";
+  const icon =
+    size === "xl" || size === "lg" ? "h-6 w-6" : size === "sm" ? "h-4 w-4" : "h-5 w-5";
 
   if (logoUrl) {
     return (
       <img
         src={logoUrl}
         alt={`${name} logo`}
-        className={cn("w-auto object-contain", img)}
+        className="w-auto object-contain"
+        style={{ height: dims.heightPx, maxWidth: dims.maxWidthPx }}
       />
     );
   }
@@ -78,6 +83,9 @@ export function AuthLayout({
   const displayName = org?.name || platform.name;
   const displayLogo = org?.logo_url || platform.logo_url;
   const tagline = platform.tagline || "Enterprise PMO Command Center";
+  const logoSize: LogoDisplaySize = platform.logo_size_auth ?? "lg";
+  const mobileSize: LogoDisplaySize =
+    logoSize === "xl" ? "lg" : logoSize === "lg" ? "md" : logoSize;
 
   return (
     <div className={cn("flex min-h-screen bg-background", className)}>
@@ -118,7 +126,7 @@ export function AuthLayout({
 
         <div className="relative z-10 space-y-6">
           <div className="flex items-center gap-3">
-            <LogoMark name={displayName} logoUrl={displayLogo} size="lg" />
+            <LogoMark name={displayName} logoUrl={displayLogo} size={logoSize} />
             <div className="min-w-0">
               <div className="truncate text-2xl font-semibold tracking-tight text-white">
                 {displayName}
@@ -157,7 +165,7 @@ export function AuthLayout({
 
         <div className="relative z-10 flex items-center justify-between border-b border-border/60 px-4 py-3 lg:hidden">
           <Link to="/" className="flex min-w-0 items-center gap-2">
-            <LogoMark name={displayName} logoUrl={displayLogo} size="sm" />
+            <LogoMark name={displayName} logoUrl={displayLogo} size={mobileSize} />
             <span className="truncate text-sm font-semibold text-foreground">
               {displayName}
             </span>

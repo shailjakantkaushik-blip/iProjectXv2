@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Upload, Save, Trash2, Plus, X, Palette } from "lucide-react";
+import { Upload, Save, Trash2, Plus, X, Palette, Copy, ExternalLink } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/platform/branding")({
   beforeLoad: () => {
@@ -68,7 +68,8 @@ function PlatformBrandingPage() {
           <Palette className="h-7 w-7" /> White Label & Branding
         </h1>
         <p className="text-sm text-muted-foreground">
-          Manage the display name, logo and colour palette shown across the app for each customer organisation.
+          Manage the display name, logo and colour palette for each organisation. Share each org’s
+          dedicated sign-in link so login shows their white-label branding.
         </p>
       </div>
 
@@ -149,6 +150,25 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
   const removeSwatch = (i: number) =>
     setPalette((p) => p.filter((_, idx) => idx !== i));
 
+  const origin =
+    typeof window !== "undefined" ? window.location.origin : "";
+  const loginPath = org.slug ? `/o/${encodeURIComponent(org.slug)}/login` : "";
+  const loginUrl = org.slug ? `${origin}${loginPath}` : "";
+  const authQueryPath = org.slug ? `/auth?org=${encodeURIComponent(org.slug)}` : "";
+
+  const copyLoginLink = async () => {
+    if (!loginUrl) {
+      toast.error("Set an organisation slug before sharing a login link.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(loginUrl);
+      toast.success("White-label login link copied");
+    } catch {
+      toast.error("Could not copy link");
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -156,6 +176,39 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
         <CardDescription>Slug: {org.slug ?? "—"} · Plan: {org.plan ?? "—"}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+          <Label className="text-xs font-semibold uppercase tracking-wide">
+            White-label sign-in link
+          </Label>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Share this URL with the organisation. It opens the sign-in page with their logo and
+            brand name. Canonical equivalent:{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-[11px]">
+              {authQueryPath || "/auth?org=&lt;slug&gt;"}
+            </code>
+          </p>
+          {org.slug ? (
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Input readOnly value={loginUrl} className="font-mono text-xs" />
+              <div className="flex shrink-0 gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => void copyLoginLink()}>
+                  <Copy className="mr-1.5 h-3.5 w-3.5" /> Copy
+                </Button>
+                <Button type="button" variant="ghost" size="sm" asChild>
+                  <a href={loginPath} target="_blank" rel="noreferrer">
+                    <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Open
+                  </a>
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-amber-700 dark:text-amber-400">
+              This organisation has no slug yet. Set a slug under Organisations &amp; Users to enable
+              a dedicated login link.
+            </p>
+          )}
+        </div>
+
         <div className="grid gap-4 md:grid-cols-2">
           <div>
             <Label>Brand display name</Label>
