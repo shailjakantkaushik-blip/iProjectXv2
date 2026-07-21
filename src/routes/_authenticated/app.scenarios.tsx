@@ -204,7 +204,7 @@ function ScenariosPage() {
     <PageExport name="Portfolio_Scenarios" title="Portfolio Scenarios">
       <PageHeading
         title="Portfolio Scenarios"
-        subtitle="What-if planning — include/exclude projects and test budget caps before commit"
+        subtitle="What-if planning — include/exclude projects and test budget caps before commit (create/edit requires org admin)"
         actions={
           <Button size="sm" onClick={() => setCreating((v) => !v)}>
             <Plus className="mr-1.5 h-4 w-4" />
