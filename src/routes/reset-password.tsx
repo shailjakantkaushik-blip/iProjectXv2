@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { ProcessingOverlay } from "@/components/processing-animation";
 import { DEFAULT_LANDING, fetchLandingConfig, resolveBrandLogoUrl } from "@/lib/landing-config";
 import { AuthLayout, PasswordField, type AuthBrand } from "@/components/auth-layout";
 
@@ -65,7 +66,9 @@ function ResetPasswordPage() {
   };
 
   return (
-    <AuthLayout
+    <>
+      <ProcessingOverlay open={busy} label="Updating password…" />
+      <AuthLayout
       platform={brand}
       title="Set a new password"
       description={
@@ -111,5 +114,6 @@ function ResetPasswordPage() {
         </Button>
       </form>
     </AuthLayout>
+    </>
   );
 }

@@ -27,6 +27,7 @@ import {
   type AuthBrand,
   type AuthOrgBrand,
 } from "@/components/auth-layout";
+import { ProcessingAnimation, ProcessingOverlay } from "@/components/processing-animation";
 
 const ORG_SLUG_KEY = "pmo:lastOrgSlug";
 
@@ -127,10 +128,8 @@ function AuthPending() {
       title="Welcome back"
       description="Sign in with your organisation account."
     >
-      <div className="space-y-4 pt-4" aria-busy="true" aria-label="Loading sign in">
-        <div className="h-10 animate-pulse rounded-md bg-muted" />
-        <div className="h-10 animate-pulse rounded-md bg-muted" />
-        <div className="h-10 animate-pulse rounded-md bg-muted" />
+      <div className="flex flex-col items-center justify-center py-6" aria-busy="true">
+        <ProcessingAnimation label="Preparing sign in…" size="md" />
       </div>
     </AuthLayout>
   );
@@ -348,22 +347,24 @@ function AuthPage() {
 
   if (mode === "forgot") {
     return (
-      <AuthLayout
-        platform={brand}
-        org={orgBrand}
-        orgRequested={orgRequested}
-        title="Reset your password"
-        description="Enter the email for your account and we'll send a secure reset link."
-        footer={
-          <button
-            type="button"
-            className="font-medium text-primary hover:underline"
-            onClick={() => setMode("auth")}
-          >
-            Back to sign in
-          </button>
-        }
-      >
+      <>
+        <ProcessingOverlay open={busy} label="Sending reset link…" />
+        <AuthLayout
+          platform={brand}
+          org={orgBrand}
+          orgRequested={orgRequested}
+          title="Reset your password"
+          description="Enter the email for your account and we'll send a secure reset link."
+          footer={
+            <button
+              type="button"
+              className="font-medium text-primary hover:underline"
+              onClick={() => setMode("auth")}
+            >
+              Back to sign in
+            </button>
+          }
+        >
         <form onSubmit={onForgot} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="forgot-email">Email</Label>
@@ -383,11 +384,17 @@ function AuthPage() {
           </Button>
         </form>
       </AuthLayout>
+      </>
     );
   }
 
   return (
-    <AuthLayout
+    <>
+      <ProcessingOverlay
+        open={busy}
+        label={orgRequested ? "Verifying organisation access…" : "Signing you in…"}
+      />
+      <AuthLayout
       platform={brand}
       org={orgBrand}
       orgRequested={orgRequested}
@@ -481,6 +488,7 @@ function AuthPage() {
         />
       )}
     </AuthLayout>
+    </>
   );
 }
 

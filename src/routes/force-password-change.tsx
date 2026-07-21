@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { clearMustChangePassword } from "@/lib/platform-admin.functions";
+import { ProcessingOverlay } from "@/components/processing-animation";
 import { DEFAULT_LANDING, fetchLandingConfig, resolveBrandLogoUrl } from "@/lib/landing-config";
 import { AuthLayout, PasswordField, type AuthBrand } from "@/components/auth-layout";
 
@@ -70,7 +71,9 @@ function ForcePwdPage() {
   };
 
   return (
-    <AuthLayout
+    <>
+      <ProcessingOverlay open={busy} label="Updating password…" />
+      <AuthLayout
       platform={brand}
       title="Choose a new password"
       description="Your administrator created this account with a temporary password. Set your own password to continue."
@@ -100,5 +103,6 @@ function ForcePwdPage() {
         </Button>
       </form>
     </AuthLayout>
+    </>
   );
 }
