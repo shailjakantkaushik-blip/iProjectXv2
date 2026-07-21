@@ -4,6 +4,7 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, isAdmin } from "@/lib/auth-context";
 import { ProjectForm, type ProjectFormValues } from "@/components/project-form";
+import { ProjectDecisionsPanel } from "@/components/project-decisions-panel";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
@@ -51,7 +52,7 @@ function ProjectDetail() {
   if (!project) return <div className="text-sm text-muted-foreground">Project not found or you don't have access.</div>;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <div className="text-xs font-mono text-muted-foreground">{project.project_code || project.id.slice(0,8)}</div>
@@ -62,6 +63,13 @@ function ProjectDetail() {
         )}
       </div>
       <ProjectForm defaultValues={project as unknown as Partial<ProjectFormValues>} onSubmit={submit} busy={busy} submitLabel="Save changes" />
+      <ProjectDecisionsPanel
+        projectId={id}
+        projectCode={project.project_code}
+        projectName={project.name}
+        program={project.program}
+        sponsor={project.sponsor}
+      />
     </div>
   );
 }

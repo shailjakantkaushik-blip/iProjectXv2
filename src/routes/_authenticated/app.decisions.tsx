@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Check, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
@@ -10,33 +11,62 @@ import { toast } from "sonner";
 import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip,
 } from "recharts";
+import {
+  DECISION_OUTCOME_CLASS,
+  DECISION_OUTCOMES,
+  canActOnDecision,
+  isAwaitingApproval,
+  memberLabel,
+  type DecisionOutcome,
+  type OrgMember,
+} from "@/lib/decision-approval";
+
+type DecisionsSearch = {
+  awaiting?: "me" | "all";
+};
 
 export const Route = createFileRoute("/_authenticated/app/decisions")({
+  validateSearch: (s: Record<string, unknown>): DecisionsSearch => ({
+    awaiting: s.awaiting === "me" ? "me" : undefined,
+  }),
   component: DecisionsPage,
 });
 
-const OUTCOMES = ["Approved", "Rejected", "On Hold", "In Review", "Pending"] as const;
-type Outcome = typeof OUTCOMES[number];
-
-const outcomeClass: Record<Outcome, string> = {
-  Approved: "bg-emerald-100 text-emerald-800",
-  Rejected: "bg-rose-100 text-rose-800",
-  "On Hold": "bg-amber-100 text-amber-800",
-  "In Review": "bg-sky-100 text-sky-800",
-  Pending: "bg-slate-100 text-slate-700",
-};
-
 function DecisionsPage() {
-  const { organization } = useAuth();
+  const { organization, session, profile } = useAuth();
+  const search = Route.useSearch();
   const qc = useQueryClient();
   const orgId = organization?.id;
+  const userId = session?.user?.id;
+  const [awaitingOnly, setAwaitingOnly] = useState(search.awaiting === "me");
+
+  useEffect(() => {
+    if (search.awaiting === "me") setAwaitingOnly(true);
+  }, [search.awaiting]);
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", orgId],
     queryFn: async () => {
-      const { data, error } = await supabase.from("projects").select("id,name,project_code,program,sponsor").order("name");
+      const { data, error } = await supabase
+        .from("projects")
+        .select("id,name,project_code,program,sponsor")
+        .order("name");
       if (error) throw error;
       return data;
+    },
+    enabled: !!orgId,
+  });
+
+  const { data: members = [] } = useQuery({
+    queryKey: ["org-members", orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id,full_name,email")
+        .eq("org_id", orgId!)
+        .order("full_name");
+      if (error) throw error;
+      return (data ?? []) as OrgMember[];
     },
     enabled: !!orgId,
   });
@@ -44,7 +74,9 @@ function DecisionsPage() {
   const { data: gates = [] } = useQuery({
     queryKey: ["stage_gates", orgId],
     queryFn: async () => {
-      const { data, error } = await supabase.from("stage_gates").select("id,project_id,gate_name,status,planned_date");
+      const { data, error } = await supabase
+        .from("stage_gates")
+        .select("id,project_id,gate_name,status,planned_date");
       if (error) throw error;
       return data;
     },
@@ -54,7 +86,10 @@ function DecisionsPage() {
   const { data: decisions = [] } = useQuery({
     queryKey: ["decisions", orgId],
     queryFn: async () => {
-      const { data, error } = await supabase.from("decisions").select("*").order("decision_date", { ascending: false });
+      const { data, error } = await supabase
+        .from("decisions")
+        .select("*")
+        .order("decision_date", { ascending: false });
       if (error) throw error;
       return data;
     },
@@ -63,15 +98,25 @@ function DecisionsPage() {
 
   const projectById = new Map(projects.map((p: any) => [p.id, p]));
   const gateById = new Map(gates.map((g: any) => [g.id, g]));
+  const memberById = useMemo(
+    () => new Map(members.map((m) => [m.id, m])),
+    [members],
+  );
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["decisions", orgId] });
+    qc.invalidateQueries({ queryKey: ["stage_gates", orgId] });
+    qc.invalidateQueries({ queryKey: ["notifications"] });
+    window.dispatchEvent(new CustomEvent("pmo:data-changed"));
+  };
 
   const updateDecision = useMutation({
-    mutationFn: async ({ id, patch }: { id: string; patch: { outcome?: string } }) => {
+    mutationFn: async ({ id, patch }: { id: string; patch: Record<string, unknown> }) => {
       const { error } = await supabase.from("decisions").update(patch as never).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["decisions", orgId] });
-      qc.invalidateQueries({ queryKey: ["stage_gates", orgId] });
+      invalidate();
       toast.success("Decision updated");
     },
     onError: (e: any) => toast.error(e.message),
@@ -82,9 +127,9 @@ function DecisionsPage() {
     stage_gate_id: "",
     forum: "Portfolio Board",
     sponsor: "",
-    approvers: "",
+    approver_user_id: "",
     owner: "",
-    outcome: "In Review" as Outcome,
+    outcome: "In Review" as DecisionOutcome,
     decision_date: new Date().toISOString().slice(0, 10),
     title: "",
     rationale: "",
@@ -93,8 +138,12 @@ function DecisionsPage() {
 
   const createDecision = useMutation({
     mutationFn: async () => {
-      if (!orgId || !form.project_id || !form.title) throw new Error("Project and title required");
+      if (!orgId || !form.project_id || !form.title) {
+        throw new Error("Project and title required");
+      }
+      if (!form.approver_user_id) throw new Error("Select an approver to notify");
       const proj = projectById.get(form.project_id) as any;
+      const approver = memberById.get(form.approver_user_id);
       const { error } = await supabase.from("decisions").insert({
         org_id: orgId,
         project_id: form.project_id,
@@ -102,9 +151,11 @@ function DecisionsPage() {
         program: proj?.program || null,
         forum: form.forum || null,
         sponsor: form.sponsor || proj?.sponsor || null,
-        approvers: form.approvers || null,
+        approver_user_id: form.approver_user_id,
+        approvers: approver ? memberLabel(approver) : null,
         owner: form.owner || null,
         outcome: form.outcome,
+        status: form.outcome,
         decision_date: form.decision_date,
         title: form.title,
         rationale: form.rationale || null,
@@ -113,9 +164,8 @@ function DecisionsPage() {
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["decisions", orgId] });
-      qc.invalidateQueries({ queryKey: ["stage_gates", orgId] });
-      toast.success("Decision recorded — stage gate status synced");
+      invalidate();
+      toast.success("Decision recorded — approver notified");
       setForm((f) => ({ ...f, title: "", rationale: "", notes: "", owner: "" }));
     },
     onError: (e: any) => toast.error(e.message),
@@ -126,22 +176,101 @@ function DecisionsPage() {
       const { error } = await supabase.from("decisions").delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["decisions", orgId] }); toast.success("Deleted"); },
+    onSuccess: () => {
+      invalidate();
+      toast.success("Deleted");
+    },
     onError: (e: any) => toast.error(e.message),
   });
 
+  const decide = (id: string, outcome: "Approved" | "Rejected") => {
+    updateDecision.mutate({
+      id,
+      patch: {
+        outcome,
+        status: outcome,
+        decided_by: profile?.full_name || profile?.email || "Approver",
+        approved_by: userId || null,
+        approved_at: new Date().toISOString(),
+      },
+    });
+  };
+
+  const requestApproval = (d: any) => {
+    if (!d.approver_user_id) {
+      toast.error("Assign an approver first");
+      return;
+    }
+    updateDecision.mutate({
+      id: d.id,
+      patch: {
+        outcome: "In Review",
+        status: "In Review",
+        approval_requested_at: new Date().toISOString(),
+      },
+    });
+  };
+
   const gatesForProject = gates.filter((g: any) => g.project_id === form.project_id);
 
+  const visibleDecisions = useMemo(() => {
+    if (!awaitingOnly || !userId) return decisions;
+    return decisions.filter(
+      (d: any) => d.approver_user_id === userId && isAwaitingApproval(d.outcome),
+    );
+  }, [awaitingOnly, decisions, userId]);
+
+  const myAwaitingCount = useMemo(
+    () =>
+      decisions.filter(
+        (d: any) => d.approver_user_id === userId && isAwaitingApproval(d.outcome),
+      ).length,
+    [decisions, userId],
+  );
+
   const total = decisions.length;
-  const counts = OUTCOMES.reduce<Record<string, number>>((acc, o) => {
+  const counts = DECISION_OUTCOMES.reduce<Record<string, number>>((acc, o) => {
     acc[o] = decisions.filter((d: any) => d.outcome === o).length;
     return acc;
   }, {});
-  const byOutcome = OUTCOMES.map((o) => ({ outcome: o, count: counts[o] })).filter((d) => d.count > 0);
+  const byOutcome = DECISION_OUTCOMES.map((o) => ({
+    outcome: o,
+    count: counts[o],
+  })).filter((d) => d.count > 0);
 
   return (
     <PageExport name="Decisions_Log" title="Decisions Log">
-      <PageHeading icon="🗳️" actions={<button className="st-btn-primary" onClick={() => document.getElementById("log-form")?.scrollIntoView({ behavior: "smooth", block: "start" })}>+ Log new decision</button>}>Decisions Log</PageHeading>
+      <PageHeading
+        icon="🗳️"
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className={`rounded-md border px-3 py-1.5 text-xs font-semibold ${
+                awaitingOnly
+                  ? "border-sky-300 bg-sky-50 text-sky-800"
+                  : "border-border bg-surface text-foreground"
+              }`}
+              onClick={() => setAwaitingOnly((v) => !v)}
+            >
+              Awaiting my approval{myAwaitingCount ? ` (${myAwaitingCount})` : ""}
+            </button>
+            <button
+              className="st-btn-primary"
+              onClick={() =>
+                document.getElementById("log-form")?.scrollIntoView({
+                  behavior: "smooth",
+                  block: "start",
+                })
+              }
+            >
+              + Log new decision
+            </button>
+          </div>
+        }
+      >
+        Decisions Log
+      </PageHeading>
 
       <SectionFrame>
         <SectionTitle>Decision KPIs</SectionTitle>
@@ -172,91 +301,332 @@ function DecisionsPage() {
       <SectionFrame id="log-form">
         <SectionTitle>Record a Decision</SectionTitle>
         <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
-          <select className="st-input" value={form.project_id}
-            onChange={(e) => setForm((f) => ({ ...f, project_id: e.target.value, stage_gate_id: "" }))}>
+          <select
+            className="st-input"
+            value={form.project_id}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, project_id: e.target.value, stage_gate_id: "" }))
+            }
+          >
             <option value="">— Project —</option>
-            {projects.map((p: any) => <option key={p.id} value={p.id}>{p.project_code} · {p.name}</option>)}
-          </select>
-          <select className="st-input" value={form.stage_gate_id}
-            onChange={(e) => setForm((f) => ({ ...f, stage_gate_id: e.target.value }))}
-            disabled={!form.project_id}>
-            <option value="">— Stage Gate (optional) —</option>
-            {gatesForProject.map((g: any) => (
-              <option key={g.id} value={g.id}>{g.gate_name} · {g.status || "Pending"}</option>
+            {projects.map((p: any) => (
+              <option key={p.id} value={p.id}>
+                {p.project_code} · {p.name}
+              </option>
             ))}
           </select>
-          <input className="st-input" placeholder="Forum" value={form.forum}
-            onChange={(e) => setForm((f) => ({ ...f, forum: e.target.value }))} />
-          <input className="st-input" placeholder="Sponsor" value={form.sponsor}
-            onChange={(e) => setForm((f) => ({ ...f, sponsor: e.target.value }))} />
-          <input className="st-input md:col-span-2" placeholder="Approvers (comma separated)" value={form.approvers}
-            onChange={(e) => setForm((f) => ({ ...f, approvers: e.target.value }))} />
-          <input className="st-input" placeholder="Owner" value={form.owner}
-            onChange={(e) => setForm((f) => ({ ...f, owner: e.target.value }))} />
-          <select className="st-input" value={form.outcome}
-            onChange={(e) => setForm((f) => ({ ...f, outcome: e.target.value as Outcome }))}>
-            {OUTCOMES.map((o) => <option key={o} value={o}>{o}</option>)}
+          <select
+            className="st-input"
+            value={form.stage_gate_id}
+            onChange={(e) => setForm((f) => ({ ...f, stage_gate_id: e.target.value }))}
+            disabled={!form.project_id}
+          >
+            <option value="">— Stage Gate (optional) —</option>
+            {gatesForProject.map((g: any) => (
+              <option key={g.id} value={g.id}>
+                {g.gate_name} · {g.status || "Pending"}
+              </option>
+            ))}
           </select>
-          <input className="st-input" type="date" value={form.decision_date}
-            onChange={(e) => setForm((f) => ({ ...f, decision_date: e.target.value }))} />
-          <input className="st-input md:col-span-3" placeholder="Decision title" value={form.title}
-            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} />
-          <button className="st-btn-primary" disabled={createDecision.isPending}
-            onClick={() => createDecision.mutate()}>
-            {createDecision.isPending ? "Saving…" : "Record decision"}
+          <input
+            className="st-input"
+            placeholder="Forum"
+            value={form.forum}
+            onChange={(e) => setForm((f) => ({ ...f, forum: e.target.value }))}
+          />
+          <input
+            className="st-input"
+            placeholder="Sponsor"
+            value={form.sponsor}
+            onChange={(e) => setForm((f) => ({ ...f, sponsor: e.target.value }))}
+          />
+          <select
+            className="st-input md:col-span-2"
+            value={form.approver_user_id}
+            onChange={(e) => setForm((f) => ({ ...f, approver_user_id: e.target.value }))}
+          >
+            <option value="">— Approver (notifies in-app) —</option>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>
+                {memberLabel(m)}
+              </option>
+            ))}
+          </select>
+          <input
+            className="st-input"
+            placeholder="Owner"
+            value={form.owner}
+            onChange={(e) => setForm((f) => ({ ...f, owner: e.target.value }))}
+          />
+          <select
+            className="st-input"
+            value={form.outcome}
+            onChange={(e) => setForm((f) => ({ ...f, outcome: e.target.value as DecisionOutcome }))}
+          >
+            {DECISION_OUTCOMES.map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </select>
+          <input
+            className="st-input"
+            type="date"
+            value={form.decision_date}
+            onChange={(e) => setForm((f) => ({ ...f, decision_date: e.target.value }))}
+          />
+          <input
+            className="st-input md:col-span-3"
+            placeholder="Decision title"
+            value={form.title}
+            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+          />
+          <button
+            className="st-btn-primary"
+            disabled={createDecision.isPending}
+            onClick={() => createDecision.mutate()}
+          >
+            {createDecision.isPending ? "Saving…" : "Request approval"}
           </button>
-          <textarea className="st-input md:col-span-2" placeholder="Rationale" rows={2}
+          <textarea
+            className="st-input md:col-span-2"
+            placeholder="Rationale"
+            rows={2}
             value={form.rationale}
-            onChange={(e) => setForm((f) => ({ ...f, rationale: e.target.value }))} />
-          <textarea className="st-input md:col-span-2" placeholder="Notes / info" rows={2}
+            onChange={(e) => setForm((f) => ({ ...f, rationale: e.target.value }))}
+          />
+          <textarea
+            className="st-input md:col-span-2"
+            placeholder="Notes / info"
+            rows={2}
             value={form.notes}
-            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
+            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+          />
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
-          If a stage gate is selected, its status, approver, and actual date update automatically wherever the gate appears (timelines, dashboards, status pages).
+          Selecting an approver sends them an in-app notification. If a stage gate is linked, its
+          status and approver sync automatically.
         </p>
       </SectionFrame>
 
       <SectionFrame>
-        <SectionTitle>Decisions Register</SectionTitle>
-        {decisions.length === 0 ? (
-          <div className="py-8 text-center text-sm text-muted-foreground">No decisions recorded yet.</div>
+        <SectionTitle>
+          {awaitingOnly ? "Decisions awaiting my approval" : "Decisions Register"}
+        </SectionTitle>
+        {visibleDecisions.length === 0 ? (
+          <div className="py-8 text-center text-sm text-muted-foreground">
+            {awaitingOnly
+              ? "Nothing waiting for your approval."
+              : "No decisions recorded yet."}
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="st-table">
               <thead>
                 <tr>
-                  <th>Project</th><th>Title</th><th>Forum</th><th>Sponsor</th><th>Owner</th>
-                  <th>Approvers</th><th>Stage Gate</th><th>Outcome</th><th>Date</th>
-                  <th>Rationale</th><th>Notes</th><th></th>
+                  <th>Project</th>
+                  <th>Title</th>
+                  <th>Forum</th>
+                  <th>Sponsor</th>
+                  <th>Owner</th>
+                  <th>Approver</th>
+                  <th>Stage Gate</th>
+                  <th>Outcome</th>
+                  <th>Date</th>
+                  <th>Actions</th>
+                  <th>Rationale</th>
+                  <th>Notes</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
-                {decisions.map((d: any) => {
+                {visibleDecisions.map((d: any) => {
                   const proj = projectById.get(d.project_id) as any;
-                  const gate = d.stage_gate_id ? gateById.get(d.stage_gate_id) as any : null;
+                  const gate = d.stage_gate_id
+                    ? (gateById.get(d.stage_gate_id) as any)
+                    : null;
+                  const approver = d.approver_user_id
+                    ? memberById.get(d.approver_user_id)
+                    : null;
+                  const actionable = canActOnDecision(d, userId);
                   return (
                     <tr key={d.id}>
                       <td className="font-medium">{proj?.project_code || "—"}</td>
-                      <td><EditableCell table="decisions" rowId={d.id} field="title" value={d.title} invalidateKeys={["decisions"]} /></td>
-                      <td><EditableCell table="decisions" rowId={d.id} field="forum" value={d.forum} invalidateKeys={["decisions"]} /></td>
-                      <td><EditableCell table="decisions" rowId={d.id} field="sponsor" value={d.sponsor} invalidateKeys={["decisions"]} /></td>
-                      <td><EditableCell table="decisions" rowId={d.id} field="owner" value={d.owner} invalidateKeys={["decisions"]} /></td>
-                      <td><EditableCell table="decisions" rowId={d.id} field="approvers" value={d.approvers} invalidateKeys={["decisions"]} /></td>
-                      <td>{gate ? `${gate.gate_name} (${gate.status || "Pending"})` : "—"}</td>
+                      <td>
+                        <EditableCell
+                          table="decisions"
+                          rowId={d.id}
+                          field="title"
+                          value={d.title}
+                          invalidateKeys={["decisions"]}
+                        />
+                      </td>
+                      <td>
+                        <EditableCell
+                          table="decisions"
+                          rowId={d.id}
+                          field="forum"
+                          value={d.forum}
+                          invalidateKeys={["decisions"]}
+                        />
+                      </td>
+                      <td>
+                        <EditableCell
+                          table="decisions"
+                          rowId={d.id}
+                          field="sponsor"
+                          value={d.sponsor}
+                          invalidateKeys={["decisions"]}
+                        />
+                      </td>
+                      <td>
+                        <EditableCell
+                          table="decisions"
+                          rowId={d.id}
+                          field="owner"
+                          value={d.owner}
+                          invalidateKeys={["decisions"]}
+                        />
+                      </td>
                       <td>
                         <select
-                          className={`st-input !py-0.5 !text-xs ${outcomeClass[(d.outcome || "Pending") as Outcome] || ""}`}
-                          value={d.outcome || "Pending"}
-                          onChange={(e) => updateDecision.mutate({ id: d.id, patch: { outcome: e.target.value } })}
+                          className="st-input !py-0.5 !text-xs"
+                          value={d.approver_user_id || ""}
+                          onChange={(e) => {
+                            const id = e.target.value || null;
+                            const m = id ? memberById.get(id) : null;
+                            updateDecision.mutate({
+                              id: d.id,
+                              patch: {
+                                approver_user_id: id,
+                                approvers: m ? memberLabel(m) : null,
+                                outcome: isAwaitingApproval(d.outcome)
+                                  ? d.outcome || "In Review"
+                                  : "In Review",
+                                status: isAwaitingApproval(d.outcome)
+                                  ? d.outcome || "In Review"
+                                  : "In Review",
+                              },
+                            });
+                          }}
                         >
-                          {OUTCOMES.map((o) => <option key={o} value={o}>{o}</option>)}
+                          <option value="">— Assign —</option>
+                          {members.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {memberLabel(m)}
+                            </option>
+                          ))}
+                        </select>
+                        {approver ? (
+                          <div className="mt-0.5 text-[10px] text-muted-foreground">
+                            {memberLabel(approver)}
+                          </div>
+                        ) : d.approvers ? (
+                          <div className="mt-0.5 text-[10px] text-muted-foreground">
+                            {d.approvers}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td>
+                        {gate
+                          ? `${gate.gate_name} (${gate.status || "Pending"})`
+                          : "—"}
+                      </td>
+                      <td>
+                        <select
+                          className={`st-input !py-0.5 !text-xs ${
+                            DECISION_OUTCOME_CLASS[
+                              (d.outcome || "Pending") as DecisionOutcome
+                            ] || ""
+                          }`}
+                          value={d.outcome || "Pending"}
+                          onChange={(e) =>
+                            updateDecision.mutate({
+                              id: d.id,
+                              patch: {
+                                outcome: e.target.value,
+                                status: e.target.value,
+                              },
+                            })
+                          }
+                        >
+                          {DECISION_OUTCOMES.map((o) => (
+                            <option key={o} value={o}>
+                              {o}
+                            </option>
+                          ))}
                         </select>
                       </td>
-                      <td><EditableCell table="decisions" rowId={d.id} field="decision_date" value={d.decision_date} type="date" invalidateKeys={["decisions"]} /></td>
-                      <td className="max-w-[220px]"><EditableCell table="decisions" rowId={d.id} field="rationale" value={d.rationale} invalidateKeys={["decisions"]} /></td>
-                      <td className="max-w-[220px]"><EditableCell table="decisions" rowId={d.id} field="notes" value={d.notes} invalidateKeys={["decisions"]} /></td>
-                      <td><button className="text-xs text-rose-600 hover:underline" onClick={() => confirm("Delete this decision?") && delDecision.mutate(d.id)}>Delete</button></td>
+                      <td>
+                        <EditableCell
+                          table="decisions"
+                          rowId={d.id}
+                          field="decision_date"
+                          value={d.decision_date}
+                          type="date"
+                          invalidateKeys={["decisions"]}
+                        />
+                      </td>
+                      <td className="min-w-[9rem]">
+                        {actionable ? (
+                          <div className="flex flex-wrap gap-1">
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700"
+                              onClick={() => decide(d.id, "Approved")}
+                            >
+                              <Check className="h-3 w-3" /> Approve
+                            </button>
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 rounded-md bg-rose-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-rose-700"
+                              onClick={() => decide(d.id, "Rejected")}
+                            >
+                              <X className="h-3 w-3" /> Reject
+                            </button>
+                          </div>
+                        ) : d.approver_user_id && !isAwaitingApproval(d.outcome) ? (
+                          <span className="text-[11px] text-muted-foreground">Done</span>
+                        ) : d.approver_user_id ? (
+                          <button
+                            type="button"
+                            className="text-[11px] font-medium text-primary hover:underline"
+                            onClick={() => requestApproval(d)}
+                          >
+                            Re-notify
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground">Assign</span>
+                        )}
+                      </td>
+                      <td className="max-w-[220px]">
+                        <EditableCell
+                          table="decisions"
+                          rowId={d.id}
+                          field="rationale"
+                          value={d.rationale}
+                          invalidateKeys={["decisions"]}
+                        />
+                      </td>
+                      <td className="max-w-[220px]">
+                        <EditableCell
+                          table="decisions"
+                          rowId={d.id}
+                          field="notes"
+                          value={d.notes}
+                          invalidateKeys={["decisions"]}
+                        />
+                      </td>
+                      <td>
+                        <button
+                          className="text-xs text-rose-600 hover:underline"
+                          onClick={() =>
+                            confirm("Delete this decision?") && delDecision.mutate(d.id)
+                          }
+                        >
+                          Delete
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}

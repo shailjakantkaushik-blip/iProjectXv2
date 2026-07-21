@@ -49,6 +49,7 @@ import {
 import { useAuth, isAdmin, isPlatformAdmin } from "@/lib/auth-context";
 import { useAllowedPages } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
+import { NotificationsBell } from "@/components/notifications-bell";
 import { cn } from "@/lib/utils";
 
 type NavItem = {
@@ -384,12 +385,13 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </div>
 
-          <div className="hidden items-center gap-2 sm:flex">
-            <div className="rounded-full border border-border/80 bg-muted/40 px-2.5 py-1 text-[11px] capitalize text-muted-foreground">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <NotificationsBell />
+            <div className="hidden rounded-full border border-border/80 bg-muted/40 px-2.5 py-1 text-[11px] capitalize text-muted-foreground sm:block">
               {(organization?.plan ?? "free").replace(/_/g, " ")}
             </div>
             <div
-              className="flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-semibold text-primary-foreground"
+              className="hidden h-8 w-8 items-center justify-center rounded-full text-[11px] font-semibold text-primary-foreground sm:flex"
               style={{ background: primary || "var(--primary)" }}
               title={profile?.email || undefined}
             >

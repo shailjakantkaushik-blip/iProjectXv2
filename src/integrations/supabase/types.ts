@@ -353,6 +353,10 @@ export type Database = {
       }
       decisions: {
         Row: {
+          approval_requested_at: string | null
+          approved_at: string | null
+          approved_by: string | null
+          approver_user_id: string | null
           approvers: string | null
           created_at: string
           decided_by: string | null
@@ -375,6 +379,10 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          approval_requested_at?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          approver_user_id?: string | null
           approvers?: string | null
           created_at?: string
           decided_by?: string | null
@@ -397,6 +405,10 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          approval_requested_at?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          approver_user_id?: string | null
           approvers?: string | null
           created_at?: string
           decided_by?: string | null
