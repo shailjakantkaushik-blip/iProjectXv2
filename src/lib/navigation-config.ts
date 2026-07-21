@@ -201,11 +201,11 @@ export function mergeNavigationConfig(
 
   let group_order: string[];
   if (Array.isArray(partial.group_order) && partial.group_order.length > 0) {
-    group_order = partial.group_order
+    group_order = (partial.group_order as unknown[])
       .map(String)
       .filter(Boolean)
       // Org catalogs must never inherit the Platform section from platform defaults
-      .filter((h) => allowPlatform || h !== "Platform");
+      .filter((h: string) => allowPlatform || h !== "Platform");
     // Keep any new catalog headings that were added in code after config was saved
     for (const h of catalog.map((g) => g.heading)) {
       if (!group_order.includes(h)) group_order.push(h);
@@ -259,7 +259,9 @@ export function mergeNavigationConfig(
   }
 
   const hidden = Array.isArray(partial.hidden)
-    ? partial.hidden.map(String).filter((p) => allPaths.has(String(p)))
+    ? (partial.hidden as unknown[])
+        .map(String)
+        .filter((p: string) => allPaths.has(p))
     : [];
 
   // Final scrub: never keep Platform (or its paths) when the catalog excludes it
