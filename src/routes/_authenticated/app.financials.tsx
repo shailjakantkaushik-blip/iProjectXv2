@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -27,6 +27,8 @@ import {
   Cell,
 } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import {
   projectApprovedFunding,
   projectIncurred,
@@ -34,6 +36,13 @@ import {
   projectBenefitsRealised,
   projectRealisedRoi,
 } from "@/lib/project-finance";
+import {
+  sumMonthlyActual,
+  sumMonthlyForecast,
+  sumMonthlyPlanned,
+  syncOrgIncurredFromMonthly,
+  type MonthlyFinanceRow,
+} from "@/lib/finance-lifecycle";
 
 export const Route = createFileRoute("/_authenticated/app/financials")({
   component: FinancialsPage,
@@ -45,7 +54,9 @@ const money = (n: number) =>
 
 function FinancialsPage() {
   const { organization } = useAuth();
+  const qc = useQueryClient();
   const [filters, setFilters] = useState<PortfolioFilterState>(emptyFilters);
+  const [syncing, setSyncing] = useState(false);
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
@@ -62,7 +73,7 @@ function FinancialsPage() {
   const filtered = useMemo(() => applyFilters(projects, filters), [projects, filters]);
   const ids = useMemo(() => new Set(filtered.map((p: any) => p.id)), [filtered]);
   const mFiltered = useMemo(
-    () => monthly.filter((m: any) => ids.has(m.project_id)),
+    () => monthly.filter((m: any) => ids.has(m.project_id)) as MonthlyFinanceRow[],
     [monthly, ids],
   );
 
@@ -77,6 +88,28 @@ function FinancialsPage() {
   const totalIncurred = filtered.reduce((s, p: any) => s + projectIncurred(p), 0);
   const spendPct = totalApproved > 0 ? (totalIncurred / totalApproved) * 100 : 0;
   const variance = totalApproved - totalIncurred;
+
+  // Execution layer (monthly) — Plan vs Actual vs Forecast
+  const monthlyPlanned = sumMonthlyPlanned(mFiltered);
+  const monthlyActual = sumMonthlyActual(mFiltered);
+  const monthlyForecast = sumMonthlyForecast(mFiltered);
+  const planVsActualVar = monthlyPlanned - monthlyActual;
+  const planVsActualPct =
+    monthlyPlanned > 0 ? (monthlyActual / monthlyPlanned) * 100 : 0;
+
+  const syncIncurred = async () => {
+    if (!organization?.id) return;
+    setSyncing(true);
+    try {
+      const n = await syncOrgIncurredFromMonthly(organization.id);
+      toast.success(`Synced incurred from monthly actuals for ${n} projects.`);
+      void qc.invalidateQueries({ queryKey: ["projects"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  };
   // Portfolio benefit/cost ratio (not EVM CPI). Per-project helper used in table contexts.
   const benefitCostRatio =
     totalIncurred > 0
@@ -142,11 +175,41 @@ function FinancialsPage() {
 
   return (
     <PageExport name="Financials" title="Financial Intelligence">
-      <PageHeading icon="💰">Financial Intelligence — CAPEX / OPEX / EVM</PageHeading>
+      <PageHeading icon="💰">Financial Intelligence — Plan vs Actual</PageHeading>
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <p className="max-w-3xl text-sm text-muted-foreground">
+          <strong>Plan</strong> comes from FY Allocation (cascaded to monthly planned).{" "}
+          <strong>Actual</strong> is captured each month after kickoff.{" "}
+          <strong>Forecast</strong> is the live outlook. Compare them below; project CapEx/OpEx
+          incurred can be synced from monthly actuals.
+        </p>
+        <Button variant="outline" size="sm" disabled={syncing || !organization} onClick={syncIncurred}>
+          {syncing ? "Syncing…" : "Sync incurred from actuals"}
+        </Button>
+      </div>
       <PortfolioFilters projects={projects} value={filters} onChange={setFilters} />
 
       <SectionFrame>
-        <SectionTitle>Financial KPIs</SectionTitle>
+        <SectionTitle>Plan vs Actual vs Forecast (monthly cashflow)</SectionTitle>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
+          <KpiCard label="Monthly Planned" value={money(monthlyPlanned)} accent="#93c5fd" />
+          <KpiCard label="Monthly Actual" value={money(monthlyActual)} accent="#1d4ed8" />
+          <KpiCard label="Monthly Forecast" value={money(monthlyForecast)} accent="#f59e0b" />
+          <KpiCard
+            label="Plan − Actual"
+            value={money(planVsActualVar)}
+            accent={planVsActualVar < 0 ? "#ef4444" : "#22c55e"}
+          />
+          <KpiCard
+            label="Actual / Planned"
+            value={monthlyPlanned ? `${planVsActualPct.toFixed(1)}%` : "—"}
+            accent={planVsActualPct > 100 ? "#ef4444" : "#0ea5e9"}
+          />
+        </div>
+      </SectionFrame>
+
+      <SectionFrame>
+        <SectionTitle>Approved funding vs incurred (project register)</SectionTitle>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
           <KpiCard label="CAPEX Approved" value={money(capexApproved)} accent="#1d4ed8" />
           <KpiCard label="CAPEX Incurred" value={money(capexIncurred)} accent="#3b82f6" />

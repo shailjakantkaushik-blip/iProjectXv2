@@ -32,6 +32,10 @@ import {
   fyAllocForecast,
   splitCapexOpex,
 } from "@/lib/project-finance";
+import {
+  cascadeMonthlyFromFyPlan,
+  syncProjectIncurredFromMonthly,
+} from "@/lib/finance-lifecycle";
 
 export const Route = createFileRoute("/_authenticated/app/fy-allocation")({
   component: FYAllocationPage,
@@ -87,8 +91,9 @@ function FYAllocationPage() {
     <PageExport name="FY_Allocation" title="FY Budget & Forecast Allocation">
       <PageHeading icon="📅">FY Budget &amp; Forecast Allocation</PageHeading>
       <div className="text-sm text-muted-foreground mb-3">
-        Split each project's total Budget and Forecast across Financial Years, then track the
-        resulting portfolio profile.
+        Forward planning: split each project&apos;s Budget and Forecast across Financial Years.
+        Saving also cascades into monthly <em>planned</em> cashflow (actuals are preserved) for
+        Plan vs Actual comparison on Financials.
       </div>
 
       <div className="mb-3 flex gap-1 border-b">
@@ -109,7 +114,11 @@ function FYAllocationPage() {
           alloc={alloc}
           orgId={organization?.id}
           fyStartMonth={organization?.fy_start_month || 4}
-          onSaved={() => qc.invalidateQueries({ queryKey: ["fy_allocations"] })}
+          onSaved={() => {
+            void qc.invalidateQueries({ queryKey: ["fy_allocations"] });
+            void qc.invalidateQueries({ queryKey: ["financials_monthly"] });
+            void qc.invalidateQueries({ queryKey: ["projects"] });
+          }}
         />
       )}
       {tab === "portfolio" && <PortfolioViewTab projects={projects} alloc={alloc} />}
@@ -247,7 +256,26 @@ function AllocateTab({
         return;
       }
     }
-    toast.success("Allocation saved");
+    try {
+      const { monthsUpserted } = await cascadeMonthlyFromFyPlan({
+        orgId,
+        projectId: project.id,
+        project,
+        allocations: inserts,
+        fyStartMonth,
+      });
+      await syncProjectIncurredFromMonthly(project.id);
+      toast.success(
+        `Allocation saved — ${monthsUpserted} monthly planned periods updated (actuals kept).`,
+      );
+    } catch (e) {
+      toast.success("Allocation saved");
+      toast.error(
+        e instanceof Error
+          ? `Monthly cascade failed: ${e.message}`
+          : "Monthly cascade failed",
+      );
+    }
     onSaved();
   };
 

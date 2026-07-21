@@ -260,6 +260,9 @@ export const TABLES: TableDef[] = [
     label: "Financials (Monthly)",
     matchOn: ["project_code", "period_month"],
     orderBy: "period_month",
+    description:
+      "Execution cashflow. Planned/forecast are cascaded from FY Allocation; enter Actual after kickoff. " +
+      "Use Financials → Sync incurred from actuals to roll CapEx/OpEx actuals up to the project register.",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
       { key: "period_month", label: "Month (YYYY-MM-01)", type: "date", required: true },
