@@ -487,6 +487,32 @@ body { overflow-x: hidden; }
 .shell-nav-active-bar {
   animation: shell-bar-in 0.25s ease-out both;
 }
+.shell-nav-group-trigger {
+  cursor: pointer;
+}
+.shell-nav-group-label {
+  line-height: 1.25;
+}
+.exec-report-tabs {
+  /* Keep tab bar readable above scrolling tables */
+  top: 0;
+}
+.shell-nav-group-content {
+  overflow: hidden;
+}
+.shell-nav-group-content[data-state="open"] {
+  animation: shell-nav-group-open 0.2s ease-out both;
+}
+@keyframes shell-nav-group-open {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 
 @keyframes shell-title-in {
   from { opacity: 0; transform: translateY(4px); }
@@ -510,7 +536,8 @@ body { overflow-x: hidden; }
   .shell-page-title,
   .shell-main,
   .shell-nav-active-bar,
-  .shell-nav-link {
+  .shell-nav-link,
+  .shell-nav-group-content {
     animation: none !important;
     transition: none !important;
   }

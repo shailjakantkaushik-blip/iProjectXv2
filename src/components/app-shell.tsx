@@ -55,8 +55,10 @@ import {
   Focus,
   Eye,
   Trash2,
+  ChevronDown,
   type LucideIcon,
 } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useAuth, isAdmin, isPlatformAdmin } from "@/lib/auth-context";
 import { useAllowedPages } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
@@ -154,6 +156,42 @@ function pageTitleFromPath(pathname: string, groups: NavGroupDef[]) {
   return "App";
 }
 
+const NAV_OPEN_KEY = "pmo.navGroupsOpen";
+
+function navItemMatches(pathname: string, item: NavGroupDef["items"][number]) {
+  return item.exact
+    ? pathname === item.to || (item.to === "/app/" && (pathname === "/app" || pathname === "/app/"))
+    : pathname === item.to || pathname.startsWith(item.to + "/");
+}
+
+function activeGroupHeading(pathname: string, groups: NavGroupDef[]) {
+  for (const group of groups) {
+    if (group.items.some((item) => navItemMatches(pathname, item))) return group.heading;
+  }
+  return null;
+}
+
+function readOpenNavGroups(): string[] | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(NAV_OPEN_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeOpenNavGroups(headings: string[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(NAV_OPEN_KEY, JSON.stringify(headings));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const { organization, profile, roles, signOut } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -162,6 +200,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { canView: canViewPage } = useAllowedPages();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
+  /** Open section headings — default all collapsed for a quieter sidebar. */
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set());
+  const [navOpenHydrated, setNavOpenHydrated] = useState(false);
   const { focusMode, toggleFocusMode } = useFocusMode();
   useCommandPaletteHotkey(() => setCmdOpen(true));
   const desktopNavRef = useRef<HTMLElement | null>(null);
@@ -198,6 +239,37 @@ export function AppShell({ children }: { children: ReactNode }) {
       ),
     [landing?.navigation, cached?.navigation, orgNav],
   );
+
+  const visibleNavGroups = useMemo(() => {
+    return navGroups
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((n) => {
+          if (n.to === "/app/") return true;
+          if (n.platformOnly) return platform;
+          if (n.adminOnly) return admin;
+          return admin || canViewPage(n.to);
+        }),
+      }))
+      .filter((g) => g.items.length > 0);
+  }, [navGroups, platform, admin, canViewPage]);
+
+  const visibleHeadings = useMemo(
+    () => visibleNavGroups.map((g) => g.heading),
+    [visibleNavGroups],
+  );
+
+  // Restore saved open sections (missing key => all collapsed).
+  useEffect(() => {
+    const saved = readOpenNavGroups();
+    if (saved?.length) setOpenGroups(new Set(saved));
+    setNavOpenHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!navOpenHydrated) return;
+    writeOpenNavGroups([...openGroups]);
+  }, [openGroups, navOpenHydrated]);
 
   useEffect(() => {
     setMobileOpen(false);
@@ -241,7 +313,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       scrollNavToActive(mobileNavRef.current);
     });
     return () => window.cancelAnimationFrame(id);
-  }, [pathname, navGroups, mobileOpen]);
+  }, [pathname, navGroups, mobileOpen, openGroups]);
 
   const brandName =
     organization?.brand_name || organization?.name || landing?.brand?.name || "PMO Enterprise";
@@ -267,19 +339,21 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const pageTitle = useMemo(() => pageTitleFromPath(pathname, navGroups), [pathname, navGroups]);
 
-  const visibleNavForPalette = useMemo(() => {
-    return navGroups
-      .map((group) => ({
-        ...group,
-        items: group.items.filter((n) => {
-          if (n.to === "/app/") return true;
-          if (n.platformOnly) return platform;
-          if (n.adminOnly) return admin;
-          return admin || canViewPage(n.to);
-        }),
-      }))
-      .filter((g) => g.items.length > 0);
-  }, [navGroups, platform, admin, canViewPage]);
+  const visibleNavForPalette = visibleNavGroups;
+
+  const allNavExpanded =
+    visibleHeadings.length > 0 && visibleHeadings.every((h) => openGroups.has(h));
+
+  const expandAllNav = () => setOpenGroups(new Set(visibleHeadings));
+  const collapseAllNav = () => setOpenGroups(new Set());
+  const toggleNavGroup = (heading: string) => {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(heading)) next.delete(heading);
+      else next.add(heading);
+      return next;
+    });
+  };
 
   const brandStyle =
     primary || accent
@@ -341,59 +415,118 @@ export function AppShell({ children }: { children: ReactNode }) {
   const renderNav = (navRef: { current: HTMLElement | null }) => (
     <nav
       ref={navRef as any}
-      className="shell-nav min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-2.5 py-3"
+      className="shell-nav flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-2.5 py-3"
     >
-      {navGroups.map((group) => {
-        const items = group.items.filter((n) => {
-          if (n.to === "/app/") return true;
-          if (n.platformOnly) return platform;
-          if (n.adminOnly) return admin;
-          return admin || canViewPage(n.to);
-        });
-        if (!items.length) return null;
-        return (
-          <div key={group.heading} className="shell-nav-group">
-            <div className="mb-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/90">
-              {group.heading}
-            </div>
-            <div className="space-y-0.5">
-              {items.map((n) => {
-                const Icon = resolveIcon(n.icon);
-                const active = n.exact
-                  ? pathname === n.to ||
-                    (n.to === "/app/" && (pathname === "/app" || pathname === "/app/"))
-                  : pathname === n.to || pathname.startsWith(n.to + "/");
-                return (
-                  <Link
-                    key={n.to}
-                    to={n.to}
-                    data-nav-active={active ? "true" : undefined}
-                    className={cn(
-                      "shell-nav-link group relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[12.5px] transition-all duration-200",
-                      active
-                        ? "bg-primary font-semibold text-primary-foreground shadow-md shadow-primary/20"
-                        : "text-sidebar-foreground hover:translate-x-0.5 hover:bg-sidebar-accent/90",
-                    )}
-                  >
-                    {active && (
-                      <span className="shell-nav-active-bar absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-primary-foreground/80" />
-                    )}
-                    <Icon
-                      className={cn(
-                        "h-3.5 w-3.5 shrink-0 transition-transform duration-200",
-                        active
-                          ? "opacity-100"
-                          : "opacity-70 group-hover:scale-110 group-hover:opacity-100",
-                      )}
-                    />
-                    <span className="truncate">{n.label}</span>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
+      <div className="mb-2 flex items-center justify-between gap-2 px-1">
+        <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/80">
+          Navigation
+        </span>
+        <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            className="rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground disabled:opacity-40"
+            onClick={expandAllNav}
+            disabled={allNavExpanded}
+            title="Expand all sections"
+          >
+            Expand all
+          </button>
+          <span className="text-[10px] text-muted-foreground/40" aria-hidden>
+            ·
+          </span>
+          <button
+            type="button"
+            className="rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground disabled:opacity-40"
+            onClick={collapseAllNav}
+            disabled={openGroups.size === 0}
+            title="Collapse all sections"
+          >
+            Collapse
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-1">
+        {visibleNavGroups.map((group) => {
+          const open = openGroups.has(group.heading);
+          const hasActive = group.items.some((n) => navItemMatches(pathname, n));
+          return (
+            <Collapsible
+              key={group.heading}
+              open={open}
+              onOpenChange={(next) => {
+                if (next === open) return;
+                toggleNavGroup(group.heading);
+              }}
+              className="shell-nav-group"
+            >
+              <CollapsibleTrigger
+                type="button"
+                className={cn(
+                  "shell-nav-group-trigger flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
+                  "hover:bg-sidebar-accent/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                  hasActive && !open && "bg-sidebar-accent/40",
+                )}
+                aria-label={`${open ? "Collapse" : "Expand"} ${group.heading}`}
+              >
+                <ChevronDown
+                  className={cn(
+                    "h-3.5 w-3.5 shrink-0 text-muted-foreground/80 transition-transform duration-200",
+                    open ? "rotate-0" : "-rotate-90",
+                  )}
+                  aria-hidden
+                />
+                <span
+                  className={cn(
+                    // Slightly larger than nav page links (12.5px) and section titles (13px)
+                    "shell-nav-group-label min-w-0 flex-1 truncate text-[14px] font-semibold tracking-[-0.01em]",
+                    hasActive ? "text-sidebar-foreground" : "text-sidebar-foreground/85",
+                  )}
+                >
+                  {group.heading}
+                </span>
+                <span className="tabular-nums text-[11px] text-muted-foreground/55">
+                  {group.items.length}
+                </span>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="shell-nav-group-content">
+                <div className="mt-0.5 space-y-0.5 pb-1 pl-0.5">
+                  {group.items.map((n) => {
+                    const Icon = resolveIcon(n.icon);
+                    const active = navItemMatches(pathname, n);
+                    return (
+                      <Link
+                        key={n.to}
+                        to={n.to}
+                        data-nav-active={active ? "true" : undefined}
+                        className={cn(
+                          "shell-nav-link group relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[12.5px] transition-all duration-200",
+                          active
+                            ? "bg-primary font-semibold text-primary-foreground shadow-md shadow-primary/20"
+                            : "text-sidebar-foreground/90 hover:translate-x-0.5 hover:bg-sidebar-accent/90 hover:text-sidebar-foreground",
+                        )}
+                      >
+                        {active && (
+                          <span className="shell-nav-active-bar absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-primary-foreground/80" />
+                        )}
+                        <Icon
+                          className={cn(
+                            "h-3.5 w-3.5 shrink-0 transition-transform duration-200",
+                            active
+                              ? "opacity-100"
+                              : "opacity-70 group-hover:scale-110 group-hover:opacity-100",
+                          )}
+                        />
+                        <span className="truncate">{n.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          );
+        })}
+      </div>
     </nav>
   );
 
