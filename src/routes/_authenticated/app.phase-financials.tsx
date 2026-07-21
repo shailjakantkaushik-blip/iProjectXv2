@@ -104,7 +104,7 @@ function PhaseFinancialsPage() {
 
         <SectionFrame>
           <SectionTitle>Project Distribution</SectionTitle>
-          <div className="h-56">
+          <div className="h-72">
             <ResponsiveContainer>
               <PieChart>
                 <Pie data={distribution} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={45} outerRadius={80} paddingAngle={2}>
@@ -114,7 +114,7 @@ function PhaseFinancialsPage() {
               </PieChart>
             </ResponsiveContainer>
           </div>
-          <ChartLegendList items={legendItemsFromCounts(distribution, COLORS)} />
+          <ChartLegendList items={legendItemsFromCounts(distribution, COLORS)} maxHeightClass="max-h-28" />
         </SectionFrame>
       </div>
 

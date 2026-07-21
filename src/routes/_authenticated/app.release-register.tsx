@@ -103,7 +103,7 @@ function ReleaseRegisterPage() {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="rounded-md border border-border bg-surface p-2">
             <div className="mb-1 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">By Status</div>
-            <div className="h-44"><ResponsiveContainer>
+            <div className="h-56"><ResponsiveContainer>
               <PieChart>
                 <Pie data={byStatus} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70}>
                   {byStatus.map((e) => <Cell key={e.name} fill={STATUS_COLORS[e.name] || "#64748b"} />)}

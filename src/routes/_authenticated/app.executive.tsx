@@ -13,7 +13,6 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { RAG_COLORS, PRIORITY_COLORS, CHART_SERIES } from "@/lib/chart-theme";
-import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/app/executive")({
   component: ExecutiveDashboard,
@@ -687,10 +686,11 @@ function ChartBox({
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-md border border-border bg-surface p-3 shadow-sm">
       <div className="mb-2 shrink-0 px-1 text-[12px] font-semibold text-foreground">{title}</div>
-      <div className={cn("min-h-0 w-full", legend ? "h-44" : "h-64")}>
+      {/* Keep a standard chart height; legends scroll below when long */}
+      <div className="h-64 w-full shrink-0">
         <ResponsiveContainer width="100%" height="100%">{children}</ResponsiveContainer>
       </div>
-      {legend ? <div className="min-h-0 shrink-0">{legend}</div> : null}
+      {legend ? <div className="min-h-0 shrink">{legend}</div> : null}
     </div>
   );
 }

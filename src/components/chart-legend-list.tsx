@@ -12,16 +12,22 @@ export type ChartLegendItem = {
  * HTML legend that wraps cleanly inside chart cards.
  * Prefer this over Recharts <Legend> for pie/donut charts with many slices —
  * Recharts positions legends absolutely and they overflow fixed-height boxes.
+ *
+ * When there are many items (or space is tight), the legend scrolls inside
+ * the section so the chart can keep a standard size.
  */
 export function ChartLegendList({
   items,
   className,
   columns = "auto",
+  /** Cap legend height and scroll when content overflows. Pass false to disable. */
+  maxHeightClass = "max-h-24",
 }: {
   items: ChartLegendItem[];
   className?: string;
   /** Force column count; default adapts to item count */
   columns?: 1 | 2 | 3 | "auto";
+  maxHeightClass?: string | false;
 }) {
   if (!items.length) return null;
 
@@ -39,39 +45,41 @@ export function ChartLegendList({
           : "grid-cols-2 sm:grid-cols-3";
 
   return (
-    <ul
+    <div
       className={cn(
-        "mt-2 grid gap-x-3 gap-y-1.5 px-0.5",
-        cols,
-        className,
+        "mt-2 min-h-0",
+        maxHeightClass !== false && maxHeightClass,
+        maxHeightClass !== false && "overflow-y-auto overscroll-contain pr-0.5",
       )}
     >
-      {items.map((item) => (
-        <li
-          key={item.name}
-          className="flex min-w-0 items-center gap-1.5 text-[11px] leading-tight text-foreground"
-          title={
-            item.detail
-              ? `${item.name} ${item.detail}`
-              : item.value != null
-                ? `${item.name} ${item.value}`
-                : item.name
-          }
-        >
-          <span
-            className="h-2 w-2 shrink-0 rounded-full"
-            style={{ backgroundColor: item.color }}
-            aria-hidden
-          />
-          <span className="min-w-0 truncate font-medium">{item.name}</span>
-          {(item.detail != null || item.value != null) && (
-            <span className="shrink-0 tabular-nums text-muted-foreground">
-              {item.detail ?? item.value}
-            </span>
-          )}
-        </li>
-      ))}
-    </ul>
+      <ul className={cn("grid gap-x-3 gap-y-1.5 px-0.5", cols, className)}>
+        {items.map((item) => (
+          <li
+            key={item.name}
+            className="flex min-w-0 items-center gap-1.5 text-[11px] leading-tight text-foreground"
+            title={
+              item.detail
+                ? `${item.name} ${item.detail}`
+                : item.value != null
+                  ? `${item.name} ${item.value}`
+                  : item.name
+            }
+          >
+            <span
+              className="h-2 w-2 shrink-0 rounded-full"
+              style={{ backgroundColor: item.color }}
+              aria-hidden
+            />
+            <span className="min-w-0 truncate font-medium">{item.name}</span>
+            {(item.detail != null || item.value != null) && (
+              <span className="shrink-0 tabular-nums text-muted-foreground">
+                {item.detail ?? item.value}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

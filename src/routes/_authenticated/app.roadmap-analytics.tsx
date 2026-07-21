@@ -205,6 +205,7 @@ function RoadmapAnalyticsPage() {
           </div>
           <ChartLegendList
             columns={1}
+            maxHeightClass="max-h-72"
             items={mix.map((m) => ({
               name: m.theme,
               color: THEME_COLORS[m.theme] || "#64748b",
