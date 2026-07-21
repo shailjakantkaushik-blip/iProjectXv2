@@ -37,7 +37,7 @@ function AboutPage() {
           <SectionTitle>Tech Stack</SectionTitle>
           <ul className="space-y-1 text-sm">
             <li>• TanStack Start (React 19 + Vite SSR)</li>
-            <li>• Lovable Cloud backend (Postgres, Auth, RLS)</li>
+            <li>• Supabase backend (Postgres, Auth, RLS)</li>
             <li>• Recharts for visualisation</li>
             <li>• SheetJS for Excel workflows</li>
             <li>• Tailwind + shadcn UI primitives</li>

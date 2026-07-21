@@ -7,9 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
 import { BarChart3 } from "lucide-react";
+import { DEFAULT_LANDING, fetchLandingConfig } from "@/lib/landing-config";
 
 export const Route = createFileRoute("/reset-password")({
-  head: () => ({ meta: [{ title: "Reset password — PMO Enterprise" }, { name: "robots", content: "noindex" }] }),
+  head: () => ({ meta: [{ title: "Reset password — iProjectX" }, { name: "robots", content: "noindex" }] }),
   component: ResetPasswordPage,
 });
 
@@ -19,6 +20,13 @@ function ResetPasswordPage() {
   const [ready, setReady] = useState(false);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [brand, setBrand] = useState(DEFAULT_LANDING.brand);
+
+  useEffect(() => {
+    fetchLandingConfig()
+      .then((c) => setBrand(c.brand))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     // Supabase auto-processes the recovery token in the URL hash and fires
@@ -51,8 +59,12 @@ function ResetPasswordPage() {
     <div className="flex min-h-screen items-center justify-center bg-muted/30 px-4">
       <div className="w-full max-w-md">
         <Link to="/" className="mb-6 flex items-center justify-center gap-2">
-          <div className="rounded-lg bg-primary p-2 text-primary-foreground"><BarChart3 className="h-5 w-5" /></div>
-          <span className="text-lg font-semibold">PMO Enterprise</span>
+          {brand.logo_url ? (
+            <img src={brand.logo_url} alt={brand.name} className="h-10 w-auto max-w-[200px] object-contain" />
+          ) : (
+            <div className="rounded-lg bg-primary p-2 text-primary-foreground"><BarChart3 className="h-5 w-5" /></div>
+          )}
+          <span className="text-lg font-semibold">{brand.name}</span>
         </Link>
         <Card>
           <CardHeader>

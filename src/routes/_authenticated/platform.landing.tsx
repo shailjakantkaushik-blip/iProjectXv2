@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/lib/auth-context";
 import {
   DEFAULT_LANDING,
@@ -242,8 +243,8 @@ function LandingConfigPage() {
             <SectionFrame>
               <SectionTitle>Theme</SectionTitle>
               <p className="mt-1 text-sm text-muted-foreground">
-                Choose light or dark mode for the public landing page. Predefined palettes also set
-                a matching theme.
+                Choose light or dark mode. Predefined palettes also set a matching theme. Use the
+                scopes below to apply the same look to login and the authenticated app.
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {(["light", "dark"] as LandingThemeMode[]).map((mode) => (
@@ -263,6 +264,33 @@ function LandingConfigPage() {
                     ? ` · preset “${cfg.palette_preset}”`
                     : " · custom palette"}
                 </span>
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <label className="flex items-center justify-between gap-3 rounded-lg border px-3 py-3 text-sm">
+                  <div>
+                    <div className="font-medium">Apply to login pages</div>
+                    <div className="text-xs text-muted-foreground">
+                      Sign in, sign up, reset password, force password change
+                    </div>
+                  </div>
+                  <Switch
+                    checked={cfg.apply_theme_to_auth !== false}
+                    onCheckedChange={(v) => setCfg({ ...cfg, apply_theme_to_auth: v })}
+                  />
+                </label>
+                <label className="flex items-center justify-between gap-3 rounded-lg border px-3 py-3 text-sm">
+                  <div>
+                    <div className="font-medium">Apply to app pages</div>
+                    <div className="text-xs text-muted-foreground">
+                      Post-login app shell and platform admin (org colours still override brand)
+                    </div>
+                  </div>
+                  <Switch
+                    checked={cfg.apply_theme_to_app !== false}
+                    onCheckedChange={(v) => setCfg({ ...cfg, apply_theme_to_app: v })}
+                  />
+                </label>
               </div>
             </SectionFrame>
 

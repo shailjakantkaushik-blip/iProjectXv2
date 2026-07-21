@@ -35,6 +35,10 @@ export type LandingConfig = {
   };
   /** Site-wide theme mode (light / dark). Palette colors still apply within the mode. */
   theme: LandingThemeMode;
+  /** Apply light/dark + palette to login / auth pages */
+  apply_theme_to_auth: boolean;
+  /** Apply light/dark + palette to post-login app & platform pages */
+  apply_theme_to_app: boolean;
   /** Name of the last applied predefined palette, if any */
   palette_preset: string;
   palette: LandingPalette;
@@ -377,6 +381,8 @@ export const DEFAULT_LANDING: LandingConfig = {
     tagline: "Enterprise PMO Command Center",
   },
   theme: "light",
+  apply_theme_to_auth: true,
+  apply_theme_to_app: true,
   palette_preset: "iprojectx",
   palette: { ...DEFAULT_PALETTE },
   hero: {
@@ -645,6 +651,8 @@ export function mergeConfig(partial: any): LandingConfig {
   merged.palette = { ...DEFAULT_PALETTE, ...(merged.palette ?? {}) };
   if (merged.theme !== "dark") merged.theme = "light";
   if (typeof merged.palette_preset !== "string") merged.palette_preset = "custom";
+  if (typeof merged.apply_theme_to_auth !== "boolean") merged.apply_theme_to_auth = true;
+  if (typeof merged.apply_theme_to_app !== "boolean") merged.apply_theme_to_app = true;
   return merged as LandingConfig;
 }
 
@@ -673,4 +681,7 @@ export async function saveLandingConfig(config: LandingConfig, userId?: string) 
     .from("landing_config" as any)
     .upsert({ id: "singleton", config: config as any, updated_by: userId ?? null });
   if (error) throw error;
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("pmo:platform-theme-change", { detail: config }));
+  }
 }
