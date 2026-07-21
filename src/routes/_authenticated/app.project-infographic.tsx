@@ -385,9 +385,21 @@ function InfographicPage() {
   if (!project) return null;
 
   const budget = Number(project.budget || 0);
-  const approved = Number(project.approved_funding || budget || 0);
-  const incurred = Number(project.capex_incurred || 0);
-  const forecast = Number(project.forecast || project.forecast_at_completion || budget || 0);
+  const approved = Number(
+    project.approved_funding ||
+      budget ||
+      Number(project.capex_approved || 0) + Number(project.opex_approved || 0) ||
+      0,
+  );
+  const incurred =
+    Number(project.capex_incurred || 0) + Number(project.opex_incurred || 0);
+  const forecast = Number(
+    project.forecast ||
+      project.forecast_at_completion ||
+      Number(project.capex_approved || 0) + Number(project.opex_approved || 0) ||
+      budget ||
+      0,
+  );
   const remaining = Math.max(0, budget - incurred);
   const utilPct = budget ? (incurred / budget) * 100 : 0;
 

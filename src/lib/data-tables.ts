@@ -46,7 +46,10 @@ export const TABLES: TableDef[] = [
     label: "Projects",
     matchOn: ["project_code"],
     orderBy: "project_code",
-    description: "Master project register. `project_code` is the human key used across every other sheet.",
+    description:
+      "Master project register. `project_code` is the human key used across every other sheet. " +
+      "Edit Planned/Actual dates as the source of truth — Schedule Start/End stay auto-synced for Gantt & FY. " +
+      "Current Phase mirrors the in-flight stage gate when gates are updated.",
     fields: [
       { key: "project_code", label: "Project Code", type: "text", required: true },
       { key: "name", label: "Name", type: "text", required: true },
@@ -56,15 +59,22 @@ export const TABLES: TableDef[] = [
       { key: "priority", label: "Priority", type: "select", options: PRIORITY },
       { key: "status", label: "Status", type: "select", options: STATUS },
       { key: "rag", label: "RAG", type: "select", options: RAG },
-      { key: "current_phase", label: "Current Phase", type: "text" },
+      {
+        key: "current_phase",
+        label: "Current Phase",
+        type: "text",
+        // Prefer editing via Stage Gates; this mirrors the resolved in-flight gate.
+      },
       { key: "delivery_method", label: "Delivery", type: "select", options: DELIVERY },
-      { key: "start_date", label: "Start Date", type: "date" },
-      { key: "end_date", label: "End Date", type: "date" },
-      { key: "target_go_live", label: "Target Go-Live", type: "date" },
+      // Schedule Start/End = legacy window used by Gantt/FY. Auto-synced from
+      // Actual (else Planned) on save — edit Planned/Actual as the source of truth.
       { key: "planned_start_date", label: "Planned Start", type: "date" },
       { key: "planned_end_date", label: "Planned End", type: "date" },
       { key: "actual_start_date", label: "Actual Start", type: "date" },
       { key: "actual_end_date", label: "Actual End", type: "date" },
+      { key: "start_date", label: "Schedule Start (auto)", type: "date" },
+      { key: "end_date", label: "Schedule End (auto)", type: "date" },
+      { key: "target_go_live", label: "Target Go-Live", type: "date" },
       { key: "budget", label: "Budget", type: "number" },
       { key: "capex_approved", label: "CAPEX Approved", type: "number" },
       { key: "capex_incurred", label: "CAPEX Incurred", type: "number" },

@@ -16,6 +16,11 @@ import {
 import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LabelList, Legend } from "recharts";
 import { fyLabel } from "@/lib/fiscal-year";
 import { ExpandableChart } from "@/components/expandable-chart";
+import {
+  projectApprovedFunding,
+  projectForecast,
+  projectIncurred,
+} from "@/lib/project-finance";
 
 export const Route = createFileRoute("/_authenticated/app/executive-cockpit")({
   head: () => ({
@@ -103,18 +108,12 @@ function ExecutiveCockpit() {
   const capexApproved = projects.reduce((s: number, p: any) => s + num(p.capex_approved), 0);
   const opexApproved = projects.reduce((s: number, p: any) => s + num(p.opex_approved), 0);
   const approvedFunding = projects.reduce(
-    (s: number, p: any) => s + num(p.approved_funding ?? p.budget),
+    (s: number, p: any) => s + projectApprovedFunding(p),
     0,
   );
-  const actualSpend = projects.reduce(
-    (s: number, p: any) => s + num(p.capex_incurred) + num(p.opex_incurred),
-    0,
-  );
+  const actualSpend = projects.reduce((s: number, p: any) => s + projectIncurred(p), 0);
   const remaining = Math.max(0, approvedFunding - actualSpend);
-  const fac = projects.reduce(
-    (s: number, p: any) => s + num(p.forecast_at_completion ?? p.capex_approved),
-    0,
-  );
+  const fac = projects.reduce((s: number, p: any) => s + projectForecast(p), 0);
 
   const total = projects.length || 1;
   const onTrack = projects.filter((p: any) => (p.rag || "").toLowerCase() === "green").length;
@@ -135,8 +134,9 @@ function ExecutiveCockpit() {
       .map((p: any) => p.program)
       .filter(Boolean),
   ).size;
+  // Only count explicit Unfunded labels — missing category ≠ unfunded.
   const unfundedInitiatives = projects.filter(
-    (p: any) => p.portfolio_category === "Unfunded",
+    (p: any) => String(p.portfolio_category || "").toLowerCase() === "unfunded",
   ).length;
 
   const benefitsForecast = benefits.reduce(
@@ -169,12 +169,9 @@ function ExecutiveCockpit() {
   // ---------- Portfolio segmentation ----------
   const CATS = ["Business Strategic", "IT Strategic", "CAPEX", "Unfunded"] as const;
   const segRows = CATS.map((cat) => {
-    const rows = projects.filter((p: any) => (p.portfolio_category || "Unfunded") === cat);
-    const approved = rows.reduce((s: number, p: any) => s + num(p.approved_funding ?? p.budget), 0);
-    const actual = rows.reduce(
-      (s: number, p: any) => s + num(p.capex_incurred) + num(p.opex_incurred),
-      0,
-    );
+    const rows = projects.filter((p: any) => (p.portfolio_category || "") === cat);
+    const approved = rows.reduce((s: number, p: any) => s + projectApprovedFunding(p), 0);
+    const actual = rows.reduce((s: number, p: any) => s + projectIncurred(p), 0);
     const bf = benefits
       .filter((b: any) => rows.find((r: any) => r.id === b.project_id))
       .reduce((s: number, b: any) => s + num(b.forecast_value ?? b.target_value), 0);
