@@ -26,6 +26,14 @@ export interface Organization {
   ui_config?: {
     navigation?: any;
     focus_mode?: boolean;
+    project_visibility?: {
+      rules?: Array<{
+        role: string;
+        mode: "all" | "programs" | "projects";
+        programs?: string[];
+        project_ids?: string[];
+      }>;
+    };
   } | null;
 }
 

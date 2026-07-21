@@ -13,6 +13,7 @@ import {
   ListTodo,
   Settings,
   Menu,
+  Eye,
   Rocket,
   type LucideIcon,
 } from "lucide-react";
@@ -111,6 +112,12 @@ const ALL: Record<string, Shortcut> = {
     desc: "Reorder the sidebar for your organisation",
     icon: Menu,
   },
+  projectAccess: {
+    to: "/app/project-access",
+    label: "Project data access",
+    desc: "Limit projects by role — all, programs, or specific projects",
+    icon: Eye,
+  },
 };
 
 function shortcutsForRoles(roles: AppRole[]): Shortcut[] {
@@ -121,11 +128,11 @@ function shortcutsForRoles(roles: AppRole[]): Shortcut[] {
     return [
       ALL.myWork,
       ALL.projects,
+      ALL.projectAccess,
       ALL.navigation,
       ALL.config,
       ALL.decisions,
       ALL.financials,
-      ALL.risks,
       ALL.ai,
     ];
   }

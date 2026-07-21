@@ -53,6 +53,7 @@ import {
   ListTodo,
   Search,
   Focus,
+  Eye,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth, isAdmin, isPlatformAdmin } from "@/lib/auth-context";
@@ -107,6 +108,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Table2,
   Settings,
   Menu,
+  Eye,
   Receipt,
   ShieldCheck,
   Building2,

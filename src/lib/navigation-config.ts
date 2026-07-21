@@ -93,6 +93,7 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
       { to: "/app/data-editor", label: "Data Editor", icon: "Table2" },
       { to: "/app/configuration", label: "Configuration", icon: "Settings" },
       { to: "/app/navigation", label: "Navigation sequence", icon: "Menu", adminOnly: true },
+      { to: "/app/project-access", label: "Project data access", icon: "Eye", adminOnly: true },
       { to: "/app/billing", label: "Billing & Invoices", icon: "Receipt", adminOnly: true },
       { to: "/app/team", label: "Admin: Users", icon: "ShieldCheck", adminOnly: true },
       { to: "/app/permissions", label: "Admin: Permissions", icon: "ShieldCheck", adminOnly: true },

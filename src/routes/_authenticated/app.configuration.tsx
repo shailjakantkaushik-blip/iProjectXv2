@@ -11,6 +11,7 @@ import {
   Palette,
   Menu,
   Sparkles,
+  Eye,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/app/configuration")({
@@ -68,6 +69,12 @@ const ORG_ADMIN_CARDS = [
     icon: Menu,
     title: "Navigation sequence",
     desc: "Reorder and hide workspace sidebar links for your organisation",
+  },
+  {
+    to: "/app/project-access",
+    icon: Eye,
+    title: "Project data access",
+    desc: "Limit each role to all projects, selected programs, or specific projects",
   },
 ];
 

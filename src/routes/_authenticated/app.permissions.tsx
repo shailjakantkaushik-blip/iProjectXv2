@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -57,7 +57,11 @@ function PermissionsPage() {
       <PageHeading icon="🔐">Role Permissions</PageHeading>
       <p className="mb-3 text-sm text-muted-foreground">
         Configure who can view and edit each data table. Changes apply to the whole organisation.
-        Only Admins can modify this page.
+        Only Admins can modify this page. To limit which projects each role can see, use{" "}
+        <Link to="/app/project-access" className="text-primary underline-offset-2 hover:underline">
+          Project data access
+        </Link>
+        .
       </p>
 
       <SectionFrame>
