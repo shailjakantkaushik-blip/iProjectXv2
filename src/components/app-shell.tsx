@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   BarChart3,
@@ -317,8 +317,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const brandName =
     organization?.brand_name || organization?.name || landing?.brand?.name || "PMO Enterprise";
+  // Accent for avatar / mark fallbacks — full palette is applied by OrgThemeProvider (no flash).
   const primary = organization?.primary_color || undefined;
-  const accent = organization?.accent_color || undefined;
   const orgBranding = (organization?.ui_config as { branding?: Record<string, unknown> } | null)
     ?.branding;
   const orgLogoSize = normalizeLogoSize(orgBranding?.logo_size_app, "md") as LogoDisplaySize;
@@ -354,20 +354,6 @@ export function AppShell({ children }: { children: ReactNode }) {
       return next;
     });
   };
-
-  const brandStyle =
-    primary || accent
-      ? ({
-          ...(primary
-            ? {
-                ["--primary" as any]: primary,
-                ["--st-accent" as any]: primary,
-                ["--sidebar-primary" as any]: primary,
-              }
-            : {}),
-          ...(accent ? { ["--accent" as any]: accent } : {}),
-        } as CSSProperties)
-      : undefined;
 
   const BrandMarkImg = ({ compact = false }: { compact?: boolean }) => {
     const h = compact ? Math.min(28, appLogoDims.heightPx) : appLogoDims.heightPx;
@@ -555,7 +541,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div
       className={cn("shell-root flex min-h-screen bg-background", focusMode && "shell-focus")}
-      style={brandStyle}
       data-focus-mode={focusMode ? "1" : undefined}
     >
       <aside className="shell-sidebar sticky top-0 hidden h-svh w-[15rem] shrink-0 flex-col border-r border-sidebar-border/70 bg-sidebar/90 backdrop-blur-md md:flex lg:w-[16.25rem]">

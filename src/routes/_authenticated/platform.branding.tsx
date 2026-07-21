@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Upload, Save, Trash2, Plus, X, Palette, Copy, ExternalLink } from "lucide-react";
+import { Upload, Save, Trash2, Palette, Copy, ExternalLink } from "lucide-react";
 import { LogoSizeControls } from "@/components/logo-size-controls";
 import {
   clampLogoCustom,
@@ -16,6 +16,12 @@ import {
   type LogoCustomDims,
   type LogoDisplaySize,
 } from "@/lib/landing-config";
+import { ColorPaletteEditor } from "@/components/color-palette-editor";
+import {
+  defaultOrgColorTheme,
+  normalizeOrgColorTheme,
+  type OrgColorTheme,
+} from "@/lib/org-theme";
 
 export const Route = createFileRoute("/_authenticated/platform/branding")({
   beforeLoad: () => {
@@ -26,7 +32,6 @@ export const Route = createFileRoute("/_authenticated/platform/branding")({
 
 const MAX_LOGO_BYTES = 5 * 1024 * 1024;
 
-type Swatch = { name: string; hex: string };
 type OrgUiConfig = {
   navigation?: unknown;
   focus_mode?: boolean;
@@ -36,6 +41,7 @@ type OrgUiConfig = {
     logo_size_app?: LogoDisplaySize;
     logo_custom_app?: LogoCustomDims;
   };
+  color_theme?: OrgColorTheme;
   project_visibility?: unknown;
   [key: string]: unknown;
 };
@@ -48,7 +54,7 @@ type Org = {
   primary_color: string | null;
   accent_color: string | null;
   logo_url: string | null;
-  palette: Swatch[] | null;
+  palette: unknown;
   ui_config: OrgUiConfig | null;
 };
 
@@ -88,8 +94,9 @@ function PlatformBrandingPage() {
           <Palette className="h-7 w-7" /> White Label & Branding
         </h1>
         <p className="text-sm text-muted-foreground">
-          Manage the display name, logo, logo sizes and colour palette for each organisation. Share
-          each org’s dedicated sign-in link so login shows only their white-label branding.
+          Manage the display name, logo, logo sizes and colour palette for each organisation
+          (platform admin only). Organisation admins cannot change the palette — it is controlled
+          here. Share each org’s dedicated sign-in link so login shows only their white-label branding.
         </p>
       </div>
 
@@ -107,7 +114,12 @@ function PlatformBrandingPage() {
                 >
                   <span
                     className="inline-block h-4 w-4 rounded border shrink-0"
-                    style={{ background: o.primary_color || "#e5e7eb" }}
+                    style={{
+                      background:
+                        (o.ui_config as OrgUiConfig | null)?.color_theme?.palette?.accent ||
+                        o.primary_color ||
+                        "#e5e7eb",
+                    }}
                   />
                   <span className="truncate">{o.brand_name || o.name}</span>
                 </button>
@@ -136,8 +148,6 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
   const existingUi = (org.ui_config && typeof org.ui_config === "object" ? org.ui_config : {}) as OrgUiConfig;
   const existingBranding = existingUi.branding ?? {};
   const [brandName, setBrandName] = useState(org.brand_name ?? org.name ?? "");
-  const [primary, setPrimary] = useState(org.primary_color ?? "#2563eb");
-  const [accent, setAccent] = useState(org.accent_color ?? "#7c3aed");
   const [logoUrl, setLogoUrl] = useState<string | null>(org.logo_url ?? null);
   const [logoSizeAuth, setLogoSizeAuth] = useState<LogoDisplaySize>(
     normalizeLogoSize(existingBranding.logo_size_auth, "lg"),
@@ -151,9 +161,16 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
   const [logoCustomApp, setLogoCustomApp] = useState<LogoCustomDims>(
     clampLogoCustom(existingBranding.logo_custom_app, { heightPx: 32, maxWidthPx: 160 }),
   );
-  const [palette, setPalette] = useState<Swatch[]>(
-    Array.isArray(org.palette) ? org.palette : [],
-  );
+  const [colorTheme, setColorTheme] = useState<OrgColorTheme>(() => {
+    const stored = normalizeOrgColorTheme(existingUi.color_theme);
+    if (stored.enabled) return stored;
+    const seeded = defaultOrgColorTheme();
+    if (org.primary_color) seeded.palette.accent = org.primary_color;
+    if (org.accent_color) seeded.palette.navyLight = org.accent_color;
+    seeded.enabled = true;
+    seeded.palette_preset = "custom";
+    return seeded;
+  });
 
   const handleLogoPick = (file: File) => {
     if (file.size > MAX_LOGO_BYTES) {
@@ -177,6 +194,7 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
         current?.ui_config && typeof current.ui_config === "object"
           ? (current.ui_config as OrgUiConfig)
           : {};
+      const nextTheme: OrgColorTheme = { ...colorTheme, enabled: true };
       const nextUi: OrgUiConfig = {
         ...prev,
         branding: {
@@ -186,15 +204,15 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
           logo_size_app: logoSizeApp,
           logo_custom_app: logoCustomApp,
         },
+        color_theme: nextTheme,
       };
       const { error } = await supabase
         .from("organizations")
         .update({
           brand_name: brandName || null,
-          primary_color: primary,
-          accent_color: accent,
+          primary_color: nextTheme.palette.accent,
+          accent_color: nextTheme.palette.navyLight,
           logo_url: logoUrl,
-          palette: palette as any,
           ui_config: nextUi as any,
         })
         .eq("id", org.id);
@@ -206,13 +224,6 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
     },
     onError: (e: any) => toast.error(e.message ?? "Failed to save"),
   });
-
-  const addSwatch = () =>
-    setPalette((p) => [...p, { name: `Color ${p.length + 1}`, hex: "#64748b" }]);
-  const updateSwatch = (i: number, patch: Partial<Swatch>) =>
-    setPalette((p) => p.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
-  const removeSwatch = (i: number) =>
-    setPalette((p) => p.filter((_, idx) => idx !== i));
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const loginPath = org.slug ? `/o/${encodeURIComponent(org.slug)}/login` : "";
@@ -288,32 +299,6 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
               Shown in the sidebar header instead of the legal org name.
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Primary colour</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="color"
-                  value={primary}
-                  onChange={(e) => setPrimary(e.target.value)}
-                  className="h-10 w-14 p-1"
-                />
-                <Input value={primary} onChange={(e) => setPrimary(e.target.value)} />
-              </div>
-            </div>
-            <div>
-              <Label>Accent colour</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="color"
-                  value={accent}
-                  onChange={(e) => setAccent(e.target.value)}
-                  className="h-10 w-14 p-1"
-                />
-                <Input value={accent} onChange={(e) => setAccent(e.target.value)} />
-              </div>
-            </div>
-          </div>
         </div>
 
         <div>
@@ -380,94 +365,39 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
           </div>
         </div>
 
-        <div>
-          <div className="flex items-center justify-between">
-            <Label>Colour palette</Label>
-            <Button size="sm" variant="outline" onClick={addSwatch}>
-              <Plus className="mr-1 h-3.5 w-3.5" /> Add colour
-            </Button>
-          </div>
-          <p className="mb-2 mt-1 text-xs text-muted-foreground">
-            Additional brand colours the org can reference in exports, reports and charts. Each
-            swatch has a name and hex code.
+        <div className="space-y-2">
+          <Label>Organisation colour palette</Label>
+          <p className="text-xs text-muted-foreground">
+            Templates plus custom hex codes. When set, this organisation&apos;s palette overrides the
+            platform theme inside the app.
           </p>
-          <div className="grid gap-2 md:grid-cols-2">
-            {palette.length === 0 && (
-              <div className="rounded-md border p-3 text-xs text-muted-foreground md:col-span-2">
-                No swatches yet. Add a colour to build the palette.
-              </div>
-            )}
-            {palette.map((s, i) => (
-              <div key={i} className="flex items-center gap-2 rounded-md border p-2">
-                <Input
-                  type="color"
-                  value={s.hex}
-                  onChange={(e) => updateSwatch(i, { hex: e.target.value })}
-                  className="h-9 w-12 p-1"
-                />
-                <Input
-                  value={s.name}
-                  onChange={(e) => updateSwatch(i, { name: e.target.value })}
-                  placeholder="Name"
-                  className="h-9"
-                />
-                <Input
-                  value={s.hex}
-                  onChange={(e) => updateSwatch(i, { hex: e.target.value })}
-                  placeholder="#RRGGBB"
-                  className="h-9 font-mono text-xs"
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => removeSwatch(i)}
-                  className="h-8 w-8 shrink-0"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
-          </div>
+          <ColorPaletteEditor value={colorTheme} onChange={setColorTheme} />
         </div>
 
         <div className="rounded-lg border bg-muted/30 p-4">
           <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
-            Sidebar preview
+            Brand mark preview
           </div>
           <div className="flex items-center gap-3 rounded-md border bg-background p-3">
             <div
               className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-md"
-              style={{ background: primary }}
+              style={{ background: colorTheme.palette.accent }}
             >
               {logoUrl ? (
                 <img src={logoUrl} alt="" className="max-h-full max-w-full object-contain" />
               ) : (
-                <span className="text-sm font-bold text-white">
+                <span className="text-sm font-bold" style={{ color: colorTheme.palette.textOnAccent }}>
                   {(brandName || org.name || "?").slice(0, 2).toUpperCase()}
                 </span>
               )}
             </div>
             <div>
-              <div className="text-sm font-semibold" style={{ color: primary }}>
+              <div className="text-sm font-semibold" style={{ color: colorTheme.palette.accent }}>
                 {brandName || org.name}
               </div>
               <div className="text-[11px] text-muted-foreground">{org.plan ?? "free"} plan</div>
             </div>
           </div>
-          {palette.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {palette.map((s, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-1.5 rounded border bg-background px-2 py-1 text-[11px]"
-                >
-                  <span className="inline-block h-3 w-3 rounded" style={{ background: s.hex }} />
-                  <span className="font-medium">{s.name}</span>
-                  <span className="font-mono text-muted-foreground">{s.hex}</span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
         <div className="flex justify-end">

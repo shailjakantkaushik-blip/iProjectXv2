@@ -87,8 +87,8 @@ function SettingsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Palette className="h-5 w-5" /> White Label & Branding</CardTitle>
           <CardDescription>
-            White-labelling (brand name, logo, primary/accent colours, palette) is managed centrally by the
-            iProjectX platform team. Please contact your account manager to request changes.
+            Brand name, logo, and colour palette are managed by the platform team under White Label &amp; Branding.
+            Organisation admins cannot edit the palette here.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">

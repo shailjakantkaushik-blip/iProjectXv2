@@ -24,6 +24,7 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { ExpandablePanel } from "@/components/expandable-panel";
 
 export const Route = createFileRoute("/_authenticated/app/fy-allocation")({
   component: FYAllocationPage,
@@ -585,45 +586,46 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
 
       <div className="grid gap-4 lg:grid-cols-2">
         <SectionFrame>
-          <SectionTitle>Forecast Heatmap — Project × FY</SectionTitle>
-          <div className="overflow-auto max-h-[420px]">
-            <table className="border-collapse text-[11px]">
-              <thead className="sticky top-0 bg-white">
-                <tr>
-                  <th className="p-2 text-left text-muted-foreground">Project Name</th>
-                  {fys.map((f) => (
-                    <th key={f} className="p-2 text-center text-muted-foreground">
-                      {f}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(heat.grid).map(([name, row]) => (
-                  <tr key={name}>
-                    <td className="p-2 pr-4 font-medium">{name}</td>
-                    {fys.map((f) => {
-                      const v = row[f] || 0;
-                      const intensity = v / heat.max;
-                      return (
-                        <td key={f} className="p-1">
-                          <div
-                            className="flex h-8 min-w-[70px] items-center justify-center rounded font-medium"
-                            style={{
-                              background: `rgba(29, 78, 216, ${0.08 + intensity * 0.82})`,
-                              color: intensity > 0.5 ? "#fff" : "#0b1220",
-                            }}
-                          >
-                            {v > 0 ? fmtM(v) : "—"}
-                          </div>
-                        </td>
-                      );
-                    })}
+          <ExpandablePanel title="Forecast Heatmap — Project × FY">
+            <div className="overflow-auto">
+              <table className="border-collapse text-[11px]">
+                <thead className="sticky top-0 bg-background">
+                  <tr>
+                    <th className="p-2 text-left text-muted-foreground">Project Name</th>
+                    {fys.map((f) => (
+                      <th key={f} className="p-2 text-center text-muted-foreground">
+                        {f}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {Object.entries(heat.grid).map(([name, row]) => (
+                    <tr key={name}>
+                      <td className="p-2 pr-4 font-medium">{name}</td>
+                      {fys.map((f) => {
+                        const v = row[f] || 0;
+                        const intensity = v / heat.max;
+                        return (
+                          <td key={f} className="p-1">
+                            <div
+                              className="flex h-8 min-w-[70px] items-center justify-center rounded font-medium"
+                              style={{
+                                background: `rgba(29, 78, 216, ${0.08 + intensity * 0.82})`,
+                                color: intensity > 0.5 ? "#fff" : "#0b1220",
+                              }}
+                            >
+                              {v > 0 ? fmtM(v) : "—"}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </ExpandablePanel>
         </SectionFrame>
 
         <SectionFrame>
