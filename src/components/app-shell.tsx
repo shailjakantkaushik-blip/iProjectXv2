@@ -55,6 +55,7 @@ import { useAuth, isAdmin, isPlatformAdmin } from "@/lib/auth-context";
 import { useAllowedPages } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { NotificationsBell } from "@/components/notifications-bell";
+import { CartoonCompanion } from "@/components/cartoon-mascots";
 import { cn } from "@/lib/utils";
 
 type NavItem = {
@@ -422,6 +423,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <main className="min-w-0 flex-1 overflow-x-hidden p-3 sm:p-4 lg:p-6">{children}</main>
       </div>
+
+      <CartoonCompanion />
     </div>
   );
 }

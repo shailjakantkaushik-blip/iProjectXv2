@@ -1,11 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Save, RefreshCw, UserPlus } from "lucide-react";
+import { Save, RefreshCw, UserPlus, Sparkles } from "lucide-react";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/lib/auth-context";
+import { CartoonSettingsPreview } from "@/components/cartoon-mascots";
 import {
   DEFAULT_LANDING,
   fetchLandingConfig,
@@ -35,11 +36,7 @@ function PlatformSettingsPage() {
     setSaving(true);
     try {
       await saveLandingConfig(cfg, user?.id);
-      toast.success(
-        cfg.signup_enabled
-          ? "Settings saved — public signup is enabled."
-          : "Settings saved — public signup is disabled.",
-      );
+      toast.success("Platform settings saved.");
     } catch (e: any) {
       toast.error(e?.message ?? "Failed to save");
     } finally {
@@ -56,7 +53,7 @@ function PlatformSettingsPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeading
           title="Platform Settings"
-          subtitle="Control access and platform-wide behaviour for the public site and auth screens."
+          subtitle="Control access and interactive experience across the public site and workspace."
         />
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => void reload()}>
@@ -90,24 +87,41 @@ function PlatformSettingsPage() {
             onCheckedChange={(v) => setCfg({ ...cfg, signup_enabled: v })}
           />
         </label>
-        <p className="mt-3 text-xs text-muted-foreground">
-          Current state:{" "}
-          <span className="font-medium text-foreground">
-            {cfg.signup_enabled ? "Signup enabled" : "Signup disabled"}
-          </span>
-          {" · "}
-          Stored with landing/platform config (no separate migration).
-        </p>
       </SectionFrame>
 
       <SectionFrame>
-        <SectionTitle>Defaults reference</SectionTitle>
+        <SectionTitle>Interactive cartoons</SectionTitle>
         <p className="mt-1 text-sm text-muted-foreground">
-          Factory default for signup is{" "}
+          Lightweight animated guide characters that tip users toward My Work, risks, and
+          scenarios. Respects reduced-motion preferences. No third-party animation libraries.
+        </p>
+        <label className="mt-4 flex items-center justify-between gap-4 rounded-lg border px-4 py-3">
+          <div className="flex items-start gap-3">
+            <Sparkles className="mt-0.5 h-5 w-5 text-muted-foreground" />
+            <div>
+              <div className="text-sm font-medium">Show animated cartoons in the app</div>
+              <div className="text-xs text-muted-foreground">
+                Home welcome strip + floating companion. Users can dismiss the companion for
+                the session.
+              </div>
+            </div>
+          </div>
+          <Switch
+            checked={cfg.cartoons_enabled}
+            onCheckedChange={(v) => setCfg({ ...cfg, cartoons_enabled: v })}
+          />
+        </label>
+        <div className="mt-4">
+          <CartoonSettingsPreview enabled={cfg.cartoons_enabled} />
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Current state:{" "}
           <span className="font-medium text-foreground">
-            {DEFAULT_LANDING.signup_enabled ? "enabled" : "disabled"}
+            {cfg.cartoons_enabled ? "Cartoons enabled" : "Cartoons disabled"}
           </span>
-          . Landing page content is edited under Landing Page.
+          {" · "}
+          Default is {DEFAULT_LANDING.cartoons_enabled ? "on" : "off"}. Stored with
+          landing/platform config (no migration).
         </p>
       </SectionFrame>
     </div>

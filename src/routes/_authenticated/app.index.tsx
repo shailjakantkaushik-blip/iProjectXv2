@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
+import { CartoonWelcomeBanner } from "@/components/cartoon-mascots";
 import { useAuth } from "@/lib/auth-context";
 import { canActOnDecision } from "@/lib/decision-approval";
 
@@ -130,6 +131,11 @@ function Home() {
             </Link>
           ) : undefined
         }
+      />
+
+      <CartoonWelcomeBanner
+        title={`${greeting()}${firstName ? `, ${firstName}` : ""} — ready when you are`}
+        subtitle="Click the guide for a portfolio tip. Platform admins can turn cartoons off in Platform Settings."
       />
 
       <SectionFrame>
