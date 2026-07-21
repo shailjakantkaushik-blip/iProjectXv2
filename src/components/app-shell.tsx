@@ -379,11 +379,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   const BrandBlock = (
-    <div className="flex items-center gap-2.5 border-b border-sidebar-border/80 px-4 py-4">
+    <div className="shell-brand flex items-center gap-3 border-b border-sidebar-border/60 px-4 py-3.5">
       <div
         className={cn(
-          "flex shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-sm ring-1 ring-black/5 transition-transform duration-300 hover:scale-[1.03]",
-          !shellLogoUrl && "h-9 w-9",
+          "flex shrink-0 items-center justify-center overflow-hidden rounded-lg ring-1 ring-black/[0.06] transition-transform duration-300 hover:scale-[1.02]",
+          !shellLogoUrl && "h-8 w-8 shadow-sm",
         )}
         style={
           shellLogoUrl
@@ -394,16 +394,16 @@ export function AppShell({ children }: { children: ReactNode }) {
         <BrandMarkImg />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-semibold tracking-tight text-sidebar-foreground">
+        <div className="truncate text-[13px] font-semibold tracking-[-0.02em] text-sidebar-foreground">
           {brandName}
         </div>
-        <div className="truncate text-[11px] capitalize text-muted-foreground">
+        <div className="truncate text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground/75">
           {(organization?.plan ?? "free").replace(/_/g, " ")} plan
         </div>
       </div>
       <button
         type="button"
-        className="ml-1 rounded-md p-1.5 text-sidebar-foreground transition-colors hover:bg-sidebar-accent md:hidden"
+        className="ml-1 rounded-md p-1.5 text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent md:hidden"
         onClick={() => setMobileOpen(false)}
         aria-label="Close menu"
       >
@@ -415,38 +415,33 @@ export function AppShell({ children }: { children: ReactNode }) {
   const renderNav = (navRef: { current: HTMLElement | null }) => (
     <nav
       ref={navRef as any}
-      className="shell-nav flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-2.5 py-3"
+      className="shell-nav flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-2.5 py-2.5"
     >
-      <div className="mb-2 flex items-center justify-between gap-2 px-1">
-        <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/80">
-          Navigation
+      <div className="mb-1.5 flex items-center justify-end gap-0.5 px-1.5">
+        <button
+          type="button"
+          className="rounded-md px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground disabled:opacity-35"
+          onClick={expandAllNav}
+          disabled={allNavExpanded}
+          title="Expand all sections"
+        >
+          Expand
+        </button>
+        <span className="text-[10px] text-muted-foreground/30" aria-hidden>
+          /
         </span>
-        <div className="flex items-center gap-0.5">
-          <button
-            type="button"
-            className="rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground disabled:opacity-40"
-            onClick={expandAllNav}
-            disabled={allNavExpanded}
-            title="Expand all sections"
-          >
-            Expand all
-          </button>
-          <span className="text-[10px] text-muted-foreground/40" aria-hidden>
-            ·
-          </span>
-          <button
-            type="button"
-            className="rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground disabled:opacity-40"
-            onClick={collapseAllNav}
-            disabled={openGroups.size === 0}
-            title="Collapse all sections"
-          >
-            Collapse
-          </button>
-        </div>
+        <button
+          type="button"
+          className="rounded-md px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground disabled:opacity-35"
+          onClick={collapseAllNav}
+          disabled={openGroups.size === 0}
+          title="Collapse all sections"
+        >
+          Collapse
+        </button>
       </div>
 
-      <div className="space-y-1">
+      <div className="space-y-0.5">
         {visibleNavGroups.map((group) => {
           const open = openGroups.has(group.heading);
           const hasActive = group.items.some((n) => navItemMatches(pathname, n));
@@ -463,34 +458,34 @@ export function AppShell({ children }: { children: ReactNode }) {
               <CollapsibleTrigger
                 type="button"
                 className={cn(
-                  "shell-nav-group-trigger flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
-                  "hover:bg-sidebar-accent/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-                  hasActive && !open && "bg-sidebar-accent/40",
+                  "shell-nav-group-trigger flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left transition-colors",
+                  "hover:bg-sidebar-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/60",
+                  hasActive && !open && "bg-sidebar-accent/35",
                 )}
                 aria-label={`${open ? "Collapse" : "Expand"} ${group.heading}`}
               >
                 <ChevronDown
                   className={cn(
-                    "h-3.5 w-3.5 shrink-0 text-muted-foreground/80 transition-transform duration-200",
+                    "h-3 w-3 shrink-0 text-muted-foreground/55 transition-transform duration-200",
                     open ? "rotate-0" : "-rotate-90",
                   )}
                   aria-hidden
                 />
                 <span
                   className={cn(
-                    // Slightly larger than nav page links (12.5px) and section titles (13px)
-                    "shell-nav-group-label min-w-0 flex-1 truncate text-[14px] font-semibold tracking-[-0.01em]",
-                    hasActive ? "text-sidebar-foreground" : "text-sidebar-foreground/85",
+                    // Eyebrow-style section labels — quieter than page titles
+                    "shell-nav-group-label min-w-0 flex-1 truncate text-[10.5px] font-semibold uppercase tracking-[0.08em]",
+                    hasActive ? "text-sidebar-foreground/75" : "text-muted-foreground/70",
                   )}
                 >
                   {group.heading}
                 </span>
-                <span className="tabular-nums text-[11px] text-muted-foreground/55">
+                <span className="tabular-nums text-[10px] text-muted-foreground/40">
                   {group.items.length}
                 </span>
               </CollapsibleTrigger>
               <CollapsibleContent className="shell-nav-group-content">
-                <div className="mt-0.5 space-y-0.5 pb-1 pl-0.5">
+                <div className="mb-1 mt-0.5 space-y-px pb-0.5">
                   {group.items.map((n) => {
                     const Icon = resolveIcon(n.icon);
                     const active = navItemMatches(pathname, n);
@@ -500,24 +495,24 @@ export function AppShell({ children }: { children: ReactNode }) {
                         to={n.to}
                         data-nav-active={active ? "true" : undefined}
                         className={cn(
-                          "shell-nav-link group relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[12.5px] transition-all duration-200",
+                          "shell-nav-link group relative flex items-center gap-2.5 rounded-md px-2.5 py-[7px] text-[12.5px] transition-all duration-200",
                           active
-                            ? "bg-primary font-semibold text-primary-foreground shadow-md shadow-primary/20"
-                            : "text-sidebar-foreground/90 hover:translate-x-0.5 hover:bg-sidebar-accent/90 hover:text-sidebar-foreground",
+                            ? "bg-primary/10 font-medium text-sidebar-primary shadow-none ring-1 ring-primary/15"
+                            : "text-sidebar-foreground/80 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground",
                         )}
                       >
                         {active && (
-                          <span className="shell-nav-active-bar absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-primary-foreground/80" />
+                          <span className="shell-nav-active-bar absolute left-0 top-1/2 h-3.5 w-[2px] -translate-y-1/2 rounded-full bg-sidebar-primary" />
                         )}
                         <Icon
                           className={cn(
-                            "h-3.5 w-3.5 shrink-0 transition-transform duration-200",
+                            "h-3.5 w-3.5 shrink-0 transition-opacity duration-200",
                             active
-                              ? "opacity-100"
-                              : "opacity-70 group-hover:scale-110 group-hover:opacity-100",
+                              ? "text-sidebar-primary opacity-100"
+                              : "opacity-55 group-hover:opacity-90",
                           )}
                         />
-                        <span className="truncate">{n.label}</span>
+                        <span className="truncate tracking-[-0.01em]">{n.label}</span>
                       </Link>
                     );
                   })}
@@ -531,28 +526,28 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 
   const Footer = (
-    <div className="border-t border-sidebar-border/80 p-3">
-      <div className="mb-2.5 flex items-center gap-2.5 rounded-xl bg-sidebar-accent/60 px-2.5 py-2 ring-1 ring-black/5">
+    <div className="shell-footer border-t border-sidebar-border/60 p-3">
+      <div className="mb-2 flex items-center gap-2.5 rounded-lg bg-sidebar-accent/45 px-2.5 py-2">
         <div
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-primary-foreground shadow-sm"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-primary-foreground"
           style={{ background: primary || "var(--primary)" }}
         >
           {initials(profile?.full_name, profile?.email)}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-xs font-medium text-sidebar-foreground">
+          <div className="truncate text-[12px] font-medium tracking-[-0.01em] text-sidebar-foreground">
             {profile?.full_name || "User"}
           </div>
-          <div className="truncate text-[11px] text-muted-foreground">{profile?.email}</div>
+          <div className="truncate text-[10.5px] text-muted-foreground/80">{profile?.email}</div>
         </div>
       </div>
       <Button
-        variant="outline"
+        variant="ghost"
         size="sm"
-        className="w-full justify-start bg-transparent"
+        className="h-8 w-full justify-start text-[12px] text-muted-foreground hover:text-sidebar-foreground"
         onClick={signOut}
       >
-        <LogOut className="mr-2 h-4 w-4" /> Sign out
+        <LogOut className="mr-2 h-3.5 w-3.5" /> Sign out
       </Button>
     </div>
   );
@@ -563,7 +558,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       style={brandStyle}
       data-focus-mode={focusMode ? "1" : undefined}
     >
-      <aside className="shell-sidebar sticky top-0 hidden h-svh w-[15.5rem] shrink-0 flex-col border-r border-sidebar-border/80 bg-sidebar/95 backdrop-blur-sm md:flex lg:w-64">
+      <aside className="shell-sidebar sticky top-0 hidden h-svh w-[15rem] shrink-0 flex-col border-r border-sidebar-border/70 bg-sidebar/90 backdrop-blur-md md:flex lg:w-[16.25rem]">
         {BrandBlock}
         {renderNav(desktopNavRef)}
         {Footer}
@@ -572,10 +567,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-[2px] transition-opacity"
+            className="absolute inset-0 bg-black/35 backdrop-blur-[2px] transition-opacity"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] animate-in slide-in-from-left duration-200 flex-col border-r border-sidebar-border bg-sidebar shadow-2xl">
+          <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] animate-in slide-in-from-left duration-200 flex-col border-r border-sidebar-border bg-sidebar shadow-xl">
             {BrandBlock}
             {renderNav(mobileNavRef)}
             {Footer}
@@ -584,10 +579,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="shell-header sticky top-0 z-30 flex items-center gap-3 border-b border-border/60 bg-background/75 px-3 py-2.5 backdrop-blur-xl supports-[backdrop-filter]:bg-background/65 sm:px-4 lg:px-5">
+        <header className="shell-header sticky top-0 z-30 flex items-center gap-3 border-b border-border/50 bg-background/80 px-3 py-2 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70 sm:px-4 lg:px-6">
           <button
             type="button"
-            className="rounded-lg p-2 transition-all duration-200 hover:bg-muted hover:shadow-sm active:scale-95 md:hidden"
+            className="rounded-md p-2 transition-colors hover:bg-muted/80 active:scale-[0.98] md:hidden"
             onClick={() => setMobileOpen(true)}
             aria-label="Open menu"
           >
@@ -597,8 +592,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="flex min-w-0 flex-1 items-center gap-2.5">
             <div
               className={cn(
-                "flex shrink-0 items-center justify-center overflow-hidden rounded-lg shadow-sm md:hidden",
-                !shellLogoUrl && "h-8 w-8",
+                "flex shrink-0 items-center justify-center overflow-hidden rounded-md md:hidden",
+                !shellLogoUrl && "h-7 w-7",
               )}
               style={
                 shellLogoUrl
@@ -609,36 +604,36 @@ export function AppShell({ children }: { children: ReactNode }) {
               <BrandMarkImg compact />
             </div>
             <div className="min-w-0">
+              <div className="hidden truncate text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70 sm:block">
+                {brandName}
+              </div>
               <div
                 key={pageTitle}
-                className="shell-page-title truncate text-sm font-semibold tracking-tight text-foreground"
+                className="shell-page-title truncate text-[13px] font-semibold tracking-[-0.02em] text-foreground"
               >
                 {pageTitle}
-              </div>
-              <div className="hidden truncate text-[11px] text-muted-foreground sm:block">
-                {brandName}
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="flex items-center gap-1 sm:gap-1.5">
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className="hidden h-8 gap-1.5 px-2 text-[11px] text-muted-foreground sm:inline-flex"
+              className="hidden h-8 gap-1.5 border-border/70 bg-surface/60 px-2.5 text-[11px] text-muted-foreground shadow-none hover:bg-muted/60 sm:inline-flex"
               onClick={() => setCmdOpen(true)}
               title="Open command palette (⌘K)"
             >
               <Search className="h-3.5 w-3.5" />
               Search
-              <kbd className="ml-1 rounded border border-border/80 bg-muted/60 px-1 font-mono text-[10px]">
+              <kbd className="ml-0.5 rounded border border-border/70 bg-muted/50 px-1 font-mono text-[10px] text-muted-foreground/80">
                 ⌘K
               </kbd>
             </Button>
             <Button
               type="button"
-              variant={focusMode ? "default" : "outline"}
+              variant={focusMode ? "default" : "ghost"}
               size="icon"
               className="h-8 w-8"
               onClick={toggleFocusMode}
@@ -647,11 +642,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Focus className="h-3.5 w-3.5" />
             </Button>
             <NotificationsBell />
-            <div className="hidden rounded-full border border-border/70 bg-muted/50 px-2.5 py-1 text-[11px] capitalize text-muted-foreground shadow-sm sm:block">
+            <div className="hidden rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-[10.5px] font-medium capitalize tracking-wide text-muted-foreground sm:block">
               {(organization?.plan ?? "free").replace(/_/g, " ")}
             </div>
             <div
-              className="hidden h-8 w-8 items-center justify-center rounded-full text-[11px] font-semibold text-primary-foreground shadow-sm ring-2 ring-background sm:flex"
+              className="hidden h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold text-primary-foreground ring-2 ring-background sm:flex"
               style={{ background: primary || "var(--primary)" }}
               title={profile?.email || undefined}
             >
@@ -662,7 +657,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <main
           key={pathname}
-          className="shell-main min-w-0 flex-1 overflow-x-hidden p-3 sm:p-4 lg:p-6"
+          className="shell-main min-w-0 flex-1 overflow-x-hidden p-3 sm:p-5 lg:p-7"
         >
           {children}
         </main>

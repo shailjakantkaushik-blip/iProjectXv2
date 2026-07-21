@@ -57,16 +57,16 @@
 }
 
 :root {
-  --radius: 0.5rem;
+  --radius: 0.625rem;
 
-  /* Streamlit light preset — hex verbatim */
-  --background: #f5f6f8;
+  /* Premium light shell — cool slate, crisp surfaces */
+  --background: #f3f5f8;
   --surface: #ffffff;
   --foreground: #0b1220;
   --heading: #0b1220;
-  --muted-foreground: #374151;
-  --border: #d1d5db;
-  --input: #d1d5db;
+  --muted-foreground: #5b6573;
+  --border: #e2e6ec;
+  --input: #d8dee7;
   --ring: #1d4ed8;
 
   --card: #ffffff;
@@ -86,20 +86,20 @@
   --destructive: #dc2626;
   --destructive-foreground: #ffffff;
 
-  /* Streamlit chart palette (plotly defaults + accents) */
+  /* Chart palette */
   --chart-1: #1d4ed8;
   --chart-2: #15803d;
   --chart-3: #f59e0b;
-  --chart-4: #8b5cf6;
-  --chart-5: #06b6d4;
+  --chart-4: #0f766e;
+  --chart-5: #0284c7;
 
-  --sidebar: #e9edf2;
+  --sidebar: #eef1f5;
   --sidebar-foreground: #0b1220;
   --sidebar-primary: #1d4ed8;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #dbe3ec;
+  --sidebar-accent: #e2e8f0;
   --sidebar-accent-foreground: #0b1220;
-  --sidebar-border: #d1d5db;
+  --sidebar-border: #dce2ea;
   --sidebar-ring: #1d4ed8;
 
   /* Chart theme tokens — overridden at runtime by Configuration → Chart Theme */
@@ -195,65 +195,82 @@
 
 /* ─────────── Streamlit visual primitives ─────────── */
 
-/* Section frame — matches Streamlit's <div class='section-frame'> */
+/* Section frame — polished workspace surface */
 .section-frame {
-  background: color-mix(in srgb, var(--color-surface) 96%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-border) 85%, transparent);
-  border-radius: 14px;
-  padding: 16px 18px;
-  margin-bottom: 14px;
-  box-shadow: 0 1px 2px rgba(11, 18, 32, 0.04);
+  background: color-mix(in srgb, var(--color-surface) 98%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border) 92%, transparent);
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 16px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.7) inset,
+    0 1px 2px rgba(11, 18, 32, 0.03),
+    0 8px 24px rgba(11, 18, 32, 0.03);
   min-width: 0;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(8px);
 }
 
 .section-title {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--color-heading);
-  margin-bottom: 10px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--color-border);
+  color: color-mix(in srgb, var(--color-heading) 78%, var(--color-muted-foreground));
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 88%, transparent);
 }
 
-/* KPI card — matches Streamlit's kpi-card */
+/* KPI card */
 .kpi-card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 10px 12px;
-  min-height: 62px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-surface) 100%, transparent) 0%,
+    color-mix(in srgb, var(--color-muted) 35%, var(--color-surface)) 100%
+  );
+  border: 1px solid color-mix(in srgb, var(--color-border) 90%, transparent);
+  border-radius: 10px;
+  padding: 12px 14px;
+  min-height: 68px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+.kpi-card:hover {
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--color-border));
+  box-shadow: 0 6px 18px rgba(11, 18, 32, 0.05);
+  transform: translateY(-1px);
 }
 
 .kpi-label {
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
   color: var(--color-muted-foreground);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 4px;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
 }
 
 .kpi-value {
+  font-family: "Sora", "Manrope", ui-sans-serif, system-ui, sans-serif;
   font-size: 22px;
   font-weight: 700;
   color: var(--color-heading);
-  line-height: 1.15;
+  line-height: 1.12;
+  letter-spacing: -0.03em;
 }
 
-/* Streamlit page heading (### emoji Title) */
+/* Page heading — primary hierarchy above nav section labels */
 .page-heading {
-  font-size: 22px;
+  font-size: 1.375rem;
   font-weight: 700;
   color: var(--color-heading);
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 4px;
+  letter-spacing: -0.03em;
+  line-height: 1.25;
 }
 
 /* Compact table like Streamlit dataframes */
@@ -451,62 +468,67 @@ body { overflow-x: hidden; }
   }
 }
 
-/* ========== Futuristic shell / navigation motion ========== */
+/* ========== Premium shell / navigation ========== */
 .shell-root {
   background-image:
-    radial-gradient(1200px 500px at 10% -10%, color-mix(in oklab, var(--primary) 12%, transparent), transparent 60%),
-    radial-gradient(900px 400px at 100% 0%, color-mix(in oklab, var(--accent2) 8%, transparent), transparent 55%);
+    radial-gradient(1100px 420px at 8% -12%, color-mix(in oklab, var(--primary) 9%, transparent), transparent 62%),
+    radial-gradient(800px 360px at 100% 0%, color-mix(in oklab, var(--accent2) 6%, transparent), transparent 58%),
+    linear-gradient(180deg, color-mix(in oklab, var(--background) 92%, white) 0%, var(--background) 40%);
   background-attachment: fixed;
 }
 .shell-sidebar {
-  box-shadow: inset -1px 0 0 color-mix(in oklab, var(--sidebar-border) 80%, transparent);
+  box-shadow:
+    inset -1px 0 0 color-mix(in oklab, var(--sidebar-border) 85%, transparent),
+    4px 0 24px rgba(11, 18, 32, 0.02);
 }
 .shell-header {
-  box-shadow: 0 1px 0 color-mix(in oklab, var(--border) 70%, transparent);
+  box-shadow: 0 1px 0 color-mix(in oklab, var(--border) 65%, transparent);
 }
 .shell-page-title {
-  animation: shell-title-in 0.35s ease-out both;
+  animation: shell-title-in 0.32s ease-out both;
 }
 .shell-main {
-  animation: shell-main-in 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: shell-main-in 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .shell-nav {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklab, var(--sidebar-foreground) 25%, transparent) transparent;
+  scrollbar-color: color-mix(in oklab, var(--sidebar-foreground) 18%, transparent) transparent;
 }
 .shell-nav::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
 }
 .shell-nav::-webkit-scrollbar-thumb {
-  background: color-mix(in oklab, var(--sidebar-foreground) 22%, transparent);
+  background: color-mix(in oklab, var(--sidebar-foreground) 16%, transparent);
   border-radius: 999px;
 }
 .shell-nav::-webkit-scrollbar-track {
   background: transparent;
 }
 .shell-nav-active-bar {
-  animation: shell-bar-in 0.25s ease-out both;
+  animation: shell-bar-in 0.22s ease-out both;
 }
 .shell-nav-group-trigger {
   cursor: pointer;
 }
 .shell-nav-group-label {
-  line-height: 1.25;
+  line-height: 1.2;
+}
+.shell-nav-link[data-nav-active="true"] {
+  transform: translateX(0);
 }
 .exec-report-tabs {
-  /* Keep tab bar readable above scrolling tables */
   top: 0;
 }
 .shell-nav-group-content {
   overflow: hidden;
 }
 .shell-nav-group-content[data-state="open"] {
-  animation: shell-nav-group-open 0.2s ease-out both;
+  animation: shell-nav-group-open 0.18s ease-out both;
 }
 @keyframes shell-nav-group-open {
   from {
     opacity: 0;
-    transform: translateY(-4px);
+    transform: translateY(-3px);
   }
   to {
     opacity: 1;
@@ -515,21 +537,28 @@ body { overflow-x: hidden; }
 }
 
 @keyframes shell-title-in {
-  from { opacity: 0; transform: translateY(4px); }
+  from { opacity: 0; transform: translateY(3px); }
   to { opacity: 1; transform: translateY(0); }
 }
 @keyframes shell-main-in {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
 @keyframes shell-bar-in {
-  from { opacity: 0; transform: translateY(-50%) scaleY(0.4); }
+  from { opacity: 0; transform: translateY(-50%) scaleY(0.35); }
   to { opacity: 1; transform: translateY(-50%) scaleY(1); }
 }
 
-/* Soft interactive surfaces used across home / config cards */
+/* Soft interactive surfaces */
 .section-frame {
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+.section-frame:hover {
+  border-color: color-mix(in srgb, var(--primary) 18%, var(--color-border));
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.7) inset,
+    0 2px 4px rgba(11, 18, 32, 0.03),
+    0 12px 28px rgba(11, 18, 32, 0.04);
 }
 
 @media (prefers-reduced-motion: reduce) {
