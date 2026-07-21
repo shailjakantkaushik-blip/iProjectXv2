@@ -163,6 +163,8 @@ export function filterProjectsByVisibility<T extends { id: string; program?: str
   userRoles: AppRole[],
   cfg: ProjectVisibilityConfig,
 ): T[] {
+  // platform_admin is org-scoped by RLS; within the fetched org set they see all
+  // (same as org admins). Cross-org leakage is prevented at the database.
   if (userRoles.some((r) => r === "admin" || r === "org_admin" || r === "platform_admin")) {
     return projects;
   }
