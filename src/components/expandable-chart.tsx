@@ -2,6 +2,7 @@ import {
   cloneElement,
   isValidElement,
   useEffect,
+  useRef,
   useState,
   type ReactElement,
   type ReactNode,
@@ -25,17 +26,12 @@ type Props = {
   heightClass?: string;
 };
 
-function isRechartsElement(node: ReactElement | null): boolean {
-  if (!node) return false;
-  const t = node.type as any;
-  const name = typeof t === "string" ? t : t?.displayName || t?.name || "";
-  // PieChart, BarChart, LineChart, etc.
-  return /Chart$/i.test(String(name));
-}
-
 /**
  * Chart card that opens a large modal on click (or via expand button).
  * Close with the X or Escape to return to the normal view.
+ *
+ * Note: do not detect chart types by component.name — production builds minify
+ * those names and the expand modal would render blank.
  */
 export function ExpandableChart({
   title,
@@ -45,22 +41,41 @@ export function ExpandableChart({
   heightClass = "h-64",
 }: Props) {
   const [open, setOpen] = useState(false);
-  // Remount chart after dialog layout so ResponsiveContainer gets real size
   const [ready, setReady] = useState(false);
+  const [chartSize, setChartSize] = useState({ width: 960, height: 520 });
+  const measureRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!open) {
       setReady(false);
       return;
     }
-    const id = window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => setReady(true));
-    });
-    return () => window.cancelAnimationFrame(id);
+    let cancelled = false;
+    const measure = () => {
+      const el = measureRef.current;
+      if (!el) return;
+      const w = Math.max(280, Math.floor(el.clientWidth));
+      const h = Math.max(280, Math.floor(el.clientHeight));
+      setChartSize({ width: w, height: h });
+      if (!cancelled) setReady(true);
+    };
+    // Wait for dialog open animation / layout
+    const t1 = window.setTimeout(measure, 50);
+    const t2 = window.setTimeout(measure, 200);
+    const ro =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => measure())
+        : null;
+    if (measureRef.current && ro) ro.observe(measureRef.current);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      ro?.disconnect();
+    };
   }, [open]);
 
   const chart = isValidElement(children) ? children : null;
-  const chartOk = isRechartsElement(chart);
 
   return (
     <>
@@ -91,9 +106,9 @@ export function ExpandableChart({
           onClick={() => setOpen(true)}
           aria-label={`Expand ${title}`}
         >
-          {chartOk ? (
+          {chart ? (
             <ResponsiveContainer width="100%" height="100%">
-              {chart as ReactElement}
+              {chart}
             </ResponsiveContainer>
           ) : (
             <div className="flex h-full w-full items-center justify-center">{children}</div>
@@ -103,23 +118,27 @@ export function ExpandableChart({
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent
-          className="flex max-h-[92vh] w-[min(96vw,1100px)] max-w-[1100px] flex-col gap-3 overflow-hidden p-4 sm:p-5"
-          style={{ display: "flex" }}
-        >
+        <DialogContent className="z-[80] flex max-h-[94vh] w-[min(96vw,1100px)] max-w-[1100px] flex-col gap-3 overflow-hidden p-4 sm:p-6">
           <DialogHeader className="shrink-0 space-y-0 pr-8 text-left">
             <DialogTitle className="text-base sm:text-lg">{title}</DialogTitle>
           </DialogHeader>
 
           <div
-            className="w-full shrink-0 rounded-lg border border-border/70 bg-surface p-3"
-            style={{ height: "min(62vh, 560px)" }}
+            ref={measureRef}
+            className="w-full shrink-0 rounded-lg border border-border/70 bg-surface p-2 sm:p-3"
+            style={{ height: 520, minHeight: 520 }}
           >
-            {chartOk && ready ? (
-              <ResponsiveContainer width="100%" height="100%" key={`expanded-${title}`}>
-                {cloneElement(chart as ReactElement)}
+            {chart && ready ? (
+              <ResponsiveContainer
+                key={`expanded-${title}-${chartSize.width}x${chartSize.height}`}
+                width="100%"
+                height="100%"
+                minWidth={200}
+                minHeight={200}
+              >
+                {cloneElement(chart)}
               </ResponsiveContainer>
-            ) : chartOk ? (
+            ) : chart ? (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
                 Loading chart…
               </div>
@@ -129,7 +148,10 @@ export function ExpandableChart({
           </div>
 
           {legend ? (
-            <div className="max-h-32 shrink-0 overflow-auto rounded-md border border-border/50 bg-muted/20 p-2">
+            <div className="max-h-36 shrink-0 overflow-auto rounded-md border border-border/50 bg-muted/20 p-3">
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Details
+              </div>
               {legend}
             </div>
           ) : null}
