@@ -13,7 +13,7 @@ import { verifyTurnstile } from "@/lib/turnstile.functions";
 import {
   fetchLandingConfig,
   DEFAULT_LANDING,
-  readCachedLandingConfigForPaint,
+  readCachedLandingConfig,
   resolveBrandLogoUrl,
   type LandingConfig,
 } from "@/lib/landing-config";
@@ -67,7 +67,9 @@ async function loadAuthPublicConfig(orgSlug?: string): Promise<AuthLoaderData> {
       orgRequested: Boolean(slug),
     };
   } catch {
-    const cached = typeof window !== "undefined" ? readCachedLandingConfigForPaint() : null;
+    // Prefer full cache (with logos) over paint cache so a failed refetch
+    // still shows the last known brand instead of a default placeholder.
+    const cached = typeof window !== "undefined" ? readCachedLandingConfig() : null;
     return {
       platformBrand: toAuthPlatformBrand(cached?.brand ?? DEFAULT_LANDING.brand),
       signupEnabled: false,
@@ -96,8 +98,13 @@ export const Route = createFileRoute("/auth")({
 });
 
 function authShellBrand(): AuthBrand {
-  const cached = typeof window !== "undefined" ? readCachedLandingConfigForPaint() : null;
-  return toAuthPlatformBrand(cached?.brand ?? DEFAULT_LANDING.brand);
+  // Neutral stub only — never paint cached name/logo during pending.
+  return {
+    name: "",
+    logo_url: "",
+    tagline: "",
+    logo_size_auth: "lg",
+  };
 }
 
 function readOrgFromLocation(): string | undefined {
@@ -106,13 +113,17 @@ function readOrgFromLocation(): string | undefined {
   return slug || undefined;
 }
 
-/** Pending shell: logos stripped from cache to avoid old→new blink. */
+/**
+ * Pending shell: layout chrome only — no brand name/logo so landing→auth
+ * never flashes a previous (or default) mark before live config arrives.
+ */
 function AuthPending() {
   const orgRequested = Boolean(readOrgFromLocation());
   return (
     <AuthLayout
       platform={authShellBrand()}
       orgRequested={orgRequested}
+      brandReady={false}
       title="Welcome back"
       description="Sign in with your organisation account."
     >

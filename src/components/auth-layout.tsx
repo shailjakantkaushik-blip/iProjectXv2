@@ -30,6 +30,11 @@ type AuthLayoutProps = {
   org?: AuthOrgBrand;
   /** When true, org white-label was requested via ?org= (even if still resolving). */
   orgRequested?: boolean;
+  /**
+   * When false, brand logo/name are skeleton placeholders so a pending route
+   * never paints a stale mark that then swaps to the live one.
+   */
+  brandReady?: boolean;
   title: string;
   description?: string;
   children: ReactNode;
@@ -91,6 +96,7 @@ export function AuthLayout({
   platform,
   org = null,
   orgRequested = false,
+  brandReady = true,
   title,
   description,
   children,
@@ -98,9 +104,14 @@ export function AuthLayout({
   className,
 }: AuthLayoutProps) {
   // White-label only when the dedicated org login link was used (?org=).
-  const useOrg = Boolean(orgRequested && org);
+  const useOrg = Boolean(brandReady && orgRequested && org);
   const displayName = useOrg && org ? org.name : platform.name;
-  const displayLogo = useOrg && org?.logo_url ? org.logo_url : platform.logo_url;
+  const displayLogo =
+    brandReady && useOrg && org?.logo_url
+      ? org.logo_url
+      : brandReady
+        ? platform.logo_url
+        : undefined;
   const tagline = platform.tagline || "Enterprise PMO Command Center";
   const logoSize: LogoDisplaySize =
     useOrg && org?.logo_size_auth
@@ -126,6 +137,76 @@ export function AuthLayout({
           maxWidthPx: Math.max(60, Math.round(mobileDims.maxWidthPx * 0.75)),
         }
       : logoCustom;
+
+  const BrandIdentity = ({
+    onDark,
+    size,
+    custom,
+  }: {
+    onDark?: boolean;
+    size: LogoDisplaySize;
+    custom?: LogoCustomDims | null;
+  }) => {
+    if (!brandReady) {
+      return (
+        <div className="flex items-center gap-3" aria-hidden>
+          <div
+            className={cn(
+              "shrink-0 rounded-xl",
+              onDark ? "bg-white/15" : "bg-muted",
+              size === "sm" ? "h-8 w-8" : size === "lg" || size === "xl" ? "h-12 w-12" : "h-10 w-10",
+            )}
+          />
+          <div className="min-w-0 space-y-2">
+            <div
+              className={cn(
+                "h-5 w-36 rounded",
+                onDark ? "bg-white/20" : "bg-muted",
+              )}
+            />
+            <div
+              className={cn(
+                "h-3 w-48 rounded",
+                onDark ? "bg-white/10" : "bg-muted/80",
+              )}
+            />
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="flex items-center gap-3">
+        <LogoMark name={displayName} logoUrl={displayLogo} size={size} custom={custom} />
+        <div className="min-w-0">
+          <div
+            className={cn(
+              "truncate text-2xl font-semibold tracking-tight",
+              onDark ? "text-white" : "text-foreground",
+            )}
+          >
+            {displayName}
+          </div>
+          {useOrg ? (
+            <div
+              className={cn(
+                "mt-0.5 flex items-center gap-1.5 text-xs",
+                onDark ? "text-white/70" : "text-muted-foreground",
+              )}
+            >
+              <span>powered by</span>
+              <span className={cn("font-medium", onDark ? "text-white/90" : "text-foreground")}>
+                {platform.name}
+              </span>
+            </div>
+          ) : (
+            <div className={cn("mt-0.5 text-sm", onDark ? "text-white/75" : "text-muted-foreground")}>
+              {tagline}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className={cn("flex min-h-screen bg-background", className)}>
@@ -165,36 +246,24 @@ export function AuthLayout({
         </div>
 
         <div className="relative z-10 space-y-6">
-          <div className="flex items-center gap-3">
-            <LogoMark
-              name={displayName}
-              logoUrl={displayLogo}
-              size={logoSize}
-              custom={logoCustom}
-            />
-            <div className="min-w-0">
-              <div className="truncate text-2xl font-semibold tracking-tight text-white">
-                {displayName}
-              </div>
-              {useOrg ? (
-                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-white/70">
-                  <span>powered by</span>
-                  <span className="font-medium text-white/90">{platform.name}</span>
-                </div>
-              ) : (
-                <div className="mt-0.5 text-sm text-white/75">{tagline}</div>
-              )}
+          <BrandIdentity onDark size={logoSize} custom={logoCustom} />
+          {brandReady ? (
+            <p className="max-w-sm text-base leading-relaxed text-white/80">
+              {useOrg && org
+                ? `Sign in to ${org.name} to manage portfolio delivery, governance, and financials.`
+                : "Sign in to your portfolio cockpit — projects, gates, risk, and financials in one place."}
+            </p>
+          ) : (
+            <div className="max-w-sm space-y-2" aria-hidden>
+              <div className="h-3 w-full rounded bg-white/10" />
+              <div className="h-3 w-5/6 rounded bg-white/10" />
+              <div className="h-3 w-4/6 rounded bg-white/10" />
             </div>
-          </div>
-          <p className="max-w-sm text-base leading-relaxed text-white/80">
-            {useOrg && org
-              ? `Sign in to ${org.name} to manage portfolio delivery, governance, and financials.`
-              : "Sign in to your portfolio cockpit — projects, gates, risk, and financials in one place."}
-          </p>
+          )}
         </div>
 
         <div className="relative z-10 text-xs text-white/55">
-          {platform.name} · Secure access
+          {brandReady ? `${platform.name} · Secure access` : "Secure access"}
         </div>
       </aside>
 
@@ -209,17 +278,24 @@ export function AuthLayout({
         />
 
         <div className="relative z-10 flex items-center justify-between border-b border-border/60 px-4 py-3 lg:hidden">
-          <Link to="/" className="flex min-w-0 items-center gap-2">
-            <LogoMark
-              name={displayName}
-              logoUrl={displayLogo}
-              size={mobileSize}
-              custom={mobileCustom}
-            />
-            <span className="truncate text-sm font-semibold text-foreground">
-              {displayName}
-            </span>
-          </Link>
+          {brandReady ? (
+            <Link to="/" className="flex min-w-0 items-center gap-2">
+              <LogoMark
+                name={displayName}
+                logoUrl={displayLogo}
+                size={mobileSize}
+                custom={mobileCustom}
+              />
+              <span className="truncate text-sm font-semibold text-foreground">
+                {displayName}
+              </span>
+            </Link>
+          ) : (
+            <div className="flex min-w-0 items-center gap-2" aria-hidden>
+              <div className="h-8 w-8 shrink-0 rounded-lg bg-muted" />
+              <div className="h-4 w-28 rounded bg-muted" />
+            </div>
+          )}
           <Link
             to="/"
             className="text-xs font-medium text-muted-foreground hover:text-foreground"
@@ -229,7 +305,12 @@ export function AuthLayout({
         </div>
 
         <div className="relative z-10 flex flex-1 items-center justify-center px-4 py-8 sm:px-8">
-          <div className="w-full max-w-[400px] animate-in fade-in-0 slide-in-from-bottom-2 duration-500">
+          <div
+            className={cn(
+              "w-full max-w-[400px]",
+              brandReady && "animate-in fade-in-0 slide-in-from-bottom-2 duration-500",
+            )}
+          >
             {useOrg && org && (
               <div className="mb-5 hidden items-center gap-2 text-xs text-muted-foreground lg:flex">
                 <span>Organization</span>
@@ -238,21 +319,30 @@ export function AuthLayout({
             )}
 
             <div className="mb-6">
-              <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-[1.65rem]">
-                {title}
-              </h1>
-              {description ? (
-                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                  {description}
-                </p>
-              ) : null}
+              {brandReady ? (
+                <>
+                  <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-[1.65rem]">
+                    {title}
+                  </h1>
+                  {description ? (
+                    <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                      {description}
+                    </p>
+                  ) : null}
+                </>
+              ) : (
+                <div className="space-y-2" aria-hidden>
+                  <div className="h-8 w-48 rounded bg-muted" />
+                  <div className="h-4 w-full rounded bg-muted/80" />
+                </div>
+              )}
             </div>
 
             <div className="rounded-xl border border-border/80 bg-card/80 p-5 shadow-sm backdrop-blur-sm sm:p-6">
               {children}
             </div>
 
-            {footer ? (
+            {footer && brandReady ? (
               <div className="mt-5 text-center text-sm text-muted-foreground">
                 {footer}
               </div>

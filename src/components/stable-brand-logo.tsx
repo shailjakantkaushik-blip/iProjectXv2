@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * Renders a brand logo only after the image has loaded, and crossfades when
- * the src changes — avoids flashing an old mark before the new one appears.
+ * Brand logo that paints immediately on first mount, and only crossfades when
+ * the src changes — avoids both “blank then logo” and “old then new” flashes.
  */
 export function StableBrandLogo({
   src,
@@ -20,7 +20,9 @@ export function StableBrandLogo({
 }) {
   const next = typeof src === "string" && src.trim() ? src.trim() : "";
   const [shown, setShown] = useState(next);
-  const [ready, setReady] = useState(() => !next);
+  // First paint with a known src should be visible immediately (browser cache /
+  // data URLs). Opacity fade is only for subsequent src changes.
+  const [ready, setReady] = useState(true);
 
   useEffect(() => {
     if (!next) {
@@ -32,8 +34,8 @@ export function StableBrandLogo({
       setReady(true);
       return;
     }
-    setReady(false);
     let cancelled = false;
+    setReady(false);
     const img = new Image();
     const commit = () => {
       if (cancelled) return;
@@ -43,6 +45,7 @@ export function StableBrandLogo({
     img.onload = commit;
     img.onerror = commit;
     img.src = next;
+    if (img.complete) commit();
     return () => {
       cancelled = true;
     };
@@ -63,7 +66,7 @@ export function StableBrandLogo({
       src={shown}
       alt={alt}
       className={cn(
-        "w-auto object-contain transition-opacity duration-200",
+        "w-auto object-contain transition-opacity duration-150",
         ready ? "opacity-100" : "opacity-0",
         className,
       )}

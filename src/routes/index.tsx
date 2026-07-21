@@ -263,6 +263,15 @@ function LandingPage() {
     };
   }, []);
 
+  // Warm the auth logo in the browser cache so Sign in paints without a swap.
+  useEffect(() => {
+    const authLogo = resolveBrandLogoUrl(cfg.brand, "auth");
+    if (!authLogo || authLogo.startsWith("data:")) return;
+    const img = new Image();
+    img.decoding = "async";
+    img.src = authLogo;
+  }, [cfg.brand]);
+
   const p = cfg.palette;
   const isDark = cfg.theme === "dark";
   const pageBg = isDark ? p.navy : "#fafbfc";
