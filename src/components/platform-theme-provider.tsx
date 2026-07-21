@@ -3,7 +3,7 @@ import { useRouterState } from "@tanstack/react-router";
 import {
   DEFAULT_LANDING,
   fetchLandingConfig,
-  readCachedLandingConfig,
+  readCachedLandingConfigForPaint,
   type LandingConfig,
 } from "@/lib/landing-config";
 import {
@@ -19,7 +19,7 @@ import {
 export function PlatformThemeProvider({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [cfg, setCfg] = useState<LandingConfig>(
-    () => readCachedLandingConfig() ?? DEFAULT_LANDING,
+    () => readCachedLandingConfigForPaint() ?? DEFAULT_LANDING,
   );
 
   useEffect(() => {

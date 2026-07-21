@@ -442,7 +442,8 @@ export const DEFAULT_LANDING: LandingConfig = {
   theme: "light",
   apply_theme_to_auth: true,
   apply_theme_to_app: true,
-  signup_enabled: true,
+  // Fail closed: never flash Sign up / Get started before live config confirms on.
+  signup_enabled: false,
   cartoons_enabled: true,
   navigation: defaultNavigationConfig(),
   palette_preset: "iprojectx",
@@ -736,7 +737,8 @@ export function mergeConfig(partial: any): LandingConfig {
   if (typeof merged.palette_preset !== "string") merged.palette_preset = "custom";
   if (typeof merged.apply_theme_to_auth !== "boolean") merged.apply_theme_to_auth = true;
   if (typeof merged.apply_theme_to_app !== "boolean") merged.apply_theme_to_app = true;
-  if (typeof merged.signup_enabled !== "boolean") merged.signup_enabled = true;
+  // Fail closed — missing/legacy configs must not flash public signup on.
+  if (typeof merged.signup_enabled !== "boolean") merged.signup_enabled = false;
   if (typeof merged.cartoons_enabled !== "boolean") merged.cartoons_enabled = true;
   merged.navigation = mergeNavigationConfig(merged.navigation);
   // Nested section arrays must come from saved config when present
@@ -792,6 +794,17 @@ export function readCachedLandingConfig(): LandingConfig | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Cache for theme/brand paint only. Always forces signup off so a stale
+ * localStorage value cannot flash "Get started" / Sign up before the loader
+ * confirms the live platform setting.
+ */
+export function readCachedLandingConfigForPaint(): LandingConfig | null {
+  const cached = readCachedLandingConfig();
+  if (!cached) return null;
+  return { ...cached, signup_enabled: false };
 }
 
 export function writeCachedLandingConfig(config: LandingConfig) {

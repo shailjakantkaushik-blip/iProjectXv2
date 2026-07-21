@@ -28,14 +28,15 @@ import {
 import {
   DEFAULT_LANDING,
   fetchLandingConfig,
-  readCachedLandingConfig,
+  readCachedLandingConfigForPaint,
   type LandingConfig,
   type LandingItem,
 } from "@/lib/landing-config";
 
 export const Route = createFileRoute("/")({
   loader: async () => ({ cfg: await fetchLandingConfig() }),
-  staleTime: 30_000,
+  staleTime: 0,
+  pendingMs: 0,
   pendingComponent: LandingPending,
   component: LandingPage,
   head: () => ({
@@ -61,11 +62,11 @@ export const Route = createFileRoute("/")({
 });
 
 function LandingPending() {
-  const cached = typeof window !== "undefined" ? readCachedLandingConfig() : null;
+  const cached = typeof window !== "undefined" ? readCachedLandingConfigForPaint() : null;
   const p = cached?.palette ?? DEFAULT_LANDING.palette;
   const theme = cached?.theme ?? "light";
   const bg = theme === "dark" ? p.navy : "#ffffff";
-  return <div className="min-h-screen w-full" style={{ background: bg }} aria-hidden />;
+  return <div className="min-h-screen w-full" aria-hidden style={{ background: bg }} />;
 }
 
 const HEADING = { fontFamily: "'Sora', system-ui, sans-serif" as const };
@@ -219,17 +220,10 @@ function BrandMark({
 }
 
 function LandingPage() {
-  const { cfg: loaded } = Route.useLoaderData();
-  const [cfg, setCfg] = useState<LandingConfig>(() => {
-    if (loaded) return loaded;
-    const cached = readCachedLandingConfig();
-    if (cached) return cached;
-    // Fail closed on signup so "Get started" never blinks on then off.
-    return { ...DEFAULT_LANDING, signup_enabled: false };
-  });
-  useEffect(() => {
-    setCfg(loaded);
-  }, [loaded]);
+  // Use loader data only — never seed from localStorage (stale signup_enabled: true
+  // was painting Get started, then removing it when live config said off).
+  const { cfg } = Route.useLoaderData();
+  const signupEnabled = cfg.signup_enabled === true;
 
   useEffect(() => {
     document.documentElement.style.scrollBehavior = "smooth";
@@ -270,7 +264,7 @@ function LandingPage() {
       >
         Skip to content
       </a>
-      <Nav cfg={cfg} />
+      <Nav cfg={cfg} signupEnabled={signupEnabled} />
       <main id="main">
         <Hero cfg={cfg} />
         {cfg.hero.alert && <InsightBar cfg={cfg} />}
@@ -342,7 +336,7 @@ function CtaSecondary({
   );
 }
 
-function Nav({ cfg }: { cfg: LandingConfig }) {
+function Nav({ cfg, signupEnabled }: { cfg: LandingConfig; signupEnabled: boolean }) {
   const p = cfg.palette;
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
@@ -405,7 +399,7 @@ function Nav({ cfg }: { cfg: LandingConfig }) {
           >
             Sign in
           </Link>
-          {cfg.signup_enabled === true && (
+          {signupEnabled ? (
             <Link
               to="/auth"
               style={{ ...HEADING, background: p.navy, color: p.textOnDark }}
@@ -413,7 +407,7 @@ function Nav({ cfg }: { cfg: LandingConfig }) {
             >
               Get started
             </Link>
-          )}
+          ) : null}
         </div>
 
         <button
@@ -461,7 +455,7 @@ function Nav({ cfg }: { cfg: LandingConfig }) {
             >
               Sign in
             </Link>
-            {cfg.signup_enabled === true && (
+            {signupEnabled ? (
               <Link
                 to="/auth"
                 onClick={() => setOpen(false)}
@@ -470,7 +464,7 @@ function Nav({ cfg }: { cfg: LandingConfig }) {
               >
                 Get started
               </Link>
-            )}
+            ) : null}
           </div>
         </div>
       )}

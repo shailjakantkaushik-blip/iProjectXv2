@@ -12,7 +12,7 @@ import { verifyTurnstile } from "@/lib/turnstile.functions";
 import {
   fetchLandingConfig,
   DEFAULT_LANDING,
-  readCachedLandingConfig,
+  readCachedLandingConfigForPaint,
   type LandingConfig,
 } from "@/lib/landing-config";
 import { getOrgBranding } from "@/lib/org-branding.functions";
@@ -22,8 +22,8 @@ const ORG_SLUG_KEY = "pmo:lastOrgSlug";
 
 type AuthLoaderData = {
   platformBrand: LandingConfig["brand"];
-  /** null = still resolving (pending); never default to true (avoids Sign up blink). */
-  signupEnabled: boolean | null;
+  /** Only true when live config explicitly enables signup. */
+  signupEnabled: boolean;
 };
 
 async function loadAuthPublicConfig(): Promise<AuthLoaderData> {
@@ -31,18 +31,15 @@ async function loadAuthPublicConfig(): Promise<AuthLoaderData> {
     const cfg = await fetchLandingConfig();
     return {
       platformBrand: cfg.brand,
-      signupEnabled: cfg.signup_enabled !== false,
+      signupEnabled: cfg.signup_enabled === true,
     };
   } catch {
-    const cached = typeof window !== "undefined" ? readCachedLandingConfig() : null;
-    if (cached) {
-      return {
-        platformBrand: cached.brand,
-        signupEnabled: cached.signup_enabled !== false,
-      };
-    }
-    // Fail closed: hide signup rather than flashing it on.
-    return { platformBrand: DEFAULT_LANDING.brand, signupEnabled: false };
+    // Fail closed: never flash Sign up when config cannot be confirmed.
+    const cached = typeof window !== "undefined" ? readCachedLandingConfigForPaint() : null;
+    return {
+      platformBrand: cached?.brand ?? DEFAULT_LANDING.brand,
+      signupEnabled: false,
+    };
   }
 }
 
@@ -54,17 +51,18 @@ export const Route = createFileRoute("/auth")({
     ],
   }),
   loader: async (): Promise<AuthLoaderData> => loadAuthPublicConfig(),
-  staleTime: 30_000,
+  staleTime: 0,
+  pendingMs: 0,
   pendingComponent: AuthPending,
   component: AuthPage,
 });
 
 function authShellBrand(): LandingConfig["brand"] {
-  const cached = typeof window !== "undefined" ? readCachedLandingConfig() : null;
+  const cached = typeof window !== "undefined" ? readCachedLandingConfigForPaint() : null;
   return cached?.brand ?? DEFAULT_LANDING.brand;
 }
 
-/** While config loads: sign-in only — never show Sign up (prevents off→on blink). */
+/** Pending shell: Sign in only — never mount Sign up until loader confirms. */
 function AuthPending() {
   return (
     <AuthLayout
@@ -82,22 +80,15 @@ function AuthPending() {
 }
 
 function AuthPage() {
-  const { platformBrand: loadedBrand, signupEnabled: loadedSignup } = Route.useLoaderData();
+  const { platformBrand, signupEnabled } = Route.useLoaderData();
   const { session, loading } = useAuth();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [mode, setMode] = useState<"auth" | "forgot">("auth");
   const [forgotEmail, setForgotEmail] = useState("");
-  const [platformBrand, setPlatformBrand] = useState(loadedBrand);
-  const [signupEnabled, setSignupEnabled] = useState(loadedSignup === true);
   const [orgBrand, setOrgBrand] = useState<AuthOrgBrand>(null);
   const captchaRequired = isTurnstileEnabled();
-
-  useEffect(() => {
-    setPlatformBrand(loadedBrand);
-    setSignupEnabled(loadedSignup === true);
-  }, [loadedBrand, loadedSignup]);
 
   useEffect(() => {
     if (!loading && session) navigate({ to: "/app", replace: true });
@@ -201,10 +192,9 @@ function AuthPage() {
       let allowed = signupEnabled;
       try {
         const latest = await fetchLandingConfig();
-        allowed = latest.signup_enabled !== false;
-        setSignupEnabled(allowed);
+        allowed = latest.signup_enabled === true;
       } catch {
-        /* keep current UI flag */
+        /* keep loader flag */
       }
       if (!allowed) {
         toast.error("Public signup is disabled. Contact your administrator for an invite.");
