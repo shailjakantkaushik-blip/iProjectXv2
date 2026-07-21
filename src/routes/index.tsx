@@ -818,12 +818,12 @@ function CockpitTile({ p, label, value, bar, chips, accent }: any) {
 function PortfolioTimelineTour({ cfg }: { cfg: LandingConfig }) {
   const p = cfg.palette;
   return (
-    <section id="timeline" className="py-24 text-white" style={{ background: p.navy }}>
+    <section id="timeline" className="py-24" style={{ background: p.navy, color: p.textOnDark }}>
       <div className="mx-auto max-w-7xl px-6">
         <div className="grid gap-16 lg:grid-cols-2 lg:items-center">
           <Reveal className="order-2 lg:order-1">
             <div className="rounded-xl border border-white/10 bg-white/[0.04] p-6 backdrop-blur-sm shadow-2xl">
-              <div className="mb-4 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-white/40">
+              <div className="mb-4 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest" style={{ color: p.textOnDark, opacity: 0.5 }}>
                 <Calendar className="h-3.5 w-3.5" style={{ color: p.accent }} /> Portfolio Gantt
               </div>
               <div className="space-y-3">
@@ -866,14 +866,16 @@ function PortfolioTimelineTour({ cfg }: { cfg: LandingConfig }) {
             >
               {cfg.timeline.eyebrow}
             </div>
-            <h2 className="text-4xl font-bold leading-tight" style={HEADING}>
+            <h2 className="text-4xl font-bold leading-tight" style={{ ...HEADING, color: p.textOnDark }}>
               {cfg.timeline.title}
             </h2>
-            <p className="mt-6 text-lg leading-relaxed text-white/80">{cfg.timeline.body}</p>
-            <ul className="mt-8 space-y-3 text-[15px] text-white/90">
+            <p className="mt-6 text-lg leading-relaxed" style={{ color: p.textOnDark, opacity: 0.85 }}>
+              {cfg.timeline.body}
+            </p>
+            <ul className="mt-8 space-y-3 text-[15px]" style={{ color: p.textOnDark, opacity: 0.92 }}>
               {cfg.timeline.bullets.map((b) => (
                 <li key={b} className="flex items-start gap-3">
-                  <Flag className="mt-0.5 h-4 w-4" style={{ color: p.accent }} /> {b}
+                  <Flag className="mt-0.5 h-4 w-4 shrink-0" style={{ color: p.accent }} /> {b}
                 </li>
               ))}
             </ul>
