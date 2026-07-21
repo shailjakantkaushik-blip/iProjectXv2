@@ -17,6 +17,12 @@ import {
   Legend,
 } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
+import {
+  projectApprovedFunding,
+  projectForecast,
+  projectIncurred,
+} from "@/lib/project-finance";
+import { projectScheduleEnd, projectScheduleStart, fyOf } from "@/lib/project-dates";
 
 export const Route = createFileRoute("/_authenticated/app/programs")({
   component: ProgramsPage,
@@ -51,15 +57,6 @@ function fmtDate(d: any) {
     return String(d);
   }
 }
-function fyOf(d: any, fyStartMonth: number = 4): string {
-  if (!d) return "—";
-  const dt = new Date(d);
-  if (isNaN(dt.getTime())) return "—";
-  const y = dt.getFullYear();
-  const fy = dt.getMonth() >= fyStartMonth - 1 ? y + 1 : y;
-  return "FY" + String(fy).slice(-2);
-}
-
 function ProgramsPage() {
   const { organization } = useAuth();
   const { data: projects = [] } = useQuery({
@@ -94,21 +91,23 @@ function ProgramsPage() {
       };
       cur.count += 1;
       const bud = Number(p.budget || 0);
-      const fc = Number(p.forecast || p.budget || 0);
-      const inc = Number(p.capex_incurred || 0);
+      const fc = projectForecast(p);
+      const inc = projectIncurred(p);
       cur.budget += bud;
       cur.forecast += fc;
-      cur.approved += Number(p.approved_funding || 0);
+      cur.approved += projectApprovedFunding(p);
       cur.actual += inc;
-      cur.fac += Number(p.forecast_at_completion || fc);
+      cur.fac += fc;
       cur.benefits += Number(p.benefits_realised || 0);
       if (p.rag === "Green") cur.green++;
       else if (p.rag === "Amber") cur.amber++;
       else if (p.rag === "Red") cur.red++;
       if (p.status === "In Progress") cur.active++;
       if (p.status === "Completed") cur.completed++;
-      if (p.start_date) cur.startDates.push(new Date(p.start_date).getTime());
-      if (p.end_date) cur.endDates.push(new Date(p.end_date).getTime());
+      const s = projectScheduleStart(p);
+      const e = projectScheduleEnd(p);
+      if (s) cur.startDates.push(new Date(s).getTime());
+      if (e) cur.endDates.push(new Date(e).getTime());
       if (!cur.sponsor || cur.sponsor === "—") cur.sponsor = p.sponsor || "CFO";
       m.set(k, cur);
     });
@@ -117,9 +116,11 @@ function ProgramsPage() {
       .map((p) => ({
         ...p,
         startFY: p.startDates.length
-          ? fyOf(new Date(Math.min(...p.startDates)), fyStartMonth)
+          ? fyOf(new Date(Math.min(...p.startDates)).toISOString(), fyStartMonth) || "—"
           : "—",
-        endFY: p.endDates.length ? fyOf(new Date(Math.max(...p.endDates)), fyStartMonth) : "—",
+        endFY: p.endDates.length
+          ? fyOf(new Date(Math.max(...p.endDates)).toISOString(), fyStartMonth) || "—"
+          : "—",
         committedVsBudget: p.forecast - p.budget,
         remaining: Math.max(0, p.budget - p.actual),
         variance: p.budget - p.fac,
@@ -391,18 +392,16 @@ function ProgramsPage() {
                         <td>{p.status || "—"}</td>
                         <td>{p.rag ? <RagChip rag={p.rag} /> : "—"}</td>
                         <td className="text-right tabular-nums">
-                          {Math.round(Number(p.approved_funding || 0)).toLocaleString()}
+                          {Math.round(projectApprovedFunding(p)).toLocaleString()}
                         </td>
                         <td className="text-right tabular-nums">
-                          {Math.round(Number(p.capex_incurred || 0)).toLocaleString()}
+                          {Math.round(projectIncurred(p)).toLocaleString()}
                         </td>
                         <td className="text-right tabular-nums">
-                          {Math.round(
-                            Number(p.forecast_at_completion || p.forecast || p.budget || 0),
-                          ).toLocaleString()}
+                          {Math.round(projectForecast(p)).toLocaleString()}
                         </td>
-                        <td>{fmtDate(p.start_date)}</td>
-                        <td>{fmtDate(p.end_date)}</td>
+                        <td>{fmtDate(projectScheduleStart(p))}</td>
+                        <td>{fmtDate(projectScheduleEnd(p))}</td>
                       </tr>
                     ))}
                     {programProjects.length === 0 && (

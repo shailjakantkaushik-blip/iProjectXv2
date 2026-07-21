@@ -16,6 +16,13 @@ import { ExpandablePanel } from "@/components/expandable-panel";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { RAG_COLORS, PRIORITY_COLORS, CHART_SERIES } from "@/lib/chart-theme";
 import { PageLoading } from "@/components/page-loading";
+import {
+  matchPhase,
+  normLabel,
+  resolveCurrentStage as resolveStageShared,
+} from "@/lib/project-phase";
+import { fyOf, projectScheduleEnd, projectScheduleStart } from "@/lib/project-dates";
+import { projectForecast, projectIncurred } from "@/lib/project-finance";
 
 export const Route = createFileRoute("/_authenticated/app/executive")({
   component: ExecutiveDashboard,
@@ -37,52 +44,10 @@ const INACTIVE_STATUSES = new Set([
   "archived",
 ]);
 
-function normLabel(s: string) {
-  return s.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-/** Map a free-text phase/gate name onto the org's configured stage list. */
-function matchPhase(value: string | null | undefined, phases: string[]): string | null {
-  if (!value) return null;
-  const n = normLabel(value);
-  const exact = phases.find((p) => normLabel(p) === n);
-  if (exact) return exact;
-
-  const tokens = n.split(/[^a-z0-9]+/).filter((t) => t.length > 2);
-  const fuzzy = phases.find((p) => {
-    const pn = normLabel(p);
-    if (pn.includes(n) || n.includes(pn)) return true;
-    const pTokens = pn.split(/[^a-z0-9]+/).filter((t) => t.length > 2);
-    return tokens.some((t) => pTokens.includes(t) || pn.includes(t));
-  });
-  return fuzzy ?? null;
-}
-
-function isActiveGateStatus(status: string | null | undefined) {
-  const s = normLabel(status || "pending");
-  return [
-    "pending",
-    "in progress",
-    "in-progress",
-    "in review",
-    "open",
-    "on hold",
-  ].includes(s);
-}
-
 function money(n: number) {
   return "$" + new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n || 0);
 }
 function moneyM(n: number) { return `$${(n / 1e6).toFixed(1)}M`; }
-
-function fyOf(dateStr?: string | null, fyStartMonth: number = 4): string | null {
-  if (!dateStr) return null;
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return null;
-  const y = d.getFullYear();
-  const startYear = d.getMonth() >= (fyStartMonth - 1) ? y : y - 1;
-  return `FY${String(startYear + 1).slice(-2)}`;
-}
 
 function ExecutiveDashboard() {
   const { organization } = useAuth();
@@ -133,7 +98,8 @@ function ExecutiveDashboard() {
   const fyOptions = useMemo(() => {
     const s = new Set<string>();
     projects.forEach((p: any) => {
-      const a = fyOf(p.start_date, fyStartMonth); const b = fyOf(p.end_date, fyStartMonth);
+      const a = fyOf(projectScheduleStart(p), fyStartMonth);
+      const b = fyOf(projectScheduleEnd(p), fyStartMonth);
       if (a) s.add(a); if (b) s.add(b);
     });
     return Array.from(s).sort();
@@ -144,7 +110,9 @@ function ExecutiveDashboard() {
     (sponsor === "All" || p.sponsor === sponsor) &&
     (priority === "All" || p.priority === priority) &&
     (status === "All" || p.status === status) &&
-    (fy === "All" || fyOf(p.start_date, fyStartMonth) === fy || fyOf(p.end_date, fyStartMonth) === fy)
+    (fy === "All" ||
+      fyOf(projectScheduleStart(p), fyStartMonth) === fy ||
+      fyOf(projectScheduleEnd(p), fyStartMonth) === fy)
   ), [projects, program, sponsor, priority, status, fy, fyStartMonth]);
 
   const filteredIds = new Set(filtered.map((p: any) => p.id));
@@ -298,7 +266,7 @@ function ExecutiveDashboard() {
       }
     };
     filtered.forEach((p: any) => {
-      if (!p.start_date || !p.end_date) return;
+      if (!projectScheduleStart(p) || !projectScheduleEnd(p)) return;
       const k = keyFor(p);
       if (!groups.has(k)) groups.set(k, []);
       groups.get(k)!.push(p);
@@ -332,8 +300,10 @@ function ExecutiveDashboard() {
       maxD = new Date(endYear, startIdx, 0, 23, 59, 59);
     } else {
       filtered.forEach((p: any) => {
-        if (p.start_date) { const d = new Date(p.start_date); if (!minD || d < minD) minD = d; }
-        if (p.end_date)   { const d = new Date(p.end_date);   if (!maxD || d > maxD) maxD = d; }
+        const s = projectScheduleStart(p);
+        const e = projectScheduleEnd(p);
+        if (s) { const d = new Date(s); if (!minD || d < minD) minD = d; }
+        if (e) { const d = new Date(e); if (!maxD || d > maxD) maxD = d; }
       });
       if (!minD || !maxD) {
         const now = new Date();
@@ -391,39 +361,8 @@ function ExecutiveDashboard() {
   const phaseColor = (name: string, i: number) =>
     PHASE_HEADER_COLORS[name] || THEME_PALETTE[i % THEME_PALETTE.length];
 
-  /** Current stage: first in-flight gate, else project.current_phase (fuzzy-matched to org gates). */
-  const resolveCurrentStage = (p: any): string | null => {
-    const gs = gatesByProject.get(p.id) || [];
-    const orderIdx = new Map<string, number>();
-    orgPhases.forEach((name, i) => orderIdx.set(normLabel(name), i));
-    const sorted = [...gs].sort((a, b) => {
-      const oa = orderIdx.get(normLabel(a.gate_name || ""));
-      const ob = orderIdx.get(normLabel(b.gate_name || ""));
-      if (oa !== undefined && ob !== undefined) return oa - ob;
-      const da = a.planned_date ? new Date(a.planned_date).getTime() : Infinity;
-      const db = b.planned_date ? new Date(b.planned_date).getTime() : Infinity;
-      return da - db;
-    });
-
-    const inFlight = sorted.find((g) => isActiveGateStatus(g.status));
-    if (inFlight?.gate_name) {
-      return matchPhase(inFlight.gate_name, orgPhases) ?? inFlight.gate_name;
-    }
-
-    const fromPhase = matchPhase(p.current_phase, orgPhases);
-    if (fromPhase) return fromPhase;
-
-    // All gates approved — sit under the last approved gate if we can map it
-    const lastApproved = [...sorted]
-      .reverse()
-      .find((g) => normLabel(g.status || "") === "approved");
-    if (lastApproved?.gate_name) {
-      return matchPhase(lastApproved.gate_name, orgPhases) ?? lastApproved.gate_name;
-    }
-
-    if (p.current_phase) return p.current_phase;
-    return null;
-  };
+  const resolveCurrentStage = (p: any): string | null =>
+    resolveStageShared(p, gatesByProject.get(p.id) || [], orgPhases);
 
   const kanban = useMemo(() => {
     const activeProjects = filtered.filter((p: any) => {
@@ -729,6 +668,7 @@ function ExecutiveDashboard() {
                   items={items}
                   bounds={timelineBounds}
                   gatesByProject={gatesByProject}
+                  orgPhases={orgPhases}
                   collapsed={!!collapsed[groupName]}
                   onToggle={() => toggleCollapse(groupName)}
                 />
@@ -769,7 +709,7 @@ function ExecutiveDashboard() {
                         search={{ pid: p.id }}
                         className="block truncate rounded px-2 py-1 text-[10px] text-white hover:opacity-90"
                         style={{ background: RAG_COLORS[p.rag as string] || "#64748b" }}
-                        title={`${p.name}${p.current_phase ? ` · ${p.current_phase}` : ""}`}
+                        title={`${p.name}${resolveCurrentStage(p) ? ` · ${resolveCurrentStage(p)}` : ""}`}
                       >
                         {p.project_code || (p.name || "").slice(0, 18)}
                       </Link>
@@ -805,7 +745,7 @@ function ExecutiveDashboard() {
                     <td>{money(Number(p.budget || 0))}</td>
                     <td>{money(Number(p.capex_incurred || 0) + Number(p.opex_incurred || 0))}</td>
                     <td><RagChip rag={p.rag} /></td>
-                    <td>{p.current_phase ?? "—"}</td>
+                    <td>{resolveCurrentStage(p) ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -842,11 +782,12 @@ type TimelineBounds = {
 };
 
 function GanttGroup({
-  title, items, bounds, gatesByProject, collapsed, onToggle,
+  title, items, bounds, gatesByProject, orgPhases = [], collapsed, onToggle,
 }: {
   title: string; items: any[]; bounds: TimelineBounds;
-  gatesByProject: Map<string, any[]>; collapsed: boolean; onToggle: () => void;
+  gatesByProject: Map<string, any[]>; orgPhases?: string[]; collapsed: boolean; onToggle: () => void;
 }) {
+  const phaseOf = (p: any) => resolveStageShared(p, gatesByProject.get(p.id) || [], orgPhases);
   const { start: rangeStart, totalMs, months, fyGroups } = bounds;
   const monthShort = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const now = new Date();
@@ -883,7 +824,7 @@ function GanttGroup({
   // aggregate group financials for header summary
   const groupIncurred = items.reduce((s, p) => s + Number(p.capex_incurred || 0) + Number(p.opex_incurred || 0), 0);
   const groupApproved = items.reduce((s, p) => s + Number(p.capex_approved || 0) + Number(p.opex_approved || 0), 0);
-  const groupFAC = items.reduce((s, p) => s + Number(p.forecast_at_completion || p.fac || (Number(p.budget || 0) * 1.05)), 0);
+  const groupFAC = items.reduce((s, p) => s + projectForecast(p), 0);
   const groupBenefits = items.reduce((s, p) => s + Number(p.benefits_realised || 0), 0);
   const groupUtil = groupApproved > 0 ? Math.round((groupIncurred / groupApproved) * 100) : 0;
   const rGreen = items.filter((p) => p.rag === "Green").length;
@@ -981,8 +922,10 @@ function GanttGroup({
 
           <div className="relative">
             {items.map((p: any) => {
-              const s = new Date(p.start_date).getTime();
-              const e = new Date(p.end_date).getTime();
+              const startIso = projectScheduleStart(p);
+              const endIso = projectScheduleEnd(p);
+              const s = startIso ? new Date(startIso).getTime() : NaN;
+              const e = endIso ? new Date(endIso).getTime() : NaN;
               const rawStartPct = dateToPct(new Date(s));
               const rawEndPct = dateToPct(new Date(e));
               const startPct = Math.max(0, Math.min(100, rawStartPct));
@@ -992,7 +935,7 @@ function GanttGroup({
               const clippedRight = rawEndPct > 100;
               const color = RAG_COLORS[p.rag as string] || "#64748b";
               const budget = Number(p.budget || 0);
-              const incurred = Number(p.capex_incurred || 0) + Number(p.opex_incurred || 0);
+              const incurred = projectIncurred(p);
               const pct = budget > 0 ? Math.min(100, Math.round((incurred / budget) * 100)) : 0;
               const overBudget = incurred > budget && budget > 0;
               const projGates = (gatesByProject.get(p.id) || [])
@@ -1014,7 +957,7 @@ function GanttGroup({
                   </div>
                   <div style={{ width: COL_SPONSOR }} className="shrink-0 pr-2">
                     <div className="truncate text-[11px] text-foreground">{p.sponsor || "—"}</div>
-                    <div className="truncate text-[10px] text-muted-foreground">{p.current_phase || "—"}</div>
+                    <div className="truncate text-[10px] text-muted-foreground">{phaseOf(p) || "—"}</div>
                   </div>
                   <div style={{ width: COL_FIN }} className="shrink-0 pr-2">
                     <div className="text-[11px] font-medium tabular-nums text-foreground">
@@ -1049,7 +992,7 @@ function GanttGroup({
                               borderTopRightRadius: clippedRight ? 0 : 6,
                               borderBottomRightRadius: clippedRight ? 0 : 6,
                             }}
-                            title={`${p.start_date} → ${p.end_date} · ${money(budget)} budget · ${money(incurred)} incurred (${pct}%)`}
+                            title={`${startIso} → ${endIso} · ${money(budget)} budget · ${money(incurred)} incurred (${pct}%)`}
                           >
                             <div className="h-full" style={{ width: `${pct}%`, background: "rgba(255,255,255,0.28)", borderTopLeftRadius: clippedLeft ? 0 : 6, borderBottomLeftRadius: clippedLeft ? 0 : 6 }} />
                             {widthPct > 10 && (

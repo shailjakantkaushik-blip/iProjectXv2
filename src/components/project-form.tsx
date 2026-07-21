@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
+import { syncScheduleDates } from "@/lib/project-dates";
 
 export interface ProjectFormValues {
   project_code?: string | null;
@@ -126,6 +127,8 @@ export function ProjectForm({
       clean[k] = val === undefined || val === null || val === "" ? 0 : Number(val);
     }
     if (clean.bu_id === "" || clean.bu_id === "none") clean.bu_id = null;
+    // Keep legacy schedule start/end aligned with planned/actual for Gantt & FY.
+    Object.assign(clean, syncScheduleDates(clean));
     // Collect brief fields into a JSONB payload and strip them from top-level.
     const brief: Record<string, unknown> = { ...(defaultValues?.brief ?? {}) };
     for (const k of BRIEF_KEYS) {
@@ -166,15 +169,20 @@ export function ProjectForm({
           </Section>
 
           <Section title="3 · Dates (Planned vs Actual)">
+            <p className="mb-3 text-xs text-muted-foreground">
+              Edit <strong>Planned</strong> and <strong>Actual</strong> dates.
+              Schedule Start/End are kept in sync automatically (Actual → else Planned) for
+              Gantt, FY filters, and overdue views.
+            </p>
             <div className="grid gap-4 md:grid-cols-3">
-              <Field label="Start Date"><Input type="date" {...register("start_date")} /></Field>
-              <Field label="End Date"><Input type="date" {...register("end_date")} /></Field>
-              <Field label="Target Go-Live"><Input type="date" {...register("target_go_live")} /></Field>
               <Field label="Planned Start"><Input type="date" {...register("planned_start_date")} /></Field>
               <Field label="Planned End"><Input type="date" {...register("planned_end_date")} /></Field>
-              <div />
+              <Field label="Target Go-Live"><Input type="date" {...register("target_go_live")} /></Field>
               <Field label="Actual Start"><Input type="date" {...register("actual_start_date")} /></Field>
               <Field label="Actual End"><Input type="date" {...register("actual_end_date")} /></Field>
+              <div />
+              <Field label="Schedule Start (auto)"><Input type="date" {...register("start_date")} /></Field>
+              <Field label="Schedule End (auto)"><Input type="date" {...register("end_date")} /></Field>
             </div>
           </Section>
 

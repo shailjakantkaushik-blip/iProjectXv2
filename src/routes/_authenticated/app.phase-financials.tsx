@@ -26,6 +26,11 @@ import {
 } from "recharts";
 import { ChartLegendList, legendItemsFromCounts } from "@/components/chart-legend-list";
 import { ExpandableChart } from "@/components/expandable-chart";
+import {
+  groupGatesByProject,
+  resolveCurrentStage,
+} from "@/lib/project-phase";
+import { projectForecast, projectIncurred } from "@/lib/project-finance";
 
 export const Route = createFileRoute("/_authenticated/app/phase-financials")({
   component: PhaseFinancialsPage,
@@ -69,36 +74,43 @@ function PhaseFinancialsPage() {
     enabled: !!organization,
   });
 
+  const { data: gates = [] } = useQuery({
+    queryKey: ["stage_gates", organization?.id],
+    queryFn: async () => (await supabase.from("stage_gates").select("*")).data ?? [],
+    enabled: !!organization,
+  });
+
   const filtered = useMemo(() => applyFilters(projects, filters), [projects, filters]);
 
+  const orgPhases = useMemo(() => {
+    const configured = gateDefs.map((g: any) => g.gate_name).filter(Boolean);
+    return configured.length ? configured : DEFAULT_STAGES;
+  }, [gateDefs]);
+
+  const gatesByProject = useMemo(() => groupGatesByProject(gates as any[]), [gates]);
+
+  const projectStage = (p: any) =>
+    resolveCurrentStage(p, gatesByProject.get(p.id) || [], orgPhases) || "Unassigned";
+
   const stages = useMemo(() => {
-    const configured = gateDefs.map((g: any) => g.name).filter(Boolean);
-    const base = configured.length ? configured : DEFAULT_STAGES;
-    const s = new Set<string>(base);
-    filtered.forEach((p: any) => {
-      if (p.current_phase) s.add(p.current_phase);
-    });
-    // preserve configured order first, then any extras from projects
-    const ordered = [...base];
+    const s = new Set<string>(orgPhases);
+    filtered.forEach((p: any) => s.add(projectStage(p)));
+    const ordered = [...orgPhases];
     Array.from(s).forEach((x) => {
       if (!ordered.includes(x)) ordered.push(x);
     });
     return ordered;
-  }, [filtered, gateDefs]);
+    // projectStage closes over gatesByProject + orgPhases
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, orgPhases, gatesByProject]);
 
   const byPhase = useMemo(
     () =>
       stages.map((stage) => {
-        const rows = filtered.filter((p: any) => (p.current_phase || "Ideation") === stage);
+        const rows = filtered.filter((p: any) => projectStage(p) === stage);
         const budget = rows.reduce((s, p: any) => s + Number(p.budget || 0), 0);
-        const incurred = rows.reduce(
-          (s, p: any) => s + Number(p.capex_incurred || 0) + Number(p.opex_incurred || 0),
-          0,
-        );
-        const forecast = rows.reduce(
-          (s, p: any) => s + Number(p.capex_approved || 0) + Number(p.opex_approved || 0),
-          0,
-        );
+        const incurred = rows.reduce((s, p: any) => s + projectIncurred(p), 0);
+        const forecast = rows.reduce((s, p: any) => s + projectForecast(p), 0);
         const benefits = rows.reduce((s, p: any) => s + Number(p.benefits_realised || 0), 0);
         return {
           stage,
@@ -110,7 +122,8 @@ function PhaseFinancialsPage() {
           remaining: budget - incurred,
         };
       }),
-    [filtered, stages],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filtered, stages, gatesByProject, orgPhases],
   );
 
   const totalBudget = byPhase.reduce((s, r) => s + r.budget, 0);

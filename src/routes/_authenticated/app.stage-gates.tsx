@@ -7,6 +7,7 @@ import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/com
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, Legend } from "recharts";
 import { GATE_STATUS_COLORS as STATUS_COLORS, CHART_SERIES } from "@/lib/chart-theme";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { resolveCurrentAndNextGate, resolveCurrentStage } from "@/lib/project-phase";
 
 export const Route = createFileRoute("/_authenticated/app/stage-gates")({
   component: StageGatesPage,
@@ -99,14 +100,19 @@ function StageGatesPage() {
     return m;
   }, [gates, defs]);
 
+  const orgPhases = useMemo(
+    () => (defs as any[]).map((d) => d.gate_name).filter(Boolean),
+    [defs],
+  );
+
   const register = useMemo(() => {
     return projects.map((p: any) => {
       const gs = gatesByProject.get(p.id) || [];
-      const current = [...gs].reverse().find((g) => g.status === "Approved") || gs[gs.length - 1];
-      const next = gs.find((g) => g.status !== "Approved" && g.status !== "Rejected");
-      return { project: p, current, next };
+      const { current, next } = resolveCurrentAndNextGate(gs, orgPhases);
+      const phase = resolveCurrentStage(p, gs, orgPhases);
+      return { project: p, current, next, phase };
     });
-  }, [projects, gatesByProject]);
+  }, [projects, gatesByProject, orgPhases]);
 
   return (
     <div>
@@ -169,6 +175,7 @@ function StageGatesPage() {
                 <th>Program</th>
                 <th>Sponsor</th>
                 <th>RAG</th>
+                <th>Current Phase</th>
                 <th>Current Gate</th>
                 <th>Current Status</th>
                 <th>Next Gate</th>
@@ -177,7 +184,7 @@ function StageGatesPage() {
               </tr>
             </thead>
             <tbody>
-              {register.map(({ project, current, next }) => (
+              {register.map(({ project, current, next, phase }) => (
                 <tr key={project.id}>
                   <td className="font-medium">{project.name}</td>
                   <td>{project.program || "—"}</td>
@@ -185,12 +192,13 @@ function StageGatesPage() {
                   <td>
                     <RagChip rag={project.rag} />
                   </td>
+                  <td className="font-medium">{phase || "—"}</td>
                   <td>{current?.gate_name || "—"}</td>
                   <td>
                     {current ? (
                       <span
                         className="rounded px-2 py-0.5 text-[11px] text-white"
-                        style={{ background: STATUS_COLORS[current.status] || "#94a3b8" }}
+                        style={{ background: STATUS_COLORS[current.status || "Pending"] || "#94a3b8" }}
                       >
                         {current.status || "Pending"}
                       </span>
@@ -206,7 +214,7 @@ function StageGatesPage() {
                     {next ? (
                       <span
                         className="rounded px-2 py-0.5 text-[11px] text-white"
-                        style={{ background: STATUS_COLORS[next.status] || "#94a3b8" }}
+                        style={{ background: STATUS_COLORS[next.status || "Pending"] || "#94a3b8" }}
                       >
                         {next.status || "Pending"}
                       </span>

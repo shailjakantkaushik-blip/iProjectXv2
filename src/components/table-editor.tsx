@@ -224,8 +224,16 @@ function AddRowForm({ def, lookups, orgId, onDone }: { def: TableDef; lookups: L
         else if (f.type === "select" && f.options?.includes("true")) payload[f.key] = v === "true";
         else payload[f.key] = v;
       }
+      if (def.key === "projects") {
+        const { syncScheduleDates } = await import("@/lib/project-dates");
+        Object.assign(payload, syncScheduleDates(payload as any));
+      }
       const { error } = await (supabase as any).from(def.key).insert(payload);
       if (error) throw error;
+      if (def.key === "stage_gates" && payload.project_id) {
+        const { persistCurrentPhaseFromGates } = await import("@/lib/project-phase");
+        await persistCurrentPhaseFromGates(supabase as any, String(payload.project_id));
+      }
       toast.success("Row added");
       onDone();
     } catch (err: any) {

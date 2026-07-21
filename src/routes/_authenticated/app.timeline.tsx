@@ -7,6 +7,10 @@ import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
 import { PortfolioTimeline } from "@/components/portfolio-timeline";
 import { toast } from "sonner";
+import {
+  groupGatesByProject,
+  resolveCurrentStage,
+} from "@/lib/project-phase";
 
 export const Route = createFileRoute("/_authenticated/app/timeline")({
   component: TimelinePage,
@@ -52,10 +56,36 @@ function TimelinePage() {
     enabled: !!organization,
   });
 
+  const { data: gateDefs = [] } = useQuery({
+    queryKey: ["stage_gate_definitions", organization?.id],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("stage_gate_definitions")
+          .select("gate_name")
+          .eq("org_id", organization!.id)
+          .eq("is_active", true)
+          .order("sort_order", { ascending: true })
+      ).data ?? [],
+    enabled: !!organization,
+  });
+
+  const orgPhases = useMemo(
+    () => (gateDefs as any[]).map((d) => d.gate_name).filter(Boolean),
+    [gateDefs],
+  );
+  const gatesByProject = useMemo(() => groupGatesByProject(gates as any[]), [gates]);
+  const projectPhase = (p: any) =>
+    resolveCurrentStage(p, gatesByProject.get(p.id) || [], orgPhases);
+
   // ---------- Filters ----------
   const programs = useMemo(() => uniqueSorted(projects.map((p: any) => p.program)), [projects]);
   const sponsors = useMemo(() => uniqueSorted(projects.map((p: any) => p.sponsor)), [projects]);
-  const phases = useMemo(() => uniqueSorted(projects.map((p: any) => p.current_phase)), [projects]);
+  const phases = useMemo(
+    () => uniqueSorted(projects.map((p: any) => projectPhase(p))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projects, gatesByProject, orgPhases],
+  );
 
   const fyStartMonth = organization?.fy_start_month || 4;
   // FY options derived from planned/actual dates
@@ -100,7 +130,7 @@ function TimelinePage() {
       if (pidSet.size > 0 && !pidSet.has(p.id)) return false;
       if (fProgram !== "All" && (p.program || "") !== fProgram) return false;
       if (fSponsor !== "All" && (p.sponsor || "") !== fSponsor) return false;
-      if (fPhase !== "All" && (p.current_phase || "") !== fPhase) return false;
+      if (fPhase !== "All" && (projectPhase(p) || "") !== fPhase) return false;
       if (fRag !== "All" && (p.rag || "") !== fRag) return false;
       if (fPriority !== "All" && (p.priority || "") !== fPriority) return false;
       if (fMethod !== "All" && (p.delivery_method || "") !== fMethod) return false;
@@ -108,7 +138,8 @@ function TimelinePage() {
       if (q && !(`${p.name || ""} ${p.project_code || ""}`.toLowerCase().includes(q))) return false;
       return true;
     });
-  }, [projects, fPids, fProgram, fSponsor, fPhase, fRag, fPriority, fMethod, fSchedule, fSearch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects, fPids, fProgram, fSponsor, fPhase, fRag, fPriority, fMethod, fSchedule, fSearch, gatesByProject, orgPhases]);
 
   const resetFilters = () => {
     setFFy("All"); setFProgram("All"); setFSponsor("All"); setFPhase("All");
