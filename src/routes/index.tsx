@@ -220,9 +220,13 @@ function BrandMark({
 
 function LandingPage() {
   const { cfg: loaded } = Route.useLoaderData();
-  const [cfg, setCfg] = useState<LandingConfig>(
-    () => loaded ?? readCachedLandingConfig() ?? DEFAULT_LANDING,
-  );
+  const [cfg, setCfg] = useState<LandingConfig>(() => {
+    if (loaded) return loaded;
+    const cached = readCachedLandingConfig();
+    if (cached) return cached;
+    // Fail closed on signup so "Get started" never blinks on then off.
+    return { ...DEFAULT_LANDING, signup_enabled: false };
+  });
   useEffect(() => {
     setCfg(loaded);
   }, [loaded]);
@@ -401,7 +405,7 @@ function Nav({ cfg }: { cfg: LandingConfig }) {
           >
             Sign in
           </Link>
-          {cfg.signup_enabled !== false && (
+          {cfg.signup_enabled === true && (
             <Link
               to="/auth"
               style={{ ...HEADING, background: p.navy, color: p.textOnDark }}
@@ -457,7 +461,7 @@ function Nav({ cfg }: { cfg: LandingConfig }) {
             >
               Sign in
             </Link>
-            {cfg.signup_enabled !== false && (
+            {cfg.signup_enabled === true && (
               <Link
                 to="/auth"
                 onClick={() => setOpen(false)}

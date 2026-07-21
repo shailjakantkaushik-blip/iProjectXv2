@@ -9,11 +9,42 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { TurnstileWidget, isTurnstileEnabled } from "@/components/turnstile";
 import { verifyTurnstile } from "@/lib/turnstile.functions";
-import { fetchLandingConfig, DEFAULT_LANDING, type LandingConfig } from "@/lib/landing-config";
+import {
+  fetchLandingConfig,
+  DEFAULT_LANDING,
+  readCachedLandingConfig,
+  type LandingConfig,
+} from "@/lib/landing-config";
 import { getOrgBranding } from "@/lib/org-branding.functions";
 import { AuthLayout, PasswordField, type AuthOrgBrand } from "@/components/auth-layout";
 
 const ORG_SLUG_KEY = "pmo:lastOrgSlug";
+
+type AuthLoaderData = {
+  platformBrand: LandingConfig["brand"];
+  /** null = still resolving (pending); never default to true (avoids Sign up blink). */
+  signupEnabled: boolean | null;
+};
+
+async function loadAuthPublicConfig(): Promise<AuthLoaderData> {
+  try {
+    const cfg = await fetchLandingConfig();
+    return {
+      platformBrand: cfg.brand,
+      signupEnabled: cfg.signup_enabled !== false,
+    };
+  } catch {
+    const cached = typeof window !== "undefined" ? readCachedLandingConfig() : null;
+    if (cached) {
+      return {
+        platformBrand: cached.brand,
+        signupEnabled: cached.signup_enabled !== false,
+      };
+    }
+    // Fail closed: hide signup rather than flashing it on.
+    return { platformBrand: DEFAULT_LANDING.brand, signupEnabled: false };
+  }
+}
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -22,20 +53,51 @@ export const Route = createFileRoute("/auth")({
       { name: "robots", content: "noindex" },
     ],
   }),
+  loader: async (): Promise<AuthLoaderData> => loadAuthPublicConfig(),
+  staleTime: 30_000,
+  pendingComponent: AuthPending,
   component: AuthPage,
 });
 
+function authShellBrand(): LandingConfig["brand"] {
+  const cached = typeof window !== "undefined" ? readCachedLandingConfig() : null;
+  return cached?.brand ?? DEFAULT_LANDING.brand;
+}
+
+/** While config loads: sign-in only — never show Sign up (prevents off→on blink). */
+function AuthPending() {
+  return (
+    <AuthLayout
+      platform={authShellBrand()}
+      title="Welcome back"
+      description="Sign in with your organisation account."
+    >
+      <div className="space-y-4 pt-4" aria-busy="true" aria-label="Loading sign in">
+        <div className="h-10 animate-pulse rounded-md bg-muted" />
+        <div className="h-10 animate-pulse rounded-md bg-muted" />
+        <div className="h-10 animate-pulse rounded-md bg-muted" />
+      </div>
+    </AuthLayout>
+  );
+}
+
 function AuthPage() {
+  const { platformBrand: loadedBrand, signupEnabled: loadedSignup } = Route.useLoaderData();
   const { session, loading } = useAuth();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [mode, setMode] = useState<"auth" | "forgot">("auth");
   const [forgotEmail, setForgotEmail] = useState("");
-  const [platformBrand, setPlatformBrand] = useState(DEFAULT_LANDING.brand);
-  const [signupEnabled, setSignupEnabled] = useState(DEFAULT_LANDING.signup_enabled);
+  const [platformBrand, setPlatformBrand] = useState(loadedBrand);
+  const [signupEnabled, setSignupEnabled] = useState(loadedSignup === true);
   const [orgBrand, setOrgBrand] = useState<AuthOrgBrand>(null);
   const captchaRequired = isTurnstileEnabled();
+
+  useEffect(() => {
+    setPlatformBrand(loadedBrand);
+    setSignupEnabled(loadedSignup === true);
+  }, [loadedBrand, loadedSignup]);
 
   useEffect(() => {
     if (!loading && session) navigate({ to: "/app", replace: true });
@@ -44,15 +106,6 @@ function AuthPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      try {
-        const cfg = await fetchLandingConfig();
-        if (!cancelled) {
-          setPlatformBrand(cfg.brand);
-          setSignupEnabled(cfg.signup_enabled !== false);
-        }
-      } catch {
-        /* keep defaults */
-      }
       try {
         const params = new URLSearchParams(window.location.search);
         const slug = params.get("org") || window.localStorage.getItem(ORG_SLUG_KEY) || "";
