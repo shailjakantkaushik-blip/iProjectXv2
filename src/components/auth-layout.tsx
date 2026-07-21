@@ -2,24 +2,34 @@ import { Link } from "@tanstack/react-router";
 import { useState, type ChangeEvent, type ReactNode } from "react";
 import { ArrowLeft, BarChart3, Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { logoSizeDims, type LogoDisplaySize } from "@/lib/landing-config";
+import { StableBrandLogo } from "@/components/stable-brand-logo";
+import {
+  logoSizeDims,
+  type LogoCustomDims,
+  type LogoDisplaySize,
+} from "@/lib/landing-config";
 
 export type AuthBrand = {
   name: string;
   logo_url?: string;
   tagline?: string;
   logo_size_auth?: LogoDisplaySize;
+  logo_custom_auth?: LogoCustomDims;
 };
 
 export type AuthOrgBrand = {
   name: string;
   logo_url?: string;
   slug?: string;
+  logo_size_auth?: LogoDisplaySize;
+  logo_custom_auth?: LogoCustomDims;
 } | null;
 
 type AuthLayoutProps = {
   platform: AuthBrand;
   org?: AuthOrgBrand;
+  /** When true, org white-label was requested via ?org= (even if still resolving). */
+  orgRequested?: boolean;
   title: string;
   description?: string;
   children: ReactNode;
@@ -31,30 +41,36 @@ function LogoMark({
   name,
   logoUrl,
   size = "md",
+  custom,
 }: {
   name: string;
   logoUrl?: string;
   size?: LogoDisplaySize;
+  custom?: LogoCustomDims | null;
 }) {
-  const dims = logoSizeDims(size);
+  const dims = logoSizeDims(size, custom);
   const box =
-    size === "xl"
+    size === "xl" || (size === "custom" && dims.heightPx >= 48)
       ? "h-14 w-14"
-      : size === "lg"
+      : size === "lg" || (size === "custom" && dims.heightPx >= 36)
         ? "h-12 w-12"
-        : size === "sm"
+        : size === "sm" || (size === "custom" && dims.heightPx <= 24)
           ? "h-8 w-8"
           : "h-10 w-10";
   const icon =
-    size === "xl" || size === "lg" ? "h-6 w-6" : size === "sm" ? "h-4 w-4" : "h-5 w-5";
+    size === "xl" || size === "lg" || dims.heightPx >= 36
+      ? "h-6 w-6"
+      : size === "sm" || dims.heightPx <= 24
+        ? "h-4 w-4"
+        : "h-5 w-5";
 
   if (logoUrl) {
     return (
-      <img
+      <StableBrandLogo
         src={logoUrl}
         alt={`${name} logo`}
-        className="w-auto object-contain"
-        style={{ height: dims.heightPx, maxWidth: dims.maxWidthPx }}
+        heightPx={dims.heightPx}
+        maxWidthPx={dims.maxWidthPx}
       />
     );
   }
@@ -74,18 +90,42 @@ function LogoMark({
 export function AuthLayout({
   platform,
   org = null,
+  orgRequested = false,
   title,
   description,
   children,
   footer,
   className,
 }: AuthLayoutProps) {
-  const displayName = org?.name || platform.name;
-  const displayLogo = org?.logo_url || platform.logo_url;
+  // White-label only when the dedicated org login link was used (?org=).
+  const useOrg = Boolean(orgRequested && org);
+  const displayName = useOrg && org ? org.name : platform.name;
+  const displayLogo = useOrg && org?.logo_url ? org.logo_url : platform.logo_url;
   const tagline = platform.tagline || "Enterprise PMO Command Center";
-  const logoSize: LogoDisplaySize = platform.logo_size_auth ?? "lg";
+  const logoSize: LogoDisplaySize =
+    useOrg && org?.logo_size_auth
+      ? org.logo_size_auth
+      : (platform.logo_size_auth ?? "lg");
+  const logoCustom =
+    useOrg && org?.logo_custom_auth
+      ? org.logo_custom_auth
+      : platform.logo_custom_auth;
+  const mobileDims = logoSizeDims(logoSize, logoCustom);
   const mobileSize: LogoDisplaySize =
-    logoSize === "xl" ? "lg" : logoSize === "lg" ? "md" : logoSize;
+    logoSize === "custom"
+      ? "custom"
+      : logoSize === "xl"
+        ? "lg"
+        : logoSize === "lg"
+          ? "md"
+          : logoSize;
+  const mobileCustom =
+    logoSize === "custom"
+      ? {
+          heightPx: Math.max(20, Math.round(mobileDims.heightPx * 0.75)),
+          maxWidthPx: Math.max(60, Math.round(mobileDims.maxWidthPx * 0.75)),
+        }
+      : logoCustom;
 
   return (
     <div className={cn("flex min-h-screen bg-background", className)}>
@@ -126,12 +166,17 @@ export function AuthLayout({
 
         <div className="relative z-10 space-y-6">
           <div className="flex items-center gap-3">
-            <LogoMark name={displayName} logoUrl={displayLogo} size={logoSize} />
+            <LogoMark
+              name={displayName}
+              logoUrl={displayLogo}
+              size={logoSize}
+              custom={logoCustom}
+            />
             <div className="min-w-0">
               <div className="truncate text-2xl font-semibold tracking-tight text-white">
                 {displayName}
               </div>
-              {org ? (
+              {useOrg ? (
                 <div className="mt-0.5 flex items-center gap-1.5 text-xs text-white/70">
                   <span>powered by</span>
                   <span className="font-medium text-white/90">{platform.name}</span>
@@ -142,7 +187,7 @@ export function AuthLayout({
             </div>
           </div>
           <p className="max-w-sm text-base leading-relaxed text-white/80">
-            {org
+            {useOrg && org
               ? `Sign in to ${org.name} to manage portfolio delivery, governance, and financials.`
               : "Sign in to your portfolio cockpit — projects, gates, risk, and financials in one place."}
           </p>
@@ -165,7 +210,12 @@ export function AuthLayout({
 
         <div className="relative z-10 flex items-center justify-between border-b border-border/60 px-4 py-3 lg:hidden">
           <Link to="/" className="flex min-w-0 items-center gap-2">
-            <LogoMark name={displayName} logoUrl={displayLogo} size={mobileSize} />
+            <LogoMark
+              name={displayName}
+              logoUrl={displayLogo}
+              size={mobileSize}
+              custom={mobileCustom}
+            />
             <span className="truncate text-sm font-semibold text-foreground">
               {displayName}
             </span>
@@ -180,7 +230,7 @@ export function AuthLayout({
 
         <div className="relative z-10 flex flex-1 items-center justify-center px-4 py-8 sm:px-8">
           <div className="w-full max-w-[400px] animate-in fade-in-0 slide-in-from-bottom-2 duration-500">
-            {org && (
+            {useOrg && org && (
               <div className="mb-5 hidden items-center gap-2 text-xs text-muted-foreground lg:flex">
                 <span>Organization</span>
                 <span className="font-medium text-foreground">{org.name}</span>

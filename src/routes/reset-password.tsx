@@ -3,8 +3,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { DEFAULT_LANDING, fetchLandingConfig } from "@/lib/landing-config";
-import { AuthLayout, PasswordField } from "@/components/auth-layout";
+import { DEFAULT_LANDING, fetchLandingConfig, resolveBrandLogoUrl } from "@/lib/landing-config";
+import { AuthLayout, PasswordField, type AuthBrand } from "@/components/auth-layout";
 
 export const Route = createFileRoute("/reset-password")({
   head: () => ({
@@ -16,17 +16,27 @@ export const Route = createFileRoute("/reset-password")({
   component: ResetPasswordPage,
 });
 
+function toAuthBrand(brand: typeof DEFAULT_LANDING.brand): AuthBrand {
+  return {
+    name: brand.name,
+    logo_url: resolveBrandLogoUrl(brand, "auth"),
+    tagline: brand.tagline,
+    logo_size_auth: brand.logo_size_auth,
+    logo_custom_auth: brand.logo_custom_auth,
+  };
+}
+
 function ResetPasswordPage() {
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [brand, setBrand] = useState(DEFAULT_LANDING.brand);
+  const [brand, setBrand] = useState<AuthBrand>(() => toAuthBrand(DEFAULT_LANDING.brand));
 
   useEffect(() => {
     fetchLandingConfig()
-      .then((c) => setBrand(c.brand))
+      .then((c) => setBrand(toAuthBrand(c.brand)))
       .catch(() => {});
   }, []);
 

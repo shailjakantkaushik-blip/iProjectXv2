@@ -13,60 +13,102 @@ import {
   fetchLandingConfig,
   DEFAULT_LANDING,
   readCachedLandingConfigForPaint,
+  resolveBrandLogoUrl,
   type LandingConfig,
 } from "@/lib/landing-config";
 import { getOrgBranding } from "@/lib/org-branding.functions";
-import { AuthLayout, PasswordField, type AuthOrgBrand } from "@/components/auth-layout";
+import {
+  AuthLayout,
+  PasswordField,
+  type AuthBrand,
+  type AuthOrgBrand,
+} from "@/components/auth-layout";
 
 const ORG_SLUG_KEY = "pmo:lastOrgSlug";
 
+type AuthSearch = { org?: string };
+
 type AuthLoaderData = {
-  platformBrand: LandingConfig["brand"];
+  platformBrand: AuthBrand;
   /** Only true when live config explicitly enables signup. */
   signupEnabled: boolean;
+  /** White-label org — only when ?org= was present on the request. */
+  orgBrand: AuthOrgBrand;
+  orgRequested: boolean;
 };
 
-async function loadAuthPublicConfig(): Promise<AuthLoaderData> {
+function toAuthPlatformBrand(brand: LandingConfig["brand"]): AuthBrand {
+  return {
+    name: brand.name,
+    logo_url: resolveBrandLogoUrl(brand, "auth"),
+    tagline: brand.tagline,
+    logo_size_auth: brand.logo_size_auth,
+    logo_custom_auth: brand.logo_custom_auth,
+  };
+}
+
+async function loadAuthPublicConfig(orgSlug?: string): Promise<AuthLoaderData> {
+  const slug = orgSlug?.trim() || "";
   try {
     const cfg = await fetchLandingConfig();
+    let orgBrand: AuthOrgBrand = null;
+    if (slug) {
+      const brand = await getOrgBranding({ data: { slug } });
+      if (brand) orgBrand = brand;
+    }
     return {
-      platformBrand: cfg.brand,
+      platformBrand: toAuthPlatformBrand(cfg.brand),
       signupEnabled: cfg.signup_enabled === true,
+      orgBrand,
+      orgRequested: Boolean(slug),
     };
   } catch {
-    // Fail closed: never flash Sign up when config cannot be confirmed.
     const cached = typeof window !== "undefined" ? readCachedLandingConfigForPaint() : null;
     return {
-      platformBrand: cached?.brand ?? DEFAULT_LANDING.brand,
+      platformBrand: toAuthPlatformBrand(cached?.brand ?? DEFAULT_LANDING.brand),
       signupEnabled: false,
+      orgBrand: null,
+      orgRequested: Boolean(slug),
     };
   }
 }
 
 export const Route = createFileRoute("/auth")({
+  validateSearch: (search: Record<string, unknown>): AuthSearch => ({
+    org: typeof search.org === "string" && search.org.trim() ? search.org.trim() : undefined,
+  }),
+  loaderDeps: ({ search }) => ({ org: search.org }),
   head: () => ({
     meta: [
       { title: "Sign in — PMO Enterprise" },
       { name: "robots", content: "noindex" },
     ],
   }),
-  loader: async (): Promise<AuthLoaderData> => loadAuthPublicConfig(),
+  loader: async ({ deps }): Promise<AuthLoaderData> => loadAuthPublicConfig(deps.org),
   staleTime: 0,
   pendingMs: 0,
   pendingComponent: AuthPending,
   component: AuthPage,
 });
 
-function authShellBrand(): LandingConfig["brand"] {
+function authShellBrand(): AuthBrand {
   const cached = typeof window !== "undefined" ? readCachedLandingConfigForPaint() : null;
-  return cached?.brand ?? DEFAULT_LANDING.brand;
+  return toAuthPlatformBrand(cached?.brand ?? DEFAULT_LANDING.brand);
 }
 
-/** Pending shell: Sign in only — never mount Sign up until loader confirms. */
+function readOrgFromLocation(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const slug = new URLSearchParams(window.location.search).get("org")?.trim();
+  return slug || undefined;
+}
+
+/** Pending shell: logos stripped from cache to avoid old→new blink. */
 function AuthPending() {
+  const orgRequested = Boolean(readOrgFromLocation());
   return (
     <AuthLayout
       platform={authShellBrand()}
+      orgRequested={orgRequested}
       title="Welcome back"
       description="Sign in with your organisation account."
     >
@@ -80,14 +122,13 @@ function AuthPending() {
 }
 
 function AuthPage() {
-  const { platformBrand, signupEnabled } = Route.useLoaderData();
+  const { platformBrand, signupEnabled, orgBrand, orgRequested } = Route.useLoaderData();
   const { session, loading } = useAuth();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [mode, setMode] = useState<"auth" | "forgot">("auth");
   const [forgotEmail, setForgotEmail] = useState("");
-  const [orgBrand, setOrgBrand] = useState<AuthOrgBrand>(null);
   const captchaRequired = isTurnstileEnabled();
 
   useEffect(() => {
@@ -95,25 +136,14 @@ function AuthPage() {
   }, [session, loading, navigate]);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
+    if (orgRequested && orgBrand?.slug) {
       try {
-        const params = new URLSearchParams(window.location.search);
-        const slug = params.get("org") || window.localStorage.getItem(ORG_SLUG_KEY) || "";
-        if (!slug) return;
-        if (params.get("org")) {
-          window.localStorage.setItem(ORG_SLUG_KEY, slug);
-        }
-        const brand = await getOrgBranding({ data: { slug } });
-        if (!cancelled && brand) setOrgBrand(brand);
+        window.localStorage.setItem(ORG_SLUG_KEY, orgBrand.slug);
       } catch {
         /* ignore */
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    }
+  }, [orgRequested, orgBrand?.slug]);
 
   const handleToken = useCallback((t: string) => setCaptchaToken(t), []);
   const handleExpire = useCallback(() => setCaptchaToken(null), []);
@@ -200,7 +230,7 @@ function AuthPage() {
         /* keep loader flag */
       }
       if (!allowed) {
-        toast.error("Public signup is disabled. Contact your administrator for an invite.");
+        toast.error("Public signup is disabled. Contact your platform administrator.");
         return;
       }
       if (!(await ensureCaptcha())) return;
@@ -209,7 +239,6 @@ function AuthPage() {
         email: String(fd.get("email")),
         password: String(fd.get("password")),
         options: {
-          emailRedirectTo: `${window.location.origin}/app`,
           data: { full_name: String(fd.get("full_name") || "") },
         },
       });
@@ -225,13 +254,14 @@ function AuthPage() {
   };
 
   const submitDisabled = busy || (captchaRequired && !captchaToken);
-  const brand: LandingConfig["brand"] = platformBrand;
+  const brand = platformBrand;
 
   if (mode === "forgot") {
     return (
       <AuthLayout
         platform={brand}
         org={orgBrand}
+        orgRequested={orgRequested}
         title="Reset your password"
         description="Enter the email for your account and we'll send a secure reset link."
         footer={
@@ -270,7 +300,8 @@ function AuthPage() {
     <AuthLayout
       platform={brand}
       org={orgBrand}
-      title={orgBrand ? `Welcome to ${orgBrand.name}` : "Welcome back"}
+      orgRequested={orgRequested}
+      title={orgRequested && orgBrand ? `Welcome to ${orgBrand.name}` : "Welcome back"}
       description={
         signupEnabled
           ? "Sign in to continue, or create an account to get started."

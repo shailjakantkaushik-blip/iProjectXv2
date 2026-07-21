@@ -36,7 +36,13 @@ export type LandingStat = { value: number; suffix?: string; label: string };
 export type LandingLogo = { name: string; logo_url: string };
 
 /** Display size tokens for brand logos on each surface. */
-export type LogoDisplaySize = "sm" | "md" | "lg" | "xl";
+export type LogoDisplaySize = "sm" | "md" | "lg" | "xl" | "custom";
+
+export type LogoCustomDims = { heightPx: number; maxWidthPx: number };
+
+export type BrandLogoSurface = "landing" | "auth" | "app";
+
+export const DEFAULT_LOGO_CUSTOM: LogoCustomDims = { heightPx: 40, maxWidthPx: 200 };
 
 export const LOGO_SIZE_OPTIONS: {
   value: LogoDisplaySize;
@@ -48,20 +54,73 @@ export const LOGO_SIZE_OPTIONS: {
   { value: "md", label: "Medium", heightPx: 32, maxWidthPx: 160 },
   { value: "lg", label: "Large", heightPx: 40, maxWidthPx: 200 },
   { value: "xl", label: "Extra large", heightPx: 56, maxWidthPx: 280 },
+  { value: "custom", label: "Custom", heightPx: 40, maxWidthPx: 200 },
 ];
 
 export function normalizeLogoSize(v: unknown, fallback: LogoDisplaySize = "md"): LogoDisplaySize {
-  if (v === "sm" || v === "md" || v === "lg" || v === "xl") return v;
+  if (v === "sm" || v === "md" || v === "lg" || v === "xl" || v === "custom") return v;
   return fallback;
 }
 
-export function logoSizeDims(size: LogoDisplaySize | undefined | null): {
-  heightPx: number;
-  maxWidthPx: number;
-} {
+export function clampLogoCustom(
+  v: unknown,
+  fallback: LogoCustomDims = DEFAULT_LOGO_CUSTOM,
+): LogoCustomDims {
+  const raw = v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+  const heightPx =
+    typeof raw.heightPx === "number" && Number.isFinite(raw.heightPx)
+      ? raw.heightPx
+      : fallback.heightPx;
+  const maxWidthPx =
+    typeof raw.maxWidthPx === "number" && Number.isFinite(raw.maxWidthPx)
+      ? raw.maxWidthPx
+      : fallback.maxWidthPx;
+  return {
+    heightPx: Math.min(160, Math.max(16, Math.round(heightPx))),
+    maxWidthPx: Math.min(640, Math.max(40, Math.round(maxWidthPx))),
+  };
+}
+
+export function logoSizeDims(
+  size: LogoDisplaySize | undefined | null,
+  custom?: LogoCustomDims | null,
+): LogoCustomDims {
   const token = normalizeLogoSize(size);
+  if (token === "custom") return clampLogoCustom(custom);
   const found = LOGO_SIZE_OPTIONS.find((o) => o.value === token) ?? LOGO_SIZE_OPTIONS[1];
   return { heightPx: found.heightPx, maxWidthPx: found.maxWidthPx };
+}
+
+/** Resolve the logo URL for a surface. Falls back to legacy `logo_url` only. */
+export function resolveBrandLogoUrl(
+  brand: Pick<
+    LandingConfig["brand"],
+    "logo_url" | "logo_url_landing" | "logo_url_auth" | "logo_url_app"
+  >,
+  surface: BrandLogoSurface,
+): string {
+  const specific =
+    surface === "landing"
+      ? brand.logo_url_landing
+      : surface === "auth"
+        ? brand.logo_url_auth
+        : brand.logo_url_app;
+  if (typeof specific === "string" && specific.trim()) return specific.trim();
+  if (typeof brand.logo_url === "string" && brand.logo_url.trim()) return brand.logo_url.trim();
+  return "";
+}
+
+export function resolveBrandLogoDims(
+  brand: LandingConfig["brand"],
+  surface: BrandLogoSurface,
+): LogoCustomDims {
+  if (surface === "landing") {
+    return logoSizeDims(brand.logo_size_landing, brand.logo_custom_landing);
+  }
+  if (surface === "auth") {
+    return logoSizeDims(brand.logo_size_auth, brand.logo_custom_auth);
+  }
+  return logoSizeDims(brand.logo_size_app, brand.logo_custom_app);
 }
 
 /** Shared shape for testimonials and board statements. */
@@ -87,14 +146,27 @@ export type LandingCeoMessage = {
 export type LandingConfig = {
   brand: {
     name: string;
+    /**
+     * Legacy single logo (pre multi-surface). Kept for back-compat;
+     * prefer `logo_url_landing` / `logo_url_auth` / `logo_url_app`.
+     */
     logo_url: string;
+    /** Public landing page brand mark */
+    logo_url_landing: string;
+    /** Sign-in / auth surfaces */
+    logo_url_auth: string;
+    /** Authenticated app shell (when no org white-label logo) */
+    logo_url_app: string;
     tagline: string;
     /** Public landing nav / footer brand mark */
     logo_size_landing: LogoDisplaySize;
+    logo_custom_landing: LogoCustomDims;
     /** Sign-in / auth brand panel */
     logo_size_auth: LogoDisplaySize;
+    logo_custom_auth: LogoCustomDims;
     /** Authenticated app sidebar + mobile header */
     logo_size_app: LogoDisplaySize;
+    logo_custom_app: LogoCustomDims;
   };
   /** Site-wide theme mode (light / dark). Palette colors still apply within the mode. */
   theme: LandingThemeMode;
@@ -472,10 +544,16 @@ export const DEFAULT_LANDING: LandingConfig = {
   brand: {
     name: "iProjectX",
     logo_url: "",
+    logo_url_landing: "",
+    logo_url_auth: "",
+    logo_url_app: "",
     tagline: "Enterprise PMO Command Center",
     logo_size_landing: "md",
+    logo_custom_landing: { ...DEFAULT_LOGO_CUSTOM },
     logo_size_auth: "lg",
+    logo_custom_auth: { heightPx: 48, maxWidthPx: 220 },
     logo_size_app: "md",
+    logo_custom_app: { ...DEFAULT_LOGO_CUSTOM },
   },
   theme: "light",
   apply_theme_to_auth: true,
@@ -781,6 +859,25 @@ export function mergeConfig(partial: any): LandingConfig {
   merged.brand = {
     ...DEFAULT_LANDING.brand,
     ...(merged.brand ?? {}),
+    logo_url: typeof merged.brand?.logo_url === "string" ? merged.brand.logo_url : "",
+    logo_url_landing:
+      typeof merged.brand?.logo_url_landing === "string"
+        ? merged.brand.logo_url_landing
+        : typeof merged.brand?.logo_url === "string"
+          ? merged.brand.logo_url
+          : "",
+    logo_url_auth:
+      typeof merged.brand?.logo_url_auth === "string"
+        ? merged.brand.logo_url_auth
+        : typeof merged.brand?.logo_url === "string"
+          ? merged.brand.logo_url
+          : "",
+    logo_url_app:
+      typeof merged.brand?.logo_url_app === "string"
+        ? merged.brand.logo_url_app
+        : typeof merged.brand?.logo_url === "string"
+          ? merged.brand.logo_url
+          : "",
     logo_size_landing: normalizeLogoSize(
       merged.brand?.logo_size_landing,
       DEFAULT_LANDING.brand.logo_size_landing,
@@ -792,6 +889,18 @@ export function mergeConfig(partial: any): LandingConfig {
     logo_size_app: normalizeLogoSize(
       merged.brand?.logo_size_app,
       DEFAULT_LANDING.brand.logo_size_app,
+    ),
+    logo_custom_landing: clampLogoCustom(
+      merged.brand?.logo_custom_landing,
+      DEFAULT_LANDING.brand.logo_custom_landing,
+    ),
+    logo_custom_auth: clampLogoCustom(
+      merged.brand?.logo_custom_auth,
+      DEFAULT_LANDING.brand.logo_custom_auth,
+    ),
+    logo_custom_app: clampLogoCustom(
+      merged.brand?.logo_custom_app,
+      DEFAULT_LANDING.brand.logo_custom_app,
     ),
   };
   merged.navigation = mergeNavigationConfig(merged.navigation);
@@ -837,7 +946,7 @@ export function applyPalettePreset(cfg: LandingConfig, presetId: string): Landin
 }
 
 /** Browser cache so refresh paints the last known theme immediately (no navy flash). */
-export const LANDING_CONFIG_CACHE_KEY = "pmo.landingConfig.v1";
+export const LANDING_CONFIG_CACHE_KEY = "pmo.landingConfig.v2";
 
 export function readCachedLandingConfig(): LandingConfig | null {
   if (typeof window === "undefined") return null;
@@ -851,20 +960,32 @@ export function readCachedLandingConfig(): LandingConfig | null {
 }
 
 /**
- * Cache for theme/brand paint only. Always forces signup off so a stale
- * localStorage value cannot flash "Get started" / Sign up before the loader
- * confirms the live platform setting.
+ * Cache for theme paint only. Logos are stripped so a stale cached mark
+ * never flashes before live config arrives (old logo → new logo blink).
+ * Signup is also forced off for the same reason.
  */
 export function readCachedLandingConfigForPaint(): LandingConfig | null {
   const cached = readCachedLandingConfig();
   if (!cached) return null;
-  return { ...cached, signup_enabled: false };
+  return {
+    ...cached,
+    signup_enabled: false,
+    brand: {
+      ...cached.brand,
+      logo_url: "",
+      logo_url_landing: "",
+      logo_url_auth: "",
+      logo_url_app: "",
+    },
+  };
 }
 
 export function writeCachedLandingConfig(config: LandingConfig) {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(LANDING_CONFIG_CACHE_KEY, JSON.stringify(config));
+    // Drop pre-v2 cache that could still paint stale logos.
+    window.localStorage.removeItem("pmo.landingConfig.v1");
   } catch {
     /* quota / private mode */
   }

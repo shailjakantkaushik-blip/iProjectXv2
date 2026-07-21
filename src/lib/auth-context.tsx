@@ -27,6 +27,12 @@ export interface Organization {
   ui_config?: {
     navigation?: any;
     focus_mode?: boolean;
+    branding?: {
+      logo_size_auth?: string;
+      logo_custom_auth?: { heightPx: number; maxWidthPx: number };
+      logo_size_app?: string;
+      logo_custom_app?: { heightPx: number; maxWidthPx: number };
+    };
     project_visibility?: {
       rules?: Array<{
         role: string;

@@ -28,12 +28,15 @@ import {
 import {
   DEFAULT_LANDING,
   fetchLandingConfig,
-  logoSizeDims,
+  resolveBrandLogoDims,
+  resolveBrandLogoUrl,
   readCachedLandingConfig,
   readCachedLandingConfigForPaint,
   type LandingConfig,
   type LandingItem,
+  type LogoDisplaySize,
 } from "@/lib/landing-config";
+import { StableBrandLogo } from "@/components/stable-brand-logo";
 
 export const Route = createFileRoute("/")({
   loader: async () => ({ cfg: await fetchLandingConfig() }),
@@ -186,24 +189,46 @@ function BrandMark({
 }: {
   cfg: LandingConfig;
   /** Override; defaults to configured landing logo size. */
-  size?: "sm" | "md" | "lg" | "xl";
+  size?: LogoDisplaySize;
   onDark?: boolean;
 }) {
   const p = cfg.palette;
   const token = size ?? cfg.brand.logo_size_landing ?? "md";
-  const dims = logoSizeDims(token);
-  const box = token === "xl" ? "h-12 w-12" : token === "lg" ? "h-11 w-11" : token === "sm" ? "h-7 w-7" : "h-8 w-8";
-  const diamond = token === "xl" || token === "lg" ? "h-5 w-5" : token === "sm" ? "h-3 w-3" : "h-4 w-4";
+  const dims =
+    size != null
+      ? resolveBrandLogoDims({ ...cfg.brand, logo_size_landing: size }, "landing")
+      : resolveBrandLogoDims(cfg.brand, "landing");
+  const logoUrl = resolveBrandLogoUrl(cfg.brand, "landing");
+  const box =
+    token === "xl" || (token === "custom" && dims.heightPx >= 48)
+      ? "h-12 w-12"
+      : token === "lg" || (token === "custom" && dims.heightPx >= 36)
+        ? "h-11 w-11"
+        : token === "sm" || (token === "custom" && dims.heightPx <= 24)
+          ? "h-7 w-7"
+          : "h-8 w-8";
+  const diamond =
+    token === "xl" || token === "lg" || dims.heightPx >= 36
+      ? "h-5 w-5"
+      : token === "sm" || dims.heightPx <= 24
+        ? "h-3 w-3"
+        : "h-4 w-4";
   const text =
-    token === "xl" ? "text-3xl" : token === "lg" ? "text-2xl" : token === "sm" ? "text-base" : "text-xl";
+    token === "xl" || dims.heightPx >= 52
+      ? "text-3xl"
+      : token === "lg" || dims.heightPx >= 40
+        ? "text-2xl"
+        : token === "sm" || dims.heightPx <= 24
+          ? "text-base"
+          : "text-xl";
 
-  if (cfg.brand.logo_url) {
+  if (logoUrl) {
     return (
-      <img
-        src={cfg.brand.logo_url}
+      <StableBrandLogo
+        src={logoUrl}
         alt={cfg.brand.name}
-        className="object-contain"
-        style={{ height: dims.heightPx, maxWidth: dims.maxWidthPx, width: "auto" }}
+        heightPx={size === "sm" ? Math.min(24, dims.heightPx) : dims.heightPx}
+        maxWidthPx={size === "sm" ? Math.min(120, dims.maxWidthPx) : dims.maxWidthPx}
       />
     );
   }

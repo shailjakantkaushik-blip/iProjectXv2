@@ -6,8 +6,8 @@ import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { clearMustChangePassword } from "@/lib/platform-admin.functions";
-import { DEFAULT_LANDING, fetchLandingConfig } from "@/lib/landing-config";
-import { AuthLayout, PasswordField } from "@/components/auth-layout";
+import { DEFAULT_LANDING, fetchLandingConfig, resolveBrandLogoUrl } from "@/lib/landing-config";
+import { AuthLayout, PasswordField, type AuthBrand } from "@/components/auth-layout";
 
 export const Route = createFileRoute("/force-password-change")({
   head: () => ({
@@ -19,6 +19,16 @@ export const Route = createFileRoute("/force-password-change")({
   component: ForcePwdPage,
 });
 
+function toAuthBrand(brand: typeof DEFAULT_LANDING.brand): AuthBrand {
+  return {
+    name: brand.name,
+    logo_url: resolveBrandLogoUrl(brand, "auth"),
+    tagline: brand.tagline,
+    logo_size_auth: brand.logo_size_auth,
+    logo_custom_auth: brand.logo_custom_auth,
+  };
+}
+
 function ForcePwdPage() {
   const navigate = useNavigate();
   const { session, loading, refresh } = useAuth();
@@ -26,7 +36,7 @@ function ForcePwdPage() {
   const [busy, setBusy] = useState(false);
   const [pwd, setPwd] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [brand, setBrand] = useState(DEFAULT_LANDING.brand);
+  const [brand, setBrand] = useState<AuthBrand>(() => toAuthBrand(DEFAULT_LANDING.brand));
 
   useEffect(() => {
     if (!loading && !session) navigate({ to: "/auth", replace: true });
@@ -34,7 +44,7 @@ function ForcePwdPage() {
 
   useEffect(() => {
     fetchLandingConfig()
-      .then((c) => setBrand(c.brand))
+      .then((c) => setBrand(toAuthBrand(c.brand)))
       .catch(() => {});
   }, []);
 

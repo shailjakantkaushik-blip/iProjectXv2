@@ -62,7 +62,17 @@ import { useAllowedPages } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { NotificationsBell } from "@/components/notifications-bell";
 import { CartoonCompanion } from "@/components/cartoon-mascots";
-import { fetchLandingConfig, logoSizeDims, readCachedLandingConfig } from "@/lib/landing-config";
+import {
+  clampLogoCustom,
+  fetchLandingConfig,
+  logoSizeDims,
+  normalizeLogoSize,
+  readCachedLandingConfig,
+  resolveBrandLogoUrl,
+  type LogoCustomDims,
+  type LogoDisplaySize,
+} from "@/lib/landing-config";
+import { StableBrandLogo } from "@/components/stable-brand-logo";
 import { resolveCombinedNavigation, type NavGroupDef } from "@/lib/navigation-config";
 import { useFocusMode } from "@/lib/use-focus-mode";
 import { CommandPalette, useCommandPaletteHotkey } from "@/components/command-palette";
@@ -237,8 +247,23 @@ export function AppShell({ children }: { children: ReactNode }) {
     organization?.brand_name || organization?.name || landing?.brand?.name || "PMO Enterprise";
   const primary = organization?.primary_color || undefined;
   const accent = organization?.accent_color || undefined;
-  const shellLogoUrl = organization?.logo_url || landing?.brand?.logo_url || "";
-  const appLogoDims = logoSizeDims(landing?.brand?.logo_size_app ?? cached?.brand?.logo_size_app ?? "md");
+  const orgBranding = (organization?.ui_config as { branding?: Record<string, unknown> } | null)
+    ?.branding;
+  const orgLogoSize = normalizeLogoSize(orgBranding?.logo_size_app, "md") as LogoDisplaySize;
+  const orgLogoCustom = clampLogoCustom(orgBranding?.logo_custom_app, {
+    heightPx: 32,
+    maxWidthPx: 160,
+  }) as LogoCustomDims;
+  const brandForApp = landing?.brand ?? cached?.brand;
+  const platformAppLogo = brandForApp ? resolveBrandLogoUrl(brandForApp, "app") : "";
+  // In-app: org white-label logo when set; otherwise platform app logo.
+  const shellLogoUrl = organization?.logo_url || platformAppLogo || "";
+  const appLogoDims = organization?.logo_url
+    ? logoSizeDims(orgLogoSize, orgLogoCustom)
+    : logoSizeDims(
+        brandForApp?.logo_size_app ?? "md",
+        brandForApp?.logo_custom_app,
+      );
 
   const pageTitle = useMemo(() => pageTitleFromPath(pathname, navGroups), [pathname, navGroups]);
 
@@ -274,14 +299,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     const h = compact ? Math.min(28, appLogoDims.heightPx) : appLogoDims.heightPx;
     const maxW = compact ? Math.min(120, appLogoDims.maxWidthPx) : appLogoDims.maxWidthPx;
     if (shellLogoUrl) {
-      return (
-        <img
-          src={shellLogoUrl}
-          alt=""
-          className="object-contain"
-          style={{ height: h, maxWidth: maxW, width: "auto" }}
-        />
-      );
+      return <StableBrandLogo src={shellLogoUrl} alt="" heightPx={h} maxWidthPx={maxW} />;
     }
     return <BarChart3 className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />;
   };
