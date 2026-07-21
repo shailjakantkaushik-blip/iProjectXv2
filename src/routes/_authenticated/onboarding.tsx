@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { PageLoading } from "@/components/page-loading";
 
 export const Route = createFileRoute("/_authenticated/onboarding")({
   component: Onboarding,
@@ -17,9 +18,14 @@ function Onboarding() {
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
 
+  // Anyone who already belongs to an org should never see create-org UI.
+  const alreadyProvisioned = Boolean(organization || profile?.org_id);
+
   useEffect(() => {
-    if (!loading && organization) navigate({ to: "/app", replace: true });
-  }, [loading, organization, navigate]);
+    if (!loading && alreadyProvisioned) {
+      navigate({ to: "/app", replace: true });
+    }
+  }, [loading, alreadyProvisioned, navigate]);
 
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -35,11 +41,15 @@ function Onboarding() {
     navigate({ to: "/app", replace: true });
   };
 
+  if (loading || !profile || alreadyProvisioned) {
+    return <PageLoading label="Loading workspace…" />;
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/20 px-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Welcome{profile?.full_name ? `, ${profile.full_name}` : ""}</CardTitle>
+          <CardTitle>Welcome{profile.full_name ? `, ${profile.full_name}` : ""}</CardTitle>
           <CardDescription>Create your organization to get started. You'll be the org admin.</CardDescription>
         </CardHeader>
         <CardContent>
