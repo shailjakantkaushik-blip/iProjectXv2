@@ -18,7 +18,7 @@ type PageLoadingProps = {
 export function PageLoading({
   label = "Loading…",
   fullScreen = true,
-  size = "lg",
+  size = "sm",
   className,
   style,
 }: PageLoadingProps) {
@@ -26,7 +26,7 @@ export function PageLoading({
     <div
       className={cn(
         "flex flex-col items-center justify-center gap-2 bg-background px-4",
-        fullScreen ? "min-h-screen w-full" : "min-h-[240px] w-full py-12",
+        fullScreen ? "min-h-screen w-full" : "min-h-[160px] w-full py-8",
         className,
       )}
       style={style}
@@ -39,5 +39,5 @@ export function PageLoading({
 
 /** Router default pending — used while route loaders run. */
 export function RoutePending() {
-  return <PageLoading label="Loading…" size="lg" />;
+  return <PageLoading label="Loading…" size="sm" />;
 }

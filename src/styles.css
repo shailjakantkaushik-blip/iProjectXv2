@@ -636,52 +636,52 @@ html[data-focus-mode="1"] .cartoon-banner,
 .processing-anim__pixel {
   position: absolute;
   z-index: 4;
-  width: 6px;
-  height: 6px;
-  border-radius: 1.5px;
+  width: 4px;
+  height: 4px;
+  border-radius: 1px;
   background: linear-gradient(135deg, #67e8f9, #c084fc);
-  box-shadow: 0 0 8px rgba(103, 232, 249, 0.7);
+  box-shadow: 0 0 6px rgba(103, 232, 249, 0.65);
   animation: processing-pixel 2s ease-in-out infinite;
 }
 .processing-anim__pixel--a {
-  top: 14%;
-  right: 6%;
+  top: 12%;
+  right: 4%;
   animation-delay: 0s;
 }
 .processing-anim__pixel--b {
-  top: 28%;
-  right: -2%;
-  width: 5px;
-  height: 5px;
+  top: 26%;
+  right: -4%;
+  width: 3px;
+  height: 3px;
   animation-delay: 0.25s;
 }
 .processing-anim__pixel--c {
-  top: 8%;
-  right: 18%;
-  width: 4px;
-  height: 4px;
+  top: 6%;
+  right: 16%;
+  width: 3px;
+  height: 3px;
   background: linear-gradient(135deg, #a78bfa, #f472b6);
   animation-delay: 0.5s;
 }
 .processing-anim__pixel--d {
-  top: 40%;
-  right: 2%;
-  width: 4px;
-  height: 4px;
+  top: 38%;
+  right: 0%;
+  width: 3px;
+  height: 3px;
   animation-delay: 0.75s;
 }
 .processing-anim__pixel--e {
-  top: 20%;
-  right: 28%;
-  width: 3px;
-  height: 3px;
+  top: 18%;
+  right: 24%;
+  width: 2px;
+  height: 2px;
   opacity: 0.85;
   animation-delay: 1s;
 }
 .processing-anim__dots span {
   display: inline-block;
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--primary) 70%, #a855f7);
   animation: processing-dot 1.2s ease-in-out infinite;

@@ -129,7 +129,7 @@ function AuthPending() {
       description="Sign in with your organisation account."
     >
       <div className="flex flex-col items-center justify-center py-8" aria-busy="true">
-        <ProcessingAnimation label="Preparing sign in…" size="lg" />
+        <ProcessingAnimation label="Preparing sign in…" size="sm" />
       </div>
     </AuthLayout>
   );
