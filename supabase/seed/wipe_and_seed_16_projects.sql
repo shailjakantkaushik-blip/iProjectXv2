@@ -11,6 +11,11 @@
 -- Also applies finance schema patches:
 --   fy_allocations.budget / forecast
 --   projects.forecast_at_completion
+--
+-- Finance model in seed:
+--   FY allocations = forward PLAN (budget + forecast)
+--   financials_monthly = planned + actual + forecast by month
+--   project capex/opex incurred aligned with monthly actuals story
 -- =========================================================================
 
 BEGIN;
