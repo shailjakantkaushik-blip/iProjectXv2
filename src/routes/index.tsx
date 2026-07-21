@@ -1077,7 +1077,10 @@ function CapabilityBento({ cfg }: { cfg: LandingConfig }) {
 function StatsStrip({ cfg }: { cfg: LandingConfig }) {
   const p = cfg.palette;
   return (
-    <section className="border-y border-white/5 py-16 text-white" style={{ background: p.navy }}>
+    <section
+      className="border-y border-white/5 py-16"
+      style={{ background: p.navy, color: p.textOnDark }}
+    >
       <div
         className={`mx-auto grid max-w-7xl gap-8 px-6 ${cfg.stats.length >= 4 ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2"}`}
       >
@@ -1103,7 +1106,7 @@ function StatBlock({
   const { ref, val } = useCountUp(value);
   return (
     <div className="text-center">
-      <div className="text-4xl font-bold" style={HEADING}>
+      <div className="text-4xl font-bold" style={{ ...HEADING, color: p.textOnDark }}>
         <span ref={ref}>{val}</span>
         {suffix ?? ""}
       </div>
