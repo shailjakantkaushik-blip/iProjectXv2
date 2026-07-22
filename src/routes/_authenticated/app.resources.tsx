@@ -635,6 +635,7 @@ function ResourcesPage() {
         </ExpandableChart>
       </SectionFrame>
 
+<<<<<<< HEAD
       <SectionFrame>
         <ExpandableChart title="Demand by Skill" heightClass="h-72">
           <BarChart data={bySkill} margin={{ top: 10, right: 10, left: 10, bottom: 40 }}>
@@ -663,6 +664,41 @@ function ResourcesPage() {
           </BarChart>
         </ExpandableChart>
       </SectionFrame>
+=======
+      <div className="grid gap-4 lg:grid-cols-2">
+        <SectionFrame>
+          <ExpandableChart title="Demand by Skill" heightClass="h-72">
+            <BarChart data={bySkill} margin={{ top: 28, right: 12, left: 8, bottom: 48 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+              <XAxis
+                dataKey="skill"
+                fontSize={10}
+                angle={-25}
+                textAnchor="end"
+                interval={0}
+                height={56}
+              />
+              <YAxis
+                fontSize={11}
+                // Leave headroom so top % labels are never clipped
+                domain={[0, (dataMax: number) => Math.ceil((dataMax || 0) * 1.18) || 10]}
+                label={{ value: "Allocation %", angle: -90, position: "insideLeft", fontSize: 11 }}
+              />
+              <Tooltip formatter={(v: number) => `${v}%`} />
+              <Bar dataKey="pct" fill="#0d9488" radius={[4, 4, 0, 0]}>
+                <LabelList
+                  dataKey="pct"
+                  position="top"
+                  offset={6}
+                  fontSize={10}
+                  fill="currentColor"
+                  formatter={(v: number) => `${v}%`}
+                />
+              </Bar>
+            </BarChart>
+          </ExpandableChart>
+        </SectionFrame>
+>>>>>>> origin/cursor/fix-demand-skill-labels-45cb
 
       <SectionFrame>
         <SectionTitle>Resource × Project Heatmap (total across months)</SectionTitle>
