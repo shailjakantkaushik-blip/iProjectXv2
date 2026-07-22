@@ -7,6 +7,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { TurnstileWidget, isTurnstileEnabled } from "@/components/turnstile";
 import { verifyTurnstile } from "@/lib/turnstile.functions";
@@ -29,6 +39,14 @@ import {
 } from "@/components/auth-layout";
 import { ProcessingAnimation, ProcessingOverlay } from "@/components/processing-animation";
 import { clearOrgAuthEntry, rememberOrgAuthEntry } from "@/lib/org-auth-entry";
+import { AlertTriangle } from "lucide-react";
+
+type OrgAccessAlert = {
+  title: string;
+  message: string;
+  /** When true, an existing session was kept (wrong org link opened while logged in). */
+  sessionPreserved: boolean;
+};
 
 type AuthSearch = { org?: string };
 
@@ -143,46 +161,82 @@ function AuthPage() {
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [mode, setMode] = useState<"auth" | "forgot">("auth");
   const [forgotEmail, setForgotEmail] = useState("");
+  const [orgAlert, setOrgAlert] = useState<OrgAccessAlert | null>(null);
+  /** Prevents re-firing the org membership gate after the user dismisses the alert. */
+  const [orgGateBlocked, setOrgGateBlocked] = useState(false);
   const captchaRequired = isTurnstileEnabled();
   // Org white-label links are invite-style: no public self-signup.
   const allowSignup = signupEnabled && !orgRequested;
   const targetOrgSlug = orgBrand?.slug || (orgRequested ? readOrgFromLocation() : undefined);
+  const orgLabel = orgBrand?.name || targetOrgSlug || "this organisation";
 
+  const showOrgAccessAlert = useCallback((alert: OrgAccessAlert) => {
+    setOrgAlert(alert);
+    setOrgGateBlocked(true);
+    toast.error(alert.title, { description: alert.message, duration: 8_000 });
+  }, []);
+
+  /**
+   * Verify the current session may use this org white-label link.
+   * @param signOutOnFail — true after a fresh password sign-in (clear the
+   *   rejected session). false when an existing session opened the wrong
+   *   org link — keep that session so other tabs are not wiped.
+   */
   const rejectWrongOrgSession = useCallback(
-    async (slug: string): Promise<boolean> => {
+    async (slug: string, signOutOnFail: boolean): Promise<boolean> => {
       try {
         const result = await assertOrgMembership({ data: { slug } });
         if (result.allowed) {
           rememberOrgAuthEntry(result.orgSlug);
           return true;
         }
-        await supabase.auth.signOut();
-        toast.error(result.message);
+        if (signOutOnFail) {
+          await supabase.auth.signOut({ scope: "local" });
+        }
+        showOrgAccessAlert({
+          title: "Wrong organisation sign-in link",
+          message: result.message,
+          sessionPreserved: !signOutOnFail,
+        });
         return false;
       } catch (e) {
-        await supabase.auth.signOut();
-        toast.error(
-          e instanceof Error
-            ? e.message
-            : "Could not verify organisation membership. Please try again.",
-        );
+        if (signOutOnFail) {
+          await supabase.auth.signOut({ scope: "local" });
+        }
+        showOrgAccessAlert({
+          title: "Could not verify organisation access",
+          message:
+            e instanceof Error
+              ? e.message
+              : "Could not verify organisation membership. Please try again.",
+          sessionPreserved: !signOutOnFail,
+        });
         return false;
       }
     },
-    [assertOrgMembership],
+    [assertOrgMembership, showOrgAccessAlert],
   );
 
   useEffect(() => {
     if (loading || !session) return;
+    // Stay on the auth page while the wrong-org alert is open / was dismissed.
+    if (orgAlert || orgGateBlocked) return;
     let cancelled = false;
     (async () => {
       if (orgRequested) {
         if (!targetOrgSlug) {
-          await supabase.auth.signOut();
-          if (!cancelled) toast.error("Invalid organisation sign-in link.");
+          if (!cancelled) {
+            showOrgAccessAlert({
+              title: "Invalid organisation sign-in link",
+              message:
+                "This link is missing a valid organisation. Use the link from your administrator, or sign in on the general page.",
+              sessionPreserved: true,
+            });
+          }
           return;
         }
-        const ok = await rejectWrongOrgSession(targetOrgSlug);
+        // Existing session + wrong org link: keep session, alert the user.
+        const ok = await rejectWrongOrgSession(targetOrgSlug, false);
         if (cancelled || !ok) return;
       }
       if (!cancelled) navigate({ to: "/app", replace: true });
@@ -190,7 +244,17 @@ function AuthPage() {
     return () => {
       cancelled = true;
     };
-  }, [session, loading, orgRequested, targetOrgSlug, rejectWrongOrgSession, navigate]);
+  }, [
+    session,
+    loading,
+    orgRequested,
+    targetOrgSlug,
+    rejectWrongOrgSession,
+    navigate,
+    orgAlert,
+    orgGateBlocked,
+    showOrgAccessAlert,
+  ]);
 
   useEffect(() => {
     // Org white-label entry: remember so sign-out returns here.
@@ -201,19 +265,6 @@ function AuthPage() {
 
   const handleToken = useCallback((t: string) => setCaptchaToken(t), []);
   const handleExpire = useCallback(() => setCaptchaToken(null), []);
-
-  const onForgot = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!forgotEmail) return;
-    setBusy(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-    setBusy(false);
-    if (error) return toast.error(error.message);
-    toast.success("Password reset link sent. Check your email.");
-    setMode("auth");
-  };
 
   const ensureCaptcha = async (): Promise<boolean> => {
     if (!captchaRequired) return true;
@@ -231,10 +282,30 @@ function AuthPage() {
     }
   };
 
+  const onForgot = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!forgotEmail) return;
+    setBusy(true);
+    if (!(await ensureCaptcha())) {
+      setBusy(false);
+      return;
+    }
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setBusy(false);
+    setCaptchaToken(null);
+    if (error) return toast.error(error.message);
+    toast.success("Password reset link sent. Check your email.");
+    setMode("auth");
+  };
+
   const onSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     setBusy(true);
+    setOrgAlert(null);
+    setOrgGateBlocked(false);
     if (!(await ensureCaptcha())) {
       setBusy(false);
       return;
@@ -250,11 +321,18 @@ function AuthPage() {
 
     if (orgRequested) {
       if (!targetOrgSlug) {
-        await supabase.auth.signOut();
+        await supabase.auth.signOut({ scope: "local" });
         setBusy(false);
-        return toast.error("Invalid organisation sign-in link.");
+        showOrgAccessAlert({
+          title: "Invalid organisation sign-in link",
+          message:
+            "This link is missing a valid organisation. Use the link from your administrator, or sign in on the general page.",
+          sessionPreserved: false,
+        });
+        return;
       }
-      const ok = await rejectWrongOrgSession(targetOrgSlug);
+      // Fresh password sign-in on the wrong org link — clear that session.
+      const ok = await rejectWrongOrgSession(targetOrgSlug, true);
       setBusy(false);
       if (!ok) return;
       toast.success("Signed in");
@@ -267,6 +345,30 @@ function AuthPage() {
     setBusy(false);
     toast.success("Signed in");
     navigate({ to: "/app", replace: true });
+  };
+
+  const dismissOrgAlert = () => setOrgAlert(null);
+
+  const goToWorkspaceFromAlert = () => {
+    setOrgAlert(null);
+    navigate({ to: "/app", replace: true });
+  };
+
+  const signOutFromAlert = async () => {
+    setOrgAlert(null);
+    setOrgGateBlocked(false);
+    await supabase.auth.signOut({ scope: "local" });
+    clearOrgAuthEntry();
+    toast.message("Signed out", {
+      description: "You can now sign in with a different account.",
+    });
+  };
+
+  const goToGeneralAuth = () => {
+    setOrgAlert(null);
+    setOrgGateBlocked(false);
+    clearOrgAuthEntry();
+    navigate({ to: "/auth", replace: true });
   };
 
   const onSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -317,9 +419,68 @@ function AuthPage() {
     ? `Sign in with your ${orgBrand.name} account. Only members of this organisation can use this link.`
     : "Sign in with your organisation account. Only members of this organisation can use this link.";
 
+  const orgAlertDialog = (
+    <AlertDialog open={Boolean(orgAlert)} onOpenChange={(open) => !open && dismissOrgAlert()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-amber-500" />
+            {orgAlert?.title || "Organisation access"}
+          </AlertDialogTitle>
+          <AlertDialogDescription className="space-y-3 text-left">
+            <span className="block">{orgAlert?.message}</span>
+            {orgAlert?.sessionPreserved ? (
+              <span className="block text-foreground/80">
+                You still have an active session (for example in another tab). Opening the{" "}
+                <strong>{orgLabel}</strong> link does not match that account’s organisation.
+                Continuing to your workspace keeps you signed in; signing out ends the session in
+                all tabs on this site.
+              </span>
+            ) : (
+              <span className="block text-foreground/80">
+                Use your organisation’s own sign-in link, or the general sign-in page if you are
+                not joining via a white-label invite.
+              </span>
+            )}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          {orgAlert?.sessionPreserved ? (
+            <>
+              <AlertDialogCancel onClick={signOutFromAlert}>Sign out</AlertDialogCancel>
+              <AlertDialogAction onClick={goToWorkspaceFromAlert}>
+                Go to my workspace
+              </AlertDialogAction>
+            </>
+          ) : (
+            <>
+              <AlertDialogCancel onClick={dismissOrgAlert}>Try again</AlertDialogCancel>
+              <AlertDialogAction onClick={goToGeneralAuth}>General sign-in</AlertDialogAction>
+            </>
+          )}
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+
+  const orgAlertBanner =
+    orgAlert && !orgAlert.sessionPreserved ? (
+      <div
+        role="alert"
+        className="mb-4 flex gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100"
+      >
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+        <div className="min-w-0 space-y-1">
+          <div className="font-semibold">{orgAlert.title}</div>
+          <p className="text-xs leading-relaxed opacity-90">{orgAlert.message}</p>
+        </div>
+      </div>
+    ) : null;
+
   if (mode === "forgot") {
     return (
       <>
+        {orgAlertDialog}
         <ProcessingOverlay open={busy} label="Sending reset link…" />
         <AuthLayout
           platform={brand}
@@ -351,7 +512,14 @@ function AuthPage() {
               className="h-10"
             />
           </div>
-          <Button type="submit" className="h-10 w-full" disabled={busy || !forgotEmail}>
+          {captchaRequired && (
+            <TurnstileWidget onToken={handleToken} onExpire={handleExpire} />
+          )}
+          <Button
+            type="submit"
+            className="h-10 w-full"
+            disabled={busy || !forgotEmail || (captchaRequired && !captchaToken)}
+          >
             {busy ? "Sending…" : "Send reset link"}
           </Button>
         </form>
@@ -362,6 +530,7 @@ function AuthPage() {
 
   return (
     <>
+      {orgAlertDialog}
       <ProcessingOverlay
         open={busy}
         label={orgRequested ? "Verifying organisation access…" : "Signing you in…"}
@@ -388,6 +557,7 @@ function AuthPage() {
         </span>
       }
     >
+      {orgAlertBanner}
       {allowSignup ? (
         <Tabs defaultValue="signin">
           <TabsList className="grid h-10 w-full grid-cols-2">

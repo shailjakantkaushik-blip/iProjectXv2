@@ -11,8 +11,20 @@ export const verifyTurnstile = createServerFn({ method: "POST" })
       process.env.CF_TURNSTILE_SECRET_KEY ||
       process.env.NEXT_TURNSTILE_SECRET_KEY;
 
-    // If not configured on the server, treat as disabled (dev mode).
-    if (!secret) return { ok: true, disabled: true };
+    // Production must fail closed — never skip bot checks when the secret is missing.
+    if (!secret) {
+      const prod =
+        process.env.NODE_ENV === "production" ||
+        process.env.VERCEL_ENV === "production" ||
+        process.env.VERCEL_ENV === "preview";
+      if (prod) {
+        throw new Error(
+          "Bot check is not configured on the server. Sign-in is temporarily unavailable.",
+        );
+      }
+      // Local/dev convenience when Turnstile secret is unset.
+      return { ok: true, disabled: true };
+    }
 
     const body = new URLSearchParams();
     body.append("secret", secret);
