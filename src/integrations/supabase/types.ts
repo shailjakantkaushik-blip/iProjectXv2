@@ -1408,6 +1408,12 @@ export type Database = {
         Row: {
           actual_end_date: string | null
           actual_start_date: string | null
+          baseline_benefits: number | null
+          baseline_budget: number | null
+          baseline_capex: number | null
+          baseline_date: string | null
+          baseline_label: string | null
+          baseline_opex: number | null
           benefits_realised: number | null
           benefits_target: number | null
           brief: Json
@@ -1443,6 +1449,12 @@ export type Database = {
         Insert: {
           actual_end_date?: string | null
           actual_start_date?: string | null
+          baseline_benefits?: number | null
+          baseline_budget?: number | null
+          baseline_capex?: number | null
+          baseline_date?: string | null
+          baseline_label?: string | null
+          baseline_opex?: number | null
           benefits_realised?: number | null
           benefits_target?: number | null
           brief?: Json
@@ -1480,6 +1492,12 @@ export type Database = {
         Update: {
           actual_end_date?: string | null
           actual_start_date?: string | null
+          baseline_benefits?: number | null
+          baseline_budget?: number | null
+          baseline_capex?: number | null
+          baseline_date?: string | null
+          baseline_label?: string | null
+          baseline_opex?: number | null
           benefits_realised?: number | null
           benefits_target?: number | null
           brief?: Json

@@ -1,6 +1,8 @@
 import * as XLSX from "xlsx";
 import { TABLES, type TableDef, type FieldDef } from "@/lib/data-tables";
 import { supabase } from "@/integrations/supabase/client";
+import { syncScheduleDates } from "@/lib/project-dates";
+import { persistCurrentPhaseFromGates } from "@/lib/project-phase";
 
 // ---------- Legacy exports (kept for compatibility) ----------
 export interface ProjectRow {
@@ -15,6 +17,10 @@ export interface ProjectRow {
   delivery_method?: string | null;
   start_date?: string | null;
   end_date?: string | null;
+  planned_start_date?: string | null;
+  planned_end_date?: string | null;
+  actual_start_date?: string | null;
+  actual_end_date?: string | null;
   target_go_live?: string | null;
   budget?: number;
   capex_approved?: number;
@@ -64,10 +70,11 @@ function toExportRow(
   for (const f of t.fields) {
     const v = row[f.key];
     if (f.fk === "project") {
-      out["project_code"] = v ? projectById.get(String(v)) ?? "" : "";
-      // Second FK on dependencies etc. handled by name below
+      // Predecessor FK must not overwrite the successor project_code column.
       if (f.key === "depends_on_project_id") {
         out["depends_on_project_code"] = v ? projectById.get(String(v)) ?? "" : "";
+      } else {
+        out["project_code"] = v ? projectById.get(String(v)) ?? "" : "";
       }
     } else if (f.fk === "bu") {
       out["bu_code"] = v ? buById.get(String(v)) ?? "" : "";
@@ -110,6 +117,9 @@ export async function exportOrganizationWorkbook(orgId: string, orgName: string)
     { A: "", B: "" },
     { A: "How to update", B: "Edit values below (never rename headers). Add rows at the bottom. Upload via Data Editor → Upload. Admin role required." },
     { A: "Match keys", B: "Rows match on the keys listed per sheet. New codes insert; existing codes update." },
+    { A: "Project dates", B: "Edit planned_* and actual_* dates. start_date/end_date (Schedule Start/End) auto-sync as Actual → else Planned." },
+    { A: "Current phase", B: "Prefer Stage Gates sheet status. current_phase is refreshed from the in-flight gate after gate rows are saved." },
+    { A: "FK columns", B: "Use project_code / bu_code / resource_name (not UUIDs). Dependencies also use depends_on_project_code." },
     { A: "", B: "" },
     { A: "Finance model (canonical)", B: "" },
     { A: "1. Projects", B: "budget = approved funding; capex/opex approved & incurred; forecast_at_completion (FAC); benefits_* are rollups." },
@@ -255,6 +265,11 @@ async function importTableRows(orgId: string, t: TableDef, rows: Dict[]): Promis
 
     if (!hasRequired) { report.skipped++; continue; }
 
+    // Keep legacy schedule window aligned for Projects sheet imports.
+    if (t.key === "projects") {
+      Object.assign(payload, syncScheduleDates(payload as any));
+    }
+
     // Match against existing
     const key = t.matchOn && t.matchOn.length ? buildMatchKeyFromPayload(t, payload, raw) : null;
     const existingId = key ? existingByKey.get(key) : undefined;
@@ -267,6 +282,25 @@ async function importTableRows(orgId: string, t: TableDef, rows: Dict[]): Promis
       const { error } = await (supabase as any).from(t.key).insert(payload);
       if (error) report.errors.push(`Insert ${key ?? "(row)"}: ${error.message}`);
       else report.inserted++;
+    }
+  }
+
+  // After stage gates import, mirror current phase onto each touched project
+  // (DB trigger also does this when migration is applied).
+  if (t.key === "stage_gates" && (report.inserted > 0 || report.updated > 0)) {
+    const touched = new Set<string>();
+    for (const raw of rows) {
+      const code = raw["project_code"] ?? raw["project code"];
+      if (!code) continue;
+      const pid = projectByCode.get(String(code).trim());
+      if (pid) touched.add(pid);
+    }
+    for (const pid of touched) {
+      try {
+        await persistCurrentPhaseFromGates(supabase as any, pid);
+      } catch (e: any) {
+        report.errors.push(`Phase sync ${pid}: ${e?.message ?? "failed"}`);
+      }
     }
   }
 
@@ -435,8 +469,16 @@ export async function parseWorkbook(file: File): Promise<ProjectRow[]> {
   const sheetName = wb.SheetNames.find((n) => n.toLowerCase() === "projects") || wb.SheetNames[0];
   const ws = wb.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json<Dict>(ws, { defval: null });
-  const numericCols = ["budget","capex_approved","capex_incurred","opex_approved","opex_incurred","forecast_at_completion","benefits_target","benefits_realised","roi_percent"];
-  const dateCols = ["start_date","end_date","target_go_live","planned_start_date","planned_end_date","actual_start_date","actual_end_date"];
+  const numericCols = [
+    "budget","capex_approved","capex_incurred","opex_approved","opex_incurred",
+    "forecast_at_completion","benefits_target","benefits_realised","roi_percent",
+    "baseline_budget","baseline_capex","baseline_opex","baseline_benefits",
+  ];
+  const dateCols = [
+    "start_date","end_date","target_go_live",
+    "planned_start_date","planned_end_date","actual_start_date","actual_end_date",
+    "baseline_date",
+  ];
   const out: ProjectRow[] = [];
   for (const r of rows) {
     if (!r.name) continue;
@@ -454,9 +496,18 @@ export async function parseWorkbook(file: File): Promise<ProjectRow[]> {
 }
 
 export function exportProjects(projects: Record<string, unknown>[]) {
+  const dateCols = new Set(
+    (TABLES.find((t) => t.key === "projects")?.fields ?? [])
+      .filter((f) => f.type === "date")
+      .map((f) => f.key),
+  );
   const rows = projects.map((p) => {
     const o: Dict = {};
-    for (const c of PROJECT_COLUMNS) o[c] = p[c] ?? "";
+    for (const c of PROJECT_COLUMNS) {
+      const v = p[c];
+      if (dateCols.has(c)) o[c] = dateOnly(v);
+      else o[c] = v ?? "";
+    }
     return o;
   });
   const ws = XLSX.utils.json_to_sheet(rows, { header: PROJECT_COLUMNS as string[] });
