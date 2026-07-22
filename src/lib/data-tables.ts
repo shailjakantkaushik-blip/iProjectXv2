@@ -141,6 +141,9 @@ export const TABLES: TableDef[] = [
   {
     key: "milestones",
     label: "Milestones",
+    // Stage-gate rows auto-sync into milestones; use this sheet for add-on
+    // (non-gate) milestones only. Matching by project + name avoids clobbering
+    // gate-linked rows that share a gate name.
     matchOn: ["project_code", "name"],
     orderBy: "planned_date",
     fields: [

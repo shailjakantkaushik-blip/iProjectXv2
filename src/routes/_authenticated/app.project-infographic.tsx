@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { downloadProjectBriefPPT } from "@/lib/project-brief-ppt";
 import { toPng } from "html-to-image";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { isDoneGateStatus } from "@/lib/project-phase";
 
 export const Route = createFileRoute("/_authenticated/app/project-infographic")({
   validateSearch: (s: Record<string, unknown>) => ({ pid: (s.pid as string) || "" }),
@@ -50,14 +51,18 @@ const PHASES = [
 ];
 
 const STATUS_STYLE: Record<string, { dot: string; text: string; ring: string }> = {
+  Approved: { dot: "bg-emerald-500", text: "text-emerald-700", ring: "ring-emerald-200" },
   Complete: { dot: "bg-emerald-500", text: "text-emerald-700", ring: "ring-emerald-200" },
   Completed: { dot: "bg-emerald-500", text: "text-emerald-700", ring: "ring-emerald-200" },
   Passed: { dot: "bg-emerald-500", text: "text-emerald-700", ring: "ring-emerald-200" },
+  "In Review": { dot: "bg-sky-500", text: "text-sky-700", ring: "ring-sky-200" },
   "In Progress": { dot: "bg-blue-500", text: "text-blue-700", ring: "ring-blue-200" },
   "Not Started": { dot: "bg-slate-300", text: "text-slate-600", ring: "ring-slate-200" },
   Pending: { dot: "bg-slate-300", text: "text-slate-600", ring: "ring-slate-200" },
+  "On Hold": { dot: "bg-amber-500", text: "text-amber-700", ring: "ring-amber-200" },
   Delayed: { dot: "bg-amber-500", text: "text-amber-700", ring: "ring-amber-200" },
   Blocked: { dot: "bg-red-500", text: "text-red-700", ring: "ring-red-200" },
+  Rejected: { dot: "bg-red-500", text: "text-red-700", ring: "ring-red-200" },
 };
 
 function money(n: number) {
@@ -459,7 +464,7 @@ function InfographicPage() {
         100,
         Math.max(0, ((d.getTime() - startDate.getTime()) / timelineMs) * 100),
       );
-      const done = p.status === "Complete" || p.status === "Completed" || p.status === "Passed";
+      const done = isDoneGateStatus(p.status);
       return { name: p.name, left, done, status: p.status };
     })
     .filter(Boolean) as { name: string; left: number; done: boolean; status: string }[];
@@ -682,8 +687,7 @@ function InfographicPage() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8">
           {phaseCards.map((p) => {
             const s = STATUS_STYLE[p.status] || STATUS_STYLE["Not Started"];
-            const done =
-              p.status === "Complete" || p.status === "Completed" || p.status === "Passed";
+            const done = isDoneGateStatus(p.status);
             return (
               <div
                 key={p.name}
@@ -692,6 +696,7 @@ function InfographicPage() {
                 <div className="flex items-start gap-2">
                   <div
                     className={`w-5 h-5 rounded-full ${s.dot} flex items-center justify-center text-white text-[10px] font-bold shrink-0`}
+                    title={done ? "Approved / completed" : p.status}
                   >
                     {done ? "✓" : "○"}
                   </div>
@@ -968,7 +973,7 @@ function InfographicPage() {
                     <td className="font-mono">SG{String(i + 1).padStart(4, "0")}</td>
                     <td className="font-mono text-blue-600">{project.project_code || "—"}</td>
                     <td>{project.name}</td>
-                    <td>{g.name}</td>
+                    <td>{g.gate_name}</td>
                     <td>{fmtDate(g.planned_date)}</td>
                     <td>{g.actual_date ? fmtDate(g.actual_date) : "NA"}</td>
                     <td>{g.status || "Planned"}</td>

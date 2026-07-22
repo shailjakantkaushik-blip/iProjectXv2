@@ -127,7 +127,7 @@ export async function exportOrganizationWorkbook(orgId: string, orgName: string)
     { A: "3. FY Allocations", B: "Forward PLAN: budget + forecast $ per FY. Saving in-app cascades into monthly planned/forecast." },
     { A: "4. Financials (Monthly)", B: "Execution: planned/forecast (from FY) + actual after kickoff. YYYY-MM-01. Sync incurred from actuals on Financials." },
     { A: "5. ROI %", B: "Target ROI = (benefits_target − budget) / budget × 100. Store on Projects; realised ROI is computed from incurred + realised benefits." },
-    { A: "6. Stage gates", B: "gate_name must match Stage Gate Definitions. current_phase on Projects mirrors the in-flight gate." },
+    { A: "6. Stage gates", B: "gate_name must match Stage Gate Definitions. current_phase mirrors the in-flight gate. Each gate auto-creates/updates a linked milestone; use Milestones sheet only for add-on (non-gate) dates." },
     { A: "7. Resource allocations", B: "allocation_percent is % of FTE for that month. Multiple projects in the same month are summed in capacity views." },
   ];
   const readmeSheet = XLSX.utils.json_to_sheet(readme, { skipHeader: true });

@@ -1127,6 +1127,7 @@ export type Database = {
           owner: string | null
           planned_date: string | null
           project_id: string
+          stage_gate_id: string | null
           status: string | null
           updated_at: string
         }
@@ -1140,6 +1141,7 @@ export type Database = {
           owner?: string | null
           planned_date?: string | null
           project_id: string
+          stage_gate_id?: string | null
           status?: string | null
           updated_at?: string
         }
@@ -1153,6 +1155,7 @@ export type Database = {
           owner?: string | null
           planned_date?: string | null
           project_id?: string
+          stage_gate_id?: string | null
           status?: string | null
           updated_at?: string
         }
@@ -1169,6 +1172,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "milestones_stage_gate_id_fkey"
+            columns: ["stage_gate_id"]
+            isOneToOne: true
+            referencedRelation: "stage_gates"
             referencedColumns: ["id"]
           },
         ]

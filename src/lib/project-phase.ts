@@ -53,6 +53,12 @@ export function isApprovedGateStatus(status: string | null | undefined) {
   return normLabel(status || "") === "approved";
 }
 
+/** Approved / completed gate — drives green lights and “done” markers. */
+export function isDoneGateStatus(status: string | null | undefined) {
+  const s = normLabel(status || "");
+  return s === "approved" || s === "complete" || s === "completed" || s === "passed";
+}
+
 export function isRejectedGateStatus(status: string | null | undefined) {
   return normLabel(status || "") === "rejected";
 }
