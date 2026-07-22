@@ -346,10 +346,56 @@ export function hasCustomNavigation(config: unknown): boolean {
   return false;
 }
 
+/** Browser cache so org nav paints before auth/org hydrate (no Governance flash). */
+export const ORG_NAV_CACHE_KEY = "pmo.orgNavigation.v1";
+
+export type OrgNavCache = {
+  orgId: string;
+  navigation: NavigationConfig;
+};
+
+export function readCachedOrgNavigation(): OrgNavCache | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(ORG_NAV_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as OrgNavCache;
+    if (!parsed?.orgId || !hasCustomNavigation(parsed.navigation)) return null;
+    return {
+      orgId: String(parsed.orgId),
+      navigation: scopeNavigationToCatalog(parsed.navigation, APP_NAV_GROUPS),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function writeCachedOrgNavigation(orgId: string, navigation: NavigationConfig) {
+  if (typeof window === "undefined" || !orgId || !hasCustomNavigation(navigation)) return;
+  try {
+    const payload: OrgNavCache = {
+      orgId,
+      navigation: scopeNavigationToCatalog(navigation, APP_NAV_GROUPS),
+    };
+    window.localStorage.setItem(ORG_NAV_CACHE_KEY, JSON.stringify(payload));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+export function clearCachedOrgNavigation() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(ORG_NAV_CACHE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
- * Platform config is the base reference. When the organisation has a custom
- * navigation blob, that overrides workspace groups. Platform section always
- * comes from platform config. Empty org blobs do not replace platform.
+ * Organisation navigation takes precedence for workspace groups whenever a
+ * custom org blob exists. Platform navigation is the fallback for /app and
+ * always supplies the Platform admin section.
  */
 export function resolveCombinedNavigation(
   platformConfig: NavigationConfig | null | undefined,
@@ -363,8 +409,7 @@ export function resolveCombinedNavigation(
     return platformApplied;
   }
 
-  // Org override for workspace only — merge against APP catalog so Platform
-  // paths never leak into org structure, and saved placements stay sticky.
+  // Org wins for workspace IA — never mix platform item placement into app groups.
   const appPart = applyNavigationConfig(orgConfig, APP_NAV_GROUPS);
   return [...appPart, ...platformSection];
 }

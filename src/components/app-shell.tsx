@@ -75,7 +75,15 @@ import {
   type LogoDisplaySize,
 } from "@/lib/landing-config";
 import { StableBrandLogo } from "@/components/stable-brand-logo";
-import { resolveCombinedNavigation, type NavGroupDef } from "@/lib/navigation-config";
+import {
+  clearCachedOrgNavigation,
+  hasCustomNavigation,
+  readCachedOrgNavigation,
+  resolveCombinedNavigation,
+  writeCachedOrgNavigation,
+  type NavGroupDef,
+  type NavigationConfig,
+} from "@/lib/navigation-config";
 import { useFocusMode } from "@/lib/use-focus-mode";
 import { CommandPalette, useCommandPaletteHotkey } from "@/components/command-palette";
 import { cn } from "@/lib/utils";
@@ -208,35 +216,61 @@ export function AppShell({ children }: { children: ReactNode }) {
   const desktopNavRef = useRef<HTMLElement | null>(null);
   const mobileNavRef = useRef<HTMLElement | null>(null);
 
-  const [orgNav, setOrgNav] = useState(organization?.ui_config?.navigation ?? null);
+  /**
+   * Org navigation takes precedence. Seed from live org config, else last
+   * cached org nav, so we never flash platform Governance placement while
+   * auth/org is still hydrating.
+   */
+  const [orgNav, setOrgNav] = useState<NavigationConfig | null>(() => {
+    const live = organization?.ui_config?.navigation;
+    if (hasCustomNavigation(live)) return live as NavigationConfig;
+    return readCachedOrgNavigation()?.navigation ?? null;
+  });
 
   useEffect(() => {
-    setOrgNav(organization?.ui_config?.navigation ?? null);
-  }, [organization?.ui_config?.navigation]);
+    // Don't clear org nav when organization is briefly null (auth refresh) —
+    // that was the Governance ↔ Org Admin flicker.
+    if (!organization?.id) return;
+    const live = organization.ui_config?.navigation ?? null;
+    if (hasCustomNavigation(live)) {
+      const nav = live as NavigationConfig;
+      setOrgNav(nav);
+      writeCachedOrgNavigation(organization.id, nav);
+    } else {
+      setOrgNav(null);
+      clearCachedOrgNavigation();
+    }
+  }, [organization?.id, organization?.ui_config?.navigation]);
 
   useEffect(() => {
     const onOrgUi = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.navigation) setOrgNav(detail.navigation);
+      const detail = (e as CustomEvent).detail as { navigation?: NavigationConfig } | undefined;
+      const nav = detail?.navigation ?? null;
+      if (hasCustomNavigation(nav)) {
+        setOrgNav(nav);
+        if (organization?.id) writeCachedOrgNavigation(organization.id, nav as NavigationConfig);
+      } else if (detail && "navigation" in detail) {
+        setOrgNav(null);
+        clearCachedOrgNavigation();
+      }
     };
     window.addEventListener("pmo:org-ui-config-change", onOrgUi);
     return () => window.removeEventListener("pmo:org-ui-config-change", onOrgUi);
-  }, []);
+  }, [organization?.id]);
 
   const [cached] = useState(() => readCachedLandingConfig());
   const { data: landing } = useQuery({
     queryKey: ["landing-config"],
     queryFn: fetchLandingConfig,
     staleTime: 60_000,
-    // Keep last known platform nav while refetching — avoids Governance/Org Admin flicker.
     initialData: cached ?? undefined,
     placeholderData: (prev) => prev ?? cached ?? undefined,
   });
 
   const navGroups = useMemo(() => {
-    // Platform settings are the reference; org ui_config.navigation overrides when set.
+    // Org custom nav wins for workspace groups; platform is fallback + Platform section.
     const platformNav = landing?.navigation ?? cached?.navigation ?? null;
-    return resolveCombinedNavigation(platformNav, orgNav ?? null);
+    return resolveCombinedNavigation(platformNav, orgNav);
   }, [landing?.navigation, cached?.navigation, orgNav]);
 
   const visibleNavGroups = useMemo(() => {

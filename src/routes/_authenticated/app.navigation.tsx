@@ -11,6 +11,7 @@ import {
   APP_NAV_GROUPS,
   defaultAppNavigationConfig,
   scopeNavigationToCatalog,
+  writeCachedOrgNavigation,
   type NavigationConfig,
 } from "@/lib/navigation-config";
 import { fetchLandingConfig } from "@/lib/landing-config";
@@ -77,6 +78,7 @@ function OrgNavigationPage() {
         .update({ ui_config: next as any })
         .eq("id", organization.id);
       if (error) throw error;
+      writeCachedOrgNavigation(organization.id, next.navigation!);
       toast.success("Organisation navigation saved.");
       await refresh();
       window.dispatchEvent(new CustomEvent("pmo:org-ui-config-change", { detail: next }));
