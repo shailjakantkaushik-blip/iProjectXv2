@@ -83,6 +83,15 @@
   --accent-foreground: #ffffff;
   --accent2: #15803d;
 
+  /*
+   * Auth left-panel tokens — match DEFAULT_PALETTE (iProjectX Classic).
+   * Kept separate from --primary so a delayed theme boot / Cloudflare
+   * challenge never flashes the bright app-button blue onto the brand panel.
+   */
+  --auth-panel-accent: #3b6fa0;
+  --auth-panel-navy: #0f1b3d;
+  --auth-panel-deep: #0b1428;
+
   --destructive: #dc2626;
   --destructive-foreground: #ffffff;
 

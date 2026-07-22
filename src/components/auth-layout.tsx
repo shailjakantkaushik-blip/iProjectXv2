@@ -214,9 +214,11 @@ export function AuthLayout({
       <aside
         className="relative hidden w-[44%] max-w-xl flex-col justify-between overflow-hidden px-10 py-10 lg:flex xl:w-[46%]"
         style={{
+          // Dedicated auth-panel tokens (not --primary) so reload / Cloudflare
+          // challenge delays never flash the default app accent blue.
           background:
-            "linear-gradient(165deg, color-mix(in srgb, var(--primary) 88%, #0f1b3d) 0%, color-mix(in srgb, var(--primary) 42%, #0f1b3d) 48%, #0b1428 100%)",
-          color: "var(--primary-foreground)",
+            "linear-gradient(165deg, color-mix(in srgb, var(--auth-panel-accent) 88%, var(--auth-panel-navy)) 0%, color-mix(in srgb, var(--auth-panel-accent) 42%, var(--auth-panel-navy)) 48%, var(--auth-panel-deep) 100%)",
+          color: "#ffffff",
         }}
       >
         <div
@@ -273,7 +275,7 @@ export function AuthLayout({
           className="pointer-events-none absolute inset-0 opacity-60"
           style={{
             background:
-              "radial-gradient(ellipse 70% 50% at 100% 0%, color-mix(in srgb, var(--primary) 12%, transparent), transparent 55%), radial-gradient(ellipse 50% 40% at 0% 100%, color-mix(in srgb, var(--secondary) 70%, transparent), transparent 50%)",
+              "radial-gradient(ellipse 70% 50% at 100% 0%, color-mix(in srgb, var(--auth-panel-accent) 12%, transparent), transparent 55%), radial-gradient(ellipse 50% 40% at 0% 100%, color-mix(in srgb, var(--secondary) 70%, transparent), transparent 50%)",
           }}
         />
 
