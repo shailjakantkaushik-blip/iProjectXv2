@@ -52,7 +52,7 @@ function money(n: number) {
 }
 
 function ProjectsList() {
-  const { organization, roles } = useAuth();
+  const { organization, roles, loading: authLoading } = useAuth();
   const canEdit = canEditProjects(roles);
   const admin = isAdmin(roles);
   const canUploadTemplate = useCapabilityPermission("template_upload").canEdit;
@@ -64,17 +64,30 @@ function ProjectsList() {
   const fileRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
 
-  const { data: projects = [], isLoading } = useQuery({
-    queryKey: ["projects", organization?.id],
+  const orgId = organization?.id;
+  const {
+    data: projects = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isFetching,
+  } = useQuery({
+    queryKey: ["projects", orgId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error: qErr } = await supabase
         .from("projects")
         .select("*")
         .order("created_at", { ascending: false });
-      if (error) throw error;
+      if (qErr) throw qErr;
       return data ?? [];
     },
-    enabled: !!organization,
+    // Wait for org — a disabled query is not "loading", so without this gate
+    // the register briefly renders as empty until refresh.
+    enabled: !!orgId,
+    retry: 2,
+    staleTime: 15_000,
+    refetchOnMount: "always",
   });
 
   const programs = useMemo(
@@ -167,6 +180,22 @@ function ProjectsList() {
       color: PRIORITY_COLORS[name] || "#94a3b8",
     })).sort((a, b) => rank(a.name) - rank(b.name));
   }, [filtered]);
+
+  if (authLoading || !orgId || (isLoading && projects.length === 0)) {
+    return <PageLoading label="Loading projects…" />;
+  }
+  if (isError) {
+    return (
+      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 p-8 text-center">
+        <p className="text-sm text-muted-foreground">
+          Could not load projects{error instanceof Error ? `: ${error.message}` : "."}
+        </p>
+        <Button size="sm" onClick={() => void refetch()} disabled={isFetching}>
+          {isFetching ? "Retrying…" : "Try again"}
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <PageExport name="Project_Register" title="Project Register">
@@ -380,10 +409,13 @@ function ProjectsList() {
       </SectionFrame>
 
       <SectionFrame>
-        <SectionTitle>Portfolio Register ({filtered.length})</SectionTitle>
-        {isLoading ? (
-          <PageLoading label="Loading projects…" fullScreen={false} />
-        ) : filtered.length === 0 ? (
+        <SectionTitle>
+          Portfolio Register ({filtered.length})
+          {isFetching ? (
+            <span className="ml-2 text-[11px] font-normal text-muted-foreground">Updating…</span>
+          ) : null}
+        </SectionTitle>
+        {filtered.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">
             No projects match.{" "}
             {admin ? "Import from Excel or click New." : "Ask your admin to add projects."}

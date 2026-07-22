@@ -12,20 +12,20 @@ import {
 import { useEffect } from "react";
 
 /**
- * Applies the organisation colour palette on /app routes.
- * Org theme always wins over platform when enabled (or legacy primary/accent set).
- * useLayoutEffect keeps the transition seamless (no flash of platform colours).
+ * Applies the organisation colour palette on /app and /platform routes.
+ * Keeping both shells on the same palette avoids a colour “jump” when opening
+ * Platform → Settings. Org theme wins over platform when enabled.
  */
 export function OrgThemeProvider({ children }: { children: ReactNode }) {
   const { organization } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const isApp = pathname.startsWith("/app");
+  const inThemedShell =
+    pathname.startsWith("/app") || pathname.startsWith("/platform");
 
   useLayoutEffect(() => {
-    if (!isApp || !organization) {
-      // Keep cached style on non-app routes only if leaving app briefly —
-      // clear when not in /app so platform/auth stay platform-themed.
-      if (!isApp) clearOrgThemeFromDocument();
+    if (!inThemedShell || !organization) {
+      // Auth / marketing stay on platform (or default) theme.
+      if (!inThemedShell) clearOrgThemeFromDocument();
       return;
     }
 
@@ -36,11 +36,11 @@ export function OrgThemeProvider({ children }: { children: ReactNode }) {
     } else {
       clearOrgThemeFromDocument();
     }
-  }, [isApp, organization]);
+  }, [inThemedShell, organization]);
 
   useEffect(() => {
     const onChange = (e: Event) => {
-      if (!isApp) return;
+      if (!inThemedShell) return;
       const detail = (e as CustomEvent<{ orgId: string; theme: OrgColorTheme }>).detail;
       if (!detail?.theme) return;
       if (organization && detail.orgId !== organization.id) return;
@@ -48,7 +48,7 @@ export function OrgThemeProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener(ORG_THEME_CHANGE_EVENT, onChange);
     return () => window.removeEventListener(ORG_THEME_CHANGE_EVENT, onChange);
-  }, [isApp, organization]);
+  }, [inThemedShell, organization]);
 
   return <>{children}</>;
 }

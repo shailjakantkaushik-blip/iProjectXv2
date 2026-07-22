@@ -1,10 +1,12 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { SectionFrame, SectionTitle, PageHeading, KpiCard, RagChip } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
+import { PageLoading } from "@/components/page-loading";
+import { Button } from "@/components/ui/button";
 import {
   BarChart,
   Bar,
@@ -58,12 +60,42 @@ function fmtDate(d: any) {
   }
 }
 function ProgramsPage() {
-  const { organization } = useAuth();
-  const { data: projects = [] } = useQuery({
-    queryKey: ["projects", organization?.id],
-    queryFn: async () => (await supabase.from("projects").select("*")).data ?? [],
-    enabled: !!organization,
+  const { organization, loading: authLoading } = useAuth();
+  const orgId = organization?.id;
+  const {
+    data: projects = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isFetching,
+  } = useQuery({
+    queryKey: ["projects", orgId],
+    queryFn: async () => {
+      const { data, error: qErr } = await supabase.from("projects").select("*");
+      if (qErr) throw qErr;
+      return data ?? [];
+    },
+    enabled: !!orgId,
+    retry: 2,
+    staleTime: 15_000,
   });
+
+  if (authLoading || !orgId || (isLoading && projects.length === 0)) {
+    return <PageLoading label="Loading programs…" />;
+  }
+  if (isError) {
+    return (
+      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 p-8 text-center">
+        <p className="text-sm text-muted-foreground">
+          Could not load projects{error instanceof Error ? `: ${error.message}` : "."}
+        </p>
+        <Button size="sm" onClick={() => void refetch()} disabled={isFetching}>
+          {isFetching ? "Retrying…" : "Try again"}
+        </Button>
+      </div>
+    );
+  }
 
   const programs = useMemo(() => {
     const m = new Map<string, any>();
@@ -384,10 +416,28 @@ function ProgramsPage() {
                   <tbody>
                     {programProjects.map((p: any) => (
                       <tr key={p.id}>
-                        <td className="font-mono text-blue-600">
-                          {p.project_id || p.id?.slice(0, 8)}
+                        <td className="font-mono text-[11px]">
+                          {p.project_code ? (
+                            <Link
+                              to="/app/project-infographic"
+                              search={{ pid: p.id }}
+                              className="text-primary hover:underline"
+                            >
+                              {p.project_code}
+                            </Link>
+                          ) : (
+                            "—"
+                          )}
                         </td>
-                        <td>{p.name}</td>
+                        <td>
+                          <Link
+                            to="/app/projects/$id"
+                            params={{ id: p.id }}
+                            className="hover:underline"
+                          >
+                            {p.name}
+                          </Link>
+                        </td>
                         <td>{p.sponsor || "—"}</td>
                         <td>{p.status || "—"}</td>
                         <td>{p.rag ? <RagChip rag={p.rag} /> : "—"}</td>

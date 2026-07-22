@@ -428,7 +428,8 @@ function LandingConfigPage() {
                   <div>
                     <div className="font-medium">Apply to app pages</div>
                     <div className="text-xs text-muted-foreground">
-                      Post-login app shell and platform admin (org colours still override brand)
+                      Post-login /app shell uses this palette. Platform admin pages always use it.
+                      An organisation colour palette (when enabled) still overrides both.
                     </div>
                   </div>
                   <Switch

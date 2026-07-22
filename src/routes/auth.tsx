@@ -194,8 +194,8 @@ function AuthPage() {
           await supabase.auth.signOut({ scope: "local" });
         }
         showOrgAccessAlert({
-          title: "Wrong organisation sign-in link",
-          message: result.message,
+          title: "Not an organisation user",
+          message: `You are not a member of ${orgLabel}. Contact your administrator for access, then try again.`,
           sessionPreserved: !signOutOnFail,
         });
         return false;
@@ -204,17 +204,17 @@ function AuthPage() {
           await supabase.auth.signOut({ scope: "local" });
         }
         showOrgAccessAlert({
-          title: "Could not verify organisation access",
+          title: "Not an organisation user",
           message:
             e instanceof Error
               ? e.message
-              : "Could not verify organisation membership. Please try again.",
+              : `You are not a member of ${orgLabel}. Contact your administrator for access, then try again.`,
           sessionPreserved: !signOutOnFail,
         });
         return false;
       }
     },
-    [assertOrgMembership, showOrgAccessAlert],
+    [assertOrgMembership, showOrgAccessAlert, orgLabel],
   );
 
   useEffect(() => {
@@ -425,23 +425,11 @@ function AuthPage() {
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-amber-500" />
-            {orgAlert?.title || "Organisation access"}
+            {orgAlert?.title || "Not an organisation user"}
           </AlertDialogTitle>
-          <AlertDialogDescription className="space-y-3 text-left">
-            <span className="block">{orgAlert?.message}</span>
-            {orgAlert?.sessionPreserved ? (
-              <span className="block text-foreground/80">
-                You still have an active session (for example in another tab). Opening the{" "}
-                <strong>{orgLabel}</strong> link does not match that account’s organisation.
-                Continuing to your workspace keeps you signed in; signing out ends the session in
-                all tabs on this site.
-              </span>
-            ) : (
-              <span className="block text-foreground/80">
-                Use your organisation’s own sign-in link, or the general sign-in page if you are
-                not joining via a white-label invite.
-              </span>
-            )}
+          <AlertDialogDescription className="text-left">
+            {orgAlert?.message ||
+              `You are not a member of ${orgLabel}. Contact your administrator for access, then try again.`}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -453,10 +441,7 @@ function AuthPage() {
               </AlertDialogAction>
             </>
           ) : (
-            <>
-              <AlertDialogCancel onClick={dismissOrgAlert}>Try again</AlertDialogCancel>
-              <AlertDialogAction onClick={goToGeneralAuth}>General sign-in</AlertDialogAction>
-            </>
+            <AlertDialogAction onClick={dismissOrgAlert}>Try again</AlertDialogAction>
           )}
         </AlertDialogFooter>
       </AlertDialogContent>

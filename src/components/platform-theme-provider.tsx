@@ -51,14 +51,21 @@ export function PlatformThemeProvider({ children }: { children: ReactNode }) {
       pathname === "/auth" ||
       pathname === "/reset-password" ||
       pathname === "/force-password-change";
-    const isApp = pathname.startsWith("/app") || pathname.startsWith("/platform");
+    const isAppShell = pathname.startsWith("/app");
+    const isPlatform = pathname.startsWith("/platform");
 
     if (isLanding) {
       clearPlatformThemeFromDocument();
       return;
     }
 
-    applyPlatformThemeToDocument(cfg, { forAuth: isAuth, forApp: isApp });
+    // apply_theme_to_app controls /app; /platform always uses the platform
+    // palette so Settings never falls back to unstyled defaults.
+    applyPlatformThemeToDocument(cfg, {
+      forAuth: isAuth,
+      forApp: isAppShell,
+      forPlatform: isPlatform,
+    });
   }, [cfg, pathname]);
 
   return <>{children}</>;
