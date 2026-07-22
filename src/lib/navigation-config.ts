@@ -91,9 +91,6 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
       { to: "/app/executive-reports", label: "Executive Reports", icon: "FileBarChart" },
       { to: "/app/audit-log", label: "Audit Log", icon: "FileText" },
       { to: "/app/data-editor", label: "Data Editor", icon: "Table2" },
-      { to: "/app/billing", label: "Billing & Invoices", icon: "Receipt", adminOnly: true },
-      { to: "/app/team", label: "Admin: Users", icon: "ShieldCheck", adminOnly: true },
-      { to: "/app/permissions", label: "Admin: Permissions", icon: "ShieldCheck", adminOnly: true },
     ],
   },
   {
@@ -108,6 +105,9 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
         icon: "Trash2",
         adminOnly: true,
       },
+      { to: "/app/billing", label: "Billing & Invoices", icon: "Receipt", adminOnly: true },
+      { to: "/app/team", label: "Admin: Users", icon: "ShieldCheck", adminOnly: true },
+      { to: "/app/permissions", label: "Admin: Permissions", icon: "ShieldCheck", adminOnly: true },
     ],
   },
   {
@@ -227,37 +227,46 @@ export function mergeNavigationConfig(
   }
 
   const item_order: Record<string, string[]> = {};
-  // Seed from partial first (preserves custom placement)
+  // Seed from partial first (preserves custom placement — never steal these later)
+  const explicitlyPlaced = new Set<string>();
   if (partial.item_order && typeof partial.item_order === "object") {
     for (const [k, v] of Object.entries(partial.item_order)) {
       if (!allowPlatform && k === "Platform") continue;
       if (Array.isArray(v)) {
-        item_order[k] = (v as unknown[]).map(String).filter((p) => allPaths.has(p));
+        const paths = (v as unknown[]).map(String).filter((p) => allPaths.has(p));
+        item_order[k] = paths;
+        for (const p of paths) explicitlyPlaced.add(p);
       }
     }
   }
 
-  // Ensure every group_order heading has an array. New catalog sections
-  // claim their default items (and remove them from older groups).
+  // Ensure every group_order heading has an array.
+  // Missing groups only receive default items that are not already placed
+  // elsewhere — never pull items out of a saved custom section (this was
+  // causing Admin Users / Permissions / Billing to jump back under Governance).
   for (const h of group_order) {
     if (!item_order[h]) {
-      const seeded = base.item_order[h] ? [...base.item_order[h]] : [];
+      const seeded = (base.item_order[h] ?? []).filter((p) => !explicitlyPlaced.has(p));
       item_order[h] = seeded;
-      if (seeded.length) {
-        const seededSet = new Set(seeded);
-        for (const [other, paths] of Object.entries(item_order)) {
-          if (other === h) continue;
-          item_order[other] = paths.filter((p) => !seededSet.has(p));
-        }
-      }
+      for (const p of seeded) explicitlyPlaced.add(p);
     }
+  }
+
+  // Deduplicate: first group in group_order that lists a path wins.
+  const seenPath = new Set<string>();
+  for (const h of group_order) {
+    const paths = item_order[h] ?? [];
+    const next: string[] = [];
+    for (const p of paths) {
+      if (seenPath.has(p)) continue;
+      seenPath.add(p);
+      next.push(p);
+    }
+    item_order[h] = next;
   }
 
   // Place any catalog paths that are missing from all groups into their default home
-  const assigned = new Set<string>();
-  for (const paths of Object.values(item_order)) {
-    for (const p of paths) assigned.add(p);
-  }
+  const assigned = new Set<string>(seenPath);
   const homes = defaultItemHome(catalog);
   for (const path of allPaths) {
     if (assigned.has(path)) continue;
@@ -268,6 +277,7 @@ export function mergeNavigationConfig(
       group_order.push(home);
     }
     if (item_order[home]) item_order[home].push(path);
+    assigned.add(path);
   }
 
   const hidden = Array.isArray(partial.hidden)
@@ -320,21 +330,41 @@ export function applyNavigationConfig(
   return groups;
 }
 
+/** True when a saved nav blob actually customises structure (not empty/null). */
+export function hasCustomNavigation(config: unknown): boolean {
+  if (!config || typeof config !== "object") return false;
+  const c = config as Partial<NavigationConfig>;
+  if (Array.isArray(c.group_order) && c.group_order.length > 0) return true;
+  if (
+    c.item_order &&
+    typeof c.item_order === "object" &&
+    Object.keys(c.item_order).length > 0
+  ) {
+    return true;
+  }
+  if (Array.isArray(c.hidden) && c.hidden.length > 0) return true;
+  return false;
+}
+
 /**
- * Platform config as base; when org has a custom navigation blob, it overrides
- * app groups. Platform section always comes from platform config.
+ * Platform config is the base reference. When the organisation has a custom
+ * navigation blob, that overrides workspace groups. Platform section always
+ * comes from platform config. Empty org blobs do not replace platform.
  */
 export function resolveCombinedNavigation(
   platformConfig: NavigationConfig | null | undefined,
   orgConfig: NavigationConfig | null | undefined,
 ): NavGroupDef[] {
-  const platformApplied = applyNavigationConfig(platformConfig, DEFAULT_NAV_GROUPS);
+  const platformMerged = mergeNavigationConfig(platformConfig, DEFAULT_NAV_GROUPS);
+  const platformApplied = applyNavigationConfig(platformMerged, DEFAULT_NAV_GROUPS);
   const platformSection = platformApplied.filter((g) => g.heading === "Platform");
 
-  if (!orgConfig) {
+  if (!hasCustomNavigation(orgConfig)) {
     return platformApplied;
   }
 
+  // Org override for workspace only — merge against APP catalog so Platform
+  // paths never leak into org structure, and saved placements stay sticky.
   const appPart = applyNavigationConfig(orgConfig, APP_NAV_GROUPS);
   return [...appPart, ...platformSection];
 }

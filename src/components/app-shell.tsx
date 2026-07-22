@@ -228,17 +228,16 @@ export function AppShell({ children }: { children: ReactNode }) {
     queryKey: ["landing-config"],
     queryFn: fetchLandingConfig,
     staleTime: 60_000,
+    // Keep last known platform nav while refetching — avoids Governance/Org Admin flicker.
     initialData: cached ?? undefined,
+    placeholderData: (prev) => prev ?? cached ?? undefined,
   });
 
-  const navGroups = useMemo(
-    () =>
-      resolveCombinedNavigation(
-        landing?.navigation ?? cached?.navigation,
-        orgNav ?? null,
-      ),
-    [landing?.navigation, cached?.navigation, orgNav],
-  );
+  const navGroups = useMemo(() => {
+    // Platform settings are the reference; org ui_config.navigation overrides when set.
+    const platformNav = landing?.navigation ?? cached?.navigation ?? null;
+    return resolveCombinedNavigation(platformNav, orgNav ?? null);
+  }, [landing?.navigation, cached?.navigation, orgNav]);
 
   const visibleNavGroups = useMemo(() => {
     return navGroups
