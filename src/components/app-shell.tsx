@@ -224,7 +224,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [orgNav, setOrgNav] = useState<NavigationConfig | null>(() => {
     const live = organization?.ui_config?.navigation;
     if (hasCustomNavigation(live)) return live as NavigationConfig;
-    return readCachedOrgNavigation()?.navigation ?? null;
+    const cached = readCachedOrgNavigation();
+    if (!cached) return null;
+    // Prefer cache only for this org (or before org hydrates).
+    if (!organization?.id || cached.orgId === organization.id) return cached.navigation;
+    return null;
   });
 
   useEffect(() => {
