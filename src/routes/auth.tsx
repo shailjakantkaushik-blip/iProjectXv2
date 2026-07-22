@@ -364,13 +364,6 @@ function AuthPage() {
     });
   };
 
-  const goToGeneralAuth = () => {
-    setOrgAlert(null);
-    setOrgGateBlocked(false);
-    clearOrgAuthEntry();
-    navigate({ to: "/auth", replace: true });
-  };
-
   const onSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setBusy(true);
