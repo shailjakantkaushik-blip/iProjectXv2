@@ -6,6 +6,7 @@ import { fyStartFor as fyStartForOrg, fyEndFor as fyEndForOrg, fyLabel as fyLabe
 import { RAG_COLORS } from "@/lib/chart-theme";
 import { ExpandablePanel } from "@/components/expandable-panel";
 import { summarizeTimelineLaneFinancials } from "@/lib/project-streams";
+import { darkenHex, scheduleCompletionPct } from "@/lib/schedule-progress";
 
 function money(n: number) {
   return "$" + new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n || 0);
@@ -32,15 +33,21 @@ export function computeTimelineBounds(projects: any[], fy: string = "All", fySta
     minD = new Date(endYear - 1, startIdx, 1);
     maxD = new Date(endYear, startIdx, 0, 23, 59, 59);
   } else {
+    // Prefer schedule fields when present (stream / rollup lanes).
     projects.forEach((p: any) => {
-      if (p.start_date) { const d = new Date(p.start_date); if (!minD || d < minD) minD = d; }
-      if (p.end_date)   { const d = new Date(p.end_date);   if (!maxD || d > maxD) maxD = d; }
+      const s = p.start_date || p.planned_start_date || p.actual_start_date;
+      const e = p.end_date || p.actual_end_date || p.planned_end_date;
+      if (s) { const d = new Date(s); if (!minD || d < minD) minD = d; }
+      if (e) { const d = new Date(e); if (!maxD || d > maxD) maxD = d; }
     });
     if (!minD || !maxD) {
       const now = new Date();
       minD = fyStartFor(now); maxD = fyEndFor(now);
     } else {
-      minD = fyStartFor(minD); maxD = fyEndFor(maxD);
+      // Smart window: pad ~1 month around data — do NOT snap to full FY
+      // (that left a long empty scroll before the first bar).
+      minD = new Date(minD.getFullYear(), minD.getMonth() - 1, 1);
+      maxD = new Date(maxD.getFullYear(), maxD.getMonth() + 2, 0, 23, 59, 59);
     }
   }
 
@@ -253,6 +260,9 @@ export function GanttGroup({
               const pct = budget > 0 ? Math.min(100, Math.round((incurred / budget) * 100)) : 0;
               const overBudget = incurred > budget && budget > 0;
               const slipDays = Math.round((aE - pE) / 86400000);
+              // Project rollup: schedule completion (dark fill + %). Streams keep budget util overlay.
+              const schedPct = scheduleCompletionPct(primaryS, primaryE);
+              const doneColor = darkenHex(color, 0.4);
               // Lane key: stream id for stream lanes; project id for rollup / fallback.
               // Project rollup intentionally omits stream-scoped gates (those sit on stream lanes).
               const laneKey = p.is_project_rollup ? (p.project_id || p.id) : (p.stream_id || p.id);
@@ -371,13 +381,21 @@ export function GanttGroup({
                         <div
                           className="absolute bottom-1 h-4 rounded shadow-sm"
                           style={{ left: `${aStartPct}%`, width: `${aWidthPct}%`, background: color, opacity: 0.95 }}
-                          title={`Actual · ${p.actual_start_date || "—"} → ${p.actual_end_date || "—"} · slip ${slipDays >= 0 ? "+" : ""}${slipDays}d`}
+                          title={
+                            p.is_project_rollup
+                              ? `Actual · Schedule ${schedPct}% complete · slip ${slipDays >= 0 ? "+" : ""}${slipDays}d`
+                              : `Actual · ${p.actual_start_date || "—"} → ${p.actual_end_date || "—"} · slip ${slipDays >= 0 ? "+" : ""}${slipDays}d`
+                          }
                         >
-                          <div className="h-full" style={{ width: `${pct}%`, background: "rgba(255,255,255,0.28)" }} />
+                          {p.is_project_rollup ? (
+                            <div className="h-full rounded-l" style={{ width: `${schedPct}%`, background: doneColor }} />
+                          ) : (
+                            <div className="h-full" style={{ width: `${pct}%`, background: "rgba(255,255,255,0.28)" }} />
+                          )}
                           {aWidthPct > 12 && (
                             <div className="absolute inset-0 flex items-center justify-between px-1.5 text-[9px] font-semibold text-white">
                               <span className="truncate">ACT · {fmtShort(new Date(aS))}</span>
-                              <span className="truncate">{fmtShort(new Date(aE))}</span>
+                              <span className="truncate">{p.is_project_rollup ? `${schedPct}%` : fmtShort(new Date(aE))}</span>
                             </div>
                           )}
                         </div>
@@ -397,19 +415,44 @@ export function GanttGroup({
                       <div
                         className="absolute top-2 h-6 shadow-sm"
                         style={{
-                          left: `${startPct}%`, width: `${widthPct}%`, background: color, opacity: 0.9,
+                          left: `${startPct}%`, width: `${widthPct}%`,
+                          background: p.is_project_rollup ? color : color,
+                          opacity: 0.9,
                           borderTopLeftRadius: clippedLeft ? 0 : 6,
                           borderBottomLeftRadius: clippedLeft ? 0 : 6,
                           borderTopRightRadius: clippedRight ? 0 : 6,
                           borderBottomRightRadius: clippedRight ? 0 : 6,
                         }}
-                        title={`${p.start_date} → ${p.end_date} · ${money(budget)} budget · ${money(incurred)} incurred (${pct}%)`}
+                        title={
+                          p.is_project_rollup
+                            ? `${p.start_date} → ${p.end_date} · Schedule ${schedPct}% complete`
+                            : `${p.start_date} → ${p.end_date} · ${money(budget)} budget · ${money(incurred)} incurred (${pct}%)`
+                        }
                       >
-                        <div className="h-full" style={{ width: `${pct}%`, background: "rgba(255,255,255,0.28)", borderTopLeftRadius: clippedLeft ? 0 : 6, borderBottomLeftRadius: clippedLeft ? 0 : 6 }} />
+                        {p.is_project_rollup ? (
+                          <div
+                            className="h-full"
+                            style={{
+                              width: `${schedPct}%`,
+                              background: doneColor,
+                              borderTopLeftRadius: clippedLeft ? 0 : 6,
+                              borderBottomLeftRadius: clippedLeft ? 0 : 6,
+                            }}
+                          />
+                        ) : (
+                          <div className="h-full" style={{ width: `${pct}%`, background: "rgba(255,255,255,0.28)", borderTopLeftRadius: clippedLeft ? 0 : 6, borderBottomLeftRadius: clippedLeft ? 0 : 6 }} />
+                        )}
                         {widthPct > 10 && (
                           <div className="absolute inset-0 flex items-center justify-between px-2 text-[10px] font-medium text-white">
                             <span className="truncate">{fmtShort(new Date(primaryS))} → {fmtShort(new Date(primaryE))}</span>
-                            <span className="tabular-nums">{money(incurred)}/{money(budget)}</span>
+                            <span className="tabular-nums font-semibold">
+                              {p.is_project_rollup ? `${schedPct}%` : `${money(incurred)}/${money(budget)}`}
+                            </span>
+                          </div>
+                        )}
+                        {p.is_project_rollup && widthPct <= 10 && schedPct > 0 && (
+                          <div className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-white">
+                            {schedPct}%
                           </div>
                         )}
                       </div>

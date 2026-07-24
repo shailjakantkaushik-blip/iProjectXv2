@@ -17,6 +17,7 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as AuthenticatedAppRouteImport } from './routes/_authenticated/app'
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated/onboarding'
 import { Route as AuthenticatedPlatformRouteImport } from './routes/_authenticated/platform'
+import { Route as LegalSlugRouteImport } from './routes/legal.$slug'
 import { Route as AuthenticatedAppIndexRouteImport } from './routes/_authenticated/app.index'
 import { Route as AuthenticatedAppAboutRouteImport } from './routes/_authenticated/app.about'
 import { Route as AuthenticatedAppActionsRouteImport } from './routes/_authenticated/app.actions'
@@ -41,7 +42,9 @@ import { Route as AuthenticatedAppFyAllocationRouteImport } from './routes/_auth
 import { Route as AuthenticatedAppGovernanceChannelsRouteImport } from './routes/_authenticated/app.governance-channels'
 import { Route as AuthenticatedAppIssuesRouteImport } from './routes/_authenticated/app.issues'
 import { Route as AuthenticatedAppLatestUpdatesRouteImport } from './routes/_authenticated/app.latest-updates'
+import { Route as AuthenticatedAppLegalRouteImport } from './routes/_authenticated/app.legal'
 import { Route as AuthenticatedAppLessonsRouteImport } from './routes/_authenticated/app.lessons'
+import { Route as AuthenticatedAppLicensesRouteImport } from './routes/_authenticated/app.licenses'
 import { Route as AuthenticatedAppMyWorkRouteImport } from './routes/_authenticated/app.my-work'
 import { Route as AuthenticatedAppNavigationRouteImport } from './routes/_authenticated/app.navigation'
 import { Route as AuthenticatedAppPermissionsRouteImport } from './routes/_authenticated/app.permissions'
@@ -69,14 +72,17 @@ import { Route as AuthenticatedAppTeamRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedAppTimelineRouteImport } from './routes/_authenticated/app.timeline'
 import { Route as AuthenticatedAppWorkItemsRouteImport } from './routes/_authenticated/app.work-items'
 import { Route as AuthenticatedPlatformBrandingRouteImport } from './routes/_authenticated/platform.branding'
+import { Route as AuthenticatedPlatformEoiRouteImport } from './routes/_authenticated/platform.eoi'
 import { Route as AuthenticatedPlatformExpensesRouteImport } from './routes/_authenticated/platform.expenses'
 import { Route as AuthenticatedPlatformFinanceRouteImport } from './routes/_authenticated/platform.finance'
 import { Route as AuthenticatedPlatformInvoiceTemplateRouteImport } from './routes/_authenticated/platform.invoice-template'
 import { Route as AuthenticatedPlatformInvoicesRouteImport } from './routes/_authenticated/platform.invoices'
 import { Route as AuthenticatedPlatformLandingRouteImport } from './routes/_authenticated/platform.landing'
+import { Route as AuthenticatedPlatformLicensesRouteImport } from './routes/_authenticated/platform.licenses'
 import { Route as AuthenticatedPlatformLimitsRouteImport } from './routes/_authenticated/platform.limits'
 import { Route as AuthenticatedPlatformOrganizationsRouteImport } from './routes/_authenticated/platform.organizations'
 import { Route as AuthenticatedPlatformPlansRouteImport } from './routes/_authenticated/platform.plans'
+import { Route as AuthenticatedPlatformPoliciesRouteImport } from './routes/_authenticated/platform.policies'
 import { Route as AuthenticatedPlatformProjectPurgeRouteImport } from './routes/_authenticated/platform.project-purge'
 import { Route as AuthenticatedPlatformSettingsRouteImport } from './routes/_authenticated/platform.settings'
 import { Route as AuthenticatedPlatformSubscriptionsRouteImport } from './routes/_authenticated/platform.subscriptions'
@@ -125,6 +131,11 @@ const AuthenticatedPlatformRoute = AuthenticatedPlatformRouteImport.update({
   id: '/platform',
   path: '/platform',
   getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const LegalSlugRoute = LegalSlugRouteImport.update({
+  id: '/legal/$slug',
+  path: '/legal/$slug',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedAppIndexRoute = AuthenticatedAppIndexRouteImport.update({
   id: '/',
@@ -264,11 +275,22 @@ const AuthenticatedAppLatestUpdatesRoute =
     path: '/latest-updates',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
+const AuthenticatedAppLegalRoute = AuthenticatedAppLegalRouteImport.update({
+  id: '/legal',
+  path: '/legal',
+  getParentRoute: () => AuthenticatedAppRoute,
+} as any)
 const AuthenticatedAppLessonsRoute = AuthenticatedAppLessonsRouteImport.update({
   id: '/lessons',
   path: '/lessons',
   getParentRoute: () => AuthenticatedAppRoute,
 } as any)
+const AuthenticatedAppLicensesRoute =
+  AuthenticatedAppLicensesRouteImport.update({
+    id: '/licenses',
+    path: '/licenses',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
 const AuthenticatedAppMyWorkRoute = AuthenticatedAppMyWorkRouteImport.update({
   id: '/my-work',
   path: '/my-work',
@@ -428,6 +450,12 @@ const AuthenticatedPlatformBrandingRoute =
     path: '/branding',
     getParentRoute: () => AuthenticatedPlatformRoute,
   } as any)
+const AuthenticatedPlatformEoiRoute =
+  AuthenticatedPlatformEoiRouteImport.update({
+    id: '/eoi',
+    path: '/eoi',
+    getParentRoute: () => AuthenticatedPlatformRoute,
+  } as any)
 const AuthenticatedPlatformExpensesRoute =
   AuthenticatedPlatformExpensesRouteImport.update({
     id: '/expenses',
@@ -458,6 +486,12 @@ const AuthenticatedPlatformLandingRoute =
     path: '/landing',
     getParentRoute: () => AuthenticatedPlatformRoute,
   } as any)
+const AuthenticatedPlatformLicensesRoute =
+  AuthenticatedPlatformLicensesRouteImport.update({
+    id: '/licenses',
+    path: '/licenses',
+    getParentRoute: () => AuthenticatedPlatformRoute,
+  } as any)
 const AuthenticatedPlatformLimitsRoute =
   AuthenticatedPlatformLimitsRouteImport.update({
     id: '/limits',
@@ -474,6 +508,12 @@ const AuthenticatedPlatformPlansRoute =
   AuthenticatedPlatformPlansRouteImport.update({
     id: '/plans',
     path: '/plans',
+    getParentRoute: () => AuthenticatedPlatformRoute,
+  } as any)
+const AuthenticatedPlatformPoliciesRoute =
+  AuthenticatedPlatformPoliciesRouteImport.update({
+    id: '/policies',
+    path: '/policies',
     getParentRoute: () => AuthenticatedPlatformRoute,
   } as any)
 const AuthenticatedPlatformProjectPurgeRoute =
@@ -538,6 +578,7 @@ export interface FileRoutesByFullPath {
   '/app': typeof AuthenticatedAppRouteWithChildren
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/platform': typeof AuthenticatedPlatformRouteWithChildren
+  '/legal/$slug': typeof LegalSlugRoute
   '/app/about': typeof AuthenticatedAppAboutRoute
   '/app/actions': typeof AuthenticatedAppActionsRoute
   '/app/agile': typeof AuthenticatedAppAgileRoute
@@ -561,7 +602,9 @@ export interface FileRoutesByFullPath {
   '/app/governance-channels': typeof AuthenticatedAppGovernanceChannelsRoute
   '/app/issues': typeof AuthenticatedAppIssuesRoute
   '/app/latest-updates': typeof AuthenticatedAppLatestUpdatesRoute
+  '/app/legal': typeof AuthenticatedAppLegalRoute
   '/app/lessons': typeof AuthenticatedAppLessonsRoute
+  '/app/licenses': typeof AuthenticatedAppLicensesRoute
   '/app/my-work': typeof AuthenticatedAppMyWorkRoute
   '/app/navigation': typeof AuthenticatedAppNavigationRoute
   '/app/permissions': typeof AuthenticatedAppPermissionsRoute
@@ -589,14 +632,17 @@ export interface FileRoutesByFullPath {
   '/app/timeline': typeof AuthenticatedAppTimelineRoute
   '/app/work-items': typeof AuthenticatedAppWorkItemsRoute
   '/platform/branding': typeof AuthenticatedPlatformBrandingRoute
+  '/platform/eoi': typeof AuthenticatedPlatformEoiRoute
   '/platform/expenses': typeof AuthenticatedPlatformExpensesRoute
   '/platform/finance': typeof AuthenticatedPlatformFinanceRoute
   '/platform/invoice-template': typeof AuthenticatedPlatformInvoiceTemplateRoute
   '/platform/invoices': typeof AuthenticatedPlatformInvoicesRoute
   '/platform/landing': typeof AuthenticatedPlatformLandingRoute
+  '/platform/licenses': typeof AuthenticatedPlatformLicensesRoute
   '/platform/limits': typeof AuthenticatedPlatformLimitsRoute
   '/platform/organizations': typeof AuthenticatedPlatformOrganizationsRoute
   '/platform/plans': typeof AuthenticatedPlatformPlansRoute
+  '/platform/policies': typeof AuthenticatedPlatformPoliciesRoute
   '/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
   '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
@@ -615,6 +661,7 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/platform': typeof AuthenticatedPlatformRouteWithChildren
+  '/legal/$slug': typeof LegalSlugRoute
   '/app/about': typeof AuthenticatedAppAboutRoute
   '/app/actions': typeof AuthenticatedAppActionsRoute
   '/app/agile': typeof AuthenticatedAppAgileRoute
@@ -638,7 +685,9 @@ export interface FileRoutesByTo {
   '/app/governance-channels': typeof AuthenticatedAppGovernanceChannelsRoute
   '/app/issues': typeof AuthenticatedAppIssuesRoute
   '/app/latest-updates': typeof AuthenticatedAppLatestUpdatesRoute
+  '/app/legal': typeof AuthenticatedAppLegalRoute
   '/app/lessons': typeof AuthenticatedAppLessonsRoute
+  '/app/licenses': typeof AuthenticatedAppLicensesRoute
   '/app/my-work': typeof AuthenticatedAppMyWorkRoute
   '/app/navigation': typeof AuthenticatedAppNavigationRoute
   '/app/permissions': typeof AuthenticatedAppPermissionsRoute
@@ -666,14 +715,17 @@ export interface FileRoutesByTo {
   '/app/timeline': typeof AuthenticatedAppTimelineRoute
   '/app/work-items': typeof AuthenticatedAppWorkItemsRoute
   '/platform/branding': typeof AuthenticatedPlatformBrandingRoute
+  '/platform/eoi': typeof AuthenticatedPlatformEoiRoute
   '/platform/expenses': typeof AuthenticatedPlatformExpensesRoute
   '/platform/finance': typeof AuthenticatedPlatformFinanceRoute
   '/platform/invoice-template': typeof AuthenticatedPlatformInvoiceTemplateRoute
   '/platform/invoices': typeof AuthenticatedPlatformInvoicesRoute
   '/platform/landing': typeof AuthenticatedPlatformLandingRoute
+  '/platform/licenses': typeof AuthenticatedPlatformLicensesRoute
   '/platform/limits': typeof AuthenticatedPlatformLimitsRoute
   '/platform/organizations': typeof AuthenticatedPlatformOrganizationsRoute
   '/platform/plans': typeof AuthenticatedPlatformPlansRoute
+  '/platform/policies': typeof AuthenticatedPlatformPoliciesRoute
   '/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
   '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
@@ -695,6 +747,7 @@ export interface FileRoutesById {
   '/_authenticated/app': typeof AuthenticatedAppRouteWithChildren
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
   '/_authenticated/platform': typeof AuthenticatedPlatformRouteWithChildren
+  '/legal/$slug': typeof LegalSlugRoute
   '/_authenticated/app/about': typeof AuthenticatedAppAboutRoute
   '/_authenticated/app/actions': typeof AuthenticatedAppActionsRoute
   '/_authenticated/app/agile': typeof AuthenticatedAppAgileRoute
@@ -718,7 +771,9 @@ export interface FileRoutesById {
   '/_authenticated/app/governance-channels': typeof AuthenticatedAppGovernanceChannelsRoute
   '/_authenticated/app/issues': typeof AuthenticatedAppIssuesRoute
   '/_authenticated/app/latest-updates': typeof AuthenticatedAppLatestUpdatesRoute
+  '/_authenticated/app/legal': typeof AuthenticatedAppLegalRoute
   '/_authenticated/app/lessons': typeof AuthenticatedAppLessonsRoute
+  '/_authenticated/app/licenses': typeof AuthenticatedAppLicensesRoute
   '/_authenticated/app/my-work': typeof AuthenticatedAppMyWorkRoute
   '/_authenticated/app/navigation': typeof AuthenticatedAppNavigationRoute
   '/_authenticated/app/permissions': typeof AuthenticatedAppPermissionsRoute
@@ -746,14 +801,17 @@ export interface FileRoutesById {
   '/_authenticated/app/timeline': typeof AuthenticatedAppTimelineRoute
   '/_authenticated/app/work-items': typeof AuthenticatedAppWorkItemsRoute
   '/_authenticated/platform/branding': typeof AuthenticatedPlatformBrandingRoute
+  '/_authenticated/platform/eoi': typeof AuthenticatedPlatformEoiRoute
   '/_authenticated/platform/expenses': typeof AuthenticatedPlatformExpensesRoute
   '/_authenticated/platform/finance': typeof AuthenticatedPlatformFinanceRoute
   '/_authenticated/platform/invoice-template': typeof AuthenticatedPlatformInvoiceTemplateRoute
   '/_authenticated/platform/invoices': typeof AuthenticatedPlatformInvoicesRoute
   '/_authenticated/platform/landing': typeof AuthenticatedPlatformLandingRoute
+  '/_authenticated/platform/licenses': typeof AuthenticatedPlatformLicensesRoute
   '/_authenticated/platform/limits': typeof AuthenticatedPlatformLimitsRoute
   '/_authenticated/platform/organizations': typeof AuthenticatedPlatformOrganizationsRoute
   '/_authenticated/platform/plans': typeof AuthenticatedPlatformPlansRoute
+  '/_authenticated/platform/policies': typeof AuthenticatedPlatformPoliciesRoute
   '/_authenticated/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
   '/_authenticated/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/_authenticated/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
@@ -775,6 +833,7 @@ export interface FileRouteTypes {
     | '/app'
     | '/onboarding'
     | '/platform'
+    | '/legal/$slug'
     | '/app/about'
     | '/app/actions'
     | '/app/agile'
@@ -798,7 +857,9 @@ export interface FileRouteTypes {
     | '/app/governance-channels'
     | '/app/issues'
     | '/app/latest-updates'
+    | '/app/legal'
     | '/app/lessons'
+    | '/app/licenses'
     | '/app/my-work'
     | '/app/navigation'
     | '/app/permissions'
@@ -826,14 +887,17 @@ export interface FileRouteTypes {
     | '/app/timeline'
     | '/app/work-items'
     | '/platform/branding'
+    | '/platform/eoi'
     | '/platform/expenses'
     | '/platform/finance'
     | '/platform/invoice-template'
     | '/platform/invoices'
     | '/platform/landing'
+    | '/platform/licenses'
     | '/platform/limits'
     | '/platform/organizations'
     | '/platform/plans'
+    | '/platform/policies'
     | '/platform/project-purge'
     | '/platform/settings'
     | '/platform/subscriptions'
@@ -852,6 +916,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/onboarding'
     | '/platform'
+    | '/legal/$slug'
     | '/app/about'
     | '/app/actions'
     | '/app/agile'
@@ -875,7 +940,9 @@ export interface FileRouteTypes {
     | '/app/governance-channels'
     | '/app/issues'
     | '/app/latest-updates'
+    | '/app/legal'
     | '/app/lessons'
+    | '/app/licenses'
     | '/app/my-work'
     | '/app/navigation'
     | '/app/permissions'
@@ -903,14 +970,17 @@ export interface FileRouteTypes {
     | '/app/timeline'
     | '/app/work-items'
     | '/platform/branding'
+    | '/platform/eoi'
     | '/platform/expenses'
     | '/platform/finance'
     | '/platform/invoice-template'
     | '/platform/invoices'
     | '/platform/landing'
+    | '/platform/licenses'
     | '/platform/limits'
     | '/platform/organizations'
     | '/platform/plans'
+    | '/platform/policies'
     | '/platform/project-purge'
     | '/platform/settings'
     | '/platform/subscriptions'
@@ -931,6 +1001,7 @@ export interface FileRouteTypes {
     | '/_authenticated/app'
     | '/_authenticated/onboarding'
     | '/_authenticated/platform'
+    | '/legal/$slug'
     | '/_authenticated/app/about'
     | '/_authenticated/app/actions'
     | '/_authenticated/app/agile'
@@ -954,7 +1025,9 @@ export interface FileRouteTypes {
     | '/_authenticated/app/governance-channels'
     | '/_authenticated/app/issues'
     | '/_authenticated/app/latest-updates'
+    | '/_authenticated/app/legal'
     | '/_authenticated/app/lessons'
+    | '/_authenticated/app/licenses'
     | '/_authenticated/app/my-work'
     | '/_authenticated/app/navigation'
     | '/_authenticated/app/permissions'
@@ -982,14 +1055,17 @@ export interface FileRouteTypes {
     | '/_authenticated/app/timeline'
     | '/_authenticated/app/work-items'
     | '/_authenticated/platform/branding'
+    | '/_authenticated/platform/eoi'
     | '/_authenticated/platform/expenses'
     | '/_authenticated/platform/finance'
     | '/_authenticated/platform/invoice-template'
     | '/_authenticated/platform/invoices'
     | '/_authenticated/platform/landing'
+    | '/_authenticated/platform/licenses'
     | '/_authenticated/platform/limits'
     | '/_authenticated/platform/organizations'
     | '/_authenticated/platform/plans'
+    | '/_authenticated/platform/policies'
     | '/_authenticated/platform/project-purge'
     | '/_authenticated/platform/settings'
     | '/_authenticated/platform/subscriptions'
@@ -1008,6 +1084,7 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   ForcePasswordChangeRoute: typeof ForcePasswordChangeRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  LegalSlugRoute: typeof LegalSlugRoute
   OSlugLoginRoute: typeof OSlugLoginRoute
   ApiPublicHooksBillingRunRoute: typeof ApiPublicHooksBillingRunRoute
 }
@@ -1069,6 +1146,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/platform'
       preLoaderRoute: typeof AuthenticatedPlatformRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/legal/$slug': {
+      id: '/legal/$slug'
+      path: '/legal/$slug'
+      fullPath: '/legal/$slug'
+      preLoaderRoute: typeof LegalSlugRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_authenticated/app/': {
       id: '/_authenticated/app/'
@@ -1238,11 +1322,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppLatestUpdatesRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
+    '/_authenticated/app/legal': {
+      id: '/_authenticated/app/legal'
+      path: '/legal'
+      fullPath: '/app/legal'
+      preLoaderRoute: typeof AuthenticatedAppLegalRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
     '/_authenticated/app/lessons': {
       id: '/_authenticated/app/lessons'
       path: '/lessons'
       fullPath: '/app/lessons'
       preLoaderRoute: typeof AuthenticatedAppLessonsRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/app/licenses': {
+      id: '/_authenticated/app/licenses'
+      path: '/licenses'
+      fullPath: '/app/licenses'
+      preLoaderRoute: typeof AuthenticatedAppLicensesRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
     '/_authenticated/app/my-work': {
@@ -1434,6 +1532,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPlatformBrandingRouteImport
       parentRoute: typeof AuthenticatedPlatformRoute
     }
+    '/_authenticated/platform/eoi': {
+      id: '/_authenticated/platform/eoi'
+      path: '/eoi'
+      fullPath: '/platform/eoi'
+      preLoaderRoute: typeof AuthenticatedPlatformEoiRouteImport
+      parentRoute: typeof AuthenticatedPlatformRoute
+    }
     '/_authenticated/platform/expenses': {
       id: '/_authenticated/platform/expenses'
       path: '/expenses'
@@ -1469,6 +1574,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPlatformLandingRouteImport
       parentRoute: typeof AuthenticatedPlatformRoute
     }
+    '/_authenticated/platform/licenses': {
+      id: '/_authenticated/platform/licenses'
+      path: '/licenses'
+      fullPath: '/platform/licenses'
+      preLoaderRoute: typeof AuthenticatedPlatformLicensesRouteImport
+      parentRoute: typeof AuthenticatedPlatformRoute
+    }
     '/_authenticated/platform/limits': {
       id: '/_authenticated/platform/limits'
       path: '/limits'
@@ -1488,6 +1600,13 @@ declare module '@tanstack/react-router' {
       path: '/plans'
       fullPath: '/platform/plans'
       preLoaderRoute: typeof AuthenticatedPlatformPlansRouteImport
+      parentRoute: typeof AuthenticatedPlatformRoute
+    }
+    '/_authenticated/platform/policies': {
+      id: '/_authenticated/platform/policies'
+      path: '/policies'
+      fullPath: '/platform/policies'
+      preLoaderRoute: typeof AuthenticatedPlatformPoliciesRouteImport
       parentRoute: typeof AuthenticatedPlatformRoute
     }
     '/_authenticated/platform/project-purge': {
@@ -1596,7 +1715,9 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppGovernanceChannelsRoute: typeof AuthenticatedAppGovernanceChannelsRoute
   AuthenticatedAppIssuesRoute: typeof AuthenticatedAppIssuesRoute
   AuthenticatedAppLatestUpdatesRoute: typeof AuthenticatedAppLatestUpdatesRoute
+  AuthenticatedAppLegalRoute: typeof AuthenticatedAppLegalRoute
   AuthenticatedAppLessonsRoute: typeof AuthenticatedAppLessonsRoute
+  AuthenticatedAppLicensesRoute: typeof AuthenticatedAppLicensesRoute
   AuthenticatedAppMyWorkRoute: typeof AuthenticatedAppMyWorkRoute
   AuthenticatedAppNavigationRoute: typeof AuthenticatedAppNavigationRoute
   AuthenticatedAppPermissionsRoute: typeof AuthenticatedAppPermissionsRoute
@@ -1652,7 +1773,9 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
     AuthenticatedAppGovernanceChannelsRoute,
   AuthenticatedAppIssuesRoute: AuthenticatedAppIssuesRoute,
   AuthenticatedAppLatestUpdatesRoute: AuthenticatedAppLatestUpdatesRoute,
+  AuthenticatedAppLegalRoute: AuthenticatedAppLegalRoute,
   AuthenticatedAppLessonsRoute: AuthenticatedAppLessonsRoute,
+  AuthenticatedAppLicensesRoute: AuthenticatedAppLicensesRoute,
   AuthenticatedAppMyWorkRoute: AuthenticatedAppMyWorkRoute,
   AuthenticatedAppNavigationRoute: AuthenticatedAppNavigationRoute,
   AuthenticatedAppPermissionsRoute: AuthenticatedAppPermissionsRoute,
@@ -1692,14 +1815,17 @@ const AuthenticatedAppRouteWithChildren =
 
 interface AuthenticatedPlatformRouteChildren {
   AuthenticatedPlatformBrandingRoute: typeof AuthenticatedPlatformBrandingRoute
+  AuthenticatedPlatformEoiRoute: typeof AuthenticatedPlatformEoiRoute
   AuthenticatedPlatformExpensesRoute: typeof AuthenticatedPlatformExpensesRoute
   AuthenticatedPlatformFinanceRoute: typeof AuthenticatedPlatformFinanceRoute
   AuthenticatedPlatformInvoiceTemplateRoute: typeof AuthenticatedPlatformInvoiceTemplateRoute
   AuthenticatedPlatformInvoicesRoute: typeof AuthenticatedPlatformInvoicesRoute
   AuthenticatedPlatformLandingRoute: typeof AuthenticatedPlatformLandingRoute
+  AuthenticatedPlatformLicensesRoute: typeof AuthenticatedPlatformLicensesRoute
   AuthenticatedPlatformLimitsRoute: typeof AuthenticatedPlatformLimitsRoute
   AuthenticatedPlatformOrganizationsRoute: typeof AuthenticatedPlatformOrganizationsRoute
   AuthenticatedPlatformPlansRoute: typeof AuthenticatedPlatformPlansRoute
+  AuthenticatedPlatformPoliciesRoute: typeof AuthenticatedPlatformPoliciesRoute
   AuthenticatedPlatformProjectPurgeRoute: typeof AuthenticatedPlatformProjectPurgeRoute
   AuthenticatedPlatformSettingsRoute: typeof AuthenticatedPlatformSettingsRoute
   AuthenticatedPlatformSubscriptionsRoute: typeof AuthenticatedPlatformSubscriptionsRoute
@@ -1708,16 +1834,19 @@ interface AuthenticatedPlatformRouteChildren {
 
 const AuthenticatedPlatformRouteChildren: AuthenticatedPlatformRouteChildren = {
   AuthenticatedPlatformBrandingRoute: AuthenticatedPlatformBrandingRoute,
+  AuthenticatedPlatformEoiRoute: AuthenticatedPlatformEoiRoute,
   AuthenticatedPlatformExpensesRoute: AuthenticatedPlatformExpensesRoute,
   AuthenticatedPlatformFinanceRoute: AuthenticatedPlatformFinanceRoute,
   AuthenticatedPlatformInvoiceTemplateRoute:
     AuthenticatedPlatformInvoiceTemplateRoute,
   AuthenticatedPlatformInvoicesRoute: AuthenticatedPlatformInvoicesRoute,
   AuthenticatedPlatformLandingRoute: AuthenticatedPlatformLandingRoute,
+  AuthenticatedPlatformLicensesRoute: AuthenticatedPlatformLicensesRoute,
   AuthenticatedPlatformLimitsRoute: AuthenticatedPlatformLimitsRoute,
   AuthenticatedPlatformOrganizationsRoute:
     AuthenticatedPlatformOrganizationsRoute,
   AuthenticatedPlatformPlansRoute: AuthenticatedPlatformPlansRoute,
+  AuthenticatedPlatformPoliciesRoute: AuthenticatedPlatformPoliciesRoute,
   AuthenticatedPlatformProjectPurgeRoute:
     AuthenticatedPlatformProjectPurgeRoute,
   AuthenticatedPlatformSettingsRoute: AuthenticatedPlatformSettingsRoute,
@@ -1752,9 +1881,20 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   ForcePasswordChangeRoute: ForcePasswordChangeRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  LegalSlugRoute: LegalSlugRoute,
   OSlugLoginRoute: OSlugLoginRoute,
   ApiPublicHooksBillingRunRoute: ApiPublicHooksBillingRunRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

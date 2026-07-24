@@ -32,8 +32,11 @@ import {
 import {
   expandProjectsToTimelineLanes,
   fetchOrgStreams,
+  formatProjectStreamRef,
+  formatStreamLabel,
   summarizeTimelineLaneFinancials,
 } from "@/lib/project-streams";
+import { darkenHex, scheduleCompletionPct } from "@/lib/schedule-progress";
 
 export const Route = createFileRoute("/_authenticated/app/executive")({
   component: ExecutiveDashboard,
@@ -66,7 +69,7 @@ function ExecutiveDashboard() {
   type TimelineView = "Portfolio" | "Program" | "Health" | "Priority" | "Theme" | "Sponsor" | "Status";
   const [timelineView, setTimelineView] = useState<TimelineView>("Program");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [showProjectTimeline, setShowProjectTimeline] = useState(false);
+  const [showProjectTimeline, setShowProjectTimeline] = useState(true);
   const reportRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
 
@@ -366,7 +369,9 @@ function ExecutiveDashboard() {
         const now = new Date();
         minD = fyStartFor(now); maxD = fyEndFor(now);
       } else {
-        minD = fyStartFor(minD); maxD = fyEndFor(maxD);
+        // Smart window: pad ~1 month — avoid snapping "All" to full FY (empty left scroll).
+        minD = new Date(minD.getFullYear(), minD.getMonth() - 1, 1);
+        maxD = new Date(maxD.getFullYear(), maxD.getMonth() + 2, 0, 23, 59, 59);
       }
     }
 
@@ -414,28 +419,53 @@ function ExecutiveDashboard() {
     const byPhase = new Map(cols.map((c) => [c.phase, c]));
     const other: any[] = [];
 
-    for (const p of activeProjects) {
-      const stage = resolveCurrentStage(p);
+    const streamsByProject = new Map<string, any[]>();
+    (streams as any[]).forEach((s) => {
+      const list = streamsByProject.get(s.project_id) || [];
+      list.push(s);
+      streamsByProject.set(s.project_id, list);
+    });
+
+    const pushItem = (stage: string | null, item: any) => {
       if (stage && byPhase.has(stage)) {
-        byPhase.get(stage)!.items.push(p);
-        continue;
+        byPhase.get(stage)!.items.push(item);
+        return;
       }
       const mapped = matchPhase(stage, orgPhases);
-      if (mapped && byPhase.has(mapped)) {
-        byPhase.get(mapped)!.items.push(p);
+      if (mapped && byPhase.has(mapped)) byPhase.get(mapped)!.items.push(item);
+      else other.push(item);
+    };
+
+    for (const p of activeProjects) {
+      const projectStreams = (streamsByProject.get(p.id) || []).sort(
+        (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
+      );
+      if (projectStreams.length > 0) {
+        for (const s of projectStreams) {
+          const gs = (gates as any[]).filter(
+            (g) => g.stream_id === s.id || (!g.stream_id && g.project_id === p.id && s.is_default),
+          );
+          const stage = resolveStageShared(p, gs, orgPhases);
+          pushItem(stage, {
+            ...p,
+            _kanbanKey: `${p.id}:${s.id}`,
+            _streamLabel: formatStreamLabel(s),
+            _streamRef: formatProjectStreamRef(p, s),
+            _streamRag: s.rag || p.rag,
+          });
+        }
       } else {
-        other.push(p);
+        const stage = resolveStageShared(p, gatesByProject.get(p.id) || [], orgPhases);
+        pushItem(stage, { ...p, _kanbanKey: p.id, _streamLabel: null, _streamRef: null, _streamRag: p.rag });
       }
     }
 
-    const result = cols.map((c) => ({ ...c, items: c.items.slice(0, 24) }));
+    const result = cols.map((c) => ({ ...c, items: c.items.slice(0, 48) }));
     if (other.length > 0) {
-      result.push({ phase: "Other / Unmapped", items: other.slice(0, 24) });
+      result.push({ phase: "Other / Unmapped", items: other.slice(0, 48) });
     }
     return result;
-    // resolveCurrentStage closes over gatesByProject + orgPhases
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered, orgPhases, gatesByProject]);
+  }, [filtered, orgPhases, gatesByProject, streams, gates]);
 
   const exportPdf = async () => {
     if (!reportRef.current) {
@@ -723,7 +753,7 @@ function ExecutiveDashboard() {
       {/* Governance Flow — stage columns with project links */}
       <SectionFrame>
         <ExpandablePanel
-          title="Governance Flow — active projects by current stage"
+          title="Governance Flow — active projects / streams by current stage"
           compactMaxHeightClass="max-h-[min(60vh,640px)]"
         >
           <div
@@ -741,7 +771,7 @@ function ExecutiveDashboard() {
                 >
                   <div className="truncate text-[11px] font-semibold text-foreground">{col.phase}</div>
                   <div className="text-[10px] text-muted-foreground tabular-nums">
-                    {col.items.length} project{col.items.length === 1 ? "" : "s"}
+                    {col.items.length} item{col.items.length === 1 ? "" : "s"}
                   </div>
                 </div>
                 <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto">
@@ -749,15 +779,15 @@ function ExecutiveDashboard() {
                     <div className="px-0.5 py-2 text-[10px] text-muted-foreground">No active projects</div>
                   ) : (
                     col.items.map((p: any) => {
-                      const rag = (p.rag as string) || "";
+                      const rag = (p._streamRag as string) || (p.rag as string) || "";
                       const ragColor = RAG_COLORS[rag] || "var(--muted-foreground)";
                       return (
                         <Link
-                          key={p.id}
+                          key={p._kanbanKey || p.id}
                           to="/app/project-infographic"
                           search={{ pid: p.id }}
                           className="group flex items-start gap-2 rounded-md px-1.5 py-1.5 hover:bg-muted/60"
-                          title={p.name}
+                          title={p._streamRef || p.name}
                         >
                           <span
                             className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
@@ -766,9 +796,13 @@ function ExecutiveDashboard() {
                           />
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-[11px] font-medium text-primary group-hover:underline">
-                              {p.project_code || p.name}
+                              {p._streamRef || p.project_code || p.name}
                             </span>
-                            {p.project_code ? (
+                            {p._streamLabel ? (
+                              <span className="block truncate text-[10px] text-muted-foreground">
+                                {p.name} · {p._streamLabel}
+                              </span>
+                            ) : p.project_code ? (
                               <span className="block truncate text-[10px] text-muted-foreground">
                                 {p.name}
                               </span>
@@ -785,7 +819,7 @@ function ExecutiveDashboard() {
         </ExpandablePanel>
       </SectionFrame>
 
-      {/* Portfolio Register */}
+      {/* Portfolio Register — stream-aware */}
       <SectionFrame>
         <SectionTitle>Portfolio Register</SectionTitle>
         {filtered.length === 0 ? (
@@ -795,22 +829,67 @@ function ExecutiveDashboard() {
             <table className="st-table">
               <thead>
                 <tr>
-                  <th>Project</th><th>Program</th><th>Sponsor</th><th>Budget</th>
+                  <th>Project</th><th>Stream</th><th>Program</th><th>Sponsor</th><th>Budget</th>
                   <th>Incurred</th><th>RAG</th><th>Phase</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.slice(0, 20).map((p: any) => (
-                  <tr key={p.id}>
-                    <td className="font-medium">{p.name}</td>
-                    <td>{p.program ?? "—"}</td>
-                    <td>{p.sponsor ?? "—"}</td>
-                    <td>{money(projectApprovedFunding(p))}</td>
-                    <td>{money(projectIncurred(p))}</td>
-                    <td><RagChip rag={p.rag} /></td>
-                    <td>{resolveCurrentStage(p) ?? "—"}</td>
-                  </tr>
-                ))}
+                {(() => {
+                  const streamsByProject = new Map<string, any[]>();
+                  (streams as any[]).forEach((s) => {
+                    const list = streamsByProject.get(s.project_id) || [];
+                    list.push(s);
+                    streamsByProject.set(s.project_id, list);
+                  });
+                  const rows: any[] = [];
+                  for (const p of filtered.slice(0, 40)) {
+                    const ps = (streamsByProject.get(p.id) || []).sort(
+                      (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
+                    );
+                    if (ps.length > 0) {
+                      for (const s of ps) {
+                        const gs = (gates as any[]).filter(
+                          (g) => g.stream_id === s.id || (!g.stream_id && g.project_id === p.id && s.is_default),
+                        );
+                        rows.push({
+                          key: `${p.id}:${s.id}`,
+                          name: p.name,
+                          stream: formatProjectStreamRef(p, s),
+                          program: p.program,
+                          sponsor: s.owner || p.sponsor,
+                          budget: Number(s.budget || 0),
+                          incurred: Number(s.capex_incurred || 0) + Number(s.opex_incurred || 0),
+                          rag: s.rag || p.rag,
+                          phase: resolveStageShared(p, gs, orgPhases),
+                        });
+                      }
+                    } else {
+                      rows.push({
+                        key: p.id,
+                        name: p.name,
+                        stream: "—",
+                        program: p.program,
+                        sponsor: p.sponsor,
+                        budget: projectApprovedFunding(p),
+                        incurred: projectIncurred(p),
+                        rag: p.rag,
+                        phase: resolveCurrentStage(p),
+                      });
+                    }
+                  }
+                  return rows.slice(0, 40).map((r) => (
+                    <tr key={r.key}>
+                      <td className="font-medium">{r.name}</td>
+                      <td className="font-mono text-xs">{r.stream}</td>
+                      <td>{r.program ?? "—"}</td>
+                      <td>{r.sponsor ?? "—"}</td>
+                      <td>{money(r.budget)}</td>
+                      <td>{money(r.incurred)}</td>
+                      <td><RagChip rag={r.rag} /></td>
+                      <td>{r.phase ?? "—"}</td>
+                    </tr>
+                  ));
+                })()}
               </tbody>
             </table>
           </div>
@@ -1025,6 +1104,8 @@ function GanttGroup({
               const incurred = projectIncurred(p);
               const pct = budget > 0 ? Math.min(100, Math.round((incurred / budget) * 100)) : 0;
               const overBudget = incurred > budget && budget > 0;
+              const schedPct = scheduleCompletionPct(s, e);
+              const doneColor = darkenHex(color, 0.4);
               const laneKey = laneKeyOf(p);
               const projGates = p.is_project_rollup
                 ? []
@@ -1119,13 +1200,36 @@ function GanttGroup({
                               borderTopRightRadius: clippedRight ? 0 : 6,
                               borderBottomRightRadius: clippedRight ? 0 : 6,
                             }}
-                            title={`${startIso} → ${endIso} · ${money(budget)} budget · ${money(incurred)} incurred (${pct}%)`}
+                            title={
+                              p.is_project_rollup
+                                ? `${startIso} → ${endIso} · Schedule ${schedPct}% complete`
+                                : `${startIso} → ${endIso} · ${money(budget)} budget · ${money(incurred)} incurred (${pct}%)`
+                            }
                           >
-                            <div className="h-full" style={{ width: `${pct}%`, background: "rgba(255,255,255,0.28)", borderTopLeftRadius: clippedLeft ? 0 : 6, borderBottomLeftRadius: clippedLeft ? 0 : 6 }} />
+                            {p.is_project_rollup ? (
+                              <div
+                                className="h-full"
+                                style={{
+                                  width: `${schedPct}%`,
+                                  background: doneColor,
+                                  borderTopLeftRadius: clippedLeft ? 0 : 6,
+                                  borderBottomLeftRadius: clippedLeft ? 0 : 6,
+                                }}
+                              />
+                            ) : (
+                              <div className="h-full" style={{ width: `${pct}%`, background: "rgba(255,255,255,0.28)", borderTopLeftRadius: clippedLeft ? 0 : 6, borderBottomLeftRadius: clippedLeft ? 0 : 6 }} />
+                            )}
                             {widthPct > 10 && (
                               <div className="absolute inset-0 flex items-center justify-between px-2 text-[10px] font-medium text-white">
                                 <span className="truncate">{fmtShort(new Date(s))} → {fmtShort(new Date(e))}</span>
-                                <span className="tabular-nums">{money(incurred)}/{money(budget)}</span>
+                                <span className="tabular-nums font-semibold">
+                                  {p.is_project_rollup ? `${schedPct}%` : `${money(incurred)}/${money(budget)}`}
+                                </span>
+                              </div>
+                            )}
+                            {p.is_project_rollup && widthPct <= 10 && (
+                              <div className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-white">
+                                {schedPct}%
                               </div>
                             )}
                           </div>
@@ -1161,13 +1265,21 @@ function GanttGroup({
                           <div
                             className="absolute bottom-0.5 h-4 rounded shadow-sm"
                             style={{ left: `${act.left}%`, width: `${act.width}%`, background: color, opacity: 0.9 }}
-                            title={`Actual · ${p.actual_start_date || p.start_date} → ${p.actual_end_date || p.end_date} · slip ${slipDays >= 0 ? "+" : ""}${slipDays}d`}
+                            title={
+                              p.is_project_rollup
+                                ? `Actual · Schedule ${schedPct}% · slip ${slipDays >= 0 ? "+" : ""}${slipDays}d`
+                                : `Actual · ${p.actual_start_date || p.start_date} → ${p.actual_end_date || p.end_date} · slip ${slipDays >= 0 ? "+" : ""}${slipDays}d`
+                            }
                           >
-                            <div className="h-full rounded-l" style={{ width: `${pct}%`, background: "rgba(255,255,255,0.28)" }} />
+                            {p.is_project_rollup ? (
+                              <div className="h-full rounded-l" style={{ width: `${schedPct}%`, background: doneColor }} />
+                            ) : (
+                              <div className="h-full rounded-l" style={{ width: `${pct}%`, background: "rgba(255,255,255,0.28)" }} />
+                            )}
                             {act.width > 10 && (
                               <div className="absolute inset-0 flex items-center justify-between px-2 text-[9px] font-medium text-white">
                                 <span className="truncate">Actual: {fmtShort(new Date(aS))} → {fmtShort(new Date(aE))}</span>
-                                <span className="tabular-nums">{slipDays >= 0 ? "+" : ""}{slipDays}d</span>
+                                <span className="tabular-nums">{p.is_project_rollup ? `${schedPct}%` : `${slipDays >= 0 ? "+" : ""}${slipDays}d`}</span>
                               </div>
                             )}
                           </div>

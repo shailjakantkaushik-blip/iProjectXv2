@@ -287,7 +287,7 @@ function InfographicPage() {
   const search = Route.useSearch();
   const [pid, setPid] = useState<string>(search.pid || "");
   const [showPvA, setShowPvA] = useState<boolean>(false);
-  const [showProjectTimeline, setShowProjectTimeline] = useState<boolean>(false);
+  const [showProjectTimeline, setShowProjectTimeline] = useState<boolean>(true);
   const [showGates, setShowGates] = useState<boolean>(true);
   const [exportingPdf, setExportingPdf] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);

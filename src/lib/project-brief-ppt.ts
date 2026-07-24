@@ -3,10 +3,21 @@ import pptxgen from "pptxgenjs";
 /** Green PMO template colors */
 const GREEN = "1E5631";
 const LIGHT_GREEN = "E2EFDA";
+const SLIDE_W = 13.33;
+const SLIDE_H = 7.5;
+const MARGIN = 0.3;
+const CONTENT_BOTTOM = SLIDE_H - 0.2;
 
 type Money = number | null | undefined;
 const fmt = (v: Money) => (v == null ? "—" : `$${Math.round(Number(v)).toLocaleString()}`);
 const dt = (v: string | null | undefined) => (v ? new Date(v).toLocaleDateString() : "—");
+
+/** Truncate long text so body copy stays inside fixed longBox heights. */
+function fitText(value: string | null | undefined, maxChars: number): string {
+  const s = (value ?? "").trim() || "—";
+  if (s.length <= maxChars) return s;
+  return `${s.slice(0, Math.max(0, maxChars - 1)).trimEnd()}…`;
+}
 
 export type ProjectBriefInput = {
   project: {
@@ -41,26 +52,46 @@ export type ProjectBriefInput = {
 
 function bandTitle(slide: pptxgen.Slide, text: string, y = 0.25) {
   slide.addShape("rect", { x: 0.3, y, w: 9.6, h: 0.55, fill: { color: GREEN }, line: { color: GREEN } });
-  slide.addText(text, { x: 0.4, y, w: 9.5, h: 0.55, color: "FFFFFF", bold: true, fontSize: 16, valign: "middle" });
+  slide.addText(fitText(text, 72), {
+    x: 0.4, y, w: 9.5, h: 0.55, color: "FFFFFF", bold: true, fontSize: 14, valign: "middle",
+  });
   slide.addShape("rect", { x: 10.0, y, w: 3.0, h: 0.55, fill: { color: LIGHT_GREEN }, line: { color: LIGHT_GREEN } });
 }
 
 function sectionHeader(slide: pptxgen.Slide, y: number, text: string, w = 12.7) {
-  slide.addShape("rect", { x: 0.3, y, w, h: 0.35, fill: { color: GREEN }, line: { color: GREEN } });
-  slide.addText(text, { x: 0.4, y, w: w - 0.2, h: 0.35, color: "FFFFFF", bold: true, fontSize: 12, valign: "middle" });
+  slide.addShape("rect", { x: 0.3, y, w, h: 0.32, fill: { color: GREEN }, line: { color: GREEN } });
+  slide.addText(text, { x: 0.4, y, w: w - 0.2, h: 0.32, color: "FFFFFF", bold: true, fontSize: 11, valign: "middle" });
 }
 
 function labelBox(slide: pptxgen.Slide, x: number, y: number, w: number, h: number, label: string, value: string) {
   slide.addShape("rect", { x, y, w: 1.5, h, fill: { color: "111111" }, line: { color: "111111" } });
-  slide.addText(label, { x: x + 0.05, y, w: 1.4, h, color: "FFFFFF", bold: true, fontSize: 10, valign: "middle" });
+  slide.addText(label, { x: x + 0.05, y, w: 1.4, h, color: "FFFFFF", bold: true, fontSize: 9, valign: "middle" });
   slide.addShape("rect", { x: x + 1.5, y, w: w - 1.5, h, fill: { color: "FFFFFF" }, line: { color: "CCCCCC" } });
-  slide.addText(value || "—", { x: x + 1.55, y, w: w - 1.6, h, color: "111111", fontSize: 10, valign: "middle" });
+  slide.addText(fitText(value, 48) || "—", {
+    x: x + 1.55, y, w: w - 1.6, h, color: "111111", fontSize: 9, valign: "middle",
+  });
 }
 
 function longBox(slide: pptxgen.Slide, x: number, y: number, w: number, h: number, title: string, value: string) {
+  // Keep shape inside slide; never paint past CONTENT_BOTTOM.
+  const maxH = Math.max(0.55, CONTENT_BOTTOM - y);
+  const boxH = Math.min(h, maxH);
   sectionHeader(slide, y, title, w);
-  slide.addShape("rect", { x, y: y + 0.35, w, h: h - 0.35, fill: { color: "FFFFFF" }, line: { color: "CCCCCC" } });
-  slide.addText(value || "—", { x: x + 0.1, y: y + 0.4, w: w - 0.2, h: h - 0.45, color: "222222", fontSize: 10, valign: "top" });
+  const bodyH = Math.max(0.2, boxH - 0.32);
+  slide.addShape("rect", { x, y: y + 0.32, w, h: bodyH, fill: { color: "FFFFFF" }, line: { color: "CCCCCC" } });
+  // ~55 chars/line at 9pt in a 6" column; clamp so text cannot overflow the shape.
+  const lines = Math.max(2, Math.floor(bodyH / 0.18));
+  const cols = Math.max(40, Math.floor((w / 6.2) * 55));
+  slide.addText(fitText(value, lines * cols), {
+    x: x + 0.08,
+    y: y + 0.36,
+    w: w - 0.16,
+    h: Math.max(0.15, bodyH - 0.08),
+    color: "222222",
+    fontSize: 9,
+    valign: "top",
+    wrap: true,
+  });
 }
 
 export async function downloadProjectBriefPPT(input: ProjectBriefInput) {
@@ -71,41 +102,42 @@ export async function downloadProjectBriefPPT(input: ProjectBriefInput) {
 
   const pres = new pptxgen();
   pres.layout = "LAYOUT_WIDE"; // 13.33 x 7.5
+  void SLIDE_W;
+  void MARGIN;
 
   // ============ SLIDE 1 — Section 1: Business Owner ============
   const slide1 = pres.addSlide();
   slide1.background = { color: "F5F5F5" };
-  bandTitle(slide1, `PROJECT BRIEF — ${project.name || "<Initiative Name>"}`, 0.25);
+  bandTitle(slide1, `PROJECT BRIEF — ${project.name || "<Initiative Name>"}`, 0.2);
   slide1.addText("Section 1: Business Owner to complete in\nconjunction with Business Solution Manager", {
-    x: 10.05, y: 0.28, w: 2.9, h: 0.5, fontSize: 9, italic: true, color: GREEN, align: "center",
+    x: 10.05, y: 0.22, w: 2.9, h: 0.5, fontSize: 8, italic: true, color: GREEN, align: "center",
   });
 
-  // Metadata strip
-  const stripY = 0.95;
-  labelBox(slide1, 0.3, stripY, 3.0, 0.4, "Portfolio /\nWorkstream", `${project.portfolio ?? ""} ${project.workstream ? "/ " + project.workstream : ""}`.trim());
-  labelBox(slide1, 3.4, stripY, 2.6, 0.4, "Sponsor", project.sponsor_name ?? "");
-  labelBox(slide1, 6.1, stripY, 2.8, 0.4, "Business Owner", project.business_owner ?? "");
-  labelBox(slide1, 9.0, stripY, 2.4, 0.4, "Business Solution Mgr", project.business_solution_manager ?? "");
-  labelBox(slide1, 11.5, stripY, 1.5, 0.4, "Strategic Align.", project.strategic_alignment ?? "");
+  const stripY = 0.85;
+  labelBox(slide1, 0.3, stripY, 3.0, 0.38, "Portfolio /\nWorkstream", `${project.portfolio ?? ""} ${project.workstream ? "/ " + project.workstream : ""}`.trim());
+  labelBox(slide1, 3.4, stripY, 2.6, 0.38, "Sponsor", project.sponsor_name ?? "");
+  labelBox(slide1, 6.1, stripY, 2.8, 0.38, "Business Owner", project.business_owner ?? "");
+  labelBox(slide1, 9.0, stripY, 2.4, 0.38, "Business Solution Mgr", project.business_solution_manager ?? "");
+  labelBox(slide1, 11.5, stripY, 1.5, 0.38, "Strategic Align.", project.strategic_alignment ?? "");
 
-  // Two-column body
-  longBox(slide1, 0.3, 1.5, 12.7, 1.2, "Background and Context", s1.background_context ?? "");
-  longBox(slide1, 0.3, 2.8, 12.7, 1.2, "Opportunity / Problem Statement", s1.opportunity_problem ?? "");
-  longBox(slide1, 0.3, 4.1, 6.2, 1.7, "Objective", s1.objective ?? "");
-  longBox(slide1, 6.7, 4.1, 6.3, 1.7, "Assumptions & Constraints", s1.assumptions_constraints ?? "");
-  longBox(slide1, 0.3, 5.9, 6.2, 1.4, "Project Scope", `${s1.scope_in ? "In Scope:\n" + s1.scope_in + "\n\n" : ""}${s1.scope_out ? "Out of Scope:\n" + s1.scope_out : ""}`.trim());
-  longBox(slide1, 6.7, 5.9, 6.3, 1.4, "Key Metrics / Success Measures", s1.success_measures ?? "");
+  // Tighter stack that ends above slide bottom (7.5").
+  longBox(slide1, 0.3, 1.35, 12.7, 1.05, "Background and Context", s1.background_context ?? "");
+  longBox(slide1, 0.3, 2.5, 12.7, 1.05, "Opportunity / Problem Statement", s1.opportunity_problem ?? "");
+  longBox(slide1, 0.3, 3.65, 6.2, 1.55, "Objective", s1.objective ?? "");
+  longBox(slide1, 6.7, 3.65, 6.3, 1.55, "Assumptions & Constraints", s1.assumptions_constraints ?? "");
+  const scopeText = `${s1.scope_in ? "In Scope:\n" + s1.scope_in + "\n\n" : ""}${s1.scope_out ? "Out of Scope:\n" + s1.scope_out : ""}`.trim();
+  longBox(slide1, 0.3, 5.3, 6.2, 1.9, "Project Scope", scopeText);
+  longBox(slide1, 6.7, 5.3, 6.3, 1.9, "Key Metrics / Success Measures", s1.success_measures ?? "");
 
   // ============ SLIDE 2 — Section 2: Solution Manager ============
   const slide2 = pres.addSlide();
   slide2.background = { color: "F5F5F5" };
-  bandTitle(slide2, `PROJECT BRIEF — ${project.name || "<Initiative Name>"}`, 0.25);
+  bandTitle(slide2, `PROJECT BRIEF — ${project.name || "<Initiative Name>"}`, 0.2);
   slide2.addText("Section 2: Business Solution Manager to complete in\nconjunction with Business Owner", {
-    x: 10.05, y: 0.28, w: 2.9, h: 0.5, fontSize: 9, italic: true, color: GREEN, align: "center",
+    x: 10.05, y: 0.22, w: 2.9, h: 0.5, fontSize: 8, italic: true, color: GREEN, align: "center",
   });
 
-  // Left column — Approval / Funding / Estimates
-  sectionHeader(slide2, 0.95, "Approval Ask", 6.2);
+  sectionHeader(slide2, 0.85, "Approval Ask", 6.2);
   const rows = [
     ["Approval Type", s2.approval_type ?? "—"],
     ["Funding Ask", s2.funding_ask ?? "—"],
@@ -113,63 +145,70 @@ export async function downloadProjectBriefPPT(input: ProjectBriefInput) {
     ["Resource Ask", s2.resource_ask ?? "—"],
   ];
   rows.forEach((r, i) => {
-    const y = 1.3 + i * 0.35;
-    slide2.addShape("rect", { x: 0.3, y, w: 1.8, h: 0.35, fill: { color: "111111" }, line: { color: "111111" } });
-    slide2.addText(r[0], { x: 0.35, y, w: 1.75, h: 0.35, color: "FFFFFF", bold: true, fontSize: 9, valign: "middle" });
-    slide2.addShape("rect", { x: 2.1, y, w: 4.4, h: 0.35, fill: { color: "FFFFFF" }, line: { color: "CCCCCC" } });
-    slide2.addText(r[1], { x: 2.15, y, w: 4.35, h: 0.35, color: "111111", fontSize: 9, valign: "middle" });
+    const y = 1.2 + i * 0.32;
+    slide2.addShape("rect", { x: 0.3, y, w: 1.8, h: 0.32, fill: { color: "111111" }, line: { color: "111111" } });
+    slide2.addText(r[0], { x: 0.35, y, w: 1.75, h: 0.32, color: "FFFFFF", bold: true, fontSize: 8, valign: "middle" });
+    slide2.addShape("rect", { x: 2.1, y, w: 4.4, h: 0.32, fill: { color: "FFFFFF" }, line: { color: "CCCCCC" } });
+    slide2.addText(fitText(r[1], 80), { x: 2.15, y, w: 4.35, h: 0.32, color: "111111", fontSize: 8, valign: "middle" });
   });
 
-  longBox(slide2, 0.3, 2.75, 6.2, 1.5, "Estimate Summary and Funding Schedule",
-    `Approved: ${fmt(project.approved_budget)}   Actual: ${fmt(project.actual_spend)}   FAC: ${fmt(project.forecast_at_completion)}\n\n${s2.estimate_commentary ?? ""}`);
-  longBox(slide2, 0.3, 4.35, 6.2, 3.0, "Project P&L / Benefits",
-    `Expected Benefit: ${fmt(project.expected_benefit)}\n\n${s2.benefits_commentary ?? ""}`);
+  longBox(
+    slide2,
+    0.3,
+    2.55,
+    6.2,
+    1.35,
+    "Estimate Summary and Funding Schedule",
+    `Approved: ${fmt(project.approved_budget)}   Actual: ${fmt(project.actual_spend)}   FAC: ${fmt(project.forecast_at_completion)}\n\n${s2.estimate_commentary ?? ""}`,
+  );
+  longBox(
+    slide2,
+    0.3,
+    4.0,
+    6.2,
+    3.2,
+    "Project P&L / Benefits",
+    `Expected Benefit: ${fmt(project.expected_benefit)}\n\n${s2.benefits_commentary ?? ""}`,
+  );
 
-  // Right column — Milestones / Risks / Dependencies
   const cell = (t: string, bold = false) => {
-    const options: any = { bold, fontSize: 9, color: bold ? "FFFFFF" : "111111" };
+    const options: any = { bold, fontSize: 8, color: bold ? "FFFFFF" : "111111" };
     if (bold) options.fill = { color: GREEN };
-    return { text: String(t ?? ""), options };
+    return { text: fitText(t, bold ? 40 : 60), options };
   };
-  sectionHeader(slide2, 0.95, "Summary of Delivery Milestones", 6.3);
+  sectionHeader(slide2, 0.85, "Summary of Delivery Milestones", 6.3);
   const msRows = [
     [cell("Milestone", true), cell("Status", true), cell("Date", true)],
-    ...milestones.slice(0, 5).map((m) => [cell(m.name ?? ""), cell(m.status ?? "—"), cell(dt(m.planned_date))]),
+    ...milestones.slice(0, 4).map((m) => [cell(m.name ?? ""), cell(m.status ?? "—"), cell(dt(m.planned_date))]),
   ];
   slide2.addTable(msRows, {
-    x: 6.7, y: 1.3, w: 6.3, colW: [3.3, 1.4, 1.6],
-    fontSize: 9, border: { pt: 0.5, color: "CCCCCC" },
-    rowH: 0.28,
+    x: 6.7, y: 1.2, w: 6.3, colW: [3.3, 1.4, 1.6],
+    fontSize: 8, border: { pt: 0.5, color: "CCCCCC" },
+    rowH: 0.26,
   });
 
-  sectionHeader(slide2, 3.4, "Project Risks", 6.3);
+  sectionHeader(slide2, 3.15, "Project Risks", 6.3);
   const rkRows = [
     [cell("Description", true), cell("Rating", true), cell("Owner", true)],
-    ...risks.slice(0, 5).map((r) => [cell(r.description ?? ""), cell(r.residual_rating ?? "—"), cell(r.owner ?? "—")]),
+    ...risks.slice(0, 4).map((r) => [cell(r.description ?? ""), cell(r.residual_rating ?? "—"), cell(r.owner ?? "—")]),
   ];
   slide2.addTable(rkRows, {
-    x: 6.7, y: 3.75, w: 6.3, colW: [3.5, 1.2, 1.6],
-    fontSize: 9, border: { pt: 0.5, color: "CCCCCC" }, rowH: 0.28,
+    x: 6.7, y: 3.5, w: 6.3, colW: [3.5, 1.2, 1.6],
+    fontSize: 8, border: { pt: 0.5, color: "CCCCCC" }, rowH: 0.26,
   });
 
-  sectionHeader(slide2, 5.55, "Dependencies", 6.3);
+  sectionHeader(slide2, 5.2, "Dependencies", 6.3);
   const depRows = [
     [cell("From → To", true), cell("Type", true), cell("Status", true)],
     ...dependencies.slice(0, 4).map((d) => [cell(`${d.from_project ?? "—"} → ${d.to_project ?? "—"}`), cell(d.dependency_type ?? "—"), cell(d.status ?? "—")]),
   ];
   slide2.addTable(depRows, {
-    x: 6.7, y: 5.9, w: 6.3, colW: [3.5, 1.2, 1.6],
-    fontSize: 9, border: { pt: 0.5, color: "CCCCCC" }, rowH: 0.28,
+    x: 6.7, y: 5.55, w: 6.3, colW: [3.5, 1.2, 1.6],
+    fontSize: 8, border: { pt: 0.5, color: "CCCCCC" }, rowH: 0.26,
   });
 
-  // Brief only: Section 1 + Section 2 (no delivery-plan / summary slide).
   void timelineImage;
 
-  // pptxgenjs 3.12/4.x has a Content_Types bug: it writes one <Override> per slide
-  // for /ppt/slideMasters/slideMasterN.xml but only ever emits slideMaster1.xml,
-  // which makes PowerPoint refuse to open the file with a "sorry, we can't read it"
-  // repair prompt. Post-process the generated ZIP to keep only the master overrides
-  // whose files actually exist, then trigger the download ourselves.
   const fileName = `Project-Brief-${(project.project_code ?? project.name ?? "Project").replace(/\s+/g, "_")}.pptx`;
   const rawBlob = (await (pres as any).write({ outputType: "blob" })) as Blob;
   const fixedBlob = await sanitizeContentTypes(rawBlob);
@@ -184,10 +223,9 @@ async function sanitizeContentTypes(blob: Blob): Promise<Blob> {
     const ctFile = zip.file("[Content_Types].xml");
     if (!ctFile) return blob;
     let xml: string = await ctFile.async("string");
-    // Keep only slideMaster overrides that reference a part that actually exists.
     xml = xml.replace(
       /<Override[^>]*PartName="\/ppt\/slideMasters\/slideMaster(\d+)\.xml"[^>]*\/>/g,
-      (match, n) => (zip.file(`ppt/slideMasters/slideMaster${n}.xml`) ? match : "")
+      (match, n) => (zip.file(`ppt/slideMasters/slideMaster${n}.xml`) ? match : ""),
     );
     zip.file("[Content_Types].xml", xml);
     return await zip.generateAsync({
@@ -212,4 +250,3 @@ function triggerDownload(blob: Blob, fileName: string) {
     a.remove();
   }, 200);
 }
-

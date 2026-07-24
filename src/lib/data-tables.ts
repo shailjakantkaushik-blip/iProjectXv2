@@ -500,6 +500,31 @@ export const TABLES: TableDef[] = [
       { key: "submitted_date", label: "Submitted", type: "date" },
     ],
   },
+  {
+    key: "work_items",
+    label: "Work Items (WBS)",
+    matchOn: ["project_code", "stream_code", "wbs_code", "title"],
+    orderBy: "sort_order",
+    description:
+      "WBS / tasks. Set stream_code when the project has streams — blanks autopopulate to the Core stream when streams are enabled.",
+    fields: [
+      { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "stream_id", label: "Stream", type: "text", fk: "stream" },
+      { key: "wbs_code", label: "WBS", type: "text" },
+      { key: "title", label: "Title", type: "text", required: true },
+      { key: "status", label: "Status", type: "select", options: ["To Do", "In Progress", "Blocked", "Done", "Cancelled"] },
+      { key: "priority", label: "Priority", type: "select", options: ["Critical", "High", "Medium", "Low"] },
+      { key: "owner", label: "Owner", type: "text" },
+      { key: "percent_complete", label: "% Complete", type: "number" },
+      { key: "planned_start", label: "Planned Start", type: "date" },
+      { key: "planned_end", label: "Planned End", type: "date" },
+      { key: "actual_start", label: "Actual Start", type: "date" },
+      { key: "actual_end", label: "Actual End", type: "date" },
+      { key: "estimate_hours", label: "Est. Hours", type: "number" },
+      { key: "actual_hours", label: "Actual Hours", type: "number" },
+      { key: "description", label: "Description", type: "textarea" },
+    ],
+  },
 ];
 
 export function getTable(key: string) {

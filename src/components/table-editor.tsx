@@ -9,6 +9,8 @@ import { Plus, Trash2 } from "lucide-react";
 import type { TableDef, FieldDef } from "@/lib/data-tables";
 import { EditableCell } from "@/components/editable-cell";
 import { useCapabilityPermission, useTablePermission } from "@/lib/permissions";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
 
 interface LookupMaps {
   projectsById: Map<string, string>;
@@ -19,6 +21,8 @@ interface LookupMaps {
   resourcesByName: Map<string, string>;
   streamsById: Map<string, string>;
   streamsByCode: Map<string, string>;
+  /** project_id → default stream id (Core) for autopopulate */
+  defaultStreamByProject: Map<string, string>;
 }
 
 export function TableEditor({ def }: { def: TableDef }) {
@@ -27,7 +31,6 @@ export function TableEditor({ def }: { def: TableDef }) {
   const tablePerm = useTablePermission(def.key);
   const canEdit = dataEditorCap.canEdit || tablePerm.canEdit;
   const qc = useQueryClient();
-  const [q, setQ] = useState("");
   const [showAdd, setShowAdd] = useState(false);
 
   const { data: lookups } = useQuery({
@@ -38,7 +41,7 @@ export function TableEditor({ def }: { def: TableDef }) {
         supabase.from("projects").select("id,project_code,name").eq("org_id", organization!.id),
         supabase.from("business_units").select("id,code,name").eq("org_id", organization!.id),
         supabase.from("resources").select("id,name").eq("org_id", organization!.id),
-        supabase.from("project_streams").select("id,code,name,project_id").eq("org_id", organization!.id),
+        supabase.from("project_streams").select("id,code,name,project_id,is_default").eq("org_id", organization!.id),
       ]);
       const projectsById = new Map((projects ?? []).map((p) => [p.id, p.project_code || p.name]));
       const projectsByCode = new Map<string, string>();
@@ -51,9 +54,11 @@ export function TableEditor({ def }: { def: TableDef }) {
       (resources ?? []).forEach((r) => { if (r.name) resourcesByName.set(r.name, r.id); });
       const streamsById = new Map((streams ?? []).map((s: any) => [s.id, s.code || s.name || s.id]));
       const streamsByCode = new Map<string, string>();
+      const defaultStreamByProject = new Map<string, string>();
       (streams ?? []).forEach((s: any) => {
         if (s.code) streamsByCode.set(String(s.code).trim(), s.id);
         if (s.name) streamsByCode.set(String(s.name).trim(), s.id);
+        if (s.is_default) defaultStreamByProject.set(s.project_id, s.id);
       });
       return {
         projectsById,
@@ -64,6 +69,7 @@ export function TableEditor({ def }: { def: TableDef }) {
         resourcesByName,
         streamsById,
         streamsByCode,
+        defaultStreamByProject,
       };
     },
   });
@@ -82,20 +88,24 @@ export function TableEditor({ def }: { def: TableDef }) {
     },
   });
 
-  const filtered = useMemo(() => {
-    if (!q) return rows;
-    const needle = q.toLowerCase();
-    return rows.filter((r: any) =>
-      def.fields.some((f) => {
-        const v = r[f.key];
-        if (v == null) return false;
-        if (f.fk === "project") return (lookups?.projectsById.get(String(v)) ?? "").toLowerCase().includes(needle);
-        if (f.fk === "bu") return (lookups?.busById.get(String(v)) ?? "").toLowerCase().includes(needle);
-        if (f.fk === "stream") return (lookups?.streamsById.get(String(v)) ?? "").toLowerCase().includes(needle);
-        return String(v).toLowerCase().includes(needle);
-      })
-    );
-  }, [rows, q, def, lookups]);
+  const columns: ColumnarColumn<any>[] = useMemo(
+    () =>
+      def.fields.map((f) => ({
+        key: f.key,
+        label: f.label,
+        getValue: (row: any) => {
+          const v = row[f.key];
+          if (f.fk === "project") return lookups?.projectsById.get(String(v)) ?? v;
+          if (f.fk === "bu") return lookups?.busById.get(String(v)) ?? v;
+          if (f.fk === "stream") return lookups?.streamsById.get(String(v)) ?? v;
+          if (f.key === "resource_id") return lookups?.resourcesById.get(String(v)) ?? v;
+          return v;
+        },
+      })),
+    [def.fields, lookups],
+  );
+
+  const table = useColumnarTable(rows, columns);
 
   const removeRow = async (id: string) => {
     if (!confirm("Delete this row? This cannot be undone.")) return;
@@ -111,8 +121,16 @@ export function TableEditor({ def }: { def: TableDef }) {
     <div className="space-y-3">
       {def.description && <p className="text-sm text-muted-foreground">{def.description}</p>}
       <div className="flex flex-wrap items-center gap-2">
-        <Input placeholder="Filter…" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-xs" />
-        <span className="text-xs text-muted-foreground">{filtered.length} of {rows.length} rows</span>
+        <Input
+          placeholder="Search all columns…"
+          value={table.globalQ}
+          onChange={(e) => table.setGlobalQ(e.target.value)}
+          className="max-w-xs"
+        />
+        <span className="text-xs text-muted-foreground">{table.rows.length} of {table.total} rows</span>
+        {(table.globalQ || Object.keys(table.filters).length > 0 || table.sortKey) && (
+          <Button size="sm" variant="ghost" onClick={table.clearAll}>Clear filters</Button>
+        )}
         <div className="ml-auto flex gap-2">
           {canEdit && (
             <Button size="sm" variant="outline" onClick={() => setShowAdd((s) => !s)}>
@@ -140,14 +158,24 @@ export function TableEditor({ def }: { def: TableDef }) {
         <table className="st-table text-xs">
           <thead>
             <tr>
-              {def.fields.map((f) => <th key={f.key}>{f.label}</th>)}
+              {columns.map((col) => (
+                <ColumnarTh
+                  key={col.key}
+                  column={col}
+                  filter={table.filters[col.key]}
+                  onFilter={(v) => table.setColumnFilter(col.key, v)}
+                  sortKey={table.sortKey}
+                  sortDir={table.sortDir}
+                  onToggleSort={table.toggleSort}
+                />
+              ))}
               {canEdit && <th className="w-10"></th>}
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {table.rows.length === 0 ? (
               <tr><td colSpan={def.fields.length + 1} className="py-6 text-center text-muted-foreground">No rows</td></tr>
-            ) : filtered.map((row: any) => (
+            ) : table.rows.map((row: any) => (
               <tr key={row.id}>
                 {def.fields.map((f) => (
                   <td key={f.key} className="align-top">
@@ -190,7 +218,6 @@ function CellRenderer({
   forceEditable?: boolean;
 }) {
   const v = row[field.key];
-  // FK columns: read-only display (change via Add row or Project register).
   if (field.fk === "project") return <span className="font-mono">{lookups?.projectsById.get(String(v)) ?? "—"}</span>;
   if (field.fk === "bu") return <span>{lookups?.busById.get(String(v)) ?? "—"}</span>;
   if (field.fk === "stream") return <span className="font-mono">{lookups?.streamsById.get(String(v)) ?? "—"}</span>;
@@ -247,6 +274,15 @@ function AddRowForm({ def, lookups, orgId, onDone }: { def: TableDef; lookups: L
         } else if (f.type === "number") payload[f.key] = Number(v) || 0;
         else if (f.type === "select" && f.options?.includes("true")) payload[f.key] = v === "true";
         else payload[f.key] = v;
+      }
+      // Autopopulate default Core stream when stream_id blank but project has streams.
+      if (
+        def.fields.some((f) => f.key === "stream_id") &&
+        !payload.stream_id &&
+        payload.project_id
+      ) {
+        const defStream = lookups.defaultStreamByProject.get(String(payload.project_id));
+        if (defStream) payload.stream_id = defStream;
       }
       if (def.key === "projects") {
         const { syncScheduleDates } = await import("@/lib/project-dates");

@@ -29,6 +29,7 @@ const num = (v: unknown) => {
 
 export type MonthlyFinanceRow = {
   project_id: string;
+  stream_id?: string | null;
   period_month: string;
   capex_planned?: number | null;
   capex_actual?: number | null;
