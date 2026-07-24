@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import {
   fetchLandingConfig,
   readCachedLandingConfigForPaint,
@@ -53,7 +53,6 @@ function BrandMark({ cfg }: { cfg: LandingConfig }) {
 
 function ContactPage() {
   const { cfg } = Route.useLoaderData();
-  const [eoiOpen, setEoiOpen] = useState(false);
   const p = cfg.palette;
   const isDark = cfg.theme === "dark";
   const pageBg = isDark ? p.navy : "#fafbfc";
@@ -67,8 +66,6 @@ function ContactPage() {
 
   return (
     <div className="min-h-screen antialiased" style={{ ...BODY, background: pageBg, color: p.textBody }}>
-      {eoiOpen && <EoiModal cfg={cfg} onClose={() => setEoiOpen(false)} />}
-
       <nav
         className="sticky top-0 z-40 border-b backdrop-blur-xl"
         style={{
