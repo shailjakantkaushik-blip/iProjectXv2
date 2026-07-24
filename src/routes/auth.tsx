@@ -154,7 +154,7 @@ function AuthPending() {
 
 function AuthPage() {
   const { platformBrand, signupEnabled, orgBrand, orgRequested } = Route.useLoaderData();
-  const { session, loading } = useAuth();
+  const { session, loading, profile } = useAuth();
   const navigate = useNavigate();
   const assertOrgMembership = useServerFn(assertUserBelongsToOrgSlug);
   const [busy, setBusy] = useState(false);
@@ -164,11 +164,15 @@ function AuthPage() {
   const [orgAlert, setOrgAlert] = useState<OrgAccessAlert | null>(null);
   /** Prevents re-firing the org membership gate after the user dismisses the alert. */
   const [orgGateBlocked, setOrgGateBlocked] = useState(false);
+  /** User explicitly chose to sign in as someone else — do not auto-continue prior session. */
+  const [switchingAccount, setSwitchingAccount] = useState(false);
   const captchaRequired = isTurnstileEnabled();
   // Org white-label links are invite-style: no public self-signup.
   const allowSignup = signupEnabled && !orgRequested;
   const targetOrgSlug = orgBrand?.slug || (orgRequested ? readOrgFromLocation() : undefined);
   const orgLabel = orgBrand?.name || targetOrgSlug || "this organisation";
+  const sessionEmail =
+    session?.user?.email || profile?.email || null;
 
   const showOrgAccessAlert = useCallback((alert: OrgAccessAlert) => {
     setOrgAlert(alert);
@@ -217,39 +221,21 @@ function AuthPage() {
     [assertOrgMembership, showOrgAccessAlert, orgLabel],
   );
 
-  // Avoid repeat navigations when auth state flickers (session refresh / Turnstile remounts).
-  const redirectedRef = useRef(false);
+  // Existing session on /auth: do NOT auto-redirect into the app. That made
+  // "change email and sign in as someone else" impossible — the prior session
+  // always won. Show an explicit continue / switch-account choice instead.
   useEffect(() => {
-    if (!session) redirectedRef.current = false;
+    if (!session) setSwitchingAccount(false);
   }, [session]);
 
   useEffect(() => {
-    if (loading || !session) return;
-    // Stay on the auth page while the wrong-org alert is open / was dismissed.
-    if (orgAlert || orgGateBlocked) return;
-    if (redirectedRef.current) return;
+    if (loading || !session || switchingAccount || orgAlert || orgGateBlocked) return;
+    if (!orgRequested || !targetOrgSlug) return;
+    // Soft-check org membership for white-label links; keep session on failure.
     let cancelled = false;
     (async () => {
-      if (orgRequested) {
-        if (!targetOrgSlug) {
-          if (!cancelled) {
-            showOrgAccessAlert({
-              title: "Invalid organisation sign-in link",
-              message:
-                "This link is missing a valid organisation. Use the link from your administrator, or sign in on the general page.",
-              sessionPreserved: true,
-            });
-          }
-          return;
-        }
-        // Existing session + wrong org link: keep session, alert the user.
-        const ok = await rejectWrongOrgSession(targetOrgSlug, false);
-        if (cancelled || !ok) return;
-      }
-      if (!cancelled) {
-        redirectedRef.current = true;
-        navigate({ to: "/app", replace: true });
-      }
+      const ok = await rejectWrongOrgSession(targetOrgSlug, false);
+      if (cancelled || ok) return;
     })();
     return () => {
       cancelled = true;
@@ -257,14 +243,45 @@ function AuthPage() {
   }, [
     session,
     loading,
+    switchingAccount,
     orgRequested,
     targetOrgSlug,
     rejectWrongOrgSession,
-    navigate,
     orgAlert,
     orgGateBlocked,
-    showOrgAccessAlert,
   ]);
+
+  const continueAsCurrentUser = async () => {
+    if (orgRequested) {
+      if (!targetOrgSlug) {
+        showOrgAccessAlert({
+          title: "Invalid organisation sign-in link",
+          message:
+            "This link is missing a valid organisation. Use the link from your administrator, or sign in on the general page.",
+          sessionPreserved: true,
+        });
+        return;
+      }
+      setBusy(true);
+      const ok = await rejectWrongOrgSession(targetOrgSlug, false);
+      setBusy(false);
+      if (!ok) return;
+    }
+    navigate({ to: "/app", replace: true });
+  };
+
+  const beginSwitchAccount = async () => {
+    setSwitchingAccount(true);
+    setOrgAlert(null);
+    setOrgGateBlocked(false);
+    setBusy(true);
+    await supabase.auth.signOut({ scope: "local" });
+    clearOrgAuthEntry();
+    setBusy(false);
+    toast.message("Ready for a different account", {
+      description: "Enter the email and password you want to use.",
+    });
+  };
 
   useEffect(() => {
     // Org white-label entry: remember so sign-out returns here.
@@ -313,6 +330,8 @@ function AuthPage() {
   const onSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
+    const email = String(fd.get("email") || "").trim();
+    const password = String(fd.get("password") || "");
     setBusy(true);
     setOrgAlert(null);
     setOrgGateBlocked(false);
@@ -320,14 +339,22 @@ function AuthPage() {
       setBusy(false);
       return;
     }
+    // If a prior session is still present (e.g. browser restored it), clear it
+    // before signing in — especially when the email differs — so the new
+    // credentials actually become the active user.
+    const currentEmail = session?.user?.email?.toLowerCase() || null;
+    if (session && (!currentEmail || currentEmail !== email.toLowerCase())) {
+      await supabase.auth.signOut({ scope: "local" });
+    }
     const { error } = await supabase.auth.signInWithPassword({
-      email: String(fd.get("email")),
-      password: String(fd.get("password")),
+      email,
+      password,
     });
     if (error) {
       setBusy(false);
       return toast.error(error.message);
     }
+    setSwitchingAccount(false);
 
     if (orgRequested) {
       if (!targetOrgSlug) {
@@ -546,7 +573,38 @@ function AuthPage() {
       }
     >
       {orgAlertBanner}
-      {allowSignup ? (
+      {!loading && session && !switchingAccount && !orgGateBlocked ? (
+        <div className="space-y-4 pt-2">
+          <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Already signed in
+            </div>
+            <div className="mt-1 break-all font-medium text-foreground">
+              {sessionEmail || "Current session"}
+            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Continue with this account, or sign out to use a different email.
+            </p>
+          </div>
+          <Button
+            type="button"
+            className="h-10 w-full"
+            disabled={busy}
+            onClick={() => void continueAsCurrentUser()}
+          >
+            {busy ? "Continuing…" : "Continue to app"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10 w-full"
+            disabled={busy}
+            onClick={() => void beginSwitchAccount()}
+          >
+            Use a different account
+          </Button>
+        </div>
+      ) : allowSignup ? (
         <Tabs defaultValue="signin">
           <TabsList className="grid h-10 w-full grid-cols-2">
             <TabsTrigger value="signin">Sign in</TabsTrigger>
