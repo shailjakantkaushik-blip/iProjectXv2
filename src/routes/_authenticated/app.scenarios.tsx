@@ -19,6 +19,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/scenarios")({
   component: ScenariosPage,
@@ -107,6 +110,43 @@ function ScenariosPage() {
   const includedCount = includedRows.filter((r) => r.included).length;
   const cap = Number(active?.budget_cap || 0);
   const overCap = cap > 0 && includedBudget > cap;
+
+  const scenarioColumns: ColumnarColumn<(typeof includedRows)[number]>[] = useMemo(
+    () => [
+      {
+        key: "included",
+        label: "Include",
+        getValue: (r) => (r.included ? "yes" : "no"),
+      },
+      {
+        key: "project",
+        label: "Project",
+        getValue: (r) => `${r.project.name} ${r.project.project_code || ""}`,
+      },
+      {
+        key: "status",
+        label: "Status",
+        getValue: (r) => r.project.status || "",
+      },
+      {
+        key: "rag",
+        label: "RAG",
+        getValue: (r) => r.project.rag || "",
+      },
+      {
+        key: "baseline",
+        label: "Baseline budget",
+        getValue: (r) => Number(r.project.budget || 0),
+      },
+      {
+        key: "scenarioBudget",
+        label: "Scenario budget",
+        getValue: (r) => r.adjBudget,
+      },
+    ],
+    [],
+  );
+  const scenarioTable = useColumnarTable(includedRows, scenarioColumns);
 
   const create = useMutation({
     mutationFn: async () => {
@@ -319,59 +359,92 @@ function ScenariosPage() {
       {activeId && (
         <SectionFrame>
           <SectionTitle>Projects in scenario</SectionTitle>
+          <ColumnarToolbar
+            globalQ={scenarioTable.globalQ}
+            onGlobalQ={scenarioTable.setGlobalQ}
+            shown={scenarioTable.rows.length}
+            total={scenarioTable.total}
+            onClear={scenarioTable.clearAll}
+            placeholder="Search scenario projects…"
+          />
           <div className="mt-3 overflow-x-auto">
             <table className="st-table w-full">
               <thead>
                 <tr>
-                  <th>Include</th>
-                  <th>Project</th>
-                  <th>Status</th>
-                  <th>RAG</th>
-                  <th className="text-right">Baseline budget</th>
-                  <th className="text-right">Scenario budget</th>
+                  {scenarioColumns.map((col) => (
+                    <ColumnarTh
+                      key={col.key}
+                      column={col}
+                      filter={scenarioTable.filters[col.key]}
+                      onFilter={(v) => scenarioTable.setColumnFilter(col.key, v)}
+                      sortKey={scenarioTable.sortKey}
+                      sortDir={scenarioTable.sortDir}
+                      onToggleSort={scenarioTable.toggleSort}
+                      align={
+                        col.key === "baseline" || col.key === "scenarioBudget"
+                          ? "right"
+                          : "left"
+                      }
+                    />
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {includedRows.map(({ project: p, included, adjBudget }) => (
-                  <tr key={p.id}>
-                    <td>
-                      <Switch
-                        checked={included}
-                        onCheckedChange={(v) =>
-                          toggleInclude.mutate({
-                            projectId: p.id,
-                            included: v,
-                            budget: Number(p.budget || 0),
-                          })
-                        }
-                      />
-                    </td>
-                    <td>
-                      <div className="font-medium">{p.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {p.project_code || "—"}
-                      </div>
-                    </td>
-                    <td className="text-sm">{p.status ?? "—"}</td>
-                    <td className="text-sm">{p.rag ?? "—"}</td>
-                    <td className="text-right tabular-nums">{money(Number(p.budget || 0))}</td>
-                    <td className="text-right">
-                      <Input
-                        className="ml-auto h-8 w-32 text-right"
-                        type="number"
-                        disabled={!included}
-                        defaultValue={adjBudget}
-                        key={`${p.id}-${adjBudget}-${included}`}
-                        onBlur={(e) => {
-                          if (!included) return;
-                          const next = Number(e.target.value);
-                          if (!Number.isFinite(next) || next === adjBudget) return;
-                          updateBudget.mutate({ projectId: p.id, budget: next });
-                        }}
-                      />
+                {scenarioTable.rows.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={scenarioColumns.length}
+                      className="py-8 text-center text-sm text-muted-foreground"
+                    >
+                      {scenarioTable.total === 0
+                        ? "No projects available."
+                        : "No matching projects."}
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  scenarioTable.rows.map(({ project: p, included, adjBudget }) => (
+                    <tr key={p.id}>
+                      <td>
+                        <Switch
+                          checked={included}
+                          onCheckedChange={(v) =>
+                            toggleInclude.mutate({
+                              projectId: p.id,
+                              included: v,
+                              budget: Number(p.budget || 0),
+                            })
+                          }
+                        />
+                      </td>
+                      <td>
+                        <div className="font-medium">{p.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {p.project_code || "—"}
+                        </div>
+                      </td>
+                      <td className="text-sm">{p.status ?? "—"}</td>
+                      <td className="text-sm">{p.rag ?? "—"}</td>
+                      <td className="text-right tabular-nums">
+                        {money(Number(p.budget || 0))}
+                      </td>
+                      <td className="text-right">
+                        <Input
+                          className="ml-auto h-8 w-32 text-right"
+                          type="number"
+                          disabled={!included}
+                          defaultValue={adjBudget}
+                          key={`${p.id}-${adjBudget}-${included}`}
+                          onBlur={(e) => {
+                            if (!included) return;
+                            const next = Number(e.target.value);
+                            if (!Number.isFinite(next) || next === adjBudget) return;
+                            updateBudget.mutate({ projectId: p.id, budget: next });
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

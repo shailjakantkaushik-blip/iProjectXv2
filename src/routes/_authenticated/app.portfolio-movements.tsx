@@ -7,6 +7,9 @@ import { SectionFrame, SectionTitle, PageHeading, KpiCard } from "@/components/s
 import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LabelList, Cell } from "recharts";
 import { ArrowRight, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/portfolio-movements")({
   component: Movements,
@@ -85,6 +88,54 @@ function Movements() {
   const approvedCR = changes.filter((c: any) => c.status === "Approved").length;
   const openCR = changes.filter((c: any) => c.status === "Open" || c.status === "In Review").length;
 
+  const crColumns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "cr_number", label: "CR#" },
+      { key: "title", label: "Title" },
+      { key: "change_type", label: "Type" },
+      { key: "status", label: "Status" },
+      {
+        key: "impact_cost",
+        label: "Cost $",
+        getValue: (c) => Number(c.impact_cost || 0),
+      },
+      {
+        key: "impact_schedule_days",
+        label: "Days",
+        getValue: (c) => Number(c.impact_schedule_days || 0),
+      },
+      {
+        key: "raised_date",
+        label: "Raised",
+        getValue: (c) => (c.raised_date ? new Date(c.raised_date).toLocaleDateString() : ""),
+      },
+    ],
+    [],
+  );
+  const crTable = useColumnarTable(changes, crColumns);
+
+  const gateDetailRows = useMemo(() => slippage.slice(0, 30), [slippage]);
+  const gateColumns: ColumnarColumn<(typeof gateDetailRows)[number]>[] = useMemo(
+    () => [
+      { key: "project", label: "Project" },
+      { key: "gate", label: "Gate" },
+      { key: "status", label: "Status" },
+      {
+        key: "planned",
+        label: "Planned",
+        getValue: (r) => (r.planned ? new Date(r.planned).toLocaleDateString() : ""),
+      },
+      {
+        key: "actual",
+        label: "Actual",
+        getValue: (r) => (r.actual ? new Date(r.actual).toLocaleDateString() : ""),
+      },
+      { key: "delta", label: "Delta", getValue: (r) => r.delta ?? 0 },
+    ],
+    [],
+  );
+  const gateTable = useColumnarTable(gateDetailRows, gateColumns);
+
   return (
     <div>
       <PageHeading
@@ -151,28 +202,47 @@ function Movements() {
           <KpiCard label="Schedule Impact" value={`${totalDayImpact}d`} accent="#f59e0b" />
           <KpiCard label="Approved" value={approvedCR} accent="#22c55e" />
         </div>
+        <ColumnarToolbar
+          globalQ={crTable.globalQ}
+          onGlobalQ={crTable.setGlobalQ}
+          shown={crTable.rows.length}
+          total={crTable.total}
+          onClear={crTable.clearAll}
+          placeholder="Search change requests…"
+        />
         <div className="overflow-x-auto">
           <table className="st-table">
             <thead>
               <tr>
-                <th>CR#</th>
-                <th>Title</th>
-                <th>Type</th>
-                <th>Status</th>
-                <th className="text-right">Cost $</th>
-                <th className="text-right">Days</th>
-                <th>Raised</th>
+                {crColumns.map((col) => (
+                  <ColumnarTh
+                    key={col.key}
+                    column={col}
+                    filter={crTable.filters[col.key]}
+                    onFilter={(v) => crTable.setColumnFilter(col.key, v)}
+                    sortKey={crTable.sortKey}
+                    sortDir={crTable.sortDir}
+                    onToggleSort={crTable.toggleSort}
+                    align={
+                      col.key === "impact_cost" || col.key === "impact_schedule_days"
+                        ? "right"
+                        : "left"
+                    }
+                  />
+                ))}
               </tr>
             </thead>
             <tbody>
-              {changes.length === 0 ? (
+              {crTable.rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center text-muted-foreground py-4">
-                    No change requests recorded.
+                  <td colSpan={crColumns.length} className="text-center text-muted-foreground py-4">
+                    {crTable.total === 0
+                      ? "No change requests recorded."
+                      : "No matching change requests."}
                   </td>
                 </tr>
               ) : (
-                changes.map((c: any) => (
+                crTable.rows.map((c: any) => (
                   <tr key={c.id}>
                     <td className="font-mono text-[11px]">{c.cr_number || "—"}</td>
                     <td className="font-medium">{c.title}</td>
@@ -202,38 +272,74 @@ function Movements() {
 
       <SectionFrame>
         <SectionTitle>Gate Movement Detail</SectionTitle>
+        <ColumnarToolbar
+          globalQ={gateTable.globalQ}
+          onGlobalQ={gateTable.setGlobalQ}
+          shown={gateTable.rows.length}
+          total={gateTable.total}
+          onClear={gateTable.clearAll}
+          placeholder="Search gate movements…"
+        />
         <div className="overflow-x-auto">
           <table className="st-table">
             <thead>
               <tr>
-                <th>Project</th>
-                <th>Gate</th>
-                <th>Status</th>
-                <th>Planned</th>
+                {gateColumns.slice(0, 4).map((col) => (
+                  <ColumnarTh
+                    key={col.key}
+                    column={col}
+                    filter={gateTable.filters[col.key]}
+                    onFilter={(v) => gateTable.setColumnFilter(col.key, v)}
+                    sortKey={gateTable.sortKey}
+                    sortDir={gateTable.sortDir}
+                    onToggleSort={gateTable.toggleSort}
+                  />
+                ))}
                 <th></th>
-                <th>Actual</th>
-                <th className="text-right">Delta</th>
+                {gateColumns.slice(4).map((col) => (
+                  <ColumnarTh
+                    key={col.key}
+                    column={col}
+                    filter={gateTable.filters[col.key]}
+                    onFilter={(v) => gateTable.setColumnFilter(col.key, v)}
+                    sortKey={gateTable.sortKey}
+                    sortDir={gateTable.sortDir}
+                    onToggleSort={gateTable.toggleSort}
+                    align={col.key === "delta" ? "right" : "left"}
+                  />
+                ))}
               </tr>
             </thead>
             <tbody>
-              {slippage.slice(0, 30).map((r, i) => (
-                <tr key={i}>
-                  <td className="font-medium">{r.project}</td>
-                  <td>{r.gate}</td>
-                  <td>{r.status}</td>
-                  <td>{r.planned ? new Date(r.planned).toLocaleDateString() : "—"}</td>
-                  <td>
-                    <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                  </td>
-                  <td>{r.actual ? new Date(r.actual).toLocaleDateString() : "—"}</td>
+              {gateTable.rows.length === 0 ? (
+                <tr>
                   <td
-                    className={`text-right tabular-nums font-semibold ${(r.delta || 0) > 14 ? "text-red-600" : (r.delta || 0) > 0 ? "text-amber-600" : "text-emerald-600"}`}
+                    colSpan={gateColumns.length + 1}
+                    className="text-center text-muted-foreground py-4"
                   >
-                    {(r.delta || 0) > 0 ? "+" : ""}
-                    {r.delta}d
+                    {gateTable.total === 0 ? "No gate movements recorded." : "No matching rows."}
                   </td>
                 </tr>
-              ))}
+              ) : (
+                gateTable.rows.map((r, i) => (
+                  <tr key={i}>
+                    <td className="font-medium">{r.project}</td>
+                    <td>{r.gate}</td>
+                    <td>{r.status}</td>
+                    <td>{r.planned ? new Date(r.planned).toLocaleDateString() : "—"}</td>
+                    <td>
+                      <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                    </td>
+                    <td>{r.actual ? new Date(r.actual).toLocaleDateString() : "—"}</td>
+                    <td
+                      className={`text-right tabular-nums font-semibold ${(r.delta || 0) > 14 ? "text-red-600" : (r.delta || 0) > 0 ? "text-amber-600" : "text-emerald-600"}`}
+                    >
+                      {(r.delta || 0) > 0 ? "+" : ""}
+                      {r.delta}d
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

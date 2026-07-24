@@ -36,6 +36,9 @@ import {
   cascadeMonthlyFromFyPlan,
   syncProjectIncurredFromMonthly,
 } from "@/lib/finance-lifecycle";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/fy-allocation")({
   component: FYAllocationPage,
@@ -518,6 +521,52 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
   }, [projTotals, projectMap, rowsF, fys]);
   const mixColors = ["#3b82f6", "#8b5cf6", "#22c55e", "#f59e0b", "#ef4444", "#06b6d4"];
 
+  const allocDetailRows = useMemo(
+    () =>
+      rowsF.slice(0, 500).map((r: any) => {
+        const p: any = projectMap.get(r.project_id);
+        const bAmt = fyAllocBudget(r);
+        const fAmt = fyAllocForecast(r);
+        const projB = projectApprovedFunding(p);
+        const projF = projectForecast(p);
+        const bp = projB ? (bAmt / projB) * 100 : 0;
+        const fp = projF ? (fAmt / projF) * 100 : 0;
+        return {
+          id: r.id,
+          project_id: r.project_id,
+          project_code: p?.project_code || "",
+          project_name: p?.name || "",
+          fy: r.fy,
+          bp,
+          fp,
+          bAmt,
+          fAmt,
+          portfolio_category: p?.portfolio_category || "",
+          sponsor: p?.sponsor || "",
+          rag: p?.rag || "NA",
+          project: p,
+        };
+      }),
+    [rowsF, projectMap],
+  );
+
+  const allocDetailColumns: ColumnarColumn<(typeof allocDetailRows)[number]>[] = useMemo(
+    () => [
+      { key: "project_code", label: "Project ID" },
+      { key: "project_name", label: "Project Name" },
+      { key: "fy", label: "FY" },
+      { key: "bp", label: "Budget %" },
+      { key: "fp", label: "Forecast %" },
+      { key: "bAmt", label: "Budget Amount" },
+      { key: "fAmt", label: "Forecast Amount" },
+      { key: "portfolio_category", label: "Portfolio Category" },
+      { key: "sponsor", label: "Sponsor" },
+      { key: "rag", label: "RAG" },
+    ],
+    [],
+  );
+  const allocDetailTable = useColumnarTable(allocDetailRows, allocDetailColumns);
+
   // Heatmap (top 20)
   const heatProjects = useMemo(() => {
     const m = new Map<string, number>();
@@ -725,58 +774,75 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
 
       <SectionFrame>
         <SectionTitle>Allocation detail</SectionTitle>
+        <ColumnarToolbar
+          globalQ={allocDetailTable.globalQ}
+          onGlobalQ={allocDetailTable.setGlobalQ}
+          shown={allocDetailTable.rows.length}
+          total={allocDetailTable.total}
+          onClear={allocDetailTable.clearAll}
+          placeholder="Search allocation detail…"
+        />
         <div className="max-h-[420px] overflow-auto">
           <table className="st-table">
             <thead className="sticky top-0 bg-white">
               <tr>
-                <th>Project ID</th>
-                <th>Project Name</th>
-                <th>FY</th>
-                <th className="text-right">Budget %</th>
-                <th className="text-right">Forecast %</th>
-                <th className="text-right">Budget Amount</th>
-                <th className="text-right">Forecast Amount</th>
-                <th>Portfolio Category</th>
-                <th>Sponsor</th>
-                <th>RAG</th>
+                {allocDetailColumns.map((col) => (
+                  <ColumnarTh
+                    key={col.key}
+                    column={col}
+                    filter={allocDetailTable.filters[col.key]}
+                    onFilter={(v) => allocDetailTable.setColumnFilter(col.key, v)}
+                    sortKey={allocDetailTable.sortKey}
+                    sortDir={allocDetailTable.sortDir}
+                    onToggleSort={allocDetailTable.toggleSort}
+                    align={["bp", "fp", "bAmt", "fAmt"].includes(col.key) ? "right" : "left"}
+                  />
+                ))}
               </tr>
             </thead>
             <tbody>
-              {rowsF.slice(0, 500).map((r: any) => {
-                const p: any = projectMap.get(r.project_id);
-                const bAmt = fyAllocBudget(r);
-                const fAmt = fyAllocForecast(r);
-                const projB = projectApprovedFunding(p);
-                const projF = projectForecast(p);
-                const bp = projB ? (bAmt / projB) * 100 : 0;
-                const fp = projF ? (fAmt / projF) * 100 : 0;
-                return (
-                  <tr key={r.id}>
-                    <td className="font-mono text-[11px]">
-                      {p?.project_code ? (
-                        <Link
-                          to="/app/project-infographic"
-                          search={{ pid: p.id }}
-                          className="text-primary hover:underline"
-                        >
-                          {p.project_code}
-                        </Link>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td>{p?.name || "—"}</td>
-                    <td className="font-medium">{r.fy}</td>
-                    <td className="text-right tabular-nums">{bp.toFixed(0)}</td>
-                    <td className="text-right tabular-nums">{fp.toFixed(0)}</td>
-                    <td className="text-right tabular-nums">{fmt$(bAmt)}</td>
-                    <td className="text-right tabular-nums">{fmt$(fAmt)}</td>
-                    <td>{p?.portfolio_category || "—"}</td>
-                    <td>{p?.sponsor || "—"}</td>
-                    <td>{p?.rag || "NA"}</td>
-                  </tr>
-                );
-              })}
+              {allocDetailTable.rows.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={allocDetailColumns.length}
+                    className="py-8 text-center text-sm text-muted-foreground"
+                  >
+                    {allocDetailTable.total === 0
+                      ? "No allocation rows."
+                      : "No matching rows."}
+                  </td>
+                </tr>
+              ) : (
+                allocDetailTable.rows.map((r) => {
+                  const p = r.project;
+                  return (
+                    <tr key={r.id}>
+                      <td className="font-mono text-[11px]">
+                        {p?.project_code ? (
+                          <Link
+                            to="/app/project-infographic"
+                            search={{ pid: p.id }}
+                            className="text-primary hover:underline"
+                          >
+                            {p.project_code}
+                          </Link>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td>{r.project_name || "—"}</td>
+                      <td className="font-medium">{r.fy}</td>
+                      <td className="text-right tabular-nums">{r.bp.toFixed(0)}</td>
+                      <td className="text-right tabular-nums">{r.fp.toFixed(0)}</td>
+                      <td className="text-right tabular-nums">{fmt$(r.bAmt)}</td>
+                      <td className="text-right tabular-nums">{fmt$(r.fAmt)}</td>
+                      <td>{r.portfolio_category || "—"}</td>
+                      <td>{r.sponsor || "—"}</td>
+                      <td>{r.rag || "NA"}</td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
@@ -821,8 +887,35 @@ function RoadmapTab({ projects, alloc }: { projects: any[]; alloc: any[] }) {
       row[r.fy] = (row[r.fy] || 0) + fyAllocBudget(r);
       m.set(key, row);
     }
-    return Array.from(m.values());
-  }, [rowsF]);
+    return Array.from(m.values()).map((r: any) => {
+      const p: any = projectMap.get(r.id);
+      const tot = fys.reduce((s, f) => s + (r[f] || 0), 0);
+      return {
+        ...r,
+        project_code: p?.project_code || "",
+        project_name: p?.name || "",
+        total: tot,
+        project: p,
+      };
+    });
+  }, [rowsF, projectMap, fys]);
+
+  const perProjectColumns: ColumnarColumn<(typeof perProject)[number]>[] = useMemo(
+    () => [
+      { key: "project_code", label: "Project ID" },
+      { key: "project_name", label: "Project Name" },
+      ...fys.map(
+        (f): ColumnarColumn<(typeof perProject)[number]> => ({
+          key: f,
+          label: f,
+          getValue: (r) => r[f] || 0,
+        }),
+      ),
+      { key: "total", label: "Total" },
+    ],
+    [fys],
+  );
+  const perProjectTable = useColumnarTable(perProject, perProjectColumns);
 
   return (
     <>
@@ -896,49 +989,79 @@ function RoadmapTab({ projects, alloc }: { projects: any[]; alloc: any[] }) {
 
       <SectionFrame>
         <SectionTitle>Per-project financials — Budget by FY</SectionTitle>
+        <ColumnarToolbar
+          globalQ={perProjectTable.globalQ}
+          onGlobalQ={perProjectTable.setGlobalQ}
+          shown={perProjectTable.rows.length}
+          total={perProjectTable.total}
+          onClear={perProjectTable.clearAll}
+          placeholder="Search project financials…"
+        />
         <div className="max-h-[420px] overflow-auto">
           <table className="st-table">
             <thead className="sticky top-0 bg-white">
               <tr>
-                <th>Project ID</th>
-                <th>Project Name</th>
-                {fys.map((f) => (
-                  <th key={f} className="text-right">
-                    {f}
-                  </th>
+                {perProjectColumns.map((col) => (
+                  <ColumnarTh
+                    key={col.key}
+                    column={col}
+                    filter={perProjectTable.filters[col.key]}
+                    onFilter={(v) => perProjectTable.setColumnFilter(col.key, v)}
+                    sortKey={perProjectTable.sortKey}
+                    sortDir={perProjectTable.sortDir}
+                    onToggleSort={perProjectTable.toggleSort}
+                    align={
+                      col.key === "project_code" || col.key === "project_name"
+                        ? "left"
+                        : "right"
+                    }
+                  />
                 ))}
-                <th className="text-right">Total</th>
               </tr>
             </thead>
             <tbody>
-              {perProject.map((r: any) => {
-                const p: any = projectMap.get(r.id);
-                const tot = fys.reduce((s, f) => s + (r[f] || 0), 0);
-                return (
-                  <tr key={r.id}>
-                    <td className="font-mono text-[11px]">
-                      {p?.project_code ? (
-                        <Link
-                          to="/app/project-infographic"
-                          search={{ pid: p.id }}
-                          className="text-primary hover:underline"
-                        >
-                          {p.project_code}
-                        </Link>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td>{p?.name || "—"}</td>
-                    {fys.map((f) => (
-                      <td key={f} className="text-right tabular-nums">
-                        {r[f] ? fmt$(r[f]) : "0"}
+              {perProjectTable.rows.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={Math.max(1, perProjectColumns.length)}
+                    className="py-8 text-center text-sm text-muted-foreground"
+                  >
+                    {perProjectTable.total === 0
+                      ? "No project financials."
+                      : "No matching projects."}
+                  </td>
+                </tr>
+              ) : (
+                perProjectTable.rows.map((r: any) => {
+                  const p = r.project;
+                  return (
+                    <tr key={r.id}>
+                      <td className="font-mono text-[11px]">
+                        {p?.project_code ? (
+                          <Link
+                            to="/app/project-infographic"
+                            search={{ pid: p.id }}
+                            className="text-primary hover:underline"
+                          >
+                            {p.project_code}
+                          </Link>
+                        ) : (
+                          "—"
+                        )}
                       </td>
-                    ))}
-                    <td className="text-right tabular-nums font-semibold">{fmt$(tot)}</td>
-                  </tr>
-                );
-              })}
+                      <td>{r.project_name || "—"}</td>
+                      {fys.map((f) => (
+                        <td key={f} className="text-right tabular-nums">
+                          {r[f] ? fmt$(r[f]) : "0"}
+                        </td>
+                      ))}
+                      <td className="text-right tabular-nums font-semibold">
+                        {fmt$(r.total)}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>

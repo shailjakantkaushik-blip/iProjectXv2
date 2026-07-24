@@ -10,7 +10,7 @@ import { PageLoading } from "@/components/page-loading";
 import { fetchOrgStreams, formatProjectStreamRef, formatStreamLabel } from "@/lib/project-streams";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
-import { Input } from "@/components/ui/input";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/work-items")({
   component: WorkItemsPage,
@@ -311,21 +311,20 @@ function WorkItemsPage() {
 
       <SectionFrame>
         <SectionTitle>{mineOnly ? "My work items" : "Work register"}</SectionTitle>
-        <div className="mb-2 flex flex-wrap items-center gap-2">
-          <Input
-            placeholder="Search work register…"
-            value={table.globalQ}
-            onChange={(e) => table.setGlobalQ(e.target.value)}
-            className="max-w-xs h-8 text-xs"
-          />
-          <span className="text-xs text-muted-foreground">
-            {table.rows.length} of {table.total}
-          </span>
-        </div>
+        <ColumnarToolbar
+          globalQ={table.globalQ}
+          onGlobalQ={table.setGlobalQ}
+          shown={table.rows.length}
+          total={table.total}
+          onClear={table.clearAll}
+          placeholder="Search work register…"
+        />
         {isLoading ? (
           <PageLoading label="Loading work items…" fullScreen={false} />
         ) : table.rows.length === 0 ? (
-          <div className="py-8 text-center text-sm text-muted-foreground">No work items yet.</div>
+          <div className="py-8 text-center text-sm text-muted-foreground">
+            {table.total === 0 ? "No work items yet." : "No matching work items."}
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="st-table">

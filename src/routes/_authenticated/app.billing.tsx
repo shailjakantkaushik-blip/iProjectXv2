@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -7,6 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Check, Download, ExternalLink } from "lucide-react";
 import { calcInvoiceGst, fetchInvoiceTemplate } from "@/lib/invoice-template";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/billing")({
   component: Billing,
@@ -82,6 +86,42 @@ function Billing() {
   const totalDue = invoices
     .filter((i: any) => i.status === "sent" || i.status === "overdue")
     .reduce((s: number, i: any) => s + gstFor(i.amount_cents).total_cents, 0);
+
+  const invoiceColumns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "invoice_number", label: "Invoice #" },
+      { key: "issue_date", label: "Issue" },
+      { key: "due_date", label: "Due" },
+      {
+        key: "period",
+        label: "Period",
+        getValue: (i) => `${i.period_start ?? "—"} → ${i.period_end ?? "—"}`,
+      },
+      {
+        key: "taxable",
+        label: "Taxable",
+        getValue: (i) => gstFor(i.amount_cents).subtotal_cents,
+      },
+      {
+        key: "gst",
+        label: "GST",
+        getValue: (i) => {
+          const gst = gstFor(i.amount_cents);
+          return gst.enabled ? gst.gst_cents : "";
+        },
+      },
+      {
+        key: "total",
+        label: "Total due",
+        getValue: (i) => gstFor(i.amount_cents).total_cents,
+      },
+      { key: "status", label: "Status" },
+    ],
+    // gstFor depends on invoiceTemplate
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [invoiceTemplate],
+  );
+  const invoiceTable = useColumnarTable(invoices, invoiceColumns);
 
   return (
     <div className="space-y-6">
@@ -169,25 +209,41 @@ function Billing() {
           <CardTitle>Invoice history</CardTitle>
         </CardHeader>
         <CardContent>
-          {invoices.length === 0 ? (
-            <div className="p-6 text-center text-sm text-muted-foreground">No invoices yet.</div>
+          <ColumnarToolbar
+            globalQ={invoiceTable.globalQ}
+            onGlobalQ={invoiceTable.setGlobalQ}
+            shown={invoiceTable.rows.length}
+            total={invoiceTable.total}
+            onClear={invoiceTable.clearAll}
+            placeholder="Search invoices…"
+          />
+          {invoiceTable.rows.length === 0 ? (
+            <div className="p-6 text-center text-sm text-muted-foreground">
+              {invoiceTable.total === 0 ? "No invoices yet." : "No matching invoices."}
+            </div>
           ) : (
             <table className="st-table w-full">
               <thead>
                 <tr>
-                  <th>Invoice #</th>
-                  <th>Issue</th>
-                  <th>Due</th>
-                  <th>Period</th>
-                  <th className="text-right">Taxable</th>
-                  <th className="text-right">GST</th>
-                  <th className="text-right">Total due</th>
-                  <th>Status</th>
+                  {invoiceColumns.map((col) => (
+                    <ColumnarTh
+                      key={col.key}
+                      column={col}
+                      filter={invoiceTable.filters[col.key]}
+                      onFilter={(v) => invoiceTable.setColumnFilter(col.key, v)}
+                      sortKey={invoiceTable.sortKey}
+                      sortDir={invoiceTable.sortDir}
+                      onToggleSort={invoiceTable.toggleSort}
+                      align={
+                        ["taxable", "gst", "total"].includes(col.key) ? "right" : "left"
+                      }
+                    />
+                  ))}
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {invoices.map((i: any) => {
+                {invoiceTable.rows.map((i: any) => {
                   const gst = gstFor(i.amount_cents);
                   return (
                   <tr key={i.id}>

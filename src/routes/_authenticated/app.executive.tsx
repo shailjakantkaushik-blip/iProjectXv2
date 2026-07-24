@@ -43,6 +43,9 @@ import { darkenHex, scheduleCompletionPct } from "@/lib/schedule-progress";
 import { computeTimelineBounds } from "@/components/portfolio-timeline";
 import { FyPicker, ProjectPicker } from "@/components/portfolio-filters";
 import { unwrapList } from "@/lib/query";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/executive")({
   component: ExecutiveDashboard,
@@ -478,6 +481,77 @@ function ExecutiveDashboard() {
     }
   };
 
+  const portfolioRegisterRows = useMemo(() => {
+    const streamsByProject = new Map<string, any[]>();
+    (streams as any[]).forEach((s) => {
+      const list = streamsByProject.get(s.project_id) || [];
+      list.push(s);
+      streamsByProject.set(s.project_id, list);
+    });
+    const rows: {
+      key: string;
+      name: string;
+      stream: string;
+      program: string | null;
+      sponsor: string | null;
+      budget: number;
+      incurred: number;
+      rag: string | null;
+      phase: string | null;
+    }[] = [];
+    for (const p of filtered) {
+      const ps = (streamsByProject.get(p.id) || []).sort(
+        (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
+      );
+      if (ps.length > 0) {
+        for (const s of ps) {
+          const gs = (gates as any[]).filter(
+            (g) => g.stream_id === s.id || (!g.stream_id && g.project_id === p.id && s.is_default),
+          );
+          rows.push({
+            key: `${p.id}:${s.id}`,
+            name: p.name,
+            stream: formatProjectStreamRef(p, s),
+            program: p.program,
+            sponsor: s.owner || p.sponsor,
+            budget: Number(s.budget || 0),
+            incurred: Number(s.capex_incurred || 0) + Number(s.opex_incurred || 0),
+            rag: s.rag || p.rag,
+            phase: resolveStageShared(p, gs, orgPhases),
+          });
+        }
+      } else {
+        rows.push({
+          key: p.id,
+          name: p.name,
+          stream: "—",
+          program: p.program,
+          sponsor: p.sponsor,
+          budget: projectApprovedFunding(p),
+          incurred: projectIncurred(p),
+          rag: p.rag,
+          phase: resolveStageShared(p, gatesByProject.get(p.id) || [], orgPhases),
+        });
+      }
+    }
+    return rows;
+  }, [filtered, streams, gates, orgPhases, gatesByProject]);
+
+  const portfolioColumns: ColumnarColumn<(typeof portfolioRegisterRows)[number]>[] = useMemo(
+    () => [
+      { key: "name", label: "Project" },
+      { key: "stream", label: "Stream" },
+      { key: "program", label: "Program", getValue: (r) => r.program || "" },
+      { key: "sponsor", label: "Sponsor", getValue: (r) => r.sponsor || "" },
+      { key: "budget", label: "Budget" },
+      { key: "incurred", label: "Incurred" },
+      { key: "rag", label: "RAG", getValue: (r) => r.rag || "" },
+      { key: "phase", label: "Phase", getValue: (r) => r.phase || "" },
+    ],
+    [],
+  );
+  const portfolioTable = useColumnarTable(portfolioRegisterRows, portfolioColumns);
+
   return (
     <div>
       {/* Header + filters */}
@@ -888,74 +962,49 @@ function ExecutiveDashboard() {
       {/* Portfolio Register — stream-aware */}
       <SectionFrame>
         <SectionTitle>Portfolio Register</SectionTitle>
-        {filtered.length === 0 ? (
-          <div className="py-8 text-center text-sm text-muted-foreground">No projects match filters</div>
+        <ColumnarToolbar
+          globalQ={portfolioTable.globalQ}
+          onGlobalQ={portfolioTable.setGlobalQ}
+          shown={portfolioTable.rows.length}
+          total={portfolioTable.total}
+          onClear={portfolioTable.clearAll}
+          placeholder="Search portfolio register…"
+        />
+        {portfolioTable.rows.length === 0 ? (
+          <div className="py-8 text-center text-sm text-muted-foreground">
+            {portfolioTable.total === 0 ? "No projects match filters" : "No matching projects."}
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="st-table">
               <thead>
                 <tr>
-                  <th>Project</th><th>Stream</th><th>Program</th><th>Sponsor</th><th>Budget</th>
-                  <th>Incurred</th><th>RAG</th><th>Phase</th>
+                  {portfolioColumns.map((col) => (
+                    <ColumnarTh
+                      key={col.key}
+                      column={col}
+                      filter={portfolioTable.filters[col.key]}
+                      onFilter={(v) => portfolioTable.setColumnFilter(col.key, v)}
+                      sortKey={portfolioTable.sortKey}
+                      sortDir={portfolioTable.sortDir}
+                      onToggleSort={portfolioTable.toggleSort}
+                    />
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {(() => {
-                  const streamsByProject = new Map<string, any[]>();
-                  (streams as any[]).forEach((s) => {
-                    const list = streamsByProject.get(s.project_id) || [];
-                    list.push(s);
-                    streamsByProject.set(s.project_id, list);
-                  });
-                  const rows: any[] = [];
-                  for (const p of filtered.slice(0, 40)) {
-                    const ps = (streamsByProject.get(p.id) || []).sort(
-                      (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
-                    );
-                    if (ps.length > 0) {
-                      for (const s of ps) {
-                        const gs = (gates as any[]).filter(
-                          (g) => g.stream_id === s.id || (!g.stream_id && g.project_id === p.id && s.is_default),
-                        );
-                        rows.push({
-                          key: `${p.id}:${s.id}`,
-                          name: p.name,
-                          stream: formatProjectStreamRef(p, s),
-                          program: p.program,
-                          sponsor: s.owner || p.sponsor,
-                          budget: Number(s.budget || 0),
-                          incurred: Number(s.capex_incurred || 0) + Number(s.opex_incurred || 0),
-                          rag: s.rag || p.rag,
-                          phase: resolveStageShared(p, gs, orgPhases),
-                        });
-                      }
-                    } else {
-                      rows.push({
-                        key: p.id,
-                        name: p.name,
-                        stream: "—",
-                        program: p.program,
-                        sponsor: p.sponsor,
-                        budget: projectApprovedFunding(p),
-                        incurred: projectIncurred(p),
-                        rag: p.rag,
-                        phase: resolveCurrentStage(p),
-                      });
-                    }
-                  }
-                  return rows.slice(0, 40).map((r) => (
-                    <tr key={r.key}>
-                      <td className="font-medium">{r.name}</td>
-                      <td className="font-mono text-xs">{r.stream}</td>
-                      <td>{r.program ?? "—"}</td>
-                      <td>{r.sponsor ?? "—"}</td>
-                      <td>{money(r.budget)}</td>
-                      <td>{money(r.incurred)}</td>
-                      <td><RagChip rag={r.rag} /></td>
-                      <td>{r.phase ?? "—"}</td>
-                    </tr>
-                  ));
-                })()}
+                {portfolioTable.rows.map((r) => (
+                  <tr key={r.key}>
+                    <td className="font-medium">{r.name}</td>
+                    <td className="font-mono text-xs">{r.stream}</td>
+                    <td>{r.program ?? "—"}</td>
+                    <td>{r.sponsor ?? "—"}</td>
+                    <td>{money(r.budget)}</td>
+                    <td>{money(r.incurred)}</td>
+                    <td><RagChip rag={r.rag} /></td>
+                    <td>{r.phase ?? "—"}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

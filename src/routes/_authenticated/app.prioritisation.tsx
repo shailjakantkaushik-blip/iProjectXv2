@@ -11,6 +11,9 @@ import {
   projectBenefitsTarget,
   projectRoiPercent,
 } from "@/lib/project-finance";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/prioritisation")({
   component: Prioritisation,
@@ -72,6 +75,38 @@ function Prioritisation() {
   const critical = projects.filter(
     (p: any) => (p.priority || "").startsWith("P1") || p.priority === "Critical",
   ).length;
+
+  const bottomColumns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "name", label: "Project" },
+      { key: "priority", label: "Priority" },
+      { key: "_score", label: "Score" },
+      { key: "_roi", label: "ROI" },
+    ],
+    [],
+  );
+  const bottomTable = useColumnarTable(bottom5, bottomColumns);
+
+  const rankedWithRank = useMemo(
+    () => ranked.map((p: any, i: number) => ({ ...p, _rank: i + 1 })),
+    [ranked],
+  );
+
+  const rankColumns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "_rank", label: "Rank" },
+      { key: "name", label: "Project" },
+      { key: "program", label: "Program" },
+      { key: "priority", label: "Priority" },
+      { key: "rag", label: "RAG" },
+      { key: "_funding", label: "Approved Funding" },
+      { key: "_benTgt", label: "Benefits Tgt" },
+      { key: "_roi", label: "ROI %" },
+      { key: "_score", label: "Score" },
+    ],
+    [],
+  );
+  const rankTable = useColumnarTable(rankedWithRank, rankColumns);
 
   return (
     <div>
@@ -146,18 +181,34 @@ function Prioritisation() {
 
         <SectionFrame>
           <SectionTitle>Bottom 5 (candidates to defer)</SectionTitle>
+          <ColumnarToolbar
+            globalQ={bottomTable.globalQ}
+            onGlobalQ={bottomTable.setGlobalQ}
+            shown={bottomTable.rows.length}
+            total={bottomTable.total}
+            onClear={bottomTable.clearAll}
+            placeholder="Search bottom 5…"
+          />
           <div className="overflow-x-auto">
             <table className="st-table">
               <thead>
                 <tr>
-                  <th>Project</th>
-                  <th>Priority</th>
-                  <th className="text-right">Score</th>
-                  <th className="text-right">ROI</th>
+                  {bottomColumns.map((col) => (
+                    <ColumnarTh
+                      key={col.key}
+                      column={col}
+                      filter={bottomTable.filters[col.key]}
+                      onFilter={(v) => bottomTable.setColumnFilter(col.key, v)}
+                      sortKey={bottomTable.sortKey}
+                      sortDir={bottomTable.sortDir}
+                      onToggleSort={bottomTable.toggleSort}
+                      align={col.key === "_score" || col.key === "_roi" ? "right" : "left"}
+                    />
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {bottom5.map((p: any) => (
+                {bottomTable.rows.map((p: any) => (
                   <tr key={p.id}>
                     <td className="font-medium">{p.name}</td>
                     <td>{p.priority || "—"}</td>
@@ -175,25 +226,40 @@ function Prioritisation() {
 
       <SectionFrame>
         <SectionTitle>Full Ranking</SectionTitle>
+        <ColumnarToolbar
+          globalQ={rankTable.globalQ}
+          onGlobalQ={rankTable.setGlobalQ}
+          shown={rankTable.rows.length}
+          total={rankTable.total}
+          onClear={rankTable.clearAll}
+          placeholder="Search ranking…"
+        />
         <div className="overflow-x-auto">
           <table className="st-table">
             <thead>
               <tr>
-                <th className="text-right">Rank</th>
-                <th>Project</th>
-                <th>Program</th>
-                <th>Priority</th>
-                <th>RAG</th>
-                <th className="text-right">Approved Funding</th>
-                <th className="text-right">Benefits Tgt</th>
-                <th className="text-right">ROI %</th>
-                <th className="text-right">Score</th>
+                {rankColumns.map((col) => (
+                  <ColumnarTh
+                    key={col.key}
+                    column={col}
+                    filter={rankTable.filters[col.key]}
+                    onFilter={(v) => rankTable.setColumnFilter(col.key, v)}
+                    sortKey={rankTable.sortKey}
+                    sortDir={rankTable.sortDir}
+                    onToggleSort={rankTable.toggleSort}
+                    align={
+                      ["_rank", "_funding", "_benTgt", "_roi", "_score"].includes(col.key)
+                        ? "right"
+                        : "left"
+                    }
+                  />
+                ))}
               </tr>
             </thead>
             <tbody>
-              {ranked.map((p: any, i: number) => (
+              {rankTable.rows.map((p: any) => (
                 <tr key={p.id}>
-                  <td className="text-right font-mono">{i + 1}</td>
+                  <td className="text-right font-mono">{p._rank}</td>
                   <td className="font-medium">{p.name}</td>
                   <td>{p.program || "—"}</td>
                   <td>{p.priority || "—"}</td>

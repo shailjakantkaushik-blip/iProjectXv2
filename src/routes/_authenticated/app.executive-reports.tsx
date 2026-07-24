@@ -11,6 +11,9 @@ import { Download, FileText } from "lucide-react";
 import { PageLoading } from "@/components/page-loading";
 import { resolveCurrentAndNextGate } from "@/lib/project-phase";
 import { fetchOrgStreams } from "@/lib/project-streams";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/executive-reports")({
   component: ExecutiveReportsPage,
@@ -368,6 +371,174 @@ function ExecutiveReportsPage() {
   const handleExport = () => exportProjects(projects as any[]);
   const printReport = () => window.print();
 
+  const ragColumns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "name", label: "Project" },
+      { key: "program", label: "Program" },
+      { key: "status", label: "Status" },
+      { key: "priority", label: "Priority" },
+      { key: "rag", label: "RAG" },
+      { key: "budget", label: "Budget", getValue: (p) => num(p.budget) },
+      { key: "sponsor", label: "Sponsor" },
+    ],
+    [],
+  );
+  const ragTable = useColumnarTable(ragProjects, ragColumns);
+
+  const financeColumns: ColumnarColumn<(typeof financeRows)[number]>[] = useMemo(
+    () => [
+      { key: "name", label: "Project" },
+      { key: "program", label: "Program" },
+      { key: "budget", label: "Budget" },
+      { key: "capexApproved", label: "CAPEX Appr." },
+      { key: "capexIncurred", label: "CAPEX Inc." },
+      { key: "opexApproved", label: "OPEX Appr." },
+      { key: "opexIncurred", label: "OPEX Inc." },
+      { key: "remaining", label: "Remaining" },
+    ],
+    [],
+  );
+  const financeTable = useColumnarTable(financeRows, financeColumns);
+
+  const riskColumns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "title", label: "Risk" },
+      {
+        key: "project",
+        label: "Project",
+        getValue: (r) => projectById.get(r.project_id)?.name || "",
+      },
+      { key: "severity", label: "Severity", getValue: (r) => num(r.severity) },
+      { key: "status", label: "Status" },
+      { key: "owner", label: "Owner" },
+      { key: "due_date", label: "Due" },
+      { key: "mitigation", label: "Mitigation" },
+    ],
+    [projectById],
+  );
+  const riskTable = useColumnarTable(topRisks, riskColumns);
+
+  const actionColumns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "title", label: "Action" },
+      {
+        key: "project",
+        label: "Project",
+        getValue: (a) => projectById.get(a.project_id)?.name || "",
+      },
+      { key: "priority", label: "Priority" },
+      { key: "status", label: "Status" },
+      { key: "owner", label: "Owner" },
+      { key: "due_date", label: "Due" },
+    ],
+    [projectById],
+  );
+  const actionTable = useColumnarTable(openActions, actionColumns);
+
+  const benefitColumns: ColumnarColumn<(typeof benefitRows)[number]>[] = useMemo(
+    () => [
+      { key: "title", label: "Benefit / Project" },
+      { key: "project", label: "Project" },
+      { key: "type", label: "Type" },
+      { key: "status", label: "Status" },
+      { key: "target", label: "Target" },
+      { key: "realised", label: "Realised" },
+      { key: "gap", label: "Gap" },
+    ],
+    [],
+  );
+  const benefitTable = useColumnarTable(benefitRows, benefitColumns);
+
+  const gateColumns: ColumnarColumn<(typeof gateRegister)[number]>[] = useMemo(
+    () => [
+      {
+        key: "project",
+        label: "Project",
+        getValue: (r) => r.project.name || "",
+      },
+      { key: "streamName", label: "Stream", getValue: (r) => r.streamName || "" },
+      {
+        key: "program",
+        label: "Program",
+        getValue: (r) => r.project.program || "",
+      },
+      { key: "rag", label: "RAG", getValue: (r) => r.rag || "" },
+      { key: "count", label: "Gates" },
+      {
+        key: "currentGate",
+        label: "Current gate",
+        getValue: (r) => r.current?.gate_name || "",
+      },
+      {
+        key: "currentStatus",
+        label: "Status",
+        getValue: (r) => r.current?.status || "",
+      },
+      {
+        key: "nextGate",
+        label: "Next gate",
+        getValue: (r) => r.next?.gate_name || "All complete",
+      },
+      {
+        key: "nextPlanned",
+        label: "Next planned",
+        getValue: (r) => r.next?.planned_date || "",
+      },
+    ],
+    [],
+  );
+  const gateTable = useColumnarTable(gateRegister, gateColumns);
+
+  const milestoneColumns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "name", label: "Milestone" },
+      {
+        key: "project",
+        label: "Project",
+        getValue: (m) => projectById.get(m.project_id)?.name || "",
+      },
+      { key: "streamName", label: "Stream", getValue: (m) => m.streamName || "" },
+      { key: "status", label: "Status" },
+      { key: "owner", label: "Owner" },
+      { key: "planned_date", label: "Planned" },
+    ],
+    [projectById],
+  );
+  const milestoneTable = useColumnarTable(upcomingMilestones, milestoneColumns);
+
+  const programColumns: ColumnarColumn<(typeof programRollup)[number]>[] = useMemo(
+    () => [
+      { key: "name", label: "Program" },
+      { key: "count", label: "Projects" },
+      { key: "budget", label: "Budget" },
+      { key: "incurred", label: "Incurred" },
+      { key: "benefits", label: "Benefits" },
+      {
+        key: "gar",
+        label: "G / A / R",
+        getValue: (p) => `${p.green} / ${p.amber} / ${p.red}`,
+      },
+    ],
+    [],
+  );
+  const programTable = useColumnarTable(programRollup, programColumns);
+
+  const buColumns: ColumnarColumn<(typeof buRollup)[number]>[] = useMemo(
+    () => [
+      { key: "name", label: "Business unit" },
+      { key: "count", label: "Projects" },
+      { key: "budget", label: "Budget" },
+      { key: "incurred", label: "Incurred" },
+      {
+        key: "gar",
+        label: "G / A / R",
+        getValue: (b) => `${b.green} / ${b.amber} / ${b.red}`,
+      },
+    ],
+    [],
+  );
+  const buTable = useColumnarTable(buRollup, buColumns);
+
   if (!orgId) return <PageLoading label="Loading workspace…" fullScreen={false} />;
 
   return (
@@ -472,24 +643,43 @@ function ExecutiveReportsPage() {
                 <KpiCard label="Amber" value={amber} accent="var(--st-warning)" />
                 <KpiCard label="Red" value={red} accent="var(--st-danger)" />
               </div>
+              <ColumnarToolbar
+                globalQ={ragTable.globalQ}
+                onGlobalQ={ragTable.setGlobalQ}
+                shown={ragTable.rows.length}
+                total={ragTable.total}
+                onClear={ragTable.clearAll}
+                placeholder="Search portfolio…"
+              />
               <div className="overflow-x-auto">
                 <table className="st-table">
                   <thead>
                     <tr>
-                      <th>Project</th>
-                      <th>Program</th>
-                      <th>Status</th>
-                      <th>Priority</th>
-                      <th>RAG</th>
-                      <th>Budget</th>
-                      <th>Sponsor</th>
+                      {ragColumns.map((col) => (
+                        <ColumnarTh
+                          key={col.key}
+                          column={col}
+                          filter={ragTable.filters[col.key]}
+                          onFilter={(v) => ragTable.setColumnFilter(col.key, v)}
+                          sortKey={ragTable.sortKey}
+                          sortDir={ragTable.sortDir}
+                          onToggleSort={ragTable.toggleSort}
+                        />
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {ragProjects.length === 0 ? (
-                      <EmptyRow colSpan={7} label="No projects in the portfolio." />
+                    {ragTable.rows.length === 0 ? (
+                      <EmptyRow
+                        colSpan={ragColumns.length}
+                        label={
+                          ragTable.total === 0
+                            ? "No projects in the portfolio."
+                            : "No matching projects."
+                        }
+                      />
                     ) : (
-                      ragProjects.map((p: any) => (
+                      ragTable.rows.map((p: any) => (
                         <tr key={p.id}>
                           <td className="font-medium">{p.name}</td>
                           <td>{p.program || "—"}</td>
@@ -522,25 +712,36 @@ function ExecutiveReportsPage() {
                   value={fmtM(Math.max(0, capexApproved + opexApproved - incurred))}
                 />
               </div>
+              <ColumnarToolbar
+                globalQ={financeTable.globalQ}
+                onGlobalQ={financeTable.setGlobalQ}
+                shown={financeTable.rows.length}
+                total={financeTable.total}
+                onClear={financeTable.clearAll}
+                placeholder="Search financials…"
+              />
               <div className="overflow-x-auto">
                 <table className="st-table">
                   <thead>
                     <tr>
-                      <th>Project</th>
-                      <th>Program</th>
-                      <th>Budget</th>
-                      <th>CAPEX Appr.</th>
-                      <th>CAPEX Inc.</th>
-                      <th>OPEX Appr.</th>
-                      <th>OPEX Inc.</th>
-                      <th>Remaining</th>
+                      {financeColumns.map((col) => (
+                        <ColumnarTh
+                          key={col.key}
+                          column={col}
+                          filter={financeTable.filters[col.key]}
+                          onFilter={(v) => financeTable.setColumnFilter(col.key, v)}
+                          sortKey={financeTable.sortKey}
+                          sortDir={financeTable.sortDir}
+                          onToggleSort={financeTable.toggleSort}
+                        />
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {financeRows.length === 0 ? (
-                      <EmptyRow colSpan={8} />
+                    {financeTable.rows.length === 0 ? (
+                      <EmptyRow colSpan={financeColumns.length} />
                     ) : (
-                      financeRows.map((r) => (
+                      financeTable.rows.map((r) => (
                         <tr key={r.id}>
                           <td className="font-medium">{r.name}</td>
                           <td>{r.program}</td>
@@ -571,24 +772,39 @@ function ExecutiveReportsPage() {
                 />
                 <KpiCard label="Total logged" value={risks.length} />
               </div>
+              <ColumnarToolbar
+                globalQ={riskTable.globalQ}
+                onGlobalQ={riskTable.setGlobalQ}
+                shown={riskTable.rows.length}
+                total={riskTable.total}
+                onClear={riskTable.clearAll}
+                placeholder="Search risks…"
+              />
               <div className="overflow-x-auto">
                 <table className="st-table">
                   <thead>
                     <tr>
-                      <th>Risk</th>
-                      <th>Project</th>
-                      <th>Severity</th>
-                      <th>Status</th>
-                      <th>Owner</th>
-                      <th>Due</th>
-                      <th>Mitigation</th>
+                      {riskColumns.map((col) => (
+                        <ColumnarTh
+                          key={col.key}
+                          column={col}
+                          filter={riskTable.filters[col.key]}
+                          onFilter={(v) => riskTable.setColumnFilter(col.key, v)}
+                          sortKey={riskTable.sortKey}
+                          sortDir={riskTable.sortDir}
+                          onToggleSort={riskTable.toggleSort}
+                        />
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {topRisks.length === 0 ? (
-                      <EmptyRow colSpan={7} label="No open risks." />
+                    {riskTable.rows.length === 0 ? (
+                      <EmptyRow
+                        colSpan={riskColumns.length}
+                        label={riskTable.total === 0 ? "No open risks." : "No matching risks."}
+                      />
                     ) : (
-                      topRisks.map((r: any) => (
+                      riskTable.rows.map((r: any) => (
                         <tr key={r.id}>
                           <td className="font-medium">{r.title}</td>
                           <td>{projectById.get(r.project_id)?.name || "—"}</td>
@@ -616,23 +832,41 @@ function ExecutiveReportsPage() {
                 />
                 <KpiCard label="Total logged" value={actions.length} />
               </div>
+              <ColumnarToolbar
+                globalQ={actionTable.globalQ}
+                onGlobalQ={actionTable.setGlobalQ}
+                shown={actionTable.rows.length}
+                total={actionTable.total}
+                onClear={actionTable.clearAll}
+                placeholder="Search actions…"
+              />
               <div className="overflow-x-auto">
                 <table className="st-table">
                   <thead>
                     <tr>
-                      <th>Action</th>
-                      <th>Project</th>
-                      <th>Priority</th>
-                      <th>Status</th>
-                      <th>Owner</th>
-                      <th>Due</th>
+                      {actionColumns.map((col) => (
+                        <ColumnarTh
+                          key={col.key}
+                          column={col}
+                          filter={actionTable.filters[col.key]}
+                          onFilter={(v) => actionTable.setColumnFilter(col.key, v)}
+                          sortKey={actionTable.sortKey}
+                          sortDir={actionTable.sortDir}
+                          onToggleSort={actionTable.toggleSort}
+                        />
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {openActions.length === 0 ? (
-                      <EmptyRow colSpan={6} label="No open actions." />
+                    {actionTable.rows.length === 0 ? (
+                      <EmptyRow
+                        colSpan={actionColumns.length}
+                        label={
+                          actionTable.total === 0 ? "No open actions." : "No matching actions."
+                        }
+                      />
                     ) : (
-                      openActions.slice(0, 40).map((a: any) => (
+                      actionTable.rows.map((a: any) => (
                         <tr key={a.id}>
                           <td className="font-medium">{a.title}</td>
                           <td>{projectById.get(a.project_id)?.name || "—"}</td>
@@ -665,24 +899,43 @@ function ExecutiveReportsPage() {
                   }
                 />
               </div>
+              <ColumnarToolbar
+                globalQ={benefitTable.globalQ}
+                onGlobalQ={benefitTable.setGlobalQ}
+                shown={benefitTable.rows.length}
+                total={benefitTable.total}
+                onClear={benefitTable.clearAll}
+                placeholder="Search benefits…"
+              />
               <div className="overflow-x-auto">
                 <table className="st-table">
                   <thead>
                     <tr>
-                      <th>Benefit / Project</th>
-                      <th>Project</th>
-                      <th>Type</th>
-                      <th>Status</th>
-                      <th>Target</th>
-                      <th>Realised</th>
-                      <th>Gap</th>
+                      {benefitColumns.map((col) => (
+                        <ColumnarTh
+                          key={col.key}
+                          column={col}
+                          filter={benefitTable.filters[col.key]}
+                          onFilter={(v) => benefitTable.setColumnFilter(col.key, v)}
+                          sortKey={benefitTable.sortKey}
+                          sortDir={benefitTable.sortDir}
+                          onToggleSort={benefitTable.toggleSort}
+                        />
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {benefitRows.length === 0 ? (
-                      <EmptyRow colSpan={7} label="No benefits data captured yet." />
+                    {benefitTable.rows.length === 0 ? (
+                      <EmptyRow
+                        colSpan={benefitColumns.length}
+                        label={
+                          benefitTable.total === 0
+                            ? "No benefits data captured yet."
+                            : "No matching benefits."
+                        }
+                      />
                     ) : (
-                      benefitRows.map((r) => (
+                      benefitTable.rows.map((r) => (
                         <tr key={r.id}>
                           <td className="font-medium">{r.title}</td>
                           <td>{r.project}</td>
@@ -709,40 +962,52 @@ function ExecutiveReportsPage() {
                 <KpiCard label="In flight" value={gateStats.pending} />
                 <KpiCard label="Overdue" value={gateStats.overdue} accent="var(--st-danger)" />
               </div>
+              <ColumnarToolbar
+                globalQ={gateTable.globalQ}
+                onGlobalQ={gateTable.setGlobalQ}
+                shown={gateTable.rows.length}
+                total={gateTable.total}
+                onClear={gateTable.clearAll}
+                placeholder="Search stage gates…"
+              />
               <div className="overflow-x-auto">
                 <table className="st-table">
                   <thead>
                     <tr>
-                      <th>Project</th>
-                      <th>Stream</th>
-                      <th>Program</th>
-                      <th>RAG</th>
-                      <th>Gates</th>
-                      <th>Current gate</th>
-                      <th>Status</th>
-                      <th>Next gate</th>
-                      <th>Next planned</th>
+                      {gateColumns.map((col) => (
+                        <ColumnarTh
+                          key={col.key}
+                          column={col}
+                          filter={gateTable.filters[col.key]}
+                          onFilter={(v) => gateTable.setColumnFilter(col.key, v)}
+                          sortKey={gateTable.sortKey}
+                          sortDir={gateTable.sortDir}
+                          onToggleSort={gateTable.toggleSort}
+                        />
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {gateRegister.length === 0 ? (
-                      <EmptyRow colSpan={9} />
+                    {gateTable.rows.length === 0 ? (
+                      <EmptyRow colSpan={gateColumns.length} />
                     ) : (
-                      gateRegister.map(({ key, project, streamName, current, next, count, rag }) => (
-                        <tr key={key}>
-                          <td className="font-medium">{project.name}</td>
-                          <td>{streamName || "—"}</td>
-                          <td>{project.program || "—"}</td>
-                          <td>
-                            <RagChip rag={rag} />
-                          </td>
-                          <td>{count}</td>
-                          <td>{current?.gate_name || "—"}</td>
-                          <td>{current?.status || "—"}</td>
-                          <td>{next?.gate_name || "All complete"}</td>
-                          <td>{next?.planned_date || "—"}</td>
-                        </tr>
-                      ))
+                      gateTable.rows.map(
+                        ({ key, project, streamName, current, next, count, rag }) => (
+                          <tr key={key}>
+                            <td className="font-medium">{project.name}</td>
+                            <td>{streamName || "—"}</td>
+                            <td>{project.program || "—"}</td>
+                            <td>
+                              <RagChip rag={rag} />
+                            </td>
+                            <td>{count}</td>
+                            <td>{current?.gate_name || "—"}</td>
+                            <td>{current?.status || "—"}</td>
+                            <td>{next?.gate_name || "All complete"}</td>
+                            <td>{next?.planned_date || "—"}</td>
+                          </tr>
+                        ),
+                      )
                     )}
                   </tbody>
                 </table>
@@ -760,23 +1025,43 @@ function ExecutiveReportsPage() {
                   accent="var(--st-danger)"
                 />
               </div>
+              <ColumnarToolbar
+                globalQ={milestoneTable.globalQ}
+                onGlobalQ={milestoneTable.setGlobalQ}
+                shown={milestoneTable.rows.length}
+                total={milestoneTable.total}
+                onClear={milestoneTable.clearAll}
+                placeholder="Search milestones…"
+              />
               <div className="overflow-x-auto">
                 <table className="st-table">
                   <thead>
                     <tr>
-                      <th>Milestone</th>
-                      <th>Project</th>
-                      <th>Stream</th>
-                      <th>Status</th>
-                      <th>Owner</th>
-                      <th>Planned</th>
+                      {milestoneColumns.map((col) => (
+                        <ColumnarTh
+                          key={col.key}
+                          column={col}
+                          filter={milestoneTable.filters[col.key]}
+                          onFilter={(v) => milestoneTable.setColumnFilter(col.key, v)}
+                          sortKey={milestoneTable.sortKey}
+                          sortDir={milestoneTable.sortDir}
+                          onToggleSort={milestoneTable.toggleSort}
+                        />
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {upcomingMilestones.length === 0 ? (
-                      <EmptyRow colSpan={6} label="No upcoming milestones." />
+                    {milestoneTable.rows.length === 0 ? (
+                      <EmptyRow
+                        colSpan={milestoneColumns.length}
+                        label={
+                          milestoneTable.total === 0
+                            ? "No upcoming milestones."
+                            : "No matching milestones."
+                        }
+                      />
                     ) : (
-                      upcomingMilestones.map((m: any) => (
+                      milestoneTable.rows.map((m: any) => (
                         <tr key={m.id}>
                           <td className="font-medium">{m.name}</td>
                           <td>{projectById.get(m.project_id)?.name || "—"}</td>
@@ -796,23 +1081,36 @@ function ExecutiveReportsPage() {
           <TabsContent value="rollups" className="mt-0 space-y-4">
             <SectionFrame>
               <SectionTitle>Program Roll-up</SectionTitle>
+              <ColumnarToolbar
+                globalQ={programTable.globalQ}
+                onGlobalQ={programTable.setGlobalQ}
+                shown={programTable.rows.length}
+                total={programTable.total}
+                onClear={programTable.clearAll}
+                placeholder="Search programs…"
+              />
               <div className="overflow-x-auto">
                 <table className="st-table">
                   <thead>
                     <tr>
-                      <th>Program</th>
-                      <th>Projects</th>
-                      <th>Budget</th>
-                      <th>Incurred</th>
-                      <th>Benefits</th>
-                      <th>G / A / R</th>
+                      {programColumns.map((col) => (
+                        <ColumnarTh
+                          key={col.key}
+                          column={col}
+                          filter={programTable.filters[col.key]}
+                          onFilter={(v) => programTable.setColumnFilter(col.key, v)}
+                          sortKey={programTable.sortKey}
+                          sortDir={programTable.sortDir}
+                          onToggleSort={programTable.toggleSort}
+                        />
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {programRollup.length === 0 ? (
-                      <EmptyRow colSpan={6} />
+                    {programTable.rows.length === 0 ? (
+                      <EmptyRow colSpan={programColumns.length} />
                     ) : (
-                      programRollup.map((p) => (
+                      programTable.rows.map((p) => (
                         <tr key={p.name}>
                           <td className="font-medium">{p.name}</td>
                           <td>{p.count}</td>
@@ -832,22 +1130,36 @@ function ExecutiveReportsPage() {
 
             <SectionFrame>
               <SectionTitle>Business Unit Roll-up</SectionTitle>
+              <ColumnarToolbar
+                globalQ={buTable.globalQ}
+                onGlobalQ={buTable.setGlobalQ}
+                shown={buTable.rows.length}
+                total={buTable.total}
+                onClear={buTable.clearAll}
+                placeholder="Search business units…"
+              />
               <div className="overflow-x-auto">
                 <table className="st-table">
                   <thead>
                     <tr>
-                      <th>Business unit</th>
-                      <th>Projects</th>
-                      <th>Budget</th>
-                      <th>Incurred</th>
-                      <th>G / A / R</th>
+                      {buColumns.map((col) => (
+                        <ColumnarTh
+                          key={col.key}
+                          column={col}
+                          filter={buTable.filters[col.key]}
+                          onFilter={(v) => buTable.setColumnFilter(col.key, v)}
+                          sortKey={buTable.sortKey}
+                          sortDir={buTable.sortDir}
+                          onToggleSort={buTable.toggleSort}
+                        />
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {buRollup.length === 0 ? (
-                      <EmptyRow colSpan={5} />
+                    {buTable.rows.length === 0 ? (
+                      <EmptyRow colSpan={buColumns.length} />
                     ) : (
-                      buRollup.map((b) => (
+                      buTable.rows.map((b) => (
                         <tr key={b.name}>
                           <td className="font-medium">{b.name}</td>
                           <td>{b.count}</td>

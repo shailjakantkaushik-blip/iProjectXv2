@@ -32,6 +32,9 @@ import {
   projectBenefitsTarget,
   projectTargetRoi,
 } from "@/lib/project-finance";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/cost-vs-benefit")({
   component: CostVsBenefitPage,
@@ -71,6 +74,26 @@ function CostVsBenefitPage() {
 
   const top10 = [...scored].sort((a, b) => b.roi - a.roi).slice(0, 10);
   const bottom10 = [...scored].sort((a, b) => a.roi - b.roi).slice(0, 10);
+
+  const detailRows = useMemo(
+    () => [...scored].sort((a, b) => b.roi - a.roi),
+    [scored],
+  );
+
+  const detailColumns: ColumnarColumn<(typeof detailRows)[number]>[] = useMemo(
+    () => [
+      { key: "project_code", label: "Code" },
+      { key: "name", label: "Project" },
+      { key: "program", label: "Program", getValue: (p) => p.program || "" },
+      { key: "cost", label: "Cost" },
+      { key: "benefit", label: "Benefit" },
+      { key: "net", label: "Net" },
+      { key: "roi", label: "ROI" },
+    ],
+    [],
+  );
+
+  const detailTable = useColumnarTable(detailRows, detailColumns);
 
   // Quadrant classification (below/above median cost & benefit)
   const medCost = scored.length
@@ -251,23 +274,41 @@ function CostVsBenefitPage() {
 
       <SectionFrame>
         <SectionTitle>Detail — All Projects ({scored.length})</SectionTitle>
+        <ColumnarToolbar
+          globalQ={detailTable.globalQ}
+          onGlobalQ={detailTable.setGlobalQ}
+          shown={detailTable.rows.length}
+          total={detailTable.total}
+          onClear={detailTable.clearAll}
+          placeholder="Search cost vs benefit…"
+        />
         <div className="max-h-[420px] overflow-auto">
           <table className="st-table">
             <thead className="sticky top-0 bg-white">
               <tr>
-                <th>Code</th>
-                <th>Project</th>
-                <th>Program</th>
-                <th className="text-right">Cost</th>
-                <th className="text-right">Benefit</th>
-                <th className="text-right">Net</th>
-                <th className="text-right">ROI</th>
+                {detailColumns.map((col) => (
+                  <ColumnarTh
+                    key={col.key}
+                    column={col}
+                    filter={detailTable.filters[col.key]}
+                    onFilter={(v) => detailTable.setColumnFilter(col.key, v)}
+                    sortKey={detailTable.sortKey}
+                    sortDir={detailTable.sortDir}
+                    onToggleSort={detailTable.toggleSort}
+                    align={["cost", "benefit", "net", "roi"].includes(col.key) ? "right" : "left"}
+                  />
+                ))}
               </tr>
             </thead>
             <tbody>
-              {scored
-                .sort((a, b) => b.roi - a.roi)
-                .map((p, i) => (
+              {detailTable.rows.length === 0 ? (
+                <tr>
+                  <td colSpan={detailColumns.length} className="py-8 text-center text-sm text-muted-foreground">
+                    {detailTable.total === 0 ? "No projects match filters." : "No matching projects."}
+                  </td>
+                </tr>
+              ) : (
+                detailTable.rows.map((p) => (
                   <tr key={p.id}>
                     <td className="font-mono text-[11px]">
                       <Link
@@ -299,7 +340,8 @@ function CostVsBenefitPage() {
                       {p.roi.toFixed(1)}%
                     </td>
                   </tr>
-                ))}
+                ))
+              )}
             </tbody>
           </table>
         </div>
