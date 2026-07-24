@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { FileText, RefreshCw, Save, Upload, Trash2 } from "lucide-react";
+import { FileText, Plus, RefreshCw, Save, Upload, Trash2 } from "lucide-react";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,9 +15,12 @@ import {
   DEFAULT_INVOICE_TEMPLATE,
   INVOICE_TEMPLATE_PRESETS,
   fetchInvoiceTemplate,
+  newInvoiceTemplateField,
   saveInvoiceTemplate,
   type InvoiceTemplateConfig,
   type InvoiceTemplateId,
+  type InvoiceTemplateSection,
+  type InvoiceTemplateSectionId,
 } from "@/lib/invoice-template";
 
 export const Route = createFileRoute("/_authenticated/platform/invoice-template")({
@@ -379,6 +382,29 @@ function InvoiceTemplatePage() {
               </Field>
             </div>
           </SectionFrame>
+
+          <SectionFrame>
+            <SectionTitle>Section fields</SectionTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Add custom label/value fields to any invoice region (tax IDs, bank details, PO
+              numbers, compliance lines, etc.). Saved on the template for future invoice layouts.
+            </p>
+            <div className="mt-4 space-y-4">
+              {(cfg.sections ?? []).map((section) => (
+                <SectionFieldsEditor
+                  key={section.id}
+                  section={section}
+                  onChange={(next) =>
+                    patch({
+                      sections: (cfg.sections ?? []).map((s) =>
+                        s.id === section.id ? next : s,
+                      ),
+                    })
+                  }
+                />
+              ))}
+            </div>
+          </SectionFrame>
         </div>
 
         <div className="xl:sticky xl:top-4 xl:self-start">
@@ -410,6 +436,107 @@ function Field({
     <div className={className}>
       <Label className="text-xs font-semibold uppercase tracking-wide">{label}</Label>
       <div className="mt-1">{children}</div>
+    </div>
+  );
+}
+
+function SectionFieldsEditor({
+  section,
+  onChange,
+}: {
+  section: InvoiceTemplateSection;
+  onChange: (next: InvoiceTemplateSection) => void;
+}) {
+  const patchField = (fieldId: string, patch: Partial<(typeof section.fields)[number]>) => {
+    onChange({
+      ...section,
+      fields: section.fields.map((f) => (f.id === fieldId ? { ...f, ...patch } : f)),
+    });
+  };
+
+  return (
+    <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-foreground">{section.title}</div>
+          <div className="text-[11px] text-muted-foreground">
+            Region: <code className="text-[10px]">{section.id as InvoiceTemplateSectionId}</code>
+          </div>
+        </div>
+        <label className="flex items-center gap-2 text-xs">
+          <span className="text-muted-foreground">Show section</span>
+          <Switch
+            checked={section.visible}
+            onCheckedChange={(visible) => onChange({ ...section, visible })}
+          />
+        </label>
+      </div>
+
+      {section.visible ? (
+        <div className="mt-3 space-y-2">
+          {section.fields.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No custom fields yet.</p>
+          ) : (
+            section.fields.map((field) => (
+              <div
+                key={field.id}
+                className="grid gap-2 rounded-md border bg-background p-2 sm:grid-cols-[1fr_1.4fr_auto_auto]"
+              >
+                <Input
+                  placeholder="Label"
+                  value={field.label}
+                  onChange={(e) => patchField(field.id, { label: e.target.value })}
+                  className="h-8 text-xs"
+                />
+                <Input
+                  placeholder="Value / data"
+                  value={field.value}
+                  onChange={(e) => patchField(field.id, { value: e.target.value })}
+                  className="h-8 text-xs"
+                />
+                <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <Switch
+                    checked={field.visible}
+                    onCheckedChange={(visible) => patchField(field.id, { visible })}
+                  />
+                  On
+                </label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-2"
+                  onClick={() =>
+                    onChange({
+                      ...section,
+                      fields: section.fields.filter((f) => f.id !== field.id),
+                    })
+                  }
+                  aria-label="Remove field"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8"
+            onClick={() =>
+              onChange({
+                ...section,
+                fields: [...section.fields, newInvoiceTemplateField({ label: "", value: "" })],
+              })
+            }
+          >
+            <Plus className="mr-1.5 h-3.5 w-3.5" /> Add field
+          </Button>
+        </div>
+      ) : (
+        <p className="mt-2 text-xs text-muted-foreground">Section hidden on invoices.</p>
+      )}
     </div>
   );
 }

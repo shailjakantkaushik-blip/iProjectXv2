@@ -4,9 +4,11 @@ import { jsPDF } from "jspdf";
 import {
   calcInvoiceGst,
   fmtInvoiceMoney,
+  getInvoiceSectionFields,
   normalizeLineItems,
   type InvoiceForRender,
   type InvoiceTemplateConfig,
+  type InvoiceTemplateSectionId,
 } from "@/lib/invoice-template";
 
 type Props = {
@@ -50,6 +52,7 @@ export const InvoiceDocument = forwardRef<HTMLDivElement, Props>(function Invoic
             {template.show_status_badge && <StatusBadge status={invoice.status} />}
           </div>
         </div>
+        <SectionFields template={template} sectionId="header" className="mt-3" />
         <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
           <div>
             <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
@@ -57,14 +60,25 @@ export const InvoiceDocument = forwardRef<HTMLDivElement, Props>(function Invoic
             </div>
             <div className="font-semibold">{customer}</div>
             {org?.billing_email && <div className="text-slate-600">{org.billing_email}</div>}
+            <SectionFields template={template} sectionId="bill_to" className="mt-2" />
           </div>
-          <MetaGrid invoice={invoice} template={template} />
+          <div>
+            <MetaGrid invoice={invoice} template={template} />
+            <SectionFields template={template} sectionId="meta" className="mt-2" />
+          </div>
         </div>
+        <SectionFields template={template} sectionId="after_meta" className="mt-3" />
         {template.show_line_items && (
           <LineTable lines={lines} currency={currency} primary={primary} />
         )}
+        <SectionFields template={template} sectionId="line_items" className="mt-2" />
         <Totals gst={gst} currency={currency} primary={primary} />
+        <SectionFields template={template} sectionId="totals" className="mt-2" />
         <NotesFooter invoice={invoice} template={template} />
+        <SectionFields template={template} sectionId="notes" className="mt-2" />
+        <SectionFields template={template} sectionId="payment" className="mt-2" />
+        <SectionFields template={template} sectionId="footer" className="mt-2" />
+        <SectionFields template={template} sectionId="custom" className="mt-3" />
       </div>
     );
   }
@@ -96,6 +110,7 @@ export const InvoiceDocument = forwardRef<HTMLDivElement, Props>(function Invoic
           </div>
         </div>
         <div className="px-10 py-8">
+          <SectionFields template={template} sectionId="header" className="mb-4" />
           <div className="grid gap-6 sm:grid-cols-2">
             <div className="rounded-xl border p-4" style={{ borderColor: "#e2e8f0" }}>
               <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
@@ -107,14 +122,18 @@ export const InvoiceDocument = forwardRef<HTMLDivElement, Props>(function Invoic
               {org?.billing_email && (
                 <div className="text-sm text-slate-600">{org.billing_email}</div>
               )}
+              <SectionFields template={template} sectionId="bill_to" className="mt-2" />
             </div>
             <div className="rounded-xl border p-4" style={{ borderColor: "#e2e8f0" }}>
               <MetaGrid invoice={invoice} template={template} />
+              <SectionFields template={template} sectionId="meta" className="mt-2" />
             </div>
           </div>
+          <SectionFields template={template} sectionId="after_meta" className="mt-4" />
           {template.show_line_items && (
             <LineTable lines={lines} currency={currency} primary={primary} />
           )}
+          <SectionFields template={template} sectionId="line_items" className="mt-2" />
           <div className="mt-6 flex justify-end">
             <div
               className="min-w-[240px] rounded-xl px-5 py-4 text-white"
@@ -141,7 +160,12 @@ export const InvoiceDocument = forwardRef<HTMLDivElement, Props>(function Invoic
               </div>
             </div>
           </div>
+          <SectionFields template={template} sectionId="totals" className="mt-3" />
           <NotesFooter invoice={invoice} template={template} />
+          <SectionFields template={template} sectionId="notes" className="mt-2" />
+          <SectionFields template={template} sectionId="payment" className="mt-2" />
+          <SectionFields template={template} sectionId="footer" className="mt-2" />
+          <SectionFields template={template} sectionId="custom" className="mt-4" />
         </div>
       </div>
     );
@@ -170,6 +194,8 @@ export const InvoiceDocument = forwardRef<HTMLDivElement, Props>(function Invoic
         </div>
       </div>
 
+      <SectionFields template={template} sectionId="header" className="mt-4" />
+
       <div className="mt-8 grid gap-8 sm:grid-cols-2">
         <div>
           <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
@@ -179,18 +205,62 @@ export const InvoiceDocument = forwardRef<HTMLDivElement, Props>(function Invoic
             {customer}
           </div>
           {org?.billing_email && <div className="text-sm text-slate-600">{org.billing_email}</div>}
+          <SectionFields template={template} sectionId="bill_to" className="mt-2" />
         </div>
-        <MetaGrid invoice={invoice} template={template} />
+        <div>
+          <MetaGrid invoice={invoice} template={template} />
+          <SectionFields template={template} sectionId="meta" className="mt-2" />
+        </div>
       </div>
+
+      <SectionFields template={template} sectionId="after_meta" className="mt-4" />
 
       {template.show_line_items && (
         <LineTable lines={lines} currency={currency} primary={primary} />
       )}
+      <SectionFields template={template} sectionId="line_items" className="mt-2" />
       <Totals gst={gst} currency={currency} primary={primary} />
+      <SectionFields template={template} sectionId="totals" className="mt-2" />
       <NotesFooter invoice={invoice} template={template} />
+      <SectionFields template={template} sectionId="notes" className="mt-2" />
+      <SectionFields template={template} sectionId="payment" className="mt-2" />
+      <SectionFields template={template} sectionId="footer" className="mt-2" />
+      <SectionFields template={template} sectionId="custom" className="mt-4" />
     </div>
   );
 });
+
+function SectionFields({
+  template,
+  sectionId,
+  className,
+}: {
+  template: InvoiceTemplateConfig;
+  sectionId: InvoiceTemplateSectionId;
+  className?: string;
+}) {
+  const fields = getInvoiceSectionFields(template, sectionId);
+  if (!fields.length) return null;
+  const section = (template.sections ?? []).find((s) => s.id === sectionId);
+  const showTitle = sectionId === "after_meta" || sectionId === "custom";
+  return (
+    <div className={className}>
+      {showTitle && section?.title ? (
+        <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+          {section.title}
+        </div>
+      ) : null}
+      <div className="space-y-1 text-sm">
+        {fields.map((f) => (
+          <div key={f.id} className="flex justify-between gap-4 sm:justify-start sm:gap-6">
+            <span className="min-w-[110px] text-slate-500">{f.label || "Field"}</span>
+            <span className="font-medium whitespace-pre-line">{f.value || "—"}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function BrandBlock({
   template,

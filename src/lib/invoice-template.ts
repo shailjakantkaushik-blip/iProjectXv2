@@ -2,6 +2,40 @@ import { supabase } from "@/integrations/supabase/client";
 
 export type InvoiceTemplateId = "standard" | "compact" | "modern";
 
+/**
+ * Document regions that can host extra key/value fields.
+ * Built-in layout still renders; these fields append into the region.
+ */
+export const INVOICE_SECTION_IDS = [
+  "header",
+  "bill_to",
+  "meta",
+  "after_meta",
+  "line_items",
+  "totals",
+  "notes",
+  "payment",
+  "footer",
+  "custom",
+] as const;
+
+export type InvoiceTemplateSectionId = (typeof INVOICE_SECTION_IDS)[number];
+
+export type InvoiceTemplateField = {
+  id: string;
+  label: string;
+  /** Static value stored on the template (future: bind to invoice paths). */
+  value: string;
+  visible: boolean;
+};
+
+export type InvoiceTemplateSection = {
+  id: InvoiceTemplateSectionId;
+  title: string;
+  visible: boolean;
+  fields: InvoiceTemplateField[];
+};
+
 export type InvoiceTemplateConfig = {
   template_id: InvoiceTemplateId;
   company_name: string;
@@ -34,6 +68,11 @@ export type InvoiceTemplateConfig = {
   footer_text: string;
   payment_instructions: string;
   thank_you_note: string;
+  /**
+   * Future-proof custom fields grouped by invoice section.
+   * Empty by default; editor can add label/value rows per section.
+   */
+  sections: InvoiceTemplateSection[];
 };
 
 export type InvoiceGstBreakdown = {
@@ -70,6 +109,86 @@ export const INVOICE_TEMPLATE_PRESETS: InvoiceTemplatePreset[] = [
   },
 ];
 
+const SECTION_TITLES: Record<InvoiceTemplateSectionId, string> = {
+  header: "Header / company",
+  bill_to: "Bill to",
+  meta: "Invoice meta",
+  after_meta: "After meta",
+  line_items: "Line items",
+  totals: "Totals",
+  notes: "Notes",
+  payment: "Payment",
+  footer: "Footer",
+  custom: "Custom block",
+};
+
+export function defaultInvoiceSections(): InvoiceTemplateSection[] {
+  return INVOICE_SECTION_IDS.map((id) => ({
+    id,
+    title: SECTION_TITLES[id],
+    visible: true,
+    fields: [],
+  }));
+}
+
+export function newInvoiceTemplateField(
+  partial?: Partial<InvoiceTemplateField>,
+): InvoiceTemplateField {
+  const id =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `fld_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  return {
+    id,
+    label: partial?.label ?? "",
+    value: partial?.value ?? "",
+    visible: partial?.visible !== false,
+  };
+}
+
+function normalizeSections(raw: unknown): InvoiceTemplateSection[] {
+  const defaults = defaultInvoiceSections();
+  if (!Array.isArray(raw)) return defaults;
+  const byId = new Map<string, InvoiceTemplateSection>();
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const id = String((item as any).id || "") as InvoiceTemplateSectionId;
+    if (!(INVOICE_SECTION_IDS as readonly string[]).includes(id)) continue;
+    const fieldsRaw = Array.isArray((item as any).fields) ? (item as any).fields : [];
+    const fields: InvoiceTemplateField[] = fieldsRaw
+      .map((f: any) => {
+        if (!f || typeof f !== "object") return null;
+        const label = String(f.label ?? "").trim();
+        const value = String(f.value ?? "");
+        if (!label && !value) return null;
+        return {
+          id: String(f.id || newInvoiceTemplateField().id),
+          label: label || "Field",
+          value,
+          visible: f.visible !== false,
+        } satisfies InvoiceTemplateField;
+      })
+      .filter(Boolean) as InvoiceTemplateField[];
+    byId.set(id, {
+      id,
+      title: String((item as any).title || SECTION_TITLES[id]),
+      visible: (item as any).visible !== false,
+      fields,
+    });
+  }
+  return defaults.map((d) => byId.get(d.id) ?? d);
+}
+
+/** Visible fields for a section (empty if section hidden / missing). */
+export function getInvoiceSectionFields(
+  template: Pick<InvoiceTemplateConfig, "sections">,
+  sectionId: InvoiceTemplateSectionId,
+): InvoiceTemplateField[] {
+  const section = (template.sections ?? []).find((s) => s.id === sectionId);
+  if (!section || section.visible === false) return [];
+  return (section.fields ?? []).filter((f) => f.visible !== false && (f.label || f.value));
+}
+
 export const DEFAULT_INVOICE_TEMPLATE: InvoiceTemplateConfig = {
   template_id: "standard",
   company_name: "iProjectX",
@@ -96,12 +215,15 @@ export const DEFAULT_INVOICE_TEMPLATE: InvoiceTemplateConfig = {
   payment_instructions:
     "Please arrange payment by the due date. Reference the invoice number on your remittance.",
   thank_you_note: "Questions about this invoice? Reply to the billing email and we will help.",
+  sections: defaultInvoiceSections(),
 };
 
 export function mergeInvoiceTemplate(partial: any): InvoiceTemplateConfig {
+  const base = partial && typeof partial === "object" ? partial : {};
   const merged = {
     ...DEFAULT_INVOICE_TEMPLATE,
-    ...(partial && typeof partial === "object" ? partial : {}),
+    ...base,
+    sections: normalizeSections(base.sections),
   };
   if (!INVOICE_TEMPLATE_PRESETS.some((p) => p.id === merged.template_id)) {
     merged.template_id = "standard";
@@ -176,9 +298,10 @@ export async function fetchInvoiceTemplate(): Promise<InvoiceTemplateConfig> {
 }
 
 export async function saveInvoiceTemplate(config: InvoiceTemplateConfig, userId?: string) {
+  const normalized = mergeInvoiceTemplate(config);
   const { error } = await supabase
     .from("invoice_template_config" as any)
-    .upsert({ id: "singleton", config: config as any, updated_by: userId ?? null });
+    .upsert({ id: "singleton", config: normalized as any, updated_by: userId ?? null });
   if (error) throw error;
 }
 
