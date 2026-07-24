@@ -345,11 +345,15 @@ function ExecutiveDashboard() {
     return Array.from(groups.entries()).sort();
   }, [timelineLanes, timelineView]);
 
-  // Shared smart bounds — chart starts near first bar (no empty left FY scroll).
-  const timelineBounds = useMemo(
-    () => computeTimelineBounds(timelineLanes, fy, fyStartMonth),
-    [timelineLanes, fy, fyStartMonth],
-  );
+  // Per-group bounds — each Program/Theme/etc. axis starts near its own bars
+  // so earlier groups don't leave empty lead-in on later sections.
+  const boundsByGroup = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof computeTimelineBounds>>();
+    for (const [name, items] of timelineGroups) {
+      m.set(name, computeTimelineBounds(items, fy, fyStartMonth));
+    }
+    return m;
+  }, [timelineGroups, fy, fyStartMonth]);
 
   const toggleCollapse = (name: string) =>
     setCollapsed((c) => ({ ...c, [name]: !c[name] }));
@@ -728,7 +732,7 @@ function ExecutiveDashboard() {
                   key={groupName}
                   title={groupName}
                   items={items}
-                  bounds={timelineBounds}
+                  bounds={boundsByGroup.get(groupName)!}
                   gatesByLane={gatesByLane}
                   orgPhases={orgPhases}
                   collapsed={!!collapsed[groupName]}
