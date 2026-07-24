@@ -460,11 +460,16 @@ function Nav({ cfg, signupEnabled }: { cfg: LandingConfig; signupEnabled: boolea
           </Link>
         </div>
 
-        <div className="hidden items-center gap-4 md:flex">
+        <div className="hidden items-center gap-3 md:flex">
           <Link
             to="/auth"
-            className="text-sm font-semibold transition-opacity hover:opacity-70"
-            style={{ color: p.textMuted }}
+            style={{
+              ...HEADING,
+              background: signupEnabled ? "transparent" : p.accent,
+              color: signupEnabled ? p.textHeading : p.textOnAccent,
+              border: signupEnabled ? `1.5px solid ${p.accent}` : "none",
+            }}
+            className="rounded-md px-4 py-2.5 text-sm font-bold transition-opacity hover:opacity-90"
           >
             Sign in
           </Link>
@@ -527,8 +532,13 @@ function Nav({ cfg, signupEnabled }: { cfg: LandingConfig; signupEnabled: boolea
             <Link
               to="/auth"
               onClick={() => setOpen(false)}
-              className="rounded-md px-3 py-3 text-center text-sm font-semibold"
-              style={{ color: p.textMuted }}
+              style={{
+                ...HEADING,
+                background: signupEnabled ? "transparent" : p.accent,
+                color: signupEnabled ? p.textHeading : p.textOnAccent,
+                border: signupEnabled ? `1.5px solid ${p.accent}` : "none",
+              }}
+              className="rounded-md px-3 py-3 text-center text-sm font-bold"
             >
               Sign in
             </Link>

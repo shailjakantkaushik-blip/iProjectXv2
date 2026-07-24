@@ -16,6 +16,8 @@ import {
   saveLandingConfig,
   type LandingConfig,
 } from "@/lib/landing-config";
+import { StyleThemePicker } from "@/components/style-theme-picker";
+import { isStyleThemeId, type StyleThemeId } from "@/lib/style-theme";
 
 export const Route = createFileRoute("/_authenticated/platform/settings")({
   component: PlatformSettingsPage,
@@ -120,6 +122,23 @@ function PlatformSettingsPage() {
         <p className="mt-3 text-xs text-muted-foreground">
           Default cartoons: {DEFAULT_LANDING.cartoons_enabled ? "on" : "off"}.
         </p>
+      </SectionFrame>
+
+      <SectionFrame>
+        <SectionTitle>Style theme (platform default)</SectionTitle>
+        <p className="mt-1 text-sm text-muted-foreground">
+          General look &amp; feel for organisations that have not set their own style theme.
+          <strong> Simple</strong> is the current utilitarian baseline. Per-org overrides and
+          user-choice live under Branding &amp; White Label.
+        </p>
+        <div className="mt-4">
+          <StyleThemePicker
+            value={
+              (isStyleThemeId(cfg.style_theme_id) ? cfg.style_theme_id : "simple") as StyleThemeId
+            }
+            onChange={(style_theme_id) => setCfg({ ...cfg, style_theme_id })}
+          />
+        </div>
       </SectionFrame>
 
       <SectionFrame>
