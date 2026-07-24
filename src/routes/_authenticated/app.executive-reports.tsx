@@ -40,7 +40,7 @@ function ExecutiveReportsPage() {
   const { organization } = useAuth();
   const orgId = organization?.id;
 
-  const { data: projects = [], isLoading: loadingProjects } = useQuery({
+  const projectsQ = useQuery({
     queryKey: ["projects", orgId],
     queryFn: async () => {
       const { data, error } = await supabase.from("projects").select("*");
@@ -49,35 +49,36 @@ function ExecutiveReportsPage() {
     },
     enabled: !!orgId,
   });
+  const projects = projectsQ.data ?? [];
 
-  const { data: risks = [], isLoading: loadingRisks } = useQuery({
+  const { data: risks = [] } = useQuery({
     queryKey: ["risks", orgId],
     queryFn: async () =>
       (await supabase.from("risks").select("*").order("severity", { ascending: false })).data ?? [],
     enabled: !!orgId,
   });
 
-  const { data: actions = [], isLoading: loadingActions } = useQuery({
+  const { data: actions = [] } = useQuery({
     queryKey: ["actions", orgId],
     queryFn: async () =>
       (await supabase.from("actions").select("*").order("due_date")).data ?? [],
     enabled: !!orgId,
   });
 
-  const { data: benefits = [], isLoading: loadingBenefits } = useQuery({
+  const { data: benefits = [] } = useQuery({
     queryKey: ["benefits", orgId],
     queryFn: async () => (await supabase.from("benefits").select("*")).data ?? [],
     enabled: !!orgId,
   });
 
-  const { data: gates = [], isLoading: loadingGates } = useQuery({
+  const { data: gates = [] } = useQuery({
     queryKey: ["stage_gates", orgId],
     queryFn: async () =>
       (await supabase.from("stage_gates").select("*").order("planned_date")).data ?? [],
     enabled: !!orgId,
   });
 
-  const { data: milestones = [], isLoading: loadingMilestones } = useQuery({
+  const { data: milestones = [] } = useQuery({
     queryKey: ["milestones", orgId],
     queryFn: async () =>
       (await supabase.from("milestones").select("*").order("planned_date")).data ?? [],
@@ -361,13 +362,8 @@ function ExecutiveReportsPage() {
       }));
   }, [milestones, streamById]);
 
-  const loading =
-    loadingProjects ||
-    loadingRisks ||
-    loadingActions ||
-    loadingBenefits ||
-    loadingGates ||
-    loadingMilestones;
+  // Cold load only — keep prior report visible while queries refresh quietly.
+  const showColdLoad = projectsQ.isLoading && projectsQ.data === undefined;
 
   const handleExport = () => exportProjects(projects as any[]);
   const printReport = () => window.print();
@@ -393,7 +389,7 @@ function ExecutiveReportsPage() {
         }
       />
 
-      {loading ? (
+      {showColdLoad ? (
         <PageLoading label="Loading report data…" fullScreen={false} />
       ) : (
         <Tabs defaultValue="overview" className="space-y-3">

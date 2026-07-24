@@ -45,7 +45,7 @@ function ProjectDetail() {
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
 
-  const { data: project, isLoading } = useQuery({
+  const projectQ = useQuery({
     queryKey: ["project", id],
     queryFn: async () => {
       const { data, error } = await supabase.from("projects").select("*").eq("id", id).maybeSingle();
@@ -53,6 +53,8 @@ function ProjectDetail() {
       return data as any;
     },
   });
+  const project = projectQ.data;
+  const isLoading = projectQ.isLoading && project === undefined;
 
   const { data: workItems = [] } = useQuery({
     queryKey: ["work_items", organization?.id, id],

@@ -39,7 +39,7 @@ function WorkItemsPage() {
     enabled: !!orgId,
   });
 
-  const { data: items = [], isLoading } = useQuery({
+  const itemsQ = useQuery({
     queryKey: ["work_items", orgId],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -52,6 +52,8 @@ function WorkItemsPage() {
     },
     enabled: !!orgId,
   });
+  const items = itemsQ.data ?? [];
+  const isLoading = itemsQ.isLoading && !itemsQ.data;
 
   const projectById = useMemo(
     () => new Map(projects.map((p: any) => [p.id, p])),

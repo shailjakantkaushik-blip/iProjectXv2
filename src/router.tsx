@@ -8,14 +8,17 @@ export const getRouter = () => {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
-        staleTime: 45_000,
-        gcTime: 10 * 60_000,
+        // Fresh enough to feel snappy; long enough to avoid refetch storms.
+        staleTime: 30_000,
+        gcTime: 15 * 60_000,
         retry: 3,
         retryDelay: queryRetryDelay,
-        refetchOnWindowFocus: false,
+        // Safety net when live-sync misses an edit — refetch quietly if stale.
+        refetchOnWindowFocus: true,
         refetchOnReconnect: true,
+        refetchOnMount: true,
         networkMode: "online",
-        // Keep prior data visible while a background refetch runs — avoids blank flashes.
+        // Keep prior data on screen while background refetch runs.
         placeholderData: keepPreviousData,
       },
       mutations: {
