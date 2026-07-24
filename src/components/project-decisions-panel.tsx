@@ -161,17 +161,25 @@ export function ProjectDecisionsPanel({
           : ""}
       </p>
 
-      <div className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-2">
+      <form
+        className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          createDecision.mutate();
+        }}
+      >
         <input
           className="st-input md:col-span-2"
           placeholder="Decision title"
           value={form.title}
           onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+          required
         />
         <select
           className="st-input"
           value={form.approver_user_id}
           onChange={(e) => setForm((f) => ({ ...f, approver_user_id: e.target.value }))}
+          required
         >
           <option value="">— Approver (required) —</option>
           {members.map((m) => (
@@ -211,14 +219,13 @@ export function ProjectDecisionsPanel({
           onChange={(e) => setForm((f) => ({ ...f, rationale: e.target.value }))}
         />
         <button
-          type="button"
+          type="submit"
           className="st-btn-primary md:col-span-2"
           disabled={createDecision.isPending}
-          onClick={() => createDecision.mutate()}
         >
-          {createDecision.isPending ? "Sending…" : "Request approval"}
+          {createDecision.isPending ? "Saving…" : "Submit decision"}
         </button>
-      </div>
+      </form>
 
       {isLoading ? (
         <div className="py-6 text-center text-xs text-muted-foreground">Loading decisions…</div>

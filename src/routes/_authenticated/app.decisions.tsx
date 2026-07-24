@@ -295,13 +295,20 @@ function DecisionsPage() {
 
       <SectionFrame id="log-form">
         <SectionTitle>Record a Decision</SectionTitle>
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
+        <form
+          className="grid grid-cols-1 gap-2 md:grid-cols-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            createDecision.mutate();
+          }}
+        >
           <select
             className="st-input"
             value={form.project_id}
             onChange={(e) =>
               setForm((f) => ({ ...f, project_id: e.target.value, stage_gate_id: "" }))
             }
+            required
           >
             <option value="">— Project —</option>
             {projects.map((p: any) => (
@@ -339,6 +346,7 @@ function DecisionsPage() {
             className="st-input md:col-span-2"
             value={form.approver_user_id}
             onChange={(e) => setForm((f) => ({ ...f, approver_user_id: e.target.value }))}
+            required
           >
             <option value="">— Approver (notifies in-app) —</option>
             {members.map((m) => (
@@ -371,18 +379,12 @@ function DecisionsPage() {
             onChange={(e) => setForm((f) => ({ ...f, decision_date: e.target.value }))}
           />
           <input
-            className="st-input md:col-span-3"
+            className="st-input md:col-span-4"
             placeholder="Decision title"
             value={form.title}
             onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+            required
           />
-          <button
-            className="st-btn-primary"
-            disabled={createDecision.isPending}
-            onClick={() => createDecision.mutate()}
-          >
-            {createDecision.isPending ? "Saving…" : "Request approval"}
-          </button>
           <textarea
             className="st-input md:col-span-2"
             placeholder="Rationale"
@@ -397,10 +399,17 @@ function DecisionsPage() {
             value={form.notes}
             onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
           />
-        </div>
+          <button
+            type="submit"
+            className="st-btn-primary md:col-span-4"
+            disabled={createDecision.isPending}
+          >
+            {createDecision.isPending ? "Saving…" : "Submit decision"}
+          </button>
+        </form>
         <p className="mt-2 text-xs text-muted-foreground">
-          Selecting an approver sends them an in-app notification. If a stage gate is linked, its
-          status and approver sync automatically.
+          Submitting records the decision and notifies the selected approver in-app. If a stage gate
+          is linked, its status and approver sync automatically.
         </p>
       </SectionFrame>
 
