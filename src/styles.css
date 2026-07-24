@@ -204,7 +204,9 @@
 
 /* ─────────── Streamlit visual primitives ─────────── */
 
-/* Section frame — polished workspace surface */
+/* Section frame — polished workspace surface.
+   Default allows horizontal scroll for wide tables.
+   Filters use .section-frame--filters { overflow: visible } + portaled pickers. */
 .section-frame {
   background: color-mix(in srgb, var(--color-surface) 98%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-border) 92%, transparent);
@@ -219,6 +221,15 @@
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   backdrop-filter: blur(8px);
+}
+.section-frame--scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.section-frame--filters {
+  overflow: visible;
+  position: relative;
+  z-index: 20;
 }
 
 .section-title {
@@ -718,241 +729,301 @@ html[data-focus-mode="1"] .cartoon-banner,
 
 /* ============================================================
  * Style themes (data-style-theme on <html>)
- * simple = current utilitarian baseline
- * standard / space / racing = richer look & feel
+ * Chrome only: section / button / nav / motion.
+ * Colour tokens stay with the colour-palette system — do NOT override
+ * --primary, --background, --sidebar, etc. here.
  * ============================================================ */
 
+/* ---- Simple: utilitarian baseline ---- */
+html[data-style-theme="simple"] {
+  --style-section-radius: 10px;
+  --style-btn-radius: 6px;
+  --style-nav-radius: 6px;
+  --style-motion: 0ms;
+}
+html[data-style-theme="simple"] .section-frame {
+  border-radius: var(--style-section-radius);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+html[data-style-theme="simple"] .section-frame:hover {
+  transform: none;
+  box-shadow: none;
+}
+html[data-style-theme="simple"] .shell-sidebar {
+  box-shadow: none;
+}
+html[data-style-theme="simple"] .shell-nav-link {
+  border-radius: var(--style-nav-radius);
+}
+html[data-style-theme="simple"] .shell-nav-active-bar {
+  width: 2px;
+  border-radius: 999px;
+}
+html[data-style-theme="simple"] .shell-page-title,
+html[data-style-theme="simple"] .shell-main {
+  animation: none;
+}
+html[data-style-theme="simple"] .ui-btn,
+html[data-style-theme="simple"] button[data-slot="button"] {
+  border-radius: var(--style-btn-radius);
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+/* ---- Standard: soft enterprise chrome ---- */
 html[data-style-theme="standard"] {
+  --style-section-radius: 14px;
+  --style-btn-radius: 8px;
+  --style-nav-radius: 8px;
   --radius: 0.75rem;
-  --background: #eef2f7;
-  --surface: #ffffff;
-  --border: #d8dee8;
-  --muted: #e4e9f1;
-  --sidebar: #e8eef6;
-  --sidebar-accent: #d9e3f0;
 }
-
-html[data-style-theme="standard"] body {
-  background-image:
-    radial-gradient(ellipse 80% 50% at 10% -10%, color-mix(in srgb, var(--primary) 12%, transparent), transparent 55%),
-    radial-gradient(ellipse 60% 40% at 100% 0%, color-mix(in srgb, var(--accent2) 8%, transparent), transparent 50%);
-  background-attachment: fixed;
+html[data-style-theme="standard"] .section-frame {
+  border-radius: var(--style-section-radius);
+  box-shadow:
+    0 1px 0 color-mix(in srgb, var(--color-surface) 80%, transparent) inset,
+    0 1px 2px color-mix(in srgb, var(--color-foreground) 4%, transparent),
+    0 10px 28px color-mix(in srgb, var(--color-foreground) 4%, transparent);
 }
-
-html[data-style-theme="standard"] .shell-root {
-  background: transparent;
+html[data-style-theme="standard"] .section-title {
+  letter-spacing: 0.06em;
 }
-
 html[data-style-theme="standard"] .shell-header {
-  background: color-mix(in srgb, var(--background) 82%, transparent) !important;
-  border-bottom-color: color-mix(in srgb, var(--border) 80%, transparent) !important;
+  backdrop-filter: blur(16px);
 }
-
-html[data-style-theme="standard"] table,
-html[data-style-theme="standard"] .st-table,
-html[data-style-theme="standard"] [data-slot="table"] {
-  border-collapse: separate;
-  border-spacing: 0;
+html[data-style-theme="standard"] .shell-sidebar {
+  box-shadow:
+    inset -1px 0 0 color-mix(in srgb, var(--sidebar-border) 80%, transparent),
+    6px 0 28px color-mix(in srgb, var(--color-foreground) 3%, transparent);
 }
-
+html[data-style-theme="standard"] .shell-nav-group-trigger {
+  border-radius: var(--style-nav-radius);
+}
+html[data-style-theme="standard"] .shell-nav-link {
+  border-radius: var(--style-nav-radius);
+  transition: background-color 160ms ease, transform 160ms ease, color 160ms ease;
+}
+html[data-style-theme="standard"] .shell-nav-link[data-nav-active="true"] {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sidebar-primary) 18%, transparent);
+}
+html[data-style-theme="standard"] .shell-nav-active-bar {
+  width: 3px;
+  height: 1rem;
+  border-radius: 999px;
+}
+html[data-style-theme="standard"] .ui-btn,
+html[data-style-theme="standard"] button[data-slot="button"] {
+  border-radius: var(--style-btn-radius);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--color-foreground) 5%, transparent);
+  transition: transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+html[data-style-theme="standard"] .ui-btn:hover:not(:disabled),
+html[data-style-theme="standard"] button[data-slot="button"]:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--color-foreground) 8%, transparent);
+}
 html[data-style-theme="standard"] thead th,
 html[data-style-theme="standard"] .st-table thead th {
-  background: color-mix(in srgb, var(--muted) 70%, var(--surface));
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-
-html[data-style-theme="standard"] tbody tr:hover td {
-  background: color-mix(in srgb, var(--primary) 4%, var(--surface));
+html[data-style-theme="standard"] .shell-main {
+  animation: shell-main-in 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-html[data-style-theme="standard"] .ui-btn,
-html[data-style-theme="standard"] button[data-slot="button"] {
-  box-shadow: 0 1px 0 rgba(15, 27, 61, 0.04);
-  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
-}
-
-html[data-style-theme="standard"] .ui-btn:hover:not(:disabled),
-html[data-style-theme="standard"] button[data-slot="button"]:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(15, 27, 61, 0.08);
-}
-
-html[data-style-theme="standard"] .rounded-md.border.bg-surface,
-html[data-style-theme="standard"] [class*="bg-surface"].border {
-  box-shadow: 0 1px 2px rgba(15, 27, 61, 0.04), 0 8px 24px rgba(15, 27, 61, 0.04);
-}
-
-/* ---- Space ---- */
+/* ---- Space: geometric / mission-control chrome (no recolour) ---- */
 html[data-style-theme="space"] {
-  --radius: 0.85rem;
-  --background: #070b16;
-  --surface: #121a2e;
-  --foreground: #e8eefc;
-  --heading: #f4f7ff;
-  --muted: #1a243c;
-  --muted-foreground: #9aa8c7;
-  --border: #243152;
-  --input: #2a3a5c;
-  --card: #121a2e;
-  --card-foreground: #e8eefc;
-  --popover: #121a2e;
-  --popover-foreground: #e8eefc;
-  --primary: #38bdf8;
-  --primary-foreground: #041018;
-  --secondary: #1a243c;
-  --secondary-foreground: #e8eefc;
-  --accent: #38bdf8;
-  --accent-foreground: #041018;
-  --accent2: #22d3ee;
-  --sidebar: #0a1020;
-  --sidebar-foreground: #e8eefc;
-  --sidebar-primary: #38bdf8;
-  --sidebar-primary-foreground: #041018;
-  --sidebar-accent: #152038;
-  --sidebar-accent-foreground: #e8eefc;
-  --sidebar-border: #243152;
-  --ring: #38bdf8;
+  --style-section-radius: 4px;
+  --style-btn-radius: 2px;
+  --style-nav-radius: 2px;
+  --radius: 0.35rem;
 }
-
-html[data-style-theme="space"] body {
-  background-color: #070b16;
-  background-image:
-    radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.35), transparent),
-    radial-gradient(1px 1px at 60% 70%, rgba(255,255,255,0.25), transparent),
-    radial-gradient(1px 1px at 80% 20%, rgba(255,255,255,0.3), transparent),
-    radial-gradient(ellipse 70% 50% at 50% -20%, rgba(56, 189, 248, 0.18), transparent 60%),
-    radial-gradient(ellipse 50% 40% at 100% 100%, rgba(34, 211, 238, 0.1), transparent 55%);
-  background-attachment: fixed;
-  color: var(--foreground);
+html[data-style-theme="space"] .section-frame:not(.section-frame--filters) {
+  border-radius: var(--style-section-radius);
+  border-width: 1px;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--color-foreground) 6%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--color-border) 40%, transparent),
+    0 12px 32px color-mix(in srgb, var(--color-foreground) 4%, transparent);
+  clip-path: polygon(
+    0 10px,
+    10px 0,
+    calc(100% - 10px) 0,
+    100% 10px,
+    100% calc(100% - 10px),
+    calc(100% - 10px) 100%,
+    10px 100%,
+    0 calc(100% - 10px)
+  );
 }
-
+html[data-style-theme="space"] .section-frame--filters {
+  border-radius: var(--style-section-radius);
+  border-width: 1px;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--color-foreground) 6%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--color-border) 40%, transparent);
+  clip-path: none;
+}
+html[data-style-theme="space"] .section-frame:hover {
+  transform: none;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--primary) 12%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--primary) 16%, transparent),
+    0 14px 36px color-mix(in srgb, var(--color-foreground) 5%, transparent);
+}
+html[data-style-theme="space"] .section-title {
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  border-bottom-style: dashed;
+}
+html[data-style-theme="space"] .shell-sidebar {
+  border-right-width: 1px;
+  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--sidebar-border) 90%, transparent);
+}
+html[data-style-theme="space"] .shell-nav-group + .shell-nav-group {
+  border-top-style: dashed;
+}
+html[data-style-theme="space"] .shell-nav-group-label {
+  letter-spacing: 0.14em;
+  font-size: 9.5px;
+}
+html[data-style-theme="space"] .shell-nav-link {
+  border-radius: var(--style-nav-radius);
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 0 100%);
+  transition: background-color 180ms ease, letter-spacing 180ms ease;
+}
+html[data-style-theme="space"] .shell-nav-link[data-nav-active="true"] {
+  letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--sidebar-accent) 88%, var(--sidebar-primary));
+}
+html[data-style-theme="space"] .shell-nav-active-bar {
+  width: 2px;
+  height: 70%;
+  border-radius: 0;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--sidebar-primary) 45%, transparent);
+}
 html[data-style-theme="space"] .shell-header {
-  background: rgba(7, 11, 22, 0.82) !important;
-  border-bottom-color: rgba(56, 189, 248, 0.15) !important;
-  box-shadow: 0 0 24px rgba(56, 189, 248, 0.06);
+  border-bottom-style: dashed;
 }
-
-html[data-style-theme="space"] aside,
-html[data-style-theme="space"] .bg-sidebar {
-  background:
-    linear-gradient(180deg, rgba(18, 26, 46, 0.95), rgba(10, 16, 32, 0.98)) !important;
-  border-color: rgba(56, 189, 248, 0.12) !important;
-}
-
-html[data-style-theme="space"] thead th {
-  background: rgba(26, 36, 60, 0.9);
-  color: #c7d4f0;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-size: 10px;
-}
-
-html[data-style-theme="space"] tbody tr:hover td {
-  background: rgba(56, 189, 248, 0.06);
-}
-
 html[data-style-theme="space"] .ui-btn,
 html[data-style-theme="space"] button[data-slot="button"] {
-  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.15), 0 0 18px rgba(56, 189, 248, 0.08);
+  border-radius: var(--style-btn-radius);
+  clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
+  letter-spacing: 0.04em;
+  transition: transform 180ms ease, filter 180ms ease, background-color 180ms ease;
+}
+html[data-style-theme="space"] .ui-btn:hover:not(:disabled),
+html[data-style-theme="space"] button[data-slot="button"]:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+}
+html[data-style-theme="space"] thead th {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 10px;
+}
+html[data-style-theme="space"] .shell-main {
+  animation: style-space-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes style-space-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.992); }
+  to { opacity: 1; transform: none; }
 }
 
-html[data-style-theme="space"] .rounded-md.border {
-  border-color: rgba(56, 189, 248, 0.16);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-}
-
-/* ---- Racing ---- */
+/* ---- Racing: angular / speed chrome (no recolour) ---- */
 html[data-style-theme="racing"] {
-  --radius: 0.4rem;
-  --background: #0c0c0e;
-  --surface: #16161a;
-  --foreground: #f4f4f5;
-  --heading: #fafafa;
-  --muted: #1f1f24;
-  --muted-foreground: #a1a1aa;
-  --border: #2a2a31;
-  --input: #2a2a31;
-  --card: #16161a;
-  --card-foreground: #f4f4f5;
-  --popover: #16161a;
-  --popover-foreground: #f4f4f5;
-  --primary: #e11d48;
-  --primary-foreground: #fff1f2;
-  --secondary: #1f1f24;
-  --secondary-foreground: #f4f4f5;
-  --accent: #e11d48;
-  --accent-foreground: #fff1f2;
-  --accent2: #f59e0b;
-  --sidebar: #101014;
-  --sidebar-foreground: #f4f4f5;
-  --sidebar-primary: #e11d48;
-  --sidebar-primary-foreground: #fff1f2;
-  --sidebar-accent: #1f1f24;
-  --sidebar-accent-foreground: #f4f4f5;
-  --sidebar-border: #2a2a31;
-  --ring: #e11d48;
+  --style-section-radius: 2px;
+  --style-btn-radius: 2px;
+  --style-nav-radius: 2px;
+  --radius: 0.25rem;
 }
-
-html[data-style-theme="racing"] body {
-  background-color: #0c0c0e;
-  background-image:
-    linear-gradient(135deg, rgba(225, 29, 72, 0.12), transparent 40%),
-    repeating-linear-gradient(
-      -18deg,
-      transparent,
-      transparent 22px,
-      rgba(255, 255, 255, 0.015) 22px,
-      rgba(255, 255, 255, 0.015) 23px
-    );
-  background-attachment: fixed;
-  color: var(--foreground);
+html[data-style-theme="racing"] .section-frame {
+  border-radius: var(--style-section-radius);
+  border-left-width: 3px;
+  border-left-color: color-mix(in srgb, var(--primary) 55%, var(--color-border));
+  box-shadow:
+    0 1px 0 color-mix(in srgb, var(--color-foreground) 4%, transparent),
+    8px 10px 0 color-mix(in srgb, var(--color-foreground) 3%, transparent);
 }
-
+html[data-style-theme="racing"] .section-frame:hover {
+  transform: translateX(1px);
+  border-left-color: var(--primary);
+}
+html[data-style-theme="racing"] .section-title {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  border-bottom-width: 2px;
+}
+html[data-style-theme="racing"] .shell-sidebar {
+  border-right-width: 2px;
+}
+html[data-style-theme="racing"] .shell-nav-group-label {
+  letter-spacing: 0.12em;
+  font-weight: 700;
+}
+html[data-style-theme="racing"] .shell-nav-link {
+  border-radius: var(--style-nav-radius);
+  border-left: 2px solid transparent;
+  transition: border-color 120ms ease, background-color 120ms ease, transform 120ms ease;
+}
+html[data-style-theme="racing"] .shell-nav-link:hover {
+  transform: translateX(2px);
+}
+html[data-style-theme="racing"] .shell-nav-link[data-nav-active="true"] {
+  border-left-color: var(--sidebar-primary);
+  background: color-mix(in srgb, var(--sidebar-accent) 70%, transparent);
+  font-weight: 650;
+}
+html[data-style-theme="racing"] .shell-nav-active-bar {
+  display: none;
+}
 html[data-style-theme="racing"] .shell-header {
-  background: rgba(12, 12, 14, 0.9) !important;
-  border-bottom: 2px solid rgba(225, 29, 72, 0.45) !important;
+  border-bottom-width: 2px;
+  border-bottom-color: color-mix(in srgb, var(--primary) 35%, var(--color-border));
 }
-
+html[data-style-theme="racing"] .ui-btn,
+html[data-style-theme="racing"] button[data-slot="button"] {
+  border-radius: var(--style-btn-radius);
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 11px;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+  box-shadow: 3px 3px 0 color-mix(in srgb, var(--color-foreground) 8%, transparent);
+}
+html[data-style-theme="racing"] .ui-btn:hover:not(:disabled),
+html[data-style-theme="racing"] button[data-slot="button"]:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--color-foreground) 10%, transparent);
+}
 html[data-style-theme="racing"] thead th {
-  background: #1f1f24;
-  border-bottom: 2px solid rgba(225, 29, 72, 0.5);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 10px;
   font-weight: 700;
+  border-bottom-width: 2px;
 }
-
-html[data-style-theme="racing"] tbody tr:nth-child(even) td {
-  background: rgba(255, 255, 255, 0.015);
+html[data-style-theme="racing"] .shell-main {
+  animation: style-racing-in 0.28s cubic-bezier(0.2, 0.9, 0.3, 1) both;
 }
-
-html[data-style-theme="racing"] tbody tr:hover td {
-  background: rgba(225, 29, 72, 0.08);
-}
-
-html[data-style-theme="racing"] .ui-btn,
-html[data-style-theme="racing"] button[data-slot="button"] {
-  border-radius: 0.35rem;
-  font-weight: 650;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  font-size: 11px;
-}
-
-html[data-style-theme="racing"] .rounded-md.border {
-  border-left: 3px solid rgba(225, 29, 72, 0.55);
-}
-
-/* Simple keeps defaults — mark lightly for documentation */
-html[data-style-theme="simple"] {
-  /* Utilitarian baseline: flat surfaces, standard tables, no decorative chrome */
+@keyframes style-racing-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   html[data-style-theme="standard"] .ui-btn,
-  html[data-style-theme="standard"] button[data-slot="button"] {
-    transition: none;
+  html[data-style-theme="standard"] button[data-slot="button"],
+  html[data-style-theme="space"] .ui-btn,
+  html[data-style-theme="space"] button[data-slot="button"],
+  html[data-style-theme="racing"] .ui-btn,
+  html[data-style-theme="racing"] button[data-slot="button"],
+  html[data-style-theme="space"] .shell-main,
+  html[data-style-theme="racing"] .shell-main,
+  html[data-style-theme="standard"] .shell-main {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
   }
 }

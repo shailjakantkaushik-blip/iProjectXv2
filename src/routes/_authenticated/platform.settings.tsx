@@ -127,7 +127,8 @@ function PlatformSettingsPage() {
       <SectionFrame>
         <SectionTitle>Style theme (platform default)</SectionTitle>
         <p className="mt-1 text-sm text-muted-foreground">
-          General look &amp; feel for organisations that have not set their own style theme.
+          General UI chrome for organisations that have not set their own style theme
+          (sections, buttons, navigation shape, motion — not colour palettes).
           <strong> Simple</strong> is the current utilitarian baseline. Per-org overrides and
           user-choice live under Branding &amp; White Label.
         </p>

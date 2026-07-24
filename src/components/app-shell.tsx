@@ -564,6 +564,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                       <Link
                         key={n.to}
                         to={n.to}
+                        aria-current={active ? "page" : undefined}
                         data-nav-active={active ? "true" : undefined}
                         className={cn(
                           "shell-nav-link group relative flex items-center gap-2.5 rounded-md px-2.5 py-[7px] text-[12.5px] transition-all duration-200",

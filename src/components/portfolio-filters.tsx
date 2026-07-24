@@ -1,4 +1,5 @@
-import { useMemo, useState, useRef, useEffect } from "react";
+import { useMemo, useState, useRef, useEffect, useCallback, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 
 export type PortfolioFilterState = {
   portfolio: string;
@@ -42,6 +43,12 @@ export function applyFilters<T extends Record<string, any>>(rows: T[], f: Portfo
   });
 }
 
+type PanelPos = { top: number; left: number; width: number; maxHeight: number; openUp: boolean };
+
+/**
+ * Multi-select project filter. Panel is portaled to document.body so it is never
+ * clipped by .section-frame overflow scrollports.
+ */
 export function ProjectPicker({
   projects,
   selected,
@@ -53,55 +60,140 @@ export function ProjectPicker({
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
+  const [pos, setPos] = useState<PanelPos | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const updatePos = useCallback(() => {
+    const el = triggerRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const width = Math.max(r.width, 288);
+    const gap = 4;
+    const spaceBelow = window.innerHeight - r.bottom - gap - 12;
+    const spaceAbove = r.top - gap - 12;
+    const openUp = spaceBelow < 220 && spaceAbove > spaceBelow;
+    const maxHeight = Math.min(320, Math.max(160, openUp ? spaceAbove : spaceBelow));
+    let left = r.left;
+    if (left + width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - width - 8);
+    if (left < 8) left = 8;
+    setPos({
+      top: openUp ? r.top - gap : r.bottom + gap,
+      left,
+      width,
+      maxHeight,
+      openUp,
+    });
   }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    updatePos();
+  }, [open, updatePos]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onScroll = () => updatePos();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (triggerRef.current?.contains(t) || panelRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    window.addEventListener("resize", onScroll);
+    window.addEventListener("scroll", onScroll, true);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("scroll", onScroll, true);
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, updatePos]);
+
   const items = useMemo(() => {
     const s = q.toLowerCase();
     return projects
       .filter((p) => !s || `${p.project_code ?? ""} ${p.name ?? ""}`.toLowerCase().includes(s))
       .slice(0, 300);
   }, [projects, q]);
-  const label = selected.length === 0 ? "All projects" : `${selected.length} project${selected.length > 1 ? "s" : ""}`;
+
+  const label =
+    selected.length === 0
+      ? "All projects"
+      : `${selected.length} project${selected.length > 1 ? "s" : ""}`;
+
   const toggle = (id: string) =>
     onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="h-8 rounded-md border bg-white px-2 text-[12px] shadow-sm hover:bg-muted"
+
+  const panel =
+    open &&
+    pos &&
+    typeof document !== "undefined" &&
+    createPortal(
+      <div
+        ref={panelRef}
+        role="listbox"
+        aria-multiselectable
+        className="ui-popover fixed z-[200] rounded-md border border-border bg-surface p-2 shadow-lg"
+        style={{
+          top: pos.openUp ? undefined : pos.top,
+          bottom: pos.openUp ? window.innerHeight - pos.top : undefined,
+          left: pos.left,
+          width: pos.width,
+          maxHeight: pos.maxHeight,
+        }}
       >
-        📌 {label} ▾
-      </button>
-      {open && (
-        <div className="absolute z-50 mt-1 w-72 rounded-md border bg-white p-2 shadow-lg">
-          <input
-            autoFocus
-            className="mb-2 h-8 w-full rounded border px-2 text-[12px] outline-none"
-            placeholder="Search projects…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
-          <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
-            <button className="hover:underline" onClick={() => onChange(items.map((p) => p.id))}>Select all</button>
-            <button className="hover:underline" onClick={() => onChange([])}>Clear</button>
-          </div>
-          <div className="max-h-64 overflow-auto">
-            {items.map((p) => (
-              <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-[12px] hover:bg-muted">
-                <input type="checkbox" checked={selected.includes(p.id)} onChange={() => toggle(p.id)} />
-                <span className="font-mono text-[10px] text-muted-foreground">{p.project_code}</span>
-                <span className="truncate">{p.name}</span>
-              </label>
-            ))}
-            {items.length === 0 && <div className="p-2 text-center text-[11px] text-muted-foreground">No matches</div>}
-          </div>
+        <input
+          autoFocus
+          className="mb-2 h-8 w-full rounded border border-border bg-background px-2 text-[12px] outline-none focus:ring-2 focus:ring-primary/30"
+          placeholder="Search projects…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
+          <button type="button" className="hover:underline" onClick={() => onChange(items.map((p) => p.id))}>
+            Select all
+          </button>
+          <button type="button" className="hover:underline" onClick={() => onChange([])}>
+            Clear
+          </button>
         </div>
-      )}
+        <div className="overflow-auto" style={{ maxHeight: Math.max(80, pos.maxHeight - 88) }}>
+          {items.map((p) => (
+            <label
+              key={p.id}
+              className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-[12px] hover:bg-muted"
+            >
+              <input type="checkbox" checked={selected.includes(p.id)} onChange={() => toggle(p.id)} />
+              <span className="font-mono text-[10px] text-muted-foreground">{p.project_code}</span>
+              <span className="truncate">{p.name}</span>
+            </label>
+          ))}
+          {items.length === 0 && (
+            <div className="p-2 text-center text-[11px] text-muted-foreground">No matches</div>
+          )}
+        </div>
+      </div>,
+      document.body,
+    );
+
+  return (
+    <div className="relative">
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="ui-btn h-8 rounded-md border border-border bg-surface px-2 text-[12px] shadow-sm hover:bg-muted"
+      >
+        {label} ▾
+      </button>
+      {panel}
     </div>
   );
 }
@@ -119,14 +211,23 @@ export function PortfolioFilters({
     () => Array.from(new Set(projects.map((p) => p.portfolio || "Unassigned"))).sort(),
     [projects],
   );
-  const programs = useMemo(() => Array.from(new Set(projects.map((p) => p.program || "Unassigned"))).sort(), [projects]);
-  const sponsors = useMemo(() => Array.from(new Set(projects.map((p) => p.sponsor || "—"))).sort(), [projects]);
-  const phases = useMemo(() => Array.from(new Set(projects.map((p) => p.current_phase || "—"))).sort(), [projects]);
+  const programs = useMemo(
+    () => Array.from(new Set(projects.map((p) => p.program || "Unassigned"))).sort(),
+    [projects],
+  );
+  const sponsors = useMemo(
+    () => Array.from(new Set(projects.map((p) => p.sponsor || "—"))).sort(),
+    [projects],
+  );
+  const phases = useMemo(
+    () => Array.from(new Set(projects.map((p) => p.current_phase || "—"))).sort(),
+    [projects],
+  );
 
   const set = (k: keyof PortfolioFilterState, v: any) => onChange({ ...value, [k]: v });
 
   const box =
-    "h-8 rounded-md border bg-white px-2 text-[12px] shadow-sm outline-none focus:ring-2 focus:ring-primary/30";
+    "h-8 rounded-md border border-border bg-surface px-2 text-[12px] shadow-sm outline-none focus:ring-2 focus:ring-primary/30";
 
   const hasActive =
     value.portfolio !== "All" ||
@@ -138,7 +239,7 @@ export function PortfolioFilters({
     value.projectIds.length > 0;
 
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border bg-white/60 p-2">
+    <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface/60 p-2">
       <span className="text-[11px] font-semibold text-muted-foreground">Filters:</span>
       <input
         className={box + " w-40"}
@@ -157,25 +258,42 @@ export function PortfolioFilters({
       </select>
       <select className={box} value={value.program} onChange={(e) => set("program", e.target.value)}>
         <option value="All">All programs</option>
-        {programs.map((p) => <option key={p} value={p}>{p}</option>)}
+        {programs.map((p) => (
+          <option key={p} value={p}>
+            {p}
+          </option>
+        ))}
       </select>
       <select className={box} value={value.sponsor} onChange={(e) => set("sponsor", e.target.value)}>
         <option value="All">All sponsors</option>
-        {sponsors.map((p) => <option key={p} value={p}>{p}</option>)}
+        {sponsors.map((p) => (
+          <option key={p} value={p}>
+            {p}
+          </option>
+        ))}
       </select>
       <select className={box} value={value.rag} onChange={(e) => set("rag", e.target.value)}>
         <option value="All">All RAG</option>
-        <option>Green</option><option>Amber</option><option>Red</option>
+        <option>Green</option>
+        <option>Amber</option>
+        <option>Red</option>
       </select>
       <select className={box} value={value.phase} onChange={(e) => set("phase", e.target.value)}>
         <option value="All">All phases</option>
-        {phases.map((p) => <option key={p} value={p}>{p}</option>)}
+        {phases.map((p) => (
+          <option key={p} value={p}>
+            {p}
+          </option>
+        ))}
       </select>
       {hasActive && (
         <button
-          className="h-8 rounded-md border bg-white px-2 text-[12px] hover:bg-muted"
+          type="button"
+          className="ui-btn h-8 rounded-md border border-border bg-surface px-2 text-[12px] hover:bg-muted"
           onClick={() => onChange(emptyFilters)}
-        >Reset</button>
+        >
+          Reset
+        </button>
       )}
     </div>
   );
