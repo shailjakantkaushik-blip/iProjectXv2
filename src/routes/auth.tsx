@@ -290,7 +290,9 @@ function AuthPage() {
     }
   }, [orgRequested, orgBrand?.slug, targetOrgSlug]);
 
-  const handleToken = useCallback((t: string) => setCaptchaToken(t), []);
+  const handleToken = useCallback((t: string) => {
+    setCaptchaToken((prev) => (prev === t ? prev : t));
+  }, []);
   const handleExpire = useCallback(() => setCaptchaToken(null), []);
 
   const ensureCaptcha = async (): Promise<boolean> => {
@@ -355,6 +357,11 @@ function AuthPage() {
       return toast.error(error.message);
     }
     setSwitchingAccount(false);
+    try {
+      sessionStorage.removeItem("iprojectx.auth.email-draft");
+    } catch {
+      /* private mode */
+    }
 
     if (orgRequested) {
       if (!targetOrgSlug) {
@@ -697,6 +704,16 @@ function SignInForm({
   submitDisabled: boolean;
   busy: boolean;
 }) {
+  const emailDraftKey = "iprojectx.auth.email-draft";
+  const [email, setEmail] = useState(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      return sessionStorage.getItem(emailDraftKey) ?? "";
+    } catch {
+      return "";
+    }
+  });
+
   return (
     <form onSubmit={onSignIn} className="space-y-4 pt-4">
       <div className="space-y-1.5">
@@ -709,6 +726,16 @@ function SignInForm({
           autoComplete="email"
           placeholder="you@company.com"
           className="h-10"
+          value={email}
+          onChange={(e) => {
+            const v = e.target.value;
+            setEmail(v);
+            try {
+              sessionStorage.setItem(emailDraftKey, v);
+            } catch {
+              /* private mode */
+            }
+          }}
         />
       </div>
       <PasswordField

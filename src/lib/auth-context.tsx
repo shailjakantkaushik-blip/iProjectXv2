@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { getPostSignOutAuthPath } from "@/lib/org-auth-entry";
@@ -79,6 +79,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [roles, setRoles] = useState<AppRole[]>([]);
   const [loading, setLoading] = useState(true);
+  /** Last user we finished loading a profile for — used to ignore tab-focus recoveries. */
+  const loadedUserIdRef = useRef<string | null>(null);
 
   const loadProfile = async (userId: string) => {
     const { data: p } = await supabase
@@ -106,6 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile((p as Profile) ?? null);
     setRoles(roleList);
     setOrganization(org);
+    loadedUserIdRef.current = userId;
   };
 
   const refresh = async () => {
@@ -118,7 +121,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: sub } = supabase.auth.onAuthStateChange((evt, s) => {
       setSession(s);
       if (s?.user) {
-        // Only block the UI for real session establishment — not token refresh.
+        // Supabase re-emits SIGNED_IN on every tab focus via _recoverAndRefresh,
+        // even when the session never changed. Blocking the UI there caused the
+        // "Checking your session…" flash when switching browsers/tabs.
+        const sameUser = loadedUserIdRef.current === s.user.id;
+        if (evt === "TOKEN_REFRESHED") {
+          return;
+        }
+        // Same user: INITIAL_SESSION can race with getSession(); SIGNED_IN is
+        // re-emitted on every tab focus. Neither should block the UI again.
+        if (sameUser && (evt === "SIGNED_IN" || evt === "INITIAL_SESSION")) {
+          return;
+        }
+
+        // Drop stale profile immediately when the user identity changes so the
+        // authenticated gate never briefly renders the previous account.
+        if (!sameUser) {
+          setProfile(null);
+          setOrganization(null);
+          setRoles([]);
+        }
+
         const blockUi = evt === "SIGNED_IN" || evt === "INITIAL_SESSION";
         if (blockUi) setLoading(true);
         // Defer out of the auth callback (Supabase client lock).
@@ -128,6 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           });
         }, 0);
       } else {
+        loadedUserIdRef.current = null;
         setProfile(null);
         setOrganization(null);
         setRoles([]);

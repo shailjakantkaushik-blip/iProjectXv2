@@ -14,6 +14,7 @@ import {
   Layers,
   Gauge,
   BadgeCheck,
+  Check,
   ArrowRight,
   FileSpreadsheet,
   Lock,
