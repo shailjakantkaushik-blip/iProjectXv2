@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, X, ArrowRight, Inbox } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import {
@@ -30,10 +31,8 @@ function MyWorkPage() {
   });
 
   const { data: projects = [] } = useQuery({
-    queryKey: ["projects", orgId],
-    queryFn: async () =>
-      (await supabase.from("projects").select("id,name,project_code,rag,status").order("name"))
-        .data ?? [],
+    queryKey: projectOptionsQueryKey(orgId),
+    queryFn: fetchProjectOptions,
     enabled: !!orgId,
   });
 

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -23,9 +24,8 @@ function StakeholdersPage() {
   const qc = useQueryClient();
 
   const { data: projects = [] } = useQuery({
-    queryKey: ["projects", orgId],
-    queryFn: async () =>
-      (await supabase.from("projects").select("id,name,project_code").order("name")).data ?? [],
+    queryKey: projectOptionsQueryKey(orgId),
+    queryFn: fetchProjectOptions,
     enabled: !!orgId,
   });
   const { data: stakeholders = [] } = useQuery({

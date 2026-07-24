@@ -3,6 +3,7 @@ import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Check, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -47,15 +48,8 @@ function DecisionsPage() {
   }, [search.awaiting]);
 
   const { data: projects = [] } = useQuery({
-    queryKey: ["projects", orgId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("projects")
-        .select("id,name,project_code,program,sponsor")
-        .order("name");
-      if (error) throw error;
-      return data;
-    },
+    queryKey: projectOptionsQueryKey(orgId),
+    queryFn: fetchProjectOptions,
     enabled: !!orgId,
   });
 

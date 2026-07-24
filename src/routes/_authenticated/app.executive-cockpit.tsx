@@ -26,8 +26,8 @@ import {
   sumBenefitsTarget,
 } from "@/lib/project-finance";
 import {
-  PORTFOLIO_CATEGORIES,
   computeProjectHealth,
+  portfolioSegmentLabels,
   projectPortfolio,
 } from "@/lib/project-health";
 
@@ -192,13 +192,16 @@ function ExecutiveCockpit() {
   }).length;
 
   // ---------- Portfolio segmentation (canonical projects.portfolio) ----------
-  const segRows = PORTFOLIO_CATEGORIES.map((cat) => {
+  const segLabels = portfolioSegmentLabels(projects as any[]);
+  const segRows = segLabels.map((cat) => {
     const rows = projects.filter((p: any) => projectPortfolio(p) === cat);
     const approved = rows.reduce((s: number, p: any) => s + projectApprovedFunding(p), 0);
     const actual = rows.reduce((s: number, p: any) => s + projectIncurred(p), 0);
-    const bf = benefits
-      .filter((b: any) => rows.find((r: any) => r.id === b.project_id))
-      .reduce((s: number, b: any) => s + num(b.target_value), 0);
+    // Prefer benefits register lines; fall back to project.benefits_target rollup.
+    const bf = rows.reduce(
+      (s: number, p: any) => s + sumBenefitsTarget(benefits as any[], p, p.id),
+      0,
+    );
     return {
       name: cat,
       initiatives: rows.length,
@@ -211,28 +214,22 @@ function ExecutiveCockpit() {
       red: rows.filter((p: any) => (p.rag || "").toLowerCase() === "red").length,
     };
   });
-  const segTotals = segRows.reduce(
-    (t, r) => ({
-      initiatives: t.initiatives + r.initiatives,
-      approved: t.approved + r.approved,
-      actual: t.actual + r.actual,
-      remaining: t.remaining + r.remaining,
-      benefits: t.benefits + r.benefits,
-      green: t.green + r.green,
-      amber: t.amber + r.amber,
-      red: t.red + r.red,
-    }),
-    {
-      initiatives: 0,
-      approved: 0,
-      actual: 0,
-      remaining: 0,
-      benefits: 0,
-      green: 0,
-      amber: 0,
-      red: 0,
-    },
-  );
+  // "All Portfolio" = every project (matches Streamlit), not only matched buckets.
+  const segApproved = projects.reduce((s: number, p: any) => s + projectApprovedFunding(p), 0);
+  const segActual = projects.reduce((s: number, p: any) => s + projectIncurred(p), 0);
+  const segTotals = {
+    initiatives: projects.length,
+    approved: segApproved,
+    actual: segActual,
+    remaining: Math.max(0, segApproved - segActual),
+    benefits: projects.reduce(
+      (s: number, p: any) => s + sumBenefitsTarget(benefits as any[], p, p.id),
+      0,
+    ),
+    green: projects.filter((p: any) => (p.rag || "").toLowerCase() === "green").length,
+    amber: projects.filter((p: any) => (p.rag || "").toLowerCase() === "amber").length,
+    red: projects.filter((p: any) => (p.rag || "").toLowerCase() === "red").length,
+  };
 
   // ---------- Budget vs Forecast by FY ----------
   const fyData = useMemo(() => {

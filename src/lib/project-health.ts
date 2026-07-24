@@ -50,10 +50,57 @@ export type StageGateHealthLike = {
   status?: string | null;
 };
 
+/**
+ * Normalize free-text portfolio labels to the four canonical categories when
+ * possible (case/spacing insensitive). Unknown non-empty values are kept so
+ * they still segment instead of vanishing into zeros.
+ */
+export function normalizePortfolioCategory(raw: string | null | undefined): string {
+  const s = String(raw || "").trim();
+  if (!s) return "Unassigned";
+  const key = s.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+  for (const cat of PORTFOLIO_CATEGORIES) {
+    if (cat.toLowerCase() === key) return cat;
+  }
+  // Common aliases from Excel / Streamlit imports
+  if (key === "business" || key === "biz strategic" || key === "business strategy") {
+    return "Business Strategic";
+  }
+  if (key === "it" || key === "it run" || key === "it strategy" || key === "technology strategic") {
+    return "IT Strategic";
+  }
+  if (key === "cap ex" || key === "capital" || key === "capital expenditure") {
+    return "CAPEX";
+  }
+  if (key === "un funded" || key === "not funded" || key === "un-funded") {
+    return "Unfunded";
+  }
+  if (key === "n/a" || key === "na" || key === "none" || key === "-" || key === "unassigned") {
+    return "Unassigned";
+  }
+  return s;
+}
+
 /** Canonical portfolio label from a project row. */
 export function projectPortfolio(p: ProjectHealthLike | null | undefined): string {
-  const raw = String(p?.portfolio || p?.portfolio_category || "").trim();
-  return raw || "Unassigned";
+  return normalizePortfolioCategory(p?.portfolio || p?.portfolio_category);
+}
+
+/** Build ordered segmentation bucket labels for a project set. */
+export function portfolioSegmentLabels(projects: ProjectHealthLike[]): string[] {
+  const seen = new Set<string>();
+  for (const p of projects) seen.add(projectPortfolio(p));
+
+  const extras = [...seen]
+    .filter(
+      (k) =>
+        !(PORTFOLIO_CATEGORIES as readonly string[]).includes(k) && k !== "Unassigned",
+    )
+    .sort((a, b) => a.localeCompare(b));
+
+  const labels = [...PORTFOLIO_CATEGORIES, ...extras];
+  if (seen.has("Unassigned")) labels.push("Unassigned");
+  return labels;
 }
 
 /** Governance channel derived from approved funding (matches executive dashboard). */

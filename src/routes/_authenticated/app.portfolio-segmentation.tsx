@@ -34,6 +34,7 @@ import {
   projectBenefitsTarget,
   projectRoiPercent,
 } from "@/lib/project-finance";
+import { projectPortfolio } from "@/lib/project-health";
 
 export const Route = createFileRoute("/_authenticated/app/portfolio-segmentation")({
   component: Segmentation,
@@ -81,7 +82,7 @@ function Segmentation() {
   const segCounts = useMemo(() => {
     const m = new Map<string, { name: string; count: number; budget: number }>();
     projects.forEach((p: any) => {
-      const k = p[dim] || "Unassigned";
+      const k = dim === "portfolio" ? projectPortfolio(p) : p[dim] || "Unassigned";
       const cur = m.get(k) || { name: k, count: 0, budget: 0 };
       cur.count += 1;
       cur.budget += projectApprovedFunding(p);
