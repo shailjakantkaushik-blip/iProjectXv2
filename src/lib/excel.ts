@@ -8,6 +8,7 @@ import { persistCurrentPhaseFromGates } from "@/lib/project-phase";
 export interface ProjectRow {
   project_code?: string | null;
   name: string;
+  portfolio?: string | null;
   program?: string | null;
   sponsor?: string | null;
   priority?: string | null;
@@ -131,7 +132,7 @@ export async function exportOrganizationWorkbook(orgId: string, orgName: string)
     { A: "Streams", B: "Every project has a Core stream. Add Project Streams rows for more lanes. Child sheets (gates, milestones, finance, allocations) use stream_code." },
     { A: "", B: "" },
     { A: "Finance model (canonical)", B: "" },
-    { A: "1. Projects", B: "budget = approved funding; capex/opex approved & incurred; forecast_at_completion (FAC); benefits_* are rollups. With streams on, project figures roll up from Project Streams." },
+    { A: "1. Projects", B: "budget = approved funding; capex/opex approved & incurred; forecast_at_completion (FAC); benefits_* are rollups. With streams on, project figures roll up from Project Streams. portfolio = Business Strategic | IT Strategic | CAPEX | Unfunded (used by Executive Cockpit health & segmentation)." },
     { A: "2. Project Streams", B: "Delivery lanes under a project. Each stream owns planned/actual dates, gates, finance, and allocations." },
     { A: "3. Benefits sheet", B: "Benefit lines are the detail source. Keep project benefits_target / benefits_realised in sync with the sum of lines." },
     { A: "4. FY Allocations", B: "Forward PLAN: budget + forecast $ per FY. Optional stream_code when streams are enabled." },

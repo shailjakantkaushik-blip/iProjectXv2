@@ -116,6 +116,7 @@ function ProjectsList() {
     () => [
       { key: "project_code", label: "Project ID" },
       { key: "name", label: "Project Name" },
+      { key: "portfolio", label: "Portfolio" },
       { key: "program", label: "Program" },
       { key: "sponsor", label: "Sponsor" },
       { key: "priority", label: "Priority" },
@@ -496,6 +497,22 @@ function ProjectsList() {
                       ) : (
                         <span className="font-medium">{p.name}</span>
                       )}
+                    </td>
+                    <td>
+                      <EditableCell
+                        table="projects"
+                        rowId={p.id}
+                        field="portfolio"
+                        value={p.portfolio}
+                        type="select"
+                        options={[
+                          { label: "Business Strategic", value: "Business Strategic" },
+                          { label: "IT Strategic", value: "IT Strategic" },
+                          { label: "CAPEX", value: "CAPEX" },
+                          { label: "Unfunded", value: "Unfunded" },
+                        ]}
+                        invalidateKeys={["projects"]}
+                      />
                     </td>
                     <td>
                       <EditableCell

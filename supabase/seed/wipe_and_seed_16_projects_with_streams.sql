@@ -307,7 +307,7 @@ BEGIN
       );
 
       INSERT INTO public.projects (
-        org_id, bu_id, project_code, name, program, sponsor, priority, status, rag,
+        org_id, bu_id, project_code, name, portfolio, program, sponsor, priority, status, rag,
         current_phase, delivery_method, streams_enabled,
         planned_start_date, planned_end_date, actual_start_date, actual_end_date,
         start_date, end_date, target_go_live,
@@ -317,7 +317,9 @@ BEGIN
         baseline_date, baseline_label,
         description, brief
       ) VALUES (
-        r_org.id, r_bu, codes[i], names[i], programs[i], sponsors[i], priorities[i],
+        r_org.id, r_bu, codes[i], names[i],
+        (ARRAY['Business Strategic','IT Strategic','CAPEX','Unfunded'])[((i - 1) % 4) + 1],
+        programs[i], sponsors[i], priorities[i],
         statuses[i], rags[i], phases[i], methods[i], true,
         starts[i], ends[i],
         CASE WHEN statuses[i] = 'Not Started' THEN NULL ELSE starts[i] + 14 END,

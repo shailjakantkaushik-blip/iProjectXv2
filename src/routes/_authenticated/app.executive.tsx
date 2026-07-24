@@ -311,7 +311,7 @@ function ExecutiveDashboard() {
   const segmentation = useMemo(() => {
     const m = new Map<string, number>();
     filtered.forEach((p: any) => {
-      const k = p.portfolio || p.portfolio_category || "Unassigned";
+      const k = p.portfolio || "Unassigned";
       m.set(k, (m.get(k) || 0) + 1);
     });
     return Array.from(m, ([name, value]) => ({ name, value }));

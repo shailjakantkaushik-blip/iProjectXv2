@@ -541,7 +541,7 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
           fp,
           bAmt,
           fAmt,
-          portfolio_category: p?.portfolio_category || "",
+          portfolio: p?.portfolio || p?.portfolio_category || "",
           sponsor: p?.sponsor || "",
           rag: p?.rag || "NA",
           project: p,
@@ -559,7 +559,7 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
       { key: "fp", label: "Forecast %" },
       { key: "bAmt", label: "Budget Amount" },
       { key: "fAmt", label: "Forecast Amount" },
-      { key: "portfolio_category", label: "Portfolio Category" },
+      { key: "portfolio", label: "Portfolio" },
       { key: "sponsor", label: "Sponsor" },
       { key: "rag", label: "RAG" },
     ],
@@ -837,7 +837,7 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
                       <td className="text-right tabular-nums">{r.fp.toFixed(0)}</td>
                       <td className="text-right tabular-nums">{fmt$(r.bAmt)}</td>
                       <td className="text-right tabular-nums">{fmt$(r.fAmt)}</td>
-                      <td>{r.portfolio_category || "—"}</td>
+                      <td>{r.portfolio || "—"}</td>
                       <td>{r.sponsor || "—"}</td>
                       <td>{r.rag || "NA"}</td>
                     </tr>

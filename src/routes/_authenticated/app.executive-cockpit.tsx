@@ -22,7 +22,14 @@ import {
   projectIncurred,
   fyAllocBudget,
   fyAllocForecast,
+  sumBenefitsRealised,
+  sumBenefitsTarget,
 } from "@/lib/project-finance";
+import {
+  PORTFOLIO_CATEGORIES,
+  computeProjectHealth,
+  projectPortfolio,
+} from "@/lib/project-health";
 
 export const Route = createFileRoute("/_authenticated/app/executive-cockpit")({
   head: () => ({
@@ -104,6 +111,28 @@ function ExecutiveCockpit() {
     queryFn: async () => (await supabase.from("fy_allocations").select("*")).data ?? [],
     enabled: !!orgId,
   });
+  const { data: profiles = [] } = useQuery({
+    queryKey: ["profiles", orgId],
+    queryFn: async () =>
+      (await supabase.from("profiles").select("id,full_name,email")).data ?? [],
+    enabled: !!orgId,
+  });
+
+  const profileById = useMemo(
+    () => new Map((profiles as any[]).map((p) => [p.id, p])),
+    [profiles],
+  );
+
+  const gatesByProject = useMemo(() => {
+    const m = new Map<string, any[]>();
+    (gates as any[]).forEach((g) => {
+      if (!g.project_id) return;
+      const list = m.get(g.project_id) || [];
+      list.push(g);
+      m.set(g.project_id, list);
+    });
+    return m;
+  }, [gates]);
 
   // ---------- KPIs ----------
   const totalValue = projects.reduce((s: number, p: any) => s + num(p.budget), 0);
@@ -123,22 +152,22 @@ function ExecutiveCockpit() {
   const delayed = projects.filter((p: any) => (p.rag || "").toLowerCase() === "red").length;
   const strategicPrograms = new Set(
     projects
-      .filter(
-        (p: any) =>
-          p.portfolio_category === "Business Strategic" || p.portfolio_category === "IT Strategic",
-      )
+      .filter((p: any) => {
+        const cat = projectPortfolio(p);
+        return cat === "Business Strategic" || cat === "IT Strategic";
+      })
       .map((p: any) => p.program)
       .filter(Boolean),
   ).size;
   const capexPrograms = new Set(
     projects
-      .filter((p: any) => p.portfolio_category === "CAPEX")
+      .filter((p: any) => projectPortfolio(p) === "CAPEX")
       .map((p: any) => p.program)
       .filter(Boolean),
   ).size;
   // Only count explicit Unfunded labels — missing category ≠ unfunded.
   const unfundedInitiatives = projects.filter(
-    (p: any) => String(p.portfolio_category || "").toLowerCase() === "unfunded",
+    (p: any) => projectPortfolio(p).toLowerCase() === "unfunded",
   ).length;
 
   const benefitsForecast = benefits.reduce((s: number, b: any) => s + num(b.target_value), 0);
@@ -162,10 +191,9 @@ function ExecutiveCockpit() {
     return diff >= 0 && diff <= 30;
   }).length;
 
-  // ---------- Portfolio segmentation ----------
-  const CATS = ["Business Strategic", "IT Strategic", "CAPEX", "Unfunded"] as const;
-  const segRows = CATS.map((cat) => {
-    const rows = projects.filter((p: any) => (p.portfolio_category || "") === cat);
+  // ---------- Portfolio segmentation (canonical projects.portfolio) ----------
+  const segRows = PORTFOLIO_CATEGORIES.map((cat) => {
+    const rows = projects.filter((p: any) => projectPortfolio(p) === cat);
     const approved = rows.reduce((s: number, p: any) => s + projectApprovedFunding(p), 0);
     const actual = rows.reduce((s: number, p: any) => s + projectIncurred(p), 0);
     const bf = benefits
@@ -238,12 +266,26 @@ function ExecutiveCockpit() {
     ? Math.round((projectsWithFY / projects.length) * 100)
     : 0;
 
-  // ---------- Health snapshot rows ----------
-  const healthRows = projects
-    .slice()
-    .sort((a: any, b: any) =>
-      String(a.project_code || "").localeCompare(String(b.project_code || "")),
-    );
+  // ---------- Health snapshot rows (computed from live project + gate + benefit data) ----------
+  const healthRows = useMemo(() => {
+    return projects
+      .slice()
+      .sort((a: any, b: any) =>
+        String(a.project_code || "").localeCompare(String(b.project_code || "")),
+      )
+      .map((p: any) => {
+        const withBenefits = {
+          ...p,
+          benefits_target: sumBenefitsTarget(benefits as any[], p, p.id),
+          benefits_realised: sumBenefitsRealised(benefits as any[], p, p.id),
+        };
+        const health = computeProjectHealth(withBenefits, gatesByProject.get(p.id) || []);
+        const pm = p.pm_user_id ? profileById.get(p.pm_user_id) : null;
+        const deliveryLead =
+          (pm?.full_name || pm?.email || p.delivery_lead || p.pm_name || "").trim() || "—";
+        return { ...p, ...health, delivery_lead: deliveryLead };
+      });
+  }, [projects, benefits, gatesByProject, profileById]);
 
   return (
     <div className="space-y-4">
@@ -395,10 +437,10 @@ function ExecutiveCockpit() {
                     </Link>
                   </td>
                   <td className="px-3 py-2">{p.name}</td>
-                  <td className="px-3 py-2">{p.portfolio_category || "—"}</td>
+                  <td className="px-3 py-2">{p.portfolio || "—"}</td>
                   <td className="px-3 py-2">{p.governance_channel || "—"}</td>
                   <td className="px-3 py-2">{p.sponsor || "—"}</td>
-                  <td className="px-3 py-2">{p.delivery_lead || p.pm_name || "—"}</td>
+                  <td className="px-3 py-2">{p.delivery_lead || "—"}</td>
                   <td className="px-3 py-2 text-right">{Math.round(num(p.progress_percent))}</td>
                   <td className="px-3 py-2">
                     <RagChip rag={p.schedule_rag} label={p.schedule_rag} />
@@ -413,7 +455,7 @@ function ExecutiveCockpit() {
                     <RagChip rag={p.benefit_rag} label={p.benefit_rag} />
                   </td>
                   <td className="px-3 py-2">
-                    <RagChip rag={p.rag} label={p.rag} />
+                    <RagChip rag={p.overall_rag || p.rag} label={p.overall_rag || p.rag} />
                   </td>
                 </tr>
               ))}
