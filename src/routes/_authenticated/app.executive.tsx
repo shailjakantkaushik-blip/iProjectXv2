@@ -40,10 +40,6 @@ export const Route = createFileRoute("/_authenticated/app/executive")({
 });
 
 const PHASES = ["Idea", "Discovery", "Design", "Build", "Test", "Deploy", "Benefits"];
-const PHASE_HEADER_COLORS: Record<string, string> = {
-  Idea: "var(--ct-chart-1)", Discovery: "var(--ct-chart-4)", Design: "var(--ct-chart-6)",
-  Build: "var(--ct-chart-3)", Test: "var(--ct-rag-red)", Deploy: "var(--ct-chart-5)", Benefits: "var(--ct-chart-2)",
-};
 const THEME_PALETTE = CHART_SERIES;
 const CAPEX_COLORS = [CHART_SERIES[0], CHART_SERIES[1], CHART_SERIES[2], CHART_SERIES[3]];
 
@@ -404,9 +400,6 @@ function ExecutiveDashboard() {
 
   const toggleCollapse = (name: string) =>
     setCollapsed((c) => ({ ...c, [name]: !c[name] }));
-
-  const phaseColor = (name: string, i: number) =>
-    PHASE_HEADER_COLORS[name] || THEME_PALETTE[i % THEME_PALETTE.length];
 
   const resolveCurrentStage = (p: any): string | null =>
     resolveStageShared(p, gatesByProject.get(p.id) || [], orgPhases);
