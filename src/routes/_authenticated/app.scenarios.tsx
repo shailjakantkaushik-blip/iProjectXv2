@@ -364,6 +364,7 @@ function ScenariosPage() {
             onGlobalQ={scenarioTable.setGlobalQ}
             shown={scenarioTable.rows.length}
             total={scenarioTable.total}
+            dirty={scenarioTable.isDirty}
             onClear={scenarioTable.clearAll}
             placeholder="Search scenario projects…"
           />

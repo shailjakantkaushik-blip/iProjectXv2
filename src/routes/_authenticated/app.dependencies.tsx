@@ -230,7 +230,8 @@ function DependenciesPage() {
           onGlobalQ={table.setGlobalQ}
           shown={table.rows.length}
           total={table.total}
-          onClear={table.clearAll}
+          dirty={table.isDirty}
+            onClear={table.clearAll}
           placeholder="Search dependency register…"
         />
         {table.total === 0 ? (

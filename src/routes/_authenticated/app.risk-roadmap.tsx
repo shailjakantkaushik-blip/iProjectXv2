@@ -386,7 +386,8 @@ function RiskRoadmapPage() {
           onGlobalQ={riskTable.setGlobalQ}
           shown={riskTable.rows.length}
           total={riskTable.total}
-          onClear={riskTable.clearAll}
+          dirty={riskTable.isDirty}
+            onClear={riskTable.clearAll}
           placeholder="Search risk register…"
         />
         <div className="max-h-[520px] overflow-auto">

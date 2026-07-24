@@ -7,6 +7,7 @@ export function ColumnarToolbar({
   shown,
   total,
   onClear,
+  dirty,
   placeholder = "Search all columns…",
 }: {
   globalQ: string;
@@ -14,9 +15,11 @@ export function ColumnarToolbar({
   shown: number;
   total: number;
   onClear: () => void;
+  /** When true, show Clear even if row counts match (e.g. sort-only). */
+  dirty?: boolean;
   placeholder?: string;
 }) {
-  const active = globalQ.trim().length > 0 || shown !== total;
+  const active = dirty ?? (globalQ.trim().length > 0 || shown !== total);
   return (
     <div className="mb-2 flex flex-wrap items-center gap-2">
       <Input

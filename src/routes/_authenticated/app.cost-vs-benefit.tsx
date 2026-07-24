@@ -279,7 +279,8 @@ function CostVsBenefitPage() {
           onGlobalQ={detailTable.setGlobalQ}
           shown={detailTable.rows.length}
           total={detailTable.total}
-          onClear={detailTable.clearAll}
+          dirty={detailTable.isDirty}
+            onClear={detailTable.clearAll}
           placeholder="Search cost vs benefit…"
         />
         <div className="max-h-[420px] overflow-auto">

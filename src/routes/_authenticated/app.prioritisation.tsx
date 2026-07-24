@@ -186,6 +186,7 @@ function Prioritisation() {
             onGlobalQ={bottomTable.setGlobalQ}
             shown={bottomTable.rows.length}
             total={bottomTable.total}
+            dirty={bottomTable.isDirty}
             onClear={bottomTable.clearAll}
             placeholder="Search bottom 5…"
           />
@@ -231,7 +232,8 @@ function Prioritisation() {
           onGlobalQ={rankTable.setGlobalQ}
           shown={rankTable.rows.length}
           total={rankTable.total}
-          onClear={rankTable.clearAll}
+          dirty={rankTable.isDirty}
+            onClear={rankTable.clearAll}
           placeholder="Search ranking…"
         />
         <div className="overflow-x-auto">

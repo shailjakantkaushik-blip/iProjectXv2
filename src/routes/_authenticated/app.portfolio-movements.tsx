@@ -207,7 +207,8 @@ function Movements() {
           onGlobalQ={crTable.setGlobalQ}
           shown={crTable.rows.length}
           total={crTable.total}
-          onClear={crTable.clearAll}
+          dirty={crTable.isDirty}
+            onClear={crTable.clearAll}
           placeholder="Search change requests…"
         />
         <div className="overflow-x-auto">
@@ -277,7 +278,8 @@ function Movements() {
           onGlobalQ={gateTable.setGlobalQ}
           shown={gateTable.rows.length}
           total={gateTable.total}
-          onClear={gateTable.clearAll}
+          dirty={gateTable.isDirty}
+            onClear={gateTable.clearAll}
           placeholder="Search gate movements…"
         />
         <div className="overflow-x-auto">

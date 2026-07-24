@@ -209,7 +209,8 @@ function LessonsPage() {
           onGlobalQ={table.setGlobalQ}
           shown={table.rows.length}
           total={table.total}
-          onClear={table.clearAll}
+          dirty={table.isDirty}
+            onClear={table.clearAll}
           placeholder="Search lessons…"
         />
         {table.total === 0 ? (

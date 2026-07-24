@@ -181,7 +181,8 @@ function RoadmapGovPage() {
           onGlobalQ={table.setGlobalQ}
           shown={table.rows.length}
           total={table.total}
-          onClear={table.clearAll}
+          dirty={table.isDirty}
+            onClear={table.clearAll}
           placeholder="Search governance register…"
         />
         <div className="overflow-x-auto">

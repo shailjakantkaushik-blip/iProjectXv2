@@ -648,7 +648,8 @@ function ExecutiveReportsPage() {
                 onGlobalQ={ragTable.setGlobalQ}
                 shown={ragTable.rows.length}
                 total={ragTable.total}
-                onClear={ragTable.clearAll}
+                dirty={ragTable.isDirty}
+            onClear={ragTable.clearAll}
                 placeholder="Search portfolio…"
               />
               <div className="overflow-x-auto">
@@ -717,7 +718,8 @@ function ExecutiveReportsPage() {
                 onGlobalQ={financeTable.setGlobalQ}
                 shown={financeTable.rows.length}
                 total={financeTable.total}
-                onClear={financeTable.clearAll}
+                dirty={financeTable.isDirty}
+            onClear={financeTable.clearAll}
                 placeholder="Search financials…"
               />
               <div className="overflow-x-auto">
@@ -777,7 +779,8 @@ function ExecutiveReportsPage() {
                 onGlobalQ={riskTable.setGlobalQ}
                 shown={riskTable.rows.length}
                 total={riskTable.total}
-                onClear={riskTable.clearAll}
+                dirty={riskTable.isDirty}
+            onClear={riskTable.clearAll}
                 placeholder="Search risks…"
               />
               <div className="overflow-x-auto">
@@ -837,7 +840,8 @@ function ExecutiveReportsPage() {
                 onGlobalQ={actionTable.setGlobalQ}
                 shown={actionTable.rows.length}
                 total={actionTable.total}
-                onClear={actionTable.clearAll}
+                dirty={actionTable.isDirty}
+            onClear={actionTable.clearAll}
                 placeholder="Search actions…"
               />
               <div className="overflow-x-auto">
@@ -904,7 +908,8 @@ function ExecutiveReportsPage() {
                 onGlobalQ={benefitTable.setGlobalQ}
                 shown={benefitTable.rows.length}
                 total={benefitTable.total}
-                onClear={benefitTable.clearAll}
+                dirty={benefitTable.isDirty}
+            onClear={benefitTable.clearAll}
                 placeholder="Search benefits…"
               />
               <div className="overflow-x-auto">
@@ -967,7 +972,8 @@ function ExecutiveReportsPage() {
                 onGlobalQ={gateTable.setGlobalQ}
                 shown={gateTable.rows.length}
                 total={gateTable.total}
-                onClear={gateTable.clearAll}
+                dirty={gateTable.isDirty}
+            onClear={gateTable.clearAll}
                 placeholder="Search stage gates…"
               />
               <div className="overflow-x-auto">
@@ -1030,7 +1036,8 @@ function ExecutiveReportsPage() {
                 onGlobalQ={milestoneTable.setGlobalQ}
                 shown={milestoneTable.rows.length}
                 total={milestoneTable.total}
-                onClear={milestoneTable.clearAll}
+                dirty={milestoneTable.isDirty}
+            onClear={milestoneTable.clearAll}
                 placeholder="Search milestones…"
               />
               <div className="overflow-x-auto">
@@ -1086,7 +1093,8 @@ function ExecutiveReportsPage() {
                 onGlobalQ={programTable.setGlobalQ}
                 shown={programTable.rows.length}
                 total={programTable.total}
-                onClear={programTable.clearAll}
+                dirty={programTable.isDirty}
+            onClear={programTable.clearAll}
                 placeholder="Search programs…"
               />
               <div className="overflow-x-auto">
@@ -1135,7 +1143,8 @@ function ExecutiveReportsPage() {
                 onGlobalQ={buTable.setGlobalQ}
                 shown={buTable.rows.length}
                 total={buTable.total}
-                onClear={buTable.clearAll}
+                dirty={buTable.isDirty}
+            onClear={buTable.clearAll}
                 placeholder="Search business units…"
               />
               <div className="overflow-x-auto">

@@ -384,7 +384,8 @@ function ProgramsPage() {
           onGlobalQ={programTable.setGlobalQ}
           shown={programTable.rows.length}
           total={programTable.total}
-          onClear={programTable.clearAll}
+          dirty={programTable.isDirty}
+            onClear={programTable.clearAll}
           placeholder="Search programs…"
         />
         <div className="overflow-x-auto">
@@ -511,7 +512,8 @@ function ProgramsPage() {
                 onGlobalQ={projectTable.setGlobalQ}
                 shown={projectTable.rows.length}
                 total={projectTable.total}
-                onClear={projectTable.clearAll}
+                dirty={projectTable.isDirty}
+            onClear={projectTable.clearAll}
                 placeholder="Search projects…"
               />
               <div className="overflow-x-auto">

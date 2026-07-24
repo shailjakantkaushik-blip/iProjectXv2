@@ -967,7 +967,8 @@ function ExecutiveDashboard() {
           onGlobalQ={portfolioTable.setGlobalQ}
           shown={portfolioTable.rows.length}
           total={portfolioTable.total}
-          onClear={portfolioTable.clearAll}
+          dirty={portfolioTable.isDirty}
+            onClear={portfolioTable.clearAll}
           placeholder="Search portfolio register…"
         />
         {portfolioTable.rows.length === 0 ? (

@@ -290,7 +290,8 @@ function ActionsPage() {
           onGlobalQ={table.setGlobalQ}
           shown={table.rows.length}
           total={table.total}
-          onClear={table.clearAll}
+          dirty={table.isDirty}
+            onClear={table.clearAll}
         />
         {table.rows.length === 0 ? (
           <div className="py-8 text-center text-sm text-muted-foreground">

@@ -245,7 +245,8 @@ function FinancePage() {
               onGlobalQ={pnlTable.setGlobalQ}
               shown={pnlTable.rows.length}
               total={pnlTable.total}
-              onClear={pnlTable.clearAll}
+              dirty={pnlTable.isDirty}
+            onClear={pnlTable.clearAll}
               placeholder="Search P&L…"
             />
             <table className="st-table w-full text-sm">

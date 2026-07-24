@@ -214,6 +214,7 @@ function Billing() {
             onGlobalQ={invoiceTable.setGlobalQ}
             shown={invoiceTable.rows.length}
             total={invoiceTable.total}
+            dirty={invoiceTable.isDirty}
             onClear={invoiceTable.clearAll}
             placeholder="Search invoices…"
           />

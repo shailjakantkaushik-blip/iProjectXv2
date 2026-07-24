@@ -779,7 +779,8 @@ function PortfolioViewTab({ projects, alloc }: { projects: any[]; alloc: any[] }
           onGlobalQ={allocDetailTable.setGlobalQ}
           shown={allocDetailTable.rows.length}
           total={allocDetailTable.total}
-          onClear={allocDetailTable.clearAll}
+          dirty={allocDetailTable.isDirty}
+            onClear={allocDetailTable.clearAll}
           placeholder="Search allocation detail…"
         />
         <div className="max-h-[420px] overflow-auto">
@@ -994,7 +995,8 @@ function RoadmapTab({ projects, alloc }: { projects: any[]; alloc: any[] }) {
           onGlobalQ={perProjectTable.setGlobalQ}
           shown={perProjectTable.rows.length}
           total={perProjectTable.total}
-          onClear={perProjectTable.clearAll}
+          dirty={perProjectTable.isDirty}
+            onClear={perProjectTable.clearAll}
           placeholder="Search project financials…"
         />
         <div className="max-h-[420px] overflow-auto">

@@ -102,6 +102,12 @@ export function useColumnarTable<T>(rows: T[], columns: ColumnarColumn<T>[]) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, columns, filters, globalQ, sortKey, sortDir]);
 
+  const isDirty =
+    globalQ.trim().length > 0 ||
+    Object.keys(filters).length > 0 ||
+    sortKey != null ||
+    filtered.length !== rows.length;
+
   return {
     rows: filtered,
     total: rows.length,
@@ -113,5 +119,6 @@ export function useColumnarTable<T>(rows: T[], columns: ColumnarColumn<T>[]) {
     sortDir,
     toggleSort,
     clearAll,
+    isDirty,
   };
 }

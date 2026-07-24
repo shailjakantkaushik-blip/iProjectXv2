@@ -350,7 +350,8 @@ function Page() {
           onGlobalQ={sprintTable.setGlobalQ}
           shown={sprintTable.rows.length}
           total={sprintTable.total}
-          onClear={sprintTable.clearAll}
+          dirty={sprintTable.isDirty}
+            onClear={sprintTable.clearAll}
           placeholder="Search sprint history…"
         />
         <div className="overflow-auto">

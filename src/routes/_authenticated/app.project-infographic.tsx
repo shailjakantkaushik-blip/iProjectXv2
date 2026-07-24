@@ -1351,7 +1351,8 @@ function InfographicPage() {
           onGlobalQ={raidTable.setGlobalQ}
           shown={raidTable.rows.length}
           total={raidTable.total}
-          onClear={raidTable.clearAll}
+          dirty={raidTable.isDirty}
+            onClear={raidTable.clearAll}
           placeholder="Search risks & issues…"
         />
         <div className="overflow-x-auto">
@@ -1409,7 +1410,8 @@ function InfographicPage() {
           onGlobalQ={milestoneTable.setGlobalQ}
           shown={milestoneTable.rows.length}
           total={milestoneTable.total}
-          onClear={milestoneTable.clearAll}
+          dirty={milestoneTable.isDirty}
+            onClear={milestoneTable.clearAll}
           placeholder="Search milestones…"
         />
         <div className="overflow-x-auto">
@@ -1483,7 +1485,8 @@ function InfographicPage() {
           onGlobalQ={gateDetailTable.setGlobalQ}
           shown={gateDetailTable.rows.length}
           total={gateDetailTable.total}
-          onClear={gateDetailTable.clearAll}
+          dirty={gateDetailTable.isDirty}
+            onClear={gateDetailTable.clearAll}
           placeholder="Search stage gates…"
         />
         <div className="overflow-x-auto">
@@ -2153,7 +2156,8 @@ function ProjectBrief({
                   onGlobalQ={linkTable.setGlobalQ}
                   shown={linkTable.rows.length}
                   total={linkTable.total}
-                  onClear={linkTable.clearAll}
+                  dirty={linkTable.isDirty}
+            onClear={linkTable.clearAll}
                   placeholder="Search document links…"
                 />
                 <div className="overflow-x-auto rounded border border-slate-200 bg-white">

@@ -312,6 +312,7 @@ function InvoicesPage() {
             onGlobalQ={orgTable.setGlobalQ}
             shown={orgTable.rows.length}
             total={orgTable.total}
+            dirty={orgTable.isDirty}
             onClear={orgTable.clearAll}
             placeholder="Search organizations…"
           />
@@ -366,6 +367,7 @@ function InvoicesPage() {
             onGlobalQ={invoiceTable.setGlobalQ}
             shown={invoiceTable.rows.length}
             total={invoiceTable.total}
+            dirty={invoiceTable.isDirty}
             onClear={invoiceTable.clearAll}
             placeholder="Search invoices…"
           />
