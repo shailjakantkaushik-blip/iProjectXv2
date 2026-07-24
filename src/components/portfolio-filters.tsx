@@ -198,6 +198,144 @@ export function ProjectPicker({
   );
 }
 
+/**
+ * Multi-select fiscal year picker (empty = all years). Portaled like ProjectPicker.
+ */
+export function FyPicker({
+  options,
+  selected,
+  onChange,
+}: {
+  options: string[];
+  selected: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<PanelPos | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const updatePos = useCallback(() => {
+    const el = triggerRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const width = Math.max(r.width, 200);
+    const gap = 4;
+    const spaceBelow = window.innerHeight - r.bottom - gap - 12;
+    const spaceAbove = r.top - gap - 12;
+    const openUp = spaceBelow < 180 && spaceAbove > spaceBelow;
+    const maxHeight = Math.min(280, Math.max(140, openUp ? spaceAbove : spaceBelow));
+    let left = r.left;
+    if (left + width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - width - 8);
+    if (left < 8) left = 8;
+    setPos({
+      top: openUp ? r.top - gap : r.bottom + gap,
+      left,
+      width,
+      maxHeight,
+      openUp,
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    updatePos();
+  }, [open, updatePos]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onScroll = () => updatePos();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (triggerRef.current?.contains(t) || panelRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    window.addEventListener("resize", onScroll);
+    window.addEventListener("scroll", onScroll, true);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("scroll", onScroll, true);
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, updatePos]);
+
+  const label =
+    selected.length === 0
+      ? "FY: All"
+      : selected.length === 1
+        ? `FY: ${selected[0]}`
+        : `FY: ${selected.length} years`;
+
+  const toggle = (fy: string) =>
+    onChange(selected.includes(fy) ? selected.filter((x) => x !== fy) : [...selected, fy].sort());
+
+  const panel =
+    open &&
+    pos &&
+    typeof document !== "undefined" &&
+    createPortal(
+      <div
+        ref={panelRef}
+        role="listbox"
+        aria-multiselectable
+        className="ui-popover fixed z-[200] rounded-md border border-border bg-surface p-2 shadow-lg"
+        style={{
+          top: pos.openUp ? undefined : pos.top,
+          bottom: pos.openUp ? window.innerHeight - pos.top : undefined,
+          left: pos.left,
+          width: pos.width,
+          maxHeight: pos.maxHeight,
+        }}
+      >
+        <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
+          <button type="button" className="hover:underline" onClick={() => onChange([...options])}>
+            Select all
+          </button>
+          <button type="button" className="hover:underline" onClick={() => onChange([])}>
+            Clear
+          </button>
+        </div>
+        <div className="overflow-auto" style={{ maxHeight: Math.max(80, pos.maxHeight - 40) }}>
+          {options.map((fy) => (
+            <label
+              key={fy}
+              className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-[12px] hover:bg-muted"
+            >
+              <input type="checkbox" checked={selected.includes(fy)} onChange={() => toggle(fy)} />
+              <span className="font-medium tabular-nums">{fy}</span>
+            </label>
+          ))}
+          {options.length === 0 && (
+            <div className="p-2 text-center text-[11px] text-muted-foreground">No fiscal years</div>
+          )}
+        </div>
+      </div>,
+      document.body,
+    );
+
+  return (
+    <div className="relative">
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="ui-btn h-8 rounded-md border border-border bg-surface px-2 text-[12px] shadow-sm hover:bg-muted"
+      >
+        {label} ▾
+      </button>
+      {panel}
+    </div>
+  );
+}
+
 export function PortfolioFilters({
   projects,
   value,

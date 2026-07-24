@@ -41,7 +41,7 @@ import {
 } from "@/lib/project-streams";
 import { darkenHex, scheduleCompletionPct } from "@/lib/schedule-progress";
 import { computeTimelineBounds } from "@/components/portfolio-timeline";
-import { ProjectPicker } from "@/components/portfolio-filters";
+import { FyPicker, ProjectPicker } from "@/components/portfolio-filters";
 import { unwrapList } from "@/lib/query";
 
 export const Route = createFileRoute("/_authenticated/app/executive")({
@@ -73,7 +73,8 @@ function ExecutiveDashboard() {
   const [sponsor, setSponsor] = useState("All");
   const [priority, setPriority] = useState("All");
   const [status, setStatus] = useState("All");
-  const [fy, setFy] = useState("All");
+  /** Empty = all fiscal years; otherwise match projects that touch any selected FY. */
+  const [fySelected, setFySelected] = useState<string[]>([]);
   const [projectIds, setProjectIds] = useState<string[]>([]);
   type TimelineView = "Portfolio" | "Program" | "Health" | "Priority" | "Theme" | "Sponsor" | "Status";
   const [timelineView, setTimelineView] = useState<TimelineView>("Program");
@@ -159,18 +160,22 @@ function ExecutiveDashboard() {
 
   const filtered = useMemo(() => {
     const idSet = projectIds.length ? new Set(projectIds) : null;
-    return projects.filter((p: any) =>
-      (!idSet || idSet.has(p.id)) &&
-      (portfolio === "All" || (p.portfolio || "Unassigned") === portfolio) &&
-      (program === "All" || p.program === program) &&
-      (sponsor === "All" || p.sponsor === sponsor) &&
-      (priority === "All" || p.priority === priority) &&
-      (status === "All" || p.status === status) &&
-      (fy === "All" ||
-        fyOf(projectScheduleStart(p), fyStartMonth) === fy ||
-        fyOf(projectScheduleEnd(p), fyStartMonth) === fy),
-    );
-  }, [projects, portfolio, program, sponsor, priority, status, fy, fyStartMonth, projectIds]);
+    const fySet = fySelected.length ? new Set(fySelected) : null;
+    return projects.filter((p: any) => {
+      if (idSet && !idSet.has(p.id)) return false;
+      if (portfolio !== "All" && (p.portfolio || "Unassigned") !== portfolio) return false;
+      if (program !== "All" && p.program !== program) return false;
+      if (sponsor !== "All" && p.sponsor !== sponsor) return false;
+      if (priority !== "All" && p.priority !== priority) return false;
+      if (status !== "All" && p.status !== status) return false;
+      if (fySet) {
+        const a = fyOf(projectScheduleStart(p), fyStartMonth);
+        const b = fyOf(projectScheduleEnd(p), fyStartMonth);
+        if ((!a || !fySet.has(a)) && (!b || !fySet.has(b))) return false;
+      }
+      return true;
+    });
+  }, [projects, portfolio, program, sponsor, priority, status, fySelected, fyStartMonth, projectIds]);
 
   const filteredIds = new Set(filtered.map((p: any) => p.id));
 
@@ -378,13 +383,15 @@ function ExecutiveDashboard() {
 
   // Per-group bounds — each Program/Theme/etc. axis starts near its own bars
   // so earlier groups don't leave empty lead-in on later sections.
+  // Multi-FY selection narrows the window to the union of selected years.
   const boundsByGroup = useMemo(() => {
     const m = new Map<string, ReturnType<typeof computeTimelineBounds>>();
+    const fyArg = fySelected.length ? fySelected : "All";
     for (const [name, items] of timelineGroups) {
-      m.set(name, computeTimelineBounds(items, fy, fyStartMonth));
+      m.set(name, computeTimelineBounds(items, fyArg, fyStartMonth));
     }
     return m;
-  }, [timelineGroups, fy, fyStartMonth]);
+  }, [timelineGroups, fySelected, fyStartMonth]);
 
   const toggleCollapse = (name: string) =>
     setCollapsed((c) => ({ ...c, [name]: !c[name] }));
@@ -522,7 +529,6 @@ function ExecutiveDashboard() {
             ["Sponsor", sponsor, setSponsor, opts("sponsor")],
             ["Priority", priority, setPriority, opts("priority")],
             ["Status", status, setStatus, opts("status")],
-            ["FY", fy, setFy, fyOptions],
           ].map(([label, val, setter, options]: any) => (
             <select
               key={label}
@@ -538,13 +544,14 @@ function ExecutiveDashboard() {
               ))}
             </select>
           ))}
+          <FyPicker options={fyOptions} selected={fySelected} onChange={setFySelected} />
           {(projectIds.length > 0 ||
             portfolio !== "All" ||
             program !== "All" ||
             sponsor !== "All" ||
             priority !== "All" ||
             status !== "All" ||
-            fy !== "All") && (
+            fySelected.length > 0) && (
             <button
               type="button"
               className="ui-btn rounded-md border border-border bg-surface px-2 py-1 text-xs hover:bg-muted"
@@ -555,7 +562,7 @@ function ExecutiveDashboard() {
                 setSponsor("All");
                 setPriority("All");
                 setStatus("All");
-                setFy("All");
+                setFySelected([]);
               }}
             >
               Reset

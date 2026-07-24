@@ -18,11 +18,33 @@ export type TimelineBounds = {
   fyGroups: { fy: string; span: number }[];
 };
 
-export function computeTimelineBounds(projects: any[], fy: string = "All", fyStartMonth: number = 4): TimelineBounds {
+/**
+ * Timeline date window.
+ * `fy` may be `"All"`, a single label (`"FY26"`), or multiple selected years.
+ */
+export function computeTimelineBounds(
+  projects: any[],
+  fy: string | string[] = "All",
+  fyStartMonth: number = 4,
+): TimelineBounds {
   const fyStartFor = (d: Date) => fyStartForOrg(d, fyStartMonth);
   const fyEndFor = (d: Date) => fyEndForOrg(d, fyStartMonth);
   const fyLabel = (d: Date) => fyLabelOrg(d, fyStartMonth);
   const startIdx = Math.max(1, Math.min(12, fyStartMonth)) - 1;
+
+  const fyList = (Array.isArray(fy) ? fy : fy && fy !== "All" ? [fy] : [])
+    .map((x) => String(x).trim())
+    .filter(Boolean);
+
+  const fyWindow = (label: string): { min: Date; max: Date } | null => {
+    const yy = parseInt(label.replace(/[^0-9]/g, ""), 10);
+    if (!Number.isFinite(yy)) return null;
+    const endYear = yy < 100 ? 2000 + yy : yy;
+    return {
+      min: new Date(endYear - 1, startIdx, 1),
+      max: new Date(endYear, startIdx, 0, 23, 59, 59),
+    };
+  };
 
   // Always derive the data window first so the chart starts near the first bar
   // (full-FY snap left a long empty scroll before any graph content).
@@ -43,23 +65,36 @@ export function computeTimelineBounds(projects: any[], fy: string = "All", fySta
   let minD: Date;
   let maxD: Date;
 
-  if (fy !== "All") {
-    const yy = parseInt(fy.replace(/[^0-9]/g, ""), 10);
-    const endYear = 2000 + yy;
-    const fyMin = new Date(endYear - 1, startIdx, 1);
-    const fyMax = new Date(endYear, startIdx, 0, 23, 59, 59);
-    if (dataMin && dataMax) {
-      const paddedMin = new Date(dataMin.getFullYear(), dataMin.getMonth() - 1, 1);
-      const paddedMax = new Date(dataMax.getFullYear(), dataMax.getMonth() + 2, 0, 23, 59, 59);
-      minD = paddedMin < fyMin ? fyMin : paddedMin;
-      maxD = paddedMax > fyMax ? fyMax : paddedMax;
-      if (minD > maxD) {
+  if (fyList.length > 0) {
+    let fyMin: Date | null = null;
+    let fyMax: Date | null = null;
+    for (const label of fyList) {
+      const w = fyWindow(label);
+      if (!w) continue;
+      if (!fyMin || w.min < fyMin) fyMin = w.min;
+      if (!fyMax || w.max > fyMax) fyMax = w.max;
+    }
+    if (fyMin && fyMax) {
+      if (dataMin && dataMax) {
+        const paddedMin = new Date(dataMin.getFullYear(), dataMin.getMonth() - 1, 1);
+        const paddedMax = new Date(dataMax.getFullYear(), dataMax.getMonth() + 2, 0, 23, 59, 59);
+        minD = paddedMin < fyMin ? fyMin : paddedMin;
+        maxD = paddedMax > fyMax ? fyMax : paddedMax;
+        if (minD > maxD) {
+          minD = fyMin;
+          maxD = fyMax;
+        }
+      } else {
         minD = fyMin;
         maxD = fyMax;
       }
+    } else if (dataMin && dataMax) {
+      minD = new Date(dataMin.getFullYear(), dataMin.getMonth() - 1, 1);
+      maxD = new Date(dataMax.getFullYear(), dataMax.getMonth() + 2, 0, 23, 59, 59);
     } else {
-      minD = fyMin;
-      maxD = fyMax;
+      const now = new Date();
+      minD = fyStartFor(now);
+      maxD = fyEndFor(now);
     }
   } else if (dataMin && dataMax) {
     minD = new Date(dataMin.getFullYear(), dataMin.getMonth() - 1, 1);
