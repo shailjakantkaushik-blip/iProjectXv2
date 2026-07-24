@@ -185,6 +185,11 @@ export type LandingConfig = {
    */
   cartoons_enabled: boolean;
   /**
+   * Selected interactive cartoon character (guide | tiger | astronaut | …).
+   * Independent of style theme; edited from Platform Settings / Landing.
+   */
+  cartoon_id: string;
+  /**
    * Platform default style theme (simple | standard | space | racing).
    * Orgs can override; users may override when org enables user choice.
    */
@@ -566,6 +571,7 @@ export const DEFAULT_LANDING: LandingConfig = {
   // Fail closed: never flash Sign up / Get started before live config confirms on.
   signup_enabled: false,
   cartoons_enabled: true,
+  cartoon_id: "guide",
   style_theme_id: "simple",
   navigation: defaultNavigationConfig(),
   palette_preset: "iprojectx",
@@ -862,6 +868,9 @@ export function mergeConfig(partial: any): LandingConfig {
   // Fail closed — missing/legacy configs must not flash public signup on.
   if (typeof merged.signup_enabled !== "boolean") merged.signup_enabled = false;
   if (typeof merged.cartoons_enabled !== "boolean") merged.cartoons_enabled = true;
+  if (typeof merged.cartoon_id !== "string" || !merged.cartoon_id.trim()) {
+    merged.cartoon_id = "guide";
+  }
   if (typeof merged.style_theme_id !== "string" || !merged.style_theme_id.trim()) {
     merged.style_theme_id = "simple";
   }

@@ -11,7 +11,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/lib/auth-context";
 import { CartoonSettingsPreview } from "@/components/cartoon-mascots";
+import { CartoonPicker } from "@/components/style-theme-picker";
 import { NavSequenceEditor } from "@/components/nav-sequence-editor";
+import { normalizeCartoonId } from "@/lib/cartoons";
 import {
   DEFAULT_LANDING,
   defaultNavigationConfig,
@@ -201,7 +203,21 @@ function LandingConfigPage() {
               />
             </label>
             <div className="mt-4">
-              <CartoonSettingsPreview enabled={cfg.cartoons_enabled} />
+              <CartoonSettingsPreview
+                enabled={cfg.cartoons_enabled}
+                cartoonId={normalizeCartoonId(cfg.cartoon_id)}
+              />
+            </div>
+            <div className="mt-5">
+              <div className="mb-2 text-sm font-medium">Choose cartoon character</div>
+              <p className="mb-3 text-xs text-muted-foreground">
+                Tiger, Astronaut, football &amp; cricket, Santa, Eid, Diwali, Holi, fitness, yoga,
+                and the classic PMO guide.
+              </p>
+              <CartoonPicker
+                value={normalizeCartoonId(cfg.cartoon_id)}
+                onChange={(cartoon_id) => setCfg({ ...cfg, cartoon_id })}
+              />
             </div>
           </SectionFrame>
 

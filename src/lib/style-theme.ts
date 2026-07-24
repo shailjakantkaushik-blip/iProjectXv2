@@ -67,7 +67,7 @@ export const STYLE_THEMES: StyleThemeDef[] = [
     id: "wildlife",
     name: "Wildlife",
     description:
-      "Organic rounded habitats, soft savannah atmosphere — guide becomes a tiger.",
+      "Organic rounded habitats, soft savannah atmosphere — pick Tiger in cartoons if you like.",
     swatches: ["#e7e0d4", "#f4efe6", "#b7a48a"],
   },
   {

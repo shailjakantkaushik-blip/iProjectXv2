@@ -4,6 +4,8 @@ import {
   type OrgStyleThemeConfig,
   type StyleThemeId,
 } from "@/lib/style-theme";
+import { CARTOONS, type CartoonId } from "@/lib/cartoons";
+import { CartoonGuide } from "@/components/cartoon-mascots";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 
@@ -66,6 +68,62 @@ type OrgEditorProps = {
   value: OrgStyleThemeConfig;
   onChange: (next: OrgStyleThemeConfig) => void;
 };
+
+type CartoonPickerProps = {
+  value: CartoonId;
+  onChange: (id: CartoonId) => void;
+  className?: string;
+  compact?: boolean;
+};
+
+/** Grid of cartoon characters for Platform Settings / Landing. */
+export function CartoonPicker({ value, onChange, className, compact }: CartoonPickerProps) {
+  return (
+    <div
+      className={cn(
+        compact
+          ? "grid grid-cols-2 gap-2 sm:grid-cols-3"
+          : "grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4",
+        className,
+      )}
+    >
+      {CARTOONS.map((c) => {
+        const active = value === c.id;
+        return (
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => onChange(c.id)}
+            className={cn(
+              "rounded-lg border text-left transition",
+              compact ? "p-2" : "p-3",
+              active
+                ? "border-primary bg-primary/5 ring-2 ring-primary/30"
+                : "border-border bg-background hover:border-primary/40",
+            )}
+          >
+            <div className={cn("mb-1 flex items-center justify-center", compact ? "h-14" : "h-20")}>
+              <CartoonGuide
+                size={compact ? "sm" : "md"}
+                variant={c.id}
+                interactive={false}
+                mood={active ? "wave" : "idle"}
+              />
+            </div>
+            <div className={cn("font-semibold", compact ? "text-xs" : "text-sm")}>
+              {c.name}
+            </div>
+            {!compact && (
+              <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+                {c.description}
+              </p>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 /** Platform branding: org style theme + user-choice toggle. */
 export function OrgStyleThemeEditor({ value, onChange }: OrgEditorProps) {

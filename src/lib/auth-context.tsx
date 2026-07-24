@@ -1,7 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
-import { getPostSignOutAuthPath } from "@/lib/org-auth-entry";
 import { clearCachedOrgNavigation } from "@/lib/navigation-config";
 
 export type AppRole = "admin" | "org_admin" | "bu_lead" | "pm" | "executive" | "platform_admin";
@@ -180,10 +179,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = async () => {
     clearCachedOrgNavigation();
     await supabase.auth.signOut();
-    // Return to the org white-label auth link when that is how they signed in.
-    if (typeof window !== "undefined") {
-      window.location.assign(getPostSignOutAuthPath());
-    }
+    // Do not hard-reload here — the authenticated Gate already SPA-navigates
+    // to /auth (with org slug when that is how they signed in). A second
+    // window.location.assign caused the login page to refresh twice.
   };
 
   return (

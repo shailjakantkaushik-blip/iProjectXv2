@@ -16,8 +16,9 @@ import {
   saveLandingConfig,
   type LandingConfig,
 } from "@/lib/landing-config";
-import { StyleThemePicker } from "@/components/style-theme-picker";
+import { CartoonPicker, StyleThemePicker } from "@/components/style-theme-picker";
 import { isStyleThemeId, type StyleThemeId } from "@/lib/style-theme";
+import { normalizeCartoonId } from "@/lib/cartoons";
 
 export const Route = createFileRoute("/_authenticated/platform/settings")({
   component: PlatformSettingsPage,
@@ -117,10 +118,24 @@ function PlatformSettingsPage() {
           />
         </label>
         <div className="mt-4">
-          <CartoonSettingsPreview enabled={cfg.cartoons_enabled} />
+          <CartoonSettingsPreview
+            enabled={cfg.cartoons_enabled}
+            cartoonId={normalizeCartoonId(cfg.cartoon_id)}
+          />
+        </div>
+        <div className="mt-5">
+          <div className="mb-2 text-sm font-medium">Choose cartoon character</div>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Independent of style theme — pick Tiger, Astronaut, festival characters, and more.
+          </p>
+          <CartoonPicker
+            value={normalizeCartoonId(cfg.cartoon_id)}
+            onChange={(cartoon_id) => setCfg({ ...cfg, cartoon_id })}
+          />
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
-          Default cartoons: {DEFAULT_LANDING.cartoons_enabled ? "on" : "off"}.
+          Default cartoons: {DEFAULT_LANDING.cartoons_enabled ? "on" : "off"} · character:{" "}
+          {DEFAULT_LANDING.cartoon_id}.
         </p>
       </SectionFrame>
 

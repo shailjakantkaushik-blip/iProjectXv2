@@ -27,7 +27,7 @@ function Gate() {
     }
     if (profile && profile.is_active === false) {
       toast.error("Your account is inactive. Contact your administrator.");
-      // signOut redirects to the org auth link when that is how they entered.
+      // Gate navigates to /auth once session clears (org-aware).
       void signOut();
       return;
     }

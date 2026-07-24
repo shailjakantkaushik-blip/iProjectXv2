@@ -1,8 +1,9 @@
 import { useEffect, useId, useState } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useCartoonsEnabled } from "@/lib/use-cartoons";
-import { STYLE_THEME_CHANGE_EVENT, type StyleThemeId } from "@/lib/style-theme";
+import { useCartoonId, useCartoonsEnabled } from "@/lib/use-cartoons";
+import { cartoonMeta, type CartoonId } from "@/lib/cartoons";
+import { CartoonCharacterSvg } from "@/components/cartoon-characters";
 
 const TIPS = [
   "Tip: Check My Work for approvals waiting on you.",
@@ -18,38 +19,15 @@ function sizePx(size: Size) {
   return size === "lg" ? 148 : size === "sm" ? 88 : 112;
 }
 
-function useDocumentStyleTheme(): StyleThemeId | string {
-  const [theme, setTheme] = useState<StyleThemeId | string>(() =>
-    typeof document !== "undefined"
-      ? document.documentElement.getAttribute("data-style-theme") || "simple"
-      : "simple",
-  );
-  useEffect(() => {
-    const read = () =>
-      setTheme(document.documentElement.getAttribute("data-style-theme") || "simple");
-    read();
-    window.addEventListener(STYLE_THEME_CHANGE_EVENT, read);
-    const obs = new MutationObserver(read);
-    obs.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["data-style-theme"],
-    });
-    return () => {
-      window.removeEventListener(STYLE_THEME_CHANGE_EVENT, read);
-      obs.disconnect();
-    };
-  }, []);
-  return theme;
-}
-
-/** Flat vector PMO “guide” character — CSS animated, clickable. Wildlife theme → tiger. */
+/** Flat vector guide character — CSS animated, clickable. Variant from platform cartoon picker. */
 export function CartoonGuide({
   size = "md",
   mood = "idle",
   className,
-  label = "PMO Guide",
+  label,
   interactive = true,
   onActivate,
+  variant,
 }: {
   size?: Size;
   mood?: "idle" | "wave" | "think";
@@ -57,14 +35,18 @@ export function CartoonGuide({
   label?: string;
   interactive?: boolean;
   onActivate?: () => void;
+  /** Override platform cartoon (e.g. settings preview while editing). */
+  variant?: CartoonId;
 }) {
   const [localMood, setLocalMood] = useState(mood);
-  const styleTheme = useDocumentStyleTheme();
+  const platformCartoon = useCartoonId();
+  const cartoonId = variant ?? platformCartoon;
+  const meta = cartoonMeta(cartoonId);
   const px = sizePx(size);
   const uid = useId().replace(/:/g, "");
   const bodyGrad = `cg-body-${uid}`;
   const screenGrad = `cg-screen-${uid}`;
-  const isTiger = styleTheme === "wildlife";
+  const aria = label ?? meta.name;
 
   useEffect(() => setLocalMood(mood), [mood]);
 
@@ -74,12 +56,17 @@ export function CartoonGuide({
     onActivate?.();
   };
 
+  const moodClass = cn(
+    localMood === "wave" && "is-wave",
+    localMood === "think" && "is-think",
+  );
+
   return (
     <button
       type="button"
       disabled={!interactive}
-      aria-label={isTiger ? "Wildlife guide — tiger" : label}
-      title={interactive ? "Click for a tip" : label}
+      aria-label={aria}
+      title={interactive ? "Click for a tip" : aria}
       onClick={activate}
       className={cn(
         "cartoon-mascot group relative inline-flex select-none appearance-none border-0 bg-transparent p-0",
@@ -88,137 +75,13 @@ export function CartoonGuide({
       )}
       style={{ width: px, height: px }}
     >
-      {isTiger ? (
-        <svg
-          viewBox="0 0 160 160"
-          width={px}
-          height={px}
-          className={cn(
-            "cartoon-svg overflow-visible",
-            localMood === "wave" && "is-wave",
-            localMood === "think" && "is-think",
-          )}
-          role="img"
-          aria-hidden
-        >
-          <ellipse className="cg-shadow" cx="80" cy="148" rx="44" ry="7" fill="currentColor" opacity="0.12" />
-          <g className="cg-body">
-            <ellipse cx="80" cy="98" rx="36" ry="30" fill="var(--primary)" opacity="0.92" />
-            <ellipse cx="80" cy="102" rx="22" ry="16" fill="#f8fafc" opacity="0.85" />
-            {/* stripes */}
-            <path d="M58 88 Q70 92 58 104" fill="none" stroke="#0f172a" strokeWidth="3.5" opacity="0.35" strokeLinecap="round" />
-            <path d="M102 88 Q90 92 102 104" fill="none" stroke="#0f172a" strokeWidth="3.5" opacity="0.35" strokeLinecap="round" />
-            <path d="M80 78 V92" fill="none" stroke="#0f172a" strokeWidth="3" opacity="0.28" strokeLinecap="round" />
-          </g>
-          <g className="cg-head">
-            <circle cx="80" cy="52" r="30" fill="var(--primary)" />
-            <ellipse cx="80" cy="58" rx="16" ry="12" fill="#f8fafc" opacity="0.9" />
-            {/* ears */}
-            <path d="M54 34 L48 18 L66 28 Z" fill="var(--primary)" />
-            <path d="M106 34 L112 18 L94 28 Z" fill="var(--primary)" />
-            <path d="M54 32 L52 22 L62 28 Z" fill="#f8fafc" opacity="0.7" />
-            <path d="M106 32 L108 22 L98 28 Z" fill="#f8fafc" opacity="0.7" />
-            {/* face stripes */}
-            <path d="M56 48 L66 52" stroke="#0f172a" strokeWidth="2.5" opacity="0.4" strokeLinecap="round" />
-            <path d="M104 48 L94 52" stroke="#0f172a" strokeWidth="2.5" opacity="0.4" strokeLinecap="round" />
-            <circle className="cg-eye cg-eye-l" cx="70" cy="50" r="3.4" fill="#0f172a" />
-            <circle className="cg-eye cg-eye-r" cx="90" cy="50" r="3.4" fill="#0f172a" />
-            <ellipse cx="80" cy="60" rx="4" ry="3" fill="#0f172a" opacity="0.75" />
-            <path className="cg-mouth" d="M72 68 Q80 74 88 68" fill="none" stroke="#0f172a" strokeWidth="2.2" strokeLinecap="round" />
-          </g>
-          <g className="cg-arm-r">
-            <path d="M112 90 Q128 86 122 68" fill="none" stroke="var(--primary)" strokeWidth="9" strokeLinecap="round" />
-            <ellipse cx="120" cy="64" rx="8" ry="6" fill="var(--primary)" />
-          </g>
-          <g className="cg-sparkles" fill="var(--accent2, #15803d)">
-            <circle cx="30" cy="42" r="2.2" />
-            <circle cx="134" cy="56" r="1.8" />
-          </g>
-        </svg>
-      ) : (
-      <svg
-        viewBox="0 0 160 160"
-        width={px}
-        height={px}
-        className={cn(
-          "cartoon-svg overflow-visible",
-          localMood === "wave" && "is-wave",
-          localMood === "think" && "is-think",
-        )}
-        role="img"
-        aria-hidden
-      >
-        <defs>
-          <linearGradient id={bodyGrad} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.95" />
-            <stop offset="100%" stopColor="var(--primary)" stopOpacity="0.75" />
-          </linearGradient>
-          <linearGradient id={screenGrad} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#e8edf3" />
-            <stop offset="100%" stopColor="#c5d0de" />
-          </linearGradient>
-        </defs>
-
-        <ellipse className="cg-shadow" cx="80" cy="148" rx="42" ry="7" fill="currentColor" opacity="0.12" />
-
-        <g className="cg-body">
-          <rect x="48" y="70" width="64" height="58" rx="22" fill={`url(#${bodyGrad})`} />
-          <rect x="58" y="82" width="44" height="28" rx="8" fill={`url(#${screenGrad})`} />
-          <path
-            d="M66 102 L74 94 L82 98 L94 88"
-            fill="none"
-            stroke="var(--primary)"
-            strokeWidth="3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <circle cx="94" cy="88" r="2.5" fill="var(--accent2, #15803d)" />
-        </g>
-
-        <g className="cg-head">
-          <circle cx="80" cy="48" r="28" fill="#f8fafc" stroke="var(--primary)" strokeWidth="3" />
-          <circle className="cg-eye cg-eye-l" cx="70" cy="46" r="3.2" fill="#0f172a" />
-          <circle className="cg-eye cg-eye-r" cx="90" cy="46" r="3.2" fill="#0f172a" />
-          <path
-            className="cg-mouth"
-            d="M72 58 Q80 64 88 58"
-            fill="none"
-            stroke="#0f172a"
-            strokeWidth="2.4"
-            strokeLinecap="round"
-          />
-          <circle cx="70" cy="46" r="8" fill="none" stroke="var(--primary)" strokeWidth="2" opacity="0.55" />
-          <circle cx="90" cy="46" r="8" fill="none" stroke="var(--primary)" strokeWidth="2" opacity="0.55" />
-          <path d="M78 46 H82" stroke="var(--primary)" strokeWidth="2" opacity="0.55" />
-        </g>
-
-        <g className="cg-arm-l">
-          <path
-            d="M52 88 Q36 96 40 114"
-            fill="none"
-            stroke="var(--primary)"
-            strokeWidth="8"
-            strokeLinecap="round"
-          />
-        </g>
-        <g className="cg-arm-r">
-          <path
-            d="M108 88 Q124 90 118 70"
-            fill="none"
-            stroke="var(--primary)"
-            strokeWidth="8"
-            strokeLinecap="round"
-          />
-          <circle cx="116" cy="64" r="6" fill="#f8fafc" stroke="var(--primary)" strokeWidth="2.5" />
-        </g>
-
-        <g className="cg-sparkles" fill="var(--accent2, #15803d)">
-          <circle cx="28" cy="40" r="2.5" />
-          <circle cx="132" cy="52" r="2" />
-          <circle cx="138" cy="92" r="1.8" />
-        </g>
-      </svg>
-      )}
+      <CartoonCharacterSvg
+        id={cartoonId}
+        px={px}
+        moodClass={moodClass}
+        bodyGrad={bodyGrad}
+        screenGrad={screenGrad}
+      />
     </button>
   );
 }
@@ -316,7 +179,14 @@ export function CartoonCompanion() {
 }
 
 /** Static preview used on Platform Settings (always visible regardless of flag). */
-export function CartoonSettingsPreview({ enabled }: { enabled: boolean }) {
+export function CartoonSettingsPreview({
+  enabled,
+  cartoonId,
+}: {
+  enabled: boolean;
+  cartoonId?: CartoonId;
+}) {
+  const meta = cartoonMeta(cartoonId ?? "guide");
   return (
     <div
       className={cn(
@@ -326,10 +196,15 @@ export function CartoonSettingsPreview({ enabled }: { enabled: boolean }) {
           : "border-dashed border-border/70 opacity-50",
       )}
     >
-      <CartoonGuide size="md" interactive={enabled} mood={enabled ? "wave" : "idle"} />
+      <CartoonGuide
+        size="md"
+        interactive={enabled}
+        mood={enabled ? "wave" : "idle"}
+        variant={cartoonId}
+      />
       <div className="min-w-0 text-sm">
         <div className="font-medium text-foreground">
-          {enabled ? "Cartoons are on" : "Cartoons are off"}
+          {enabled ? `${meta.name} is on` : "Cartoons are off"}
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
           {enabled
