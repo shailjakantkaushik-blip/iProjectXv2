@@ -1865,6 +1865,7 @@ function ProjectBrief({
 
   const downloadBriefPpt = async () => {
     setDownloadingBrief(true);
+    toast.info("Preparing PPT…");
     try {
       const incurredSpend =
         Number(project.capex_incurred || 0) + Number(project.opex_incurred || 0);
@@ -1904,27 +1905,31 @@ function ProjectBrief({
             section2: s2,
           },
         },
-        milestones: milestones.map((m) => ({
+        milestones: (milestones ?? []).map((m: any) => ({
           name: m.name,
           planned_date: m.planned_date,
           status: m.status,
           owner: m.owner,
         })),
-        risks: risks.map((r) => ({
+        risks: (risks ?? []).map((r: any) => ({
           description: r.description,
           category: r.category,
           residual_rating: r.residual_rating ?? r.probability,
           mitigation_plan: r.mitigation_plan,
           owner: r.owner,
         })),
-        dependencies: deps.map((d) => ({
-          from_project: d.from_project_name,
-          to_project: d.to_project_name,
+        dependencies: (deps ?? []).map((d: any) => ({
+          from_project: d.from_project_name ?? d.from_project ?? d.from_project_id ?? null,
+          to_project: d.to_project_name ?? d.to_project ?? d.to_project_id ?? null,
           dependency_type: d.dependency_type,
           status: d.status,
           description: d.description,
         })),
       });
+      toast.success("Project brief PPT downloaded");
+    } catch (e: any) {
+      console.error("Project brief PPT failed", e);
+      toast.error(e?.message || "Could not download the project brief PPT");
     } finally {
       setDownloadingBrief(false);
     }

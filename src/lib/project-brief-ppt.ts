@@ -1,11 +1,7 @@
-import pptxgen from "pptxgenjs";
-
 /** Green PMO template colors */
 const GREEN = "1E5631";
 const LIGHT_GREEN = "E2EFDA";
-const SLIDE_W = 13.33;
 const SLIDE_H = 7.5;
-const MARGIN = 0.3;
 const CONTENT_BOTTOM = SLIDE_H - 0.2;
 
 type Money = number | null | undefined;
@@ -17,6 +13,16 @@ function fitText(value: string | null | undefined, maxChars: number): string {
   const s = (value ?? "").trim() || "—";
   if (s.length <= maxChars) return s;
   return `${s.slice(0, Math.max(0, maxChars - 1)).trimEnd()}…`;
+}
+
+function safeFileName(raw: string): string {
+  const cleaned = raw
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^[.-]+|[.-]+$/g, "")
+    .slice(0, 80);
+  return cleaned || "Project";
 }
 
 export type ProjectBriefInput = {
@@ -44,42 +50,128 @@ export type ProjectBriefInput = {
     status?: string | null;
     brief?: any;
   };
-  milestones?: Array<{ name: string; planned_date?: string | null; status?: string | null; owner?: string | null }>;
-  risks?: Array<{ description: string; category?: string | null; residual_rating?: string | null; mitigation_plan?: string | null; owner?: string | null }>;
-  dependencies?: Array<{ from_project?: string | null; to_project?: string | null; dependency_type?: string | null; status?: string | null; description?: string | null }>;
+  milestones?: Array<{
+    name: string;
+    planned_date?: string | null;
+    status?: string | null;
+    owner?: string | null;
+  }>;
+  risks?: Array<{
+    description: string;
+    category?: string | null;
+    residual_rating?: string | null;
+    mitigation_plan?: string | null;
+    owner?: string | null;
+  }>;
+  dependencies?: Array<{
+    from_project?: string | null;
+    to_project?: string | null;
+    dependency_type?: string | null;
+    status?: string | null;
+    description?: string | null;
+  }>;
   timelineImage?: string | null;
 };
 
-function bandTitle(slide: pptxgen.Slide, text: string, y = 0.25) {
+type PptxCtor = typeof import("pptxgenjs").default;
+type Slide = InstanceType<PptxCtor> extends { addSlide(): infer S } ? S : never;
+
+function bandTitle(slide: Slide, text: string, y = 0.25) {
   slide.addShape("rect", { x: 0.3, y, w: 9.6, h: 0.55, fill: { color: GREEN }, line: { color: GREEN } });
   slide.addText(fitText(text, 72), {
-    x: 0.4, y, w: 9.5, h: 0.55, color: "FFFFFF", bold: true, fontSize: 14, valign: "middle",
+    x: 0.4,
+    y,
+    w: 9.5,
+    h: 0.55,
+    color: "FFFFFF",
+    bold: true,
+    fontSize: 14,
+    valign: "middle",
   });
-  slide.addShape("rect", { x: 10.0, y, w: 3.0, h: 0.55, fill: { color: LIGHT_GREEN }, line: { color: LIGHT_GREEN } });
+  slide.addShape("rect", {
+    x: 10.0,
+    y,
+    w: 3.0,
+    h: 0.55,
+    fill: { color: LIGHT_GREEN },
+    line: { color: LIGHT_GREEN },
+  });
 }
 
-function sectionHeader(slide: pptxgen.Slide, y: number, text: string, w = 12.7) {
+function sectionHeader(slide: Slide, y: number, text: string, w = 12.7) {
   slide.addShape("rect", { x: 0.3, y, w, h: 0.32, fill: { color: GREEN }, line: { color: GREEN } });
-  slide.addText(text, { x: 0.4, y, w: w - 0.2, h: 0.32, color: "FFFFFF", bold: true, fontSize: 11, valign: "middle" });
-}
-
-function labelBox(slide: pptxgen.Slide, x: number, y: number, w: number, h: number, label: string, value: string) {
-  slide.addShape("rect", { x, y, w: 1.5, h, fill: { color: "111111" }, line: { color: "111111" } });
-  slide.addText(label, { x: x + 0.05, y, w: 1.4, h, color: "FFFFFF", bold: true, fontSize: 9, valign: "middle" });
-  slide.addShape("rect", { x: x + 1.5, y, w: w - 1.5, h, fill: { color: "FFFFFF" }, line: { color: "CCCCCC" } });
-  slide.addText(fitText(value, 48) || "—", {
-    x: x + 1.55, y, w: w - 1.6, h, color: "111111", fontSize: 9, valign: "middle",
+  slide.addText(text, {
+    x: 0.4,
+    y,
+    w: w - 0.2,
+    h: 0.32,
+    color: "FFFFFF",
+    bold: true,
+    fontSize: 11,
+    valign: "middle",
   });
 }
 
-function longBox(slide: pptxgen.Slide, x: number, y: number, w: number, h: number, title: string, value: string) {
-  // Keep shape inside slide; never paint past CONTENT_BOTTOM.
+function labelBox(
+  slide: Slide,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  label: string,
+  value: string,
+) {
+  slide.addShape("rect", { x, y, w: 1.5, h, fill: { color: "111111" }, line: { color: "111111" } });
+  slide.addText(label, {
+    x: x + 0.05,
+    y,
+    w: 1.4,
+    h,
+    color: "FFFFFF",
+    bold: true,
+    fontSize: 9,
+    valign: "middle",
+  });
+  slide.addShape("rect", {
+    x: x + 1.5,
+    y,
+    w: w - 1.5,
+    h,
+    fill: { color: "FFFFFF" },
+    line: { color: "CCCCCC" },
+  });
+  slide.addText(fitText(value, 48) || "—", {
+    x: x + 1.55,
+    y,
+    w: w - 1.6,
+    h,
+    color: "111111",
+    fontSize: 9,
+    valign: "middle",
+  });
+}
+
+function longBox(
+  slide: Slide,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  title: string,
+  value: string,
+) {
   const maxH = Math.max(0.55, CONTENT_BOTTOM - y);
   const boxH = Math.min(h, maxH);
   sectionHeader(slide, y, title, w);
   const bodyH = Math.max(0.2, boxH - 0.32);
-  slide.addShape("rect", { x, y: y + 0.32, w, h: bodyH, fill: { color: "FFFFFF" }, line: { color: "CCCCCC" } });
-  // ~55 chars/line at 9pt in a 6" column; clamp so text cannot overflow the shape.
+  slide.addShape("rect", {
+    x,
+    y: y + 0.32,
+    w,
+    h: bodyH,
+    fill: { color: "FFFFFF" },
+    line: { color: "CCCCCC" },
+  });
   const lines = Math.max(2, Math.floor(bodyH / 0.18));
   const cols = Math.max(40, Math.floor((w / 6.2) * 55));
   slide.addText(fitText(value, lines * cols), {
@@ -94,38 +186,68 @@ function longBox(slide: pptxgen.Slide, x: number, y: number, w: number, h: numbe
   });
 }
 
+async function loadPptxgen(): Promise<PptxCtor> {
+  const mod = await import("pptxgenjs");
+  return (mod.default ?? mod) as PptxCtor;
+}
+
 export async function downloadProjectBriefPPT(input: ProjectBriefInput) {
-  const { project, milestones = [], risks = [], dependencies = [], timelineImage } = input;
+  const { project, milestones = [], risks = [], dependencies = [] } = input;
   const brief = project.brief ?? {};
   const s1 = brief.section1 ?? {};
   const s2 = brief.section2 ?? {};
 
+  const pptxgen = await loadPptxgen();
   const pres = new pptxgen();
   pres.layout = "LAYOUT_WIDE"; // 13.33 x 7.5
-  void SLIDE_W;
-  void MARGIN;
 
   // ============ SLIDE 1 — Section 1: Business Owner ============
   const slide1 = pres.addSlide();
   slide1.background = { color: "F5F5F5" };
   bandTitle(slide1, `PROJECT BRIEF — ${project.name || "<Initiative Name>"}`, 0.2);
-  slide1.addText("Section 1: Business Owner to complete in\nconjunction with Business Solution Manager", {
-    x: 10.05, y: 0.22, w: 2.9, h: 0.5, fontSize: 8, italic: true, color: GREEN, align: "center",
-  });
+  slide1.addText(
+    "Section 1: Business Owner to complete in\nconjunction with Business Solution Manager",
+    {
+      x: 10.05,
+      y: 0.22,
+      w: 2.9,
+      h: 0.5,
+      fontSize: 8,
+      italic: true,
+      color: GREEN,
+      align: "center",
+    },
+  );
 
   const stripY = 0.85;
-  labelBox(slide1, 0.3, stripY, 3.0, 0.38, "Portfolio /\nWorkstream", `${project.portfolio ?? ""} ${project.workstream ? "/ " + project.workstream : ""}`.trim());
+  labelBox(
+    slide1,
+    0.3,
+    stripY,
+    3.0,
+    0.38,
+    "Portfolio /\nWorkstream",
+    `${project.portfolio ?? ""} ${project.workstream ? "/ " + project.workstream : ""}`.trim(),
+  );
   labelBox(slide1, 3.4, stripY, 2.6, 0.38, "Sponsor", project.sponsor_name ?? "");
   labelBox(slide1, 6.1, stripY, 2.8, 0.38, "Business Owner", project.business_owner ?? "");
-  labelBox(slide1, 9.0, stripY, 2.4, 0.38, "Business Solution Mgr", project.business_solution_manager ?? "");
+  labelBox(
+    slide1,
+    9.0,
+    stripY,
+    2.4,
+    0.38,
+    "Business Solution Mgr",
+    project.business_solution_manager ?? "",
+  );
   labelBox(slide1, 11.5, stripY, 1.5, 0.38, "Strategic Align.", project.strategic_alignment ?? "");
 
-  // Tighter stack that ends above slide bottom (7.5").
   longBox(slide1, 0.3, 1.35, 12.7, 1.05, "Background and Context", s1.background_context ?? "");
   longBox(slide1, 0.3, 2.5, 12.7, 1.05, "Opportunity / Problem Statement", s1.opportunity_problem ?? "");
   longBox(slide1, 0.3, 3.65, 6.2, 1.55, "Objective", s1.objective ?? "");
   longBox(slide1, 6.7, 3.65, 6.3, 1.55, "Assumptions & Constraints", s1.assumptions_constraints ?? "");
-  const scopeText = `${s1.scope_in ? "In Scope:\n" + s1.scope_in + "\n\n" : ""}${s1.scope_out ? "Out of Scope:\n" + s1.scope_out : ""}`.trim();
+  const scopeText =
+    `${s1.scope_in ? "In Scope:\n" + s1.scope_in + "\n\n" : ""}${s1.scope_out ? "Out of Scope:\n" + s1.scope_out : ""}`.trim();
   longBox(slide1, 0.3, 5.3, 6.2, 1.9, "Project Scope", scopeText);
   longBox(slide1, 6.7, 5.3, 6.3, 1.9, "Key Metrics / Success Measures", s1.success_measures ?? "");
 
@@ -133,9 +255,19 @@ export async function downloadProjectBriefPPT(input: ProjectBriefInput) {
   const slide2 = pres.addSlide();
   slide2.background = { color: "F5F5F5" };
   bandTitle(slide2, `PROJECT BRIEF — ${project.name || "<Initiative Name>"}`, 0.2);
-  slide2.addText("Section 2: Business Solution Manager to complete in\nconjunction with Business Owner", {
-    x: 10.05, y: 0.22, w: 2.9, h: 0.5, fontSize: 8, italic: true, color: GREEN, align: "center",
-  });
+  slide2.addText(
+    "Section 2: Business Solution Manager to complete in\nconjunction with Business Owner",
+    {
+      x: 10.05,
+      y: 0.22,
+      w: 2.9,
+      h: 0.5,
+      fontSize: 8,
+      italic: true,
+      color: GREEN,
+      align: "center",
+    },
+  );
 
   sectionHeader(slide2, 0.85, "Approval Ask", 6.2);
   const rows = [
@@ -146,10 +278,41 @@ export async function downloadProjectBriefPPT(input: ProjectBriefInput) {
   ];
   rows.forEach((r, i) => {
     const y = 1.2 + i * 0.32;
-    slide2.addShape("rect", { x: 0.3, y, w: 1.8, h: 0.32, fill: { color: "111111" }, line: { color: "111111" } });
-    slide2.addText(r[0], { x: 0.35, y, w: 1.75, h: 0.32, color: "FFFFFF", bold: true, fontSize: 8, valign: "middle" });
-    slide2.addShape("rect", { x: 2.1, y, w: 4.4, h: 0.32, fill: { color: "FFFFFF" }, line: { color: "CCCCCC" } });
-    slide2.addText(fitText(r[1], 80), { x: 2.15, y, w: 4.35, h: 0.32, color: "111111", fontSize: 8, valign: "middle" });
+    slide2.addShape("rect", {
+      x: 0.3,
+      y,
+      w: 1.8,
+      h: 0.32,
+      fill: { color: "111111" },
+      line: { color: "111111" },
+    });
+    slide2.addText(r[0], {
+      x: 0.35,
+      y,
+      w: 1.75,
+      h: 0.32,
+      color: "FFFFFF",
+      bold: true,
+      fontSize: 8,
+      valign: "middle",
+    });
+    slide2.addShape("rect", {
+      x: 2.1,
+      y,
+      w: 4.4,
+      h: 0.32,
+      fill: { color: "FFFFFF" },
+      line: { color: "CCCCCC" },
+    });
+    slide2.addText(fitText(r[1], 80), {
+      x: 2.15,
+      y,
+      w: 4.35,
+      h: 0.32,
+      color: "111111",
+      fontSize: 8,
+      valign: "middle",
+    });
   });
 
   longBox(
@@ -172,53 +335,95 @@ export async function downloadProjectBriefPPT(input: ProjectBriefInput) {
   );
 
   const cell = (t: string, bold = false) => {
-    const options: any = { bold, fontSize: 8, color: bold ? "FFFFFF" : "111111" };
+    const options: Record<string, unknown> = {
+      bold,
+      fontSize: 8,
+      color: bold ? "FFFFFF" : "111111",
+    };
     if (bold) options.fill = { color: GREEN };
     return { text: fitText(t, bold ? 40 : 60), options };
   };
   sectionHeader(slide2, 0.85, "Summary of Delivery Milestones", 6.3);
   const msRows = [
     [cell("Milestone", true), cell("Status", true), cell("Date", true)],
-    ...milestones.slice(0, 4).map((m) => [cell(m.name ?? ""), cell(m.status ?? "—"), cell(dt(m.planned_date))]),
+    ...milestones
+      .slice(0, 4)
+      .map((m) => [cell(m.name ?? ""), cell(m.status ?? "—"), cell(dt(m.planned_date))]),
   ];
   slide2.addTable(msRows, {
-    x: 6.7, y: 1.2, w: 6.3, colW: [3.3, 1.4, 1.6],
-    fontSize: 8, border: { pt: 0.5, color: "CCCCCC" },
+    x: 6.7,
+    y: 1.2,
+    w: 6.3,
+    colW: [3.3, 1.4, 1.6],
+    fontSize: 8,
+    border: { pt: 0.5, color: "CCCCCC" },
     rowH: 0.26,
   });
 
   sectionHeader(slide2, 3.15, "Project Risks", 6.3);
   const rkRows = [
     [cell("Description", true), cell("Rating", true), cell("Owner", true)],
-    ...risks.slice(0, 4).map((r) => [cell(r.description ?? ""), cell(r.residual_rating ?? "—"), cell(r.owner ?? "—")]),
+    ...risks
+      .slice(0, 4)
+      .map((r) => [
+        cell(r.description ?? ""),
+        cell(r.residual_rating ?? "—"),
+        cell(r.owner ?? "—"),
+      ]),
   ];
   slide2.addTable(rkRows, {
-    x: 6.7, y: 3.5, w: 6.3, colW: [3.5, 1.2, 1.6],
-    fontSize: 8, border: { pt: 0.5, color: "CCCCCC" }, rowH: 0.26,
+    x: 6.7,
+    y: 3.5,
+    w: 6.3,
+    colW: [3.5, 1.2, 1.6],
+    fontSize: 8,
+    border: { pt: 0.5, color: "CCCCCC" },
+    rowH: 0.26,
   });
 
   sectionHeader(slide2, 5.2, "Dependencies", 6.3);
   const depRows = [
     [cell("From → To", true), cell("Type", true), cell("Status", true)],
-    ...dependencies.slice(0, 4).map((d) => [cell(`${d.from_project ?? "—"} → ${d.to_project ?? "—"}`), cell(d.dependency_type ?? "—"), cell(d.status ?? "—")]),
+    ...dependencies
+      .slice(0, 4)
+      .map((d) => [
+        cell(`${d.from_project ?? "—"} → ${d.to_project ?? "—"}`),
+        cell(d.dependency_type ?? "—"),
+        cell(d.status ?? "—"),
+      ]),
   ];
   slide2.addTable(depRows, {
-    x: 6.7, y: 5.55, w: 6.3, colW: [3.5, 1.2, 1.6],
-    fontSize: 8, border: { pt: 0.5, color: "CCCCCC" }, rowH: 0.26,
+    x: 6.7,
+    y: 5.55,
+    w: 6.3,
+    colW: [3.5, 1.2, 1.6],
+    fontSize: 8,
+    border: { pt: 0.5, color: "CCCCCC" },
+    rowH: 0.26,
   });
 
-  void timelineImage;
+  const fileName = `Project-Brief-${safeFileName(
+    String(project.project_code || project.name || "Project"),
+  )}.pptx`;
 
-  const fileName = `Project-Brief-${(project.project_code ?? project.name ?? "Project").replace(/\s+/g, "_")}.pptx`;
-  const rawBlob = (await (pres as any).write({ outputType: "blob" })) as Blob;
+  // Prefer the library download path (same as other PPT exports). Fall back to
+  // a longer-lived blob link if writeFile is unavailable in this environment.
+  if (typeof pres.writeFile === "function") {
+    await pres.writeFile({ fileName });
+    return;
+  }
+
+  const rawBlob = (await (pres as { write: (o: { outputType: string }) => Promise<Blob> }).write({
+    outputType: "blob",
+  })) as Blob;
   const fixedBlob = await sanitizeContentTypes(rawBlob);
-  triggerDownload(fixedBlob, fileName);
+  await triggerDownload(fixedBlob, fileName);
 }
 
 async function sanitizeContentTypes(blob: Blob): Promise<Blob> {
   try {
-    const JSZipMod: any = await import("jszip");
-    const JSZip = JSZipMod.default ?? JSZipMod;
+    const JSZipMod = await import("jszip");
+    const JSZip = (JSZipMod as { default?: typeof import("jszip") }).default ?? JSZipMod;
     const zip = await JSZip.loadAsync(blob);
     const ctFile = zip.file("[Content_Types].xml");
     if (!ctFile) return blob;
@@ -237,16 +442,25 @@ async function sanitizeContentTypes(blob: Blob): Promise<Blob> {
   }
 }
 
-function triggerDownload(blob: Blob, fileName: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = fileName;
-  a.style.display = "none";
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    URL.revokeObjectURL(url);
-    a.remove();
-  }, 200);
+function triggerDownload(blob: Blob, fileName: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    try {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      a.rel = "noopener";
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      // Keep the blob URL alive long enough for Chrome/Safari to start the save.
+      window.setTimeout(() => {
+        URL.revokeObjectURL(url);
+        a.remove();
+        resolve();
+      }, 4000);
+    } catch (e) {
+      reject(e);
+    }
+  });
 }
