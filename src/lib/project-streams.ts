@@ -407,7 +407,7 @@ export async function duplicateProjectStream(
       code,
       description: source.description,
       owner: source.owner,
-      status: source.status || "Active",
+      status: source.status || "In Progress",
       rag: source.rag || "Green",
       is_default: false,
       sort_order: maxSort + 1,

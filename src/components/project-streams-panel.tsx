@@ -124,7 +124,7 @@ function StreamEditor({
                 name: String(draft.name || "").trim(),
                 code: draft.code || null,
                 owner: draft.owner || null,
-                status: draft.status || "Active",
+                status: draft.status || "In Progress",
                 rag: draft.rag || null,
                 description: draft.description || null,
                 planned_start_date: draft.planned_start_date || null,
@@ -163,7 +163,7 @@ function StreamEditor({
         <Field label="Status">
           <select
             className={inputCls}
-            value={draft.status || "Active"}
+            value={draft.status || "In Progress"}
             onChange={(e) => set("status", e.target.value)}
           >
             {STATUS_OPTS.map((s) => (
@@ -473,7 +473,7 @@ export function ProjectStreamsPanel({
                       name: String(patch.name),
                       code: (patch.code as string) || null,
                       owner: (patch.owner as string) || null,
-                      status: (patch.status as string) || "Active",
+                      status: (patch.status as string) || "In Progress",
                       rag: (patch.rag as string) || null,
                       description: (patch.description as string) || null,
                       is_default: false,
