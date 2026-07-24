@@ -437,6 +437,124 @@ function InfographicPage() {
     enabled: !!project,
   });
 
+  // ── Hooks that must run every render (React #310) — before any early return ──
+  const streamById = useMemo(() => {
+    const m = new Map<string, any>();
+    (projectStreams as any[]).forEach((s) => m.set(s.id, s));
+    return m;
+  }, [projectStreams]);
+
+  const resourceById = useMemo(() => {
+    const m = new Map<string, any>();
+    (allResources as any[]).forEach((r) => m.set(r.id, r));
+    return m;
+  }, [allResources]);
+
+  /** Normalize period_month → YYYY-MM (no TZ shift). */
+  const normAllocMonth = (v: string | null | undefined) => {
+    if (!v) return "";
+    const m = /^(\d{4})-(\d{2})/.exec(String(v).slice(0, 10));
+    return m ? `${m[1]}-${m[2]}` : String(v).slice(0, 7);
+  };
+
+  const allocationMonths = useMemo(() => {
+    const keys = Array.from(
+      new Set(
+        (projectAllocations as any[])
+          .map((a) => normAllocMonth(a.period_month))
+          .filter(Boolean),
+      ),
+    ).sort();
+    // Fill contiguous months between first and last so columns never “shift”.
+    if (keys.length >= 2) {
+      const [y0, m0] = keys[0].split("-").map(Number);
+      const [y1, m1] = keys[keys.length - 1].split("-").map(Number);
+      const filled: string[] = [];
+      let y = y0;
+      let mo = m0;
+      while (y < y1 || (y === y1 && mo <= m1)) {
+        filled.push(`${y}-${String(mo).padStart(2, "0")}`);
+        mo += 1;
+        if (mo > 12) {
+          mo = 1;
+          y += 1;
+        }
+      }
+      keys.splice(0, keys.length, ...filled);
+    }
+    return keys.map((k) => {
+      const [y, mo] = k.split("-").map(Number);
+      const d = new Date(y, mo - 1, 1);
+      return {
+        key: k,
+        label: d.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+      };
+    });
+  }, [projectAllocations]);
+
+  /** One row per resource (+ stream when present) with monthly % */
+  const resourcePlanRows = useMemo(() => {
+    type Row = {
+      key: string;
+      resourceId: string;
+      name: string;
+      role: string | null;
+      streamId: string | null;
+      streamName: string | null;
+      streamRef: string | null;
+      months: Record<string, number>;
+      total: number;
+    };
+    if (!project) return [] as Row[];
+    const map = new Map<string, Row>();
+    for (const a of projectAllocations as any[]) {
+      const streamId = a.stream_id || null;
+      const key = `${a.resource_id}::${streamId || "_"}`;
+      const res = resourceById.get(a.resource_id);
+      const stream = streamId ? streamById.get(streamId) : null;
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          resourceId: a.resource_id,
+          name: res?.name || "Unknown",
+          role: res?.role || a.role_on_project || null,
+          streamId,
+          streamName: stream ? formatStreamLabel(stream) : null,
+          streamRef: stream ? formatProjectStreamRef(project, stream) : null,
+          months: {},
+          total: 0,
+        });
+      }
+      const row = map.get(key)!;
+      const mk = normAllocMonth(a.period_month);
+      if (!mk) continue;
+      const pct = Number(a.allocation_percent || 0);
+      row.months[mk] = (row.months[mk] || 0) + pct;
+      row.total += pct;
+    }
+    return Array.from(map.values()).sort(
+      (a, b) => a.name.localeCompare(b.name) || String(a.streamName).localeCompare(String(b.streamName)),
+    );
+  }, [projectAllocations, resourceById, streamById, project]);
+
+  /** Avg monthly allocation % per resource — Resources-page style chart. */
+  const resourceUtilChart = useMemo(() => {
+    const monthCount = Math.max(1, allocationMonths.length);
+    const byRes = new Map<string, { resource: string; sum: number }>();
+    for (const r of resourcePlanRows) {
+      const cur = byRes.get(r.resourceId) || { resource: r.name, sum: 0 };
+      cur.sum += r.total;
+      byRes.set(r.resourceId, cur);
+    }
+    return Array.from(byRes.values())
+      .map((r) => {
+        const pct = Math.round(r.sum / monthCount);
+        const status = pct > 100 ? "Over" : pct >= 60 ? "Optimal" : "Under";
+        return { resource: r.resource, pct, status };
+      })
+      .sort((a, b) => b.pct - a.pct);
+  }, [resourcePlanRows, allocationMonths]);
+
   if (!projects.length) {
     return (
       <div>
@@ -575,15 +693,22 @@ function InfographicPage() {
     })
     .filter(Boolean) as { name: string; left: number; done: boolean; status: string }[];
 
-  const monthlyChart = monthly.map((m: any) => ({
-    month: new Date(m.period_month).toLocaleDateString("en-US", {
-      month: "short",
-      year: "2-digit",
-    }),
-    Planned: Number(m.capex_planned || 0),
-    Actual: Number(m.capex_actual || 0),
-    Forecast: Number(m.capex_forecast || 0),
-  }));
+  const monthlyChart = monthly.map((m: any) => {
+    const key = String(m.period_month || "").slice(0, 7);
+    const [ys, ms] = key.split("-");
+    const y = Number(ys);
+    const mo = Number(ms);
+    const label =
+      y && mo
+        ? new Date(y, mo - 1, 1).toLocaleDateString("en-US", { month: "short", year: "2-digit" })
+        : key;
+    return {
+      month: label,
+      Planned: Number(m.capex_planned || 0),
+      Actual: Number(m.capex_actual || 0),
+      Forecast: Number(m.capex_forecast || 0),
+    };
+  });
 
   const benefitsChart = benefits.map((b: any) => ({
     name: b.title,
@@ -591,78 +716,12 @@ function InfographicPage() {
     Realised: Number(b.realised_value || 0),
   }));
 
-  const streamById = useMemo(() => {
-    const m = new Map<string, any>();
-    (projectStreams as any[]).forEach((s) => m.set(s.id, s));
-    return m;
-  }, [projectStreams]);
-
-  const resourceById = useMemo(() => {
-    const m = new Map<string, any>();
-    (allResources as any[]).forEach((r) => m.set(r.id, r));
-    return m;
-  }, [allResources]);
-
-  const allocationMonths = useMemo(() => {
-    const keys = Array.from(
-      new Set((projectAllocations as any[]).map((a) => String(a.period_month || "").slice(0, 7)).filter(Boolean)),
-    ).sort();
-    return keys.map((k) => {
-      const [y, mo] = k.split("-");
-      const d = new Date(Number(y), Number(mo) - 1, 1);
-      return {
-        key: k,
-        label: d.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-      };
-    });
-  }, [projectAllocations]);
-
-  /** One row per resource (+ stream when present) with monthly % */
-  const resourcePlanRows = useMemo(() => {
-    type Row = {
-      key: string;
-      resourceId: string;
-      name: string;
-      role: string | null;
-      streamId: string | null;
-      streamName: string | null;
-      streamRef: string | null;
-      months: Record<string, number>;
-      total: number;
-    };
-    const map = new Map<string, Row>();
-    for (const a of projectAllocations as any[]) {
-      const streamId = a.stream_id || null;
-      const key = `${a.resource_id}::${streamId || "_"}`;
-      const res = resourceById.get(a.resource_id);
-      const stream = streamId ? streamById.get(streamId) : null;
-      if (!map.has(key)) {
-        map.set(key, {
-          key,
-          resourceId: a.resource_id,
-          name: res?.name || "Unknown",
-          role: res?.role || a.role_on_project || null,
-          streamId,
-          streamName: stream ? formatStreamLabel(stream) : null,
-          streamRef: stream ? formatProjectStreamRef(project, stream) : null,
-          months: {},
-          total: 0,
-        });
-      }
-      const row = map.get(key)!;
-      const mk = String(a.period_month || "").slice(0, 7);
-      const pct = Number(a.allocation_percent || 0);
-      row.months[mk] = (row.months[mk] || 0) + pct;
-      row.total += pct;
-    }
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name) || String(a.streamName).localeCompare(String(b.streamName)));
-  }, [projectAllocations, resourceById, streamById, project]);
-
-  const allocHeat = (pct: number) => {
-    if (pct <= 0) return "bg-transparent text-muted-foreground";
-    if (pct < 30) return "bg-amber-100 text-amber-900";
-    if (pct < 70) return "bg-sky-100 text-sky-900";
-    return "bg-emerald-100 text-emerald-900 font-semibold";
+  const ALLOC_STATUS = { Over: "#dc2626", Optimal: "#16a34a", Under: "#f59e0b" } as const;
+  const heatColor = (pct: number) => {
+    if (pct <= 0) return "rgba(148,163,184,0.25)";
+    if (pct < 60) return "rgb(22,163,74)";
+    if (pct <= 100) return "rgb(234,179,8)";
+    return "rgb(220,38,38)";
   };
 
   const durationLabel = formatDuration(
@@ -1278,7 +1337,7 @@ function InfographicPage() {
         </div>
       </SectionFrame>
 
-      {/* Resources & allocations — always last */}
+      {/* Resources & allocations — graph + heatmap (aligned months) */}
       <SectionFrame>
         <SectionTitle>
           Resources & allocations
@@ -1288,74 +1347,137 @@ function InfographicPage() {
           People allocated to this project
           {hasStreams
             ? ", broken out by stream when allocations are stream-scoped."
-            : "."}
+            : "."}{" "}
+          Chart and heatmap use the same month keys so columns stay aligned.
         </p>
         {resourcePlanRows.length === 0 ? (
           <div className="rounded-md border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
             No resource allocations for this project yet.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="st-table text-xs">
-              <thead>
-                <tr>
-                  <th>Resource</th>
-                  <th>Role</th>
-                  {hasStreams ? <th>Stream</th> : null}
-                  {allocationMonths.map((m) => (
-                    <th key={m.key} className="text-center">
-                      {m.label}
-                    </th>
+          <div className="space-y-4">
+            <ExpandableChart
+              title="Resource utilisation (avg monthly allocation)"
+              heightClass="h-72"
+              legend={
+                <div className="mt-1 flex justify-end gap-3 text-xs">
+                  <span className="flex items-center gap-1">
+                    <span className="inline-block h-3 w-3 rounded-sm" style={{ background: ALLOC_STATUS.Over }} /> Over
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="inline-block h-3 w-3 rounded-sm" style={{ background: ALLOC_STATUS.Optimal }} /> Optimal
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="inline-block h-3 w-3 rounded-sm" style={{ background: ALLOC_STATUS.Under }} /> Under
+                  </span>
+                </div>
+              }
+            >
+              <BarChart data={resourceUtilChart} margin={{ top: 20, right: 48, left: 12, bottom: 56 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+                <XAxis
+                  dataKey="resource"
+                  fontSize={11}
+                  angle={-25}
+                  textAnchor="end"
+                  interval={0}
+                  height={56}
+                />
+                <YAxis
+                  fontSize={11}
+                  domain={[0, 120]}
+                  label={{ value: "Allocation %", angle: -90, position: "insideLeft", fontSize: 11 }}
+                />
+                <Tooltip formatter={(v: number) => `${v}%`} />
+                <Bar dataKey="pct" name="Allocation">
+                  <LabelList dataKey="pct" position="top" formatter={(v: number) => `${v}%`} fontSize={10} />
+                  {resourceUtilChart.map((u, i) => (
+                    <Cell key={i} fill={ALLOC_STATUS[u.status as keyof typeof ALLOC_STATUS]} />
                   ))}
-                  <th className="text-right">Σ %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {resourcePlanRows.map((r) => (
-                  <tr key={r.key}>
-                    <td className="font-medium">{r.name}</td>
-                    <td>{r.role || "—"}</td>
-                    {hasStreams ? (
-                      <td>
-                        {r.streamName ? (
-                          <div className="leading-tight">
-                            <span className="rounded bg-muted px-1.5 py-0.5 font-medium">{r.streamName}</span>
-                            {r.streamRef ? (
-                              <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">{r.streamRef}</div>
-                            ) : null}
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">Project</span>
-                        )}
-                      </td>
-                    ) : null}
-                    {allocationMonths.map((m) => {
-                      const pct = r.months[m.key] || 0;
-                      return (
-                        <td key={m.key} className="text-center">
-                          <span
-                            className={`inline-flex min-w-[2.25rem] justify-center rounded px-1.5 py-0.5 tabular-nums ${allocHeat(pct)}`}
-                          >
-                            {pct > 0 ? `${Math.round(pct)}%` : "·"}
-                          </span>
+                </Bar>
+              </BarChart>
+            </ExpandableChart>
+
+            <div>
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Month-wise allocation heatmap
+                {hasStreams ? " · by stream" : ""}
+              </div>
+              <div className="overflow-auto max-h-[420px]">
+                <table className="w-max border-collapse text-xs">
+                  <thead>
+                    <tr>
+                      <th className="sticky left-0 z-10 bg-background px-1.5 py-1 text-left whitespace-nowrap">
+                        Resource
+                      </th>
+                      {hasStreams ? (
+                        <th className="sticky left-[7.5rem] z-10 bg-background px-1.5 py-1 text-left whitespace-nowrap">
+                          Stream
+                        </th>
+                      ) : null}
+                      {allocationMonths.map((m) => (
+                        <th
+                          key={m.key}
+                          className="w-14 p-0.5 text-center font-normal text-muted-foreground"
+                        >
+                          {m.label}
+                        </th>
+                      ))}
+                      <th className="px-1.5 py-1 text-right whitespace-nowrap">Σ %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {resourcePlanRows.map((r) => (
+                      <tr key={r.key}>
+                        <td className="sticky left-0 z-10 bg-background px-1.5 py-0.5 font-medium whitespace-nowrap">
+                          <div>{r.name}</div>
+                          {r.role ? (
+                            <div className="text-[10px] font-normal text-muted-foreground">{r.role}</div>
+                          ) : null}
                         </td>
-                      );
-                    })}
-                    <td className="text-right tabular-nums font-semibold">{Math.round(r.total)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="mt-2 flex flex-wrap gap-3 text-[10px] text-muted-foreground">
-              <span className="inline-flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded bg-amber-100 ring-1 ring-amber-200" /> Low (&lt;30%)
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded bg-sky-100 ring-1 ring-sky-200" /> Medium
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded bg-emerald-100 ring-1 ring-emerald-200" /> High (≥70%)
-              </span>
+                        {hasStreams ? (
+                          <td className="sticky left-[7.5rem] z-10 bg-background px-1.5 py-0.5 whitespace-nowrap">
+                            {r.streamName || (
+                              <span className="text-muted-foreground">Project</span>
+                            )}
+                          </td>
+                        ) : null}
+                        {allocationMonths.map((m) => {
+                          const pct = Math.round(r.months[m.key] || 0);
+                          return (
+                            <td key={m.key} className="p-0.5">
+                              <div
+                                className="flex h-7 w-14 items-center justify-center rounded text-[10px] font-semibold tabular-nums"
+                                style={{
+                                  background: heatColor(pct),
+                                  color: pct === 0 ? "#64748b" : "#fff",
+                                }}
+                                title={`${r.name}${r.streamName ? ` · ${r.streamName}` : ""} · ${m.label}: ${pct}%`}
+                              >
+                                {pct}%
+                              </div>
+                            </td>
+                          );
+                        })}
+                        <td className="px-1.5 py-0.5 text-right font-semibold tabular-nums">
+                          {Math.round(r.total)}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-2 flex max-w-xs items-center gap-2 text-[11px] text-muted-foreground">
+                <span>0%</span>
+                <div
+                  className="h-2 flex-1 rounded"
+                  style={{
+                    background:
+                      "linear-gradient(to right, rgb(22,163,74), rgb(234,179,8), rgb(220,38,38))",
+                  }}
+                />
+                <span>120%</span>
+              </div>
             </div>
           </div>
         )}

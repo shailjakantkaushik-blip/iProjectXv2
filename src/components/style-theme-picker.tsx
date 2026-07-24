@@ -19,7 +19,7 @@ export function StyleThemePicker({ value, onChange, className, compact }: Picker
   return (
     <div
       className={cn(
-        compact ? "grid grid-cols-2 gap-2" : "grid gap-3 sm:grid-cols-2",
+        compact ? "grid grid-cols-2 gap-2 sm:grid-cols-3" : "grid gap-3 sm:grid-cols-2 lg:grid-cols-3",
         className,
       )}
     >
