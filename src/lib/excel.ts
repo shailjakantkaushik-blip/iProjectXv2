@@ -450,6 +450,7 @@ function sampleRowForTemplate(t: TableDef, headers: string[]): Dict {
   } else if (t.key === "projects") {
     row.project_code = "PRJ-001";
     row.name = "Sample Customer Portal";
+    row.portfolio = "Business Strategic";
     row.program = "Digital Transformation";
     row.priority = "P2 - High";
     row.status = "In Progress";

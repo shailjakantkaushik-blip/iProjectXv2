@@ -1,6 +1,7 @@
 import { useMemo, useState, useRef, useEffect } from "react";
 
 export type PortfolioFilterState = {
+  portfolio: string;
   program: string;
   sponsor: string;
   rag: string;
@@ -10,6 +11,7 @@ export type PortfolioFilterState = {
 };
 
 export const emptyFilters: PortfolioFilterState = {
+  portfolio: "All",
   program: "All",
   sponsor: "All",
   rag: "All",
@@ -23,16 +25,24 @@ export function applyFilters<T extends Record<string, any>>(rows: T[], f: Portfo
   const idSet = f.projectIds.length ? new Set(f.projectIds) : null;
   return rows.filter((p) => {
     if (idSet && !idSet.has(p.id)) return false;
+    if (f.portfolio !== "All" && (p.portfolio || "Unassigned") !== f.portfolio) return false;
     if (f.program !== "All" && (p.program || "Unassigned") !== f.program) return false;
     if (f.sponsor !== "All" && (p.sponsor || "—") !== f.sponsor) return false;
     if (f.rag !== "All" && (p.rag || "Green") !== f.rag) return false;
     if (f.phase !== "All" && (p.current_phase || "—") !== f.phase) return false;
-    if (q && !(`${p.name ?? ""} ${p.project_code ?? ""} ${p.program ?? ""} ${p.sponsor ?? ""}`).toLowerCase().includes(q)) return false;
+    if (
+      q &&
+      !(`${p.name ?? ""} ${p.project_code ?? ""} ${p.portfolio ?? ""} ${p.program ?? ""} ${p.sponsor ?? ""}`)
+        .toLowerCase()
+        .includes(q)
+    ) {
+      return false;
+    }
     return true;
   });
 }
 
-function ProjectPicker({
+export function ProjectPicker({
   projects,
   selected,
   onChange,
@@ -105,6 +115,10 @@ export function PortfolioFilters({
   value: PortfolioFilterState;
   onChange: (v: PortfolioFilterState) => void;
 }) {
+  const portfolios = useMemo(
+    () => Array.from(new Set(projects.map((p) => p.portfolio || "Unassigned"))).sort(),
+    [projects],
+  );
   const programs = useMemo(() => Array.from(new Set(projects.map((p) => p.program || "Unassigned"))).sort(), [projects]);
   const sponsors = useMemo(() => Array.from(new Set(projects.map((p) => p.sponsor || "—"))).sort(), [projects]);
   const phases = useMemo(() => Array.from(new Set(projects.map((p) => p.current_phase || "—"))).sort(), [projects]);
@@ -115,8 +129,13 @@ export function PortfolioFilters({
     "h-8 rounded-md border bg-white px-2 text-[12px] shadow-sm outline-none focus:ring-2 focus:ring-primary/30";
 
   const hasActive =
-    value.program !== "All" || value.sponsor !== "All" || value.rag !== "All" ||
-    value.phase !== "All" || !!value.search || value.projectIds.length > 0;
+    value.portfolio !== "All" ||
+    value.program !== "All" ||
+    value.sponsor !== "All" ||
+    value.rag !== "All" ||
+    value.phase !== "All" ||
+    !!value.search ||
+    value.projectIds.length > 0;
 
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border bg-white/60 p-2">
@@ -128,6 +147,14 @@ export function PortfolioFilters({
         onChange={(e) => set("search", e.target.value)}
       />
       <ProjectPicker projects={projects} selected={value.projectIds} onChange={(v) => set("projectIds", v)} />
+      <select className={box} value={value.portfolio} onChange={(e) => set("portfolio", e.target.value)}>
+        <option value="All">All portfolios</option>
+        {portfolios.map((p) => (
+          <option key={p} value={p}>
+            {p}
+          </option>
+        ))}
+      </select>
       <select className={box} value={value.program} onChange={(e) => set("program", e.target.value)}>
         <option value="All">All programs</option>
         {programs.map((p) => <option key={p} value={p}>{p}</option>)}

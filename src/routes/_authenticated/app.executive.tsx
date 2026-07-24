@@ -38,6 +38,7 @@ import {
 } from "@/lib/project-streams";
 import { darkenHex, scheduleCompletionPct } from "@/lib/schedule-progress";
 import { computeTimelineBounds } from "@/components/portfolio-timeline";
+import { ProjectPicker } from "@/components/portfolio-filters";
 
 export const Route = createFileRoute("/_authenticated/app/executive")({
   component: ExecutiveDashboard,
@@ -62,11 +63,13 @@ function moneyM(n: number) { return `$${(n / 1e6).toFixed(1)}M`; }
 
 function ExecutiveDashboard() {
   const { organization } = useAuth();
+  const [portfolio, setPortfolio] = useState("All");
   const [program, setProgram] = useState("All");
   const [sponsor, setSponsor] = useState("All");
   const [priority, setPriority] = useState("All");
   const [status, setStatus] = useState("All");
   const [fy, setFy] = useState("All");
+  const [projectIds, setProjectIds] = useState<string[]>([]);
   type TimelineView = "Portfolio" | "Program" | "Health" | "Priority" | "Theme" | "Sponsor" | "Status";
   const [timelineView, setTimelineView] = useState<TimelineView>("Program");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -123,15 +126,20 @@ function ExecutiveDashboard() {
     return Array.from(s).sort();
   }, [projects, fyStartMonth]);
 
-  const filtered = useMemo(() => projects.filter((p: any) =>
-    (program === "All" || p.program === program) &&
-    (sponsor === "All" || p.sponsor === sponsor) &&
-    (priority === "All" || p.priority === priority) &&
-    (status === "All" || p.status === status) &&
-    (fy === "All" ||
-      fyOf(projectScheduleStart(p), fyStartMonth) === fy ||
-      fyOf(projectScheduleEnd(p), fyStartMonth) === fy)
-  ), [projects, program, sponsor, priority, status, fy, fyStartMonth]);
+  const filtered = useMemo(() => {
+    const idSet = projectIds.length ? new Set(projectIds) : null;
+    return projects.filter((p: any) =>
+      (!idSet || idSet.has(p.id)) &&
+      (portfolio === "All" || (p.portfolio || "Unassigned") === portfolio) &&
+      (program === "All" || p.program === program) &&
+      (sponsor === "All" || p.sponsor === sponsor) &&
+      (priority === "All" || p.priority === priority) &&
+      (status === "All" || p.status === status) &&
+      (fy === "All" ||
+        fyOf(projectScheduleStart(p), fyStartMonth) === fy ||
+        fyOf(projectScheduleEnd(p), fyStartMonth) === fy),
+    );
+  }, [projects, portfolio, program, sponsor, priority, status, fy, fyStartMonth, projectIds]);
 
   const filteredIds = new Set(filtered.map((p: any) => p.id));
 
@@ -264,7 +272,7 @@ function ExecutiveDashboard() {
   const segmentation = useMemo(() => {
     const m = new Map<string, number>();
     filtered.forEach((p: any) => {
-      const k = p.portfolio_category || p.portfolio || (Number(p.budget || 0) > 500000 ? "Business Strategic" : "IT Strategic");
+      const k = p.portfolio || p.portfolio_category || "Unassigned";
       m.set(k, (m.get(k) || 0) + 1);
     });
     return Array.from(m, ([name, value]) => ({ name, value }));
@@ -449,19 +457,63 @@ function ExecutiveDashboard() {
       <SectionFrame>
         <div className="mb-3 page-heading text-base font-semibold">Portfolio filters</div>
         <div className="flex flex-wrap items-center gap-2">
+          <ProjectPicker
+            projects={projects}
+            selected={projectIds}
+            onChange={setProjectIds}
+          />
           {[
+            [
+              "Portfolio",
+              portfolio,
+              setPortfolio,
+              Array.from(
+                new Set(projects.map((p: any) => p.portfolio || "Unassigned").filter(Boolean)),
+              ).sort(),
+            ],
             ["Program", program, setProgram, opts("program")],
             ["Sponsor", sponsor, setSponsor, opts("sponsor")],
             ["Priority", priority, setPriority, opts("priority")],
             ["Status", status, setStatus, opts("status")],
             ["FY", fy, setFy, fyOptions],
           ].map(([label, val, setter, options]: any) => (
-            <select key={label} value={val} onChange={(e) => setter(e.target.value)}
-              className="rounded-md border border-border bg-surface px-2 py-1 text-xs">
+            <select
+              key={label}
+              value={val}
+              onChange={(e) => setter(e.target.value)}
+              className="rounded-md border border-border bg-surface px-2 py-1 text-xs"
+            >
               <option value="All">{label}: All</option>
-              {options.map((o: string) => (<option key={o} value={o}>{label}: {o}</option>))}
+              {options.map((o: string) => (
+                <option key={o} value={o}>
+                  {label}: {o}
+                </option>
+              ))}
             </select>
           ))}
+          {(projectIds.length > 0 ||
+            portfolio !== "All" ||
+            program !== "All" ||
+            sponsor !== "All" ||
+            priority !== "All" ||
+            status !== "All" ||
+            fy !== "All") && (
+            <button
+              type="button"
+              className="rounded-md border border-border bg-surface px-2 py-1 text-xs hover:bg-muted"
+              onClick={() => {
+                setProjectIds([]);
+                setPortfolio("All");
+                setProgram("All");
+                setSponsor("All");
+                setPriority("All");
+                setStatus("All");
+                setFy("All");
+              }}
+            >
+              Reset
+            </button>
+          )}
         </div>
       </SectionFrame>
 
