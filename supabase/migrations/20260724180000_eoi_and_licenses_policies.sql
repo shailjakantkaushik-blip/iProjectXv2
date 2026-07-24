@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS public.legal_policies (
   category      text        NOT NULL DEFAULT 'Legal',
   body_markdown text        NOT NULL DEFAULT '',
   sort_order    int         NOT NULL DEFAULT 0,
-  published     boolean     NOT NULL DEFAULT false,
+  published     boolean     NOT NULL DEFAULT true,
   updated_at    timestamptz NOT NULL DEFAULT now(),
   updated_by    uuid        REFERENCES auth.users(id) ON DELETE SET NULL
 );
@@ -121,7 +121,7 @@ CREATE POLICY "policies_public_select"
 -- ──────────────────────────────────────────────────────────
 INSERT INTO public.legal_policies (slug, title, category, sort_order, published, body_markdown) VALUES
 -- Legal
-('privacy-policy',         'Privacy Policy',                       'Legal',                      10, false,
+('privacy-policy',         'Privacy Policy',                       'Legal',                      10, true,
 '# Privacy Policy
 
 *Last updated: [Date]*
@@ -147,7 +147,7 @@ Depending on your jurisdiction you may have rights to access, correct, delete, o
 [Organization Name], [Address]. Email: [privacy@example.com]
 '),
 
-('terms-of-service',       'Terms of Service',                     'Legal',                      20, false,
+('terms-of-service',       'Terms of Service',                     'Legal',                      20, true,
 '# Terms of Service
 
 *Last updated: [Date]*
@@ -171,7 +171,7 @@ To the maximum extent permitted by law, our total liability shall not exceed the
 These Terms are governed by the laws of [Jurisdiction].
 '),
 
-('cookie-policy',          'Cookie Policy',                        'Legal',                      30, false,
+('cookie-policy',          'Cookie Policy',                        'Legal',                      30, true,
 '# Cookie Policy
 
 *Last updated: [Date]*
@@ -193,7 +193,7 @@ You may disable cookies through your browser settings; this may affect platform 
 [privacy@example.com]
 '),
 
-('acceptable-use',         'Acceptable Use Policy',                'Legal',                      40, false,
+('acceptable-use',         'Acceptable Use Policy',                'Legal',                      40, true,
 '# Acceptable Use Policy
 
 *Last updated: [Date]*
@@ -211,7 +211,7 @@ This policy governs how you may use our platform. Violations may result in suspe
 Report violations to [security@example.com].
 '),
 
-('refund-cancellation',    'Refund & Cancellation Policy',         'Legal',                      50, false,
+('refund-cancellation',    'Refund & Cancellation Policy',         'Legal',                      50, true,
 '# Refund & Cancellation Policy
 
 *Last updated: [Date]*
@@ -229,7 +229,7 @@ Contact [billing@example.com] or use the self-service option in your account set
 '),
 
 -- Security & Compliance
-('information-security',   'Information Security Policy',          'Security & Compliance',      10, false,
+('information-security',   'Information Security Policy',          'Security & Compliance',      10, true,
 '# Information Security Policy
 
 *Last updated: [Date]*
@@ -247,7 +247,7 @@ We implement industry-standard security controls to protect customer data.
 Responsible disclosure: [security@example.com]
 '),
 
-('data-processing-agreement', 'Data Processing Agreement',        'Security & Compliance',      20, false,
+('data-processing-agreement', 'Data Processing Agreement',        'Security & Compliance',      20, true,
 '# Data Processing Agreement (DPA)
 
 *Last updated: [Date]*
@@ -270,7 +270,7 @@ See our Information Security Policy.
 We notify Customers of personal data breaches within [72] hours of becoming aware.
 '),
 
-('data-retention',         'Data Retention Policy',                'Security & Compliance',      30, false,
+('data-retention',         'Data Retention Policy',                'Security & Compliance',      30, true,
 '# Data Retention Policy
 
 *Last updated: [Date]*
@@ -288,7 +288,7 @@ We notify Customers of personal data breaches within [72] hours of becoming awar
 Upon contract termination, customer data is purged within [90] days unless retention is required by law.
 '),
 
-('incident-response',      'Incident Response Policy',             'Security & Compliance',      40, false,
+('incident-response',      'Incident Response Policy',             'Security & Compliance',      40, true,
 '# Incident Response Policy
 
 *Last updated: [Date]*
@@ -312,7 +312,7 @@ Upon contract termination, customer data is purged within [90] days unless reten
 '),
 
 -- Customer Information
-('about',                  'About Us',                             'Customer Information',       10, false,
+('about',                  'About Us',                             'Customer Information',       10, true,
 '# About Us
 
 [Organization Name] provides an enterprise PMO command centre platform that helps organisations govern their project portfolios with live dashboards, financial controls, and RAID governance.
@@ -326,7 +326,7 @@ To give every PMO the single, immutable source of truth they need to deliver str
 - LinkedIn / Twitter: [links]
 '),
 
-('pricing-plans',          'Pricing & Plans',                      'Customer Information',       20, false,
+('pricing-plans',          'Pricing & Plans',                      'Customer Information',       20, true,
 '# Pricing & Plans
 
 *Current as at [Date]*
@@ -341,7 +341,7 @@ Custom pricing for large organisations with dedicated onboarding and a named cus
 Contact [sales@example.com] for a quote.
 '),
 
-('sla',                    'Service Level Agreement (SLA)',         'Customer Information',       30, false,
+('sla',                    'Service Level Agreement (SLA)',         'Customer Information',       30, true,
 '# Service Level Agreement
 
 *Last updated: [Date]*
@@ -362,7 +362,7 @@ Scheduled maintenance (notified ≥ 48 h in advance) is excluded from uptime cal
 Credits are applied to the next invoice. Contact [support@example.com] within [30] days of the incident.
 '),
 
-('support-help',           'Support & Help Centre',                'Customer Information',       40, false,
+('support-help',           'Support & Help Centre',                'Customer Information',       40, true,
 '# Support & Help Centre
 
 *Last updated: [Date]*
@@ -376,7 +376,7 @@ Credits are applied to the next invoice. Contact [support@example.com] within [3
 Support covers platform usage questions, bug reports, and account management. Consulting and custom development are out of scope for standard support.
 '),
 
-('system-status',          'System Status',                        'Customer Information',       50, false,
+('system-status',          'System Status',                        'Customer Information',       50, true,
 '# System Status
 
 *Last updated: [Date]*
@@ -388,7 +388,7 @@ Sign up for email or webhook notifications on the status page.
 '),
 
 -- Notices
-('customer-responsibilities', 'Customer Responsibilities',         'Notices',                    10, false,
+('customer-responsibilities', 'Customer Responsibilities',         'Notices',                    10, true,
 '# Customer Responsibilities
 
 *Last updated: [Date]*
@@ -403,7 +403,7 @@ As a customer you agree to:
 - Provide reasonable cooperation for security reviews or audits upon request
 '),
 
-('ai-usage-disclosure',    'AI Usage Disclosure',                  'Notices',                    20, false,
+('ai-usage-disclosure',    'AI Usage Disclosure',                  'Notices',                    20, true,
 '# AI Usage Disclosure
 
 *Last updated: [Date]*
@@ -421,7 +421,7 @@ AI-generated content is advisory only. You are responsible for reviewing and val
 Current AI sub-processors: [list provider(s) and link to their privacy policies].
 '),
 
-('disclaimer',             'Disclaimer',                           'Notices',                    30, false,
+('disclaimer',             'Disclaimer',                           'Notices',                    30, true,
 '# Disclaimer
 
 *Last updated: [Date]*
@@ -431,7 +431,7 @@ The information provided within the platform and associated documentation is for
 While we strive for accuracy, we make no warranties or representations regarding the completeness or accuracy of information. Use of the platform is at your own risk.
 '),
 
-('contact-complaints',     'Contact & Complaints',                 'Notices',                    40, false,
+('contact-complaints',     'Contact & Complaints',                 'Notices',                    40, true,
 '# Contact & Complaints
 
 *Last updated: [Date]*
