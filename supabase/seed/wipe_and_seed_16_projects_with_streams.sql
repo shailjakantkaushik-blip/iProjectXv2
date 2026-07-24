@@ -601,7 +601,7 @@ BEGIN
          'Close open issues; prepare next stage gate pack.',
          CASE WHEN rags[i] = 'Red' THEN 'Network vendor delay impacting critical path.' WHEN rags[i] = 'Amber' THEN 'Capacity pressure on specialist roles.' ELSE NULL END),
         (r_org.id, p_id, CURRENT_DATE, 'Sam Rivera', rags[i],
-         CASE WHEN rags[i] = 'Green' THEN rags[i] ELSE rags[i] END,
+         rags[i],
          CASE WHEN facs[i] > budgets[i] THEN 'Amber'::public.project_rag ELSE 'Green'::public.project_rag END,
          'Green'::public.project_rag,
          'Current period status for steering pack.',
