@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { SectionFrame, SectionTitle, PageHeading, RagChip, KpiCard } from "@/components/streamlit";
@@ -13,8 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { FileText, Link as LinkIcon, Save, Plus, Trash2, Presentation, LayoutTemplate, ImageIcon } from "lucide-react";
-import { ProjectSummary } from "@/components/project-summary";
+import { FileText, Link as LinkIcon, Save, Plus, Trash2, Presentation, FileDown } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -31,6 +30,7 @@ import {
 import { PortfolioTimeline } from "@/components/portfolio-timeline";
 import { Button } from "@/components/ui/button";
 import { downloadProjectBriefPPT } from "@/lib/project-brief-ppt";
+import { exportElementPDF } from "@/components/page-export";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { isDoneGateStatus, resolveCurrentStage } from "@/lib/project-phase";
 import {
@@ -83,6 +83,16 @@ function moneyM(n: number) {
 }
 function fmtDate(d?: string | null) {
   return d ? new Date(d).toLocaleDateString() : "—";
+}
+function formatDuration(start?: string | null, end?: string | null) {
+  if (!start || !end) return "—";
+  const ms = new Date(end).getTime() - new Date(start).getTime();
+  if (!Number.isFinite(ms) || ms <= 0) return "—";
+  const days = Math.round(ms / 86400000);
+  const months = Math.round(days / 30.44);
+  if (months >= 2) return `${months} months`;
+  const weeks = Math.max(1, Math.round(days / 7));
+  return weeks === 1 ? "1 week" : `${weeks} weeks`;
 }
 
 /* Sports-car tachometer style semicircle gauge */
@@ -279,7 +289,8 @@ function InfographicPage() {
   const [showPvA, setShowPvA] = useState<boolean>(false);
   const [showProjectTimeline, setShowProjectTimeline] = useState<boolean>(false);
   const [showGates, setShowGates] = useState<boolean>(true);
-  const [pageView, setPageView] = useState<"infographic" | "summary">("infographic");
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (search.pid) setPid(search.pid);
   }, [search.pid]);
@@ -654,114 +665,58 @@ function InfographicPage() {
     return "bg-emerald-100 text-emerald-900 font-semibold";
   };
 
+  const durationLabel = formatDuration(
+    project.planned_start_date || project.start_date,
+    project.planned_end_date || project.end_date || project.target_go_live,
+  );
+  const goLive = project.target_go_live || project.planned_end_date || project.end_date;
+
+  const downloadInfographicPdf = async () => {
+    if (!exportRef.current) return;
+    setExportingPdf(true);
+    toast.info("Preparing PDF…");
+    // Hide on-screen chrome (download buttons, etc.) so the PDF matches the content,
+    // not the app chrome / action controls.
+    const hideEls = Array.from(
+      exportRef.current.querySelectorAll<HTMLElement>(".print\\:hidden, [data-export-hide]"),
+    );
+    const prev = hideEls.map((el) => el.style.display);
+    hideEls.forEach((el) => {
+      el.style.display = "none";
+    });
+    try {
+      const code = String(project.project_code || "project").replace(/[^\w.-]+/g, "_");
+      await exportElementPDF(exportRef.current, `${code}_Infographic`, {
+        orientation: "portrait",
+      });
+      toast.success("PDF downloaded");
+    } catch {
+      /* toast handled in exportElementPDF */
+    } finally {
+      hideEls.forEach((el, i) => {
+        el.style.display = prev[i] || "";
+      });
+      setExportingPdf(false);
+    }
+  };
+
   return (
     <div>
       <PageHeading
         icon="🖼️"
-        title={pageView === "summary" ? "Project Summary" : "Project Infographic"}
-        subtitle={
-          pageView === "summary"
-            ? "Delivery-plan style overview — streams, capacity, cost and brief."
-            : "One-page visual summary for any project."
-        }
+        title="Project Infographic"
+        subtitle="One-page visual summary for any project."
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex rounded-md border border-border bg-surface p-0.5 text-xs">
-              <button
-                type="button"
-                onClick={() => setPageView("infographic")}
-                className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 font-medium ${
-                  pageView === "infographic"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                <ImageIcon className="h-3.5 w-3.5" />
-                Infographic
-              </button>
-              <button
-                type="button"
-                onClick={() => setPageView("summary")}
-                className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 font-medium ${
-                  pageView === "summary"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                <LayoutTemplate className="h-3.5 w-3.5" />
-                Project Summary
-              </button>
-            </div>
+          <div className="flex flex-wrap items-center gap-2 print:hidden">
             <Button
               variant="outline"
               size="sm"
               className="gap-2"
-              onClick={async () => {
-                const b: any = project.brief || {};
-                const s1: any = b.section1 || {};
-                const s2: any = b.section2 || {};
-                const incurredSpend =
-                  Number(project.capex_incurred || 0) + Number(project.opex_incurred || 0);
-                await downloadProjectBriefPPT({
-                  project: {
-                    project_code: project.project_code,
-                    name: project.name,
-                    portfolio: s1.portfolio_workstream ?? null,
-                    workstream: null,
-                    sponsor_name: s1.sponsor ?? project.sponsor ?? null,
-                    business_owner: s1.business_owner ?? null,
-                    business_solution_manager: s1.business_solution_manager ?? null,
-                    strategic_alignment: s1.strategic_alignment ?? null,
-                    approved_budget: project.budget ?? project.approved_budget,
-                    actual_spend: incurredSpend || project.actual_spend,
-                    forecast_at_completion: project.forecast_at_completion,
-                    expected_benefit: project.benefits_target ?? project.expected_benefit,
-                    planned_start_date: project.planned_start_date ?? project.start_date,
-                    planned_end_date: project.planned_end_date ?? project.end_date,
-                    actual_start_date: project.actual_start_date,
-                    actual_end_date: project.actual_end_date,
-                    target_go_live: project.target_go_live,
-                    priority: project.priority,
-                    rag_overall: project.rag,
-                    program: project.program,
-                    status: project.status,
-                    brief: {
-                      section1: {
-                        background_context: s1.background_context,
-                        opportunity_problem: s1.opportunity_problem,
-                        objective: s1.objective_smart,
-                        assumptions_constraints: s1.assumptions_constraints,
-                        scope_in: s1.scope_in,
-                        scope_out: s1.scope_out,
-                        success_measures: s1.key_metrics_success,
-                      },
-                      section2: s2,
-                    },
-                  },
-                  milestones: (milestones as any[]).map((m) => ({
-                    name: m.name,
-                    planned_date: m.planned_date,
-                    status: m.status,
-                    owner: m.owner,
-                  })),
-                  risks: (risks as any[]).map((r) => ({
-                    description: r.description,
-                    category: r.category,
-                    residual_rating: r.residual_rating ?? r.severity,
-                    mitigation_plan: r.mitigation_plan,
-                    owner: r.owner,
-                  })),
-                  dependencies: (deps as any[]).map((d) => ({
-                    from_project: d.from_project_name,
-                    to_project: d.to_project_name,
-                    dependency_type: d.dependency_type,
-                    status: d.status,
-                    description: d.description,
-                  })),
-                });
-              }}
+              disabled={exportingPdf}
+              onClick={() => void downloadInfographicPdf()}
             >
-              <Presentation className="h-3.5 w-3.5" /> Download Project Brief (PPT)
+              <FileDown className="h-3.5 w-3.5" />
+              {exportingPdf ? "Preparing PDF…" : "Download PDF"}
             </Button>
             <Select value={project.id} onValueChange={setPid}>
               <SelectTrigger className="w-72">
@@ -780,28 +735,11 @@ function InfographicPage() {
         }
       />
 
-      {pageView === "summary" ? (
-        <>
-          <ProjectSummary
-            project={project}
-            streams={projectStreams as any[]}
-            gates={gates as any[]}
-            resourceRows={resourcePlanRows}
-            allocationMonths={allocationMonths}
-            monthly={monthly as any[]}
-            benefits={benefits as any[]}
-            phaseCards={phaseCards}
-          />
-          <ProjectBrief project={project} />
-        </>
-      ) : null}
-
-      {pageView === "infographic" ? (
-      <>
+      <div ref={exportRef} className="space-y-4 bg-background">
       {/* Project header */}
       <SectionFrame>
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0 flex-1">
             <div className="text-xs text-muted-foreground">
               {project.project_code} · {project.program || "—"}
             </div>
@@ -823,6 +761,40 @@ function InfographicPage() {
               Method:{" "}
               <span className="font-medium text-foreground">{project.delivery_method || "—"}</span>
             </div>
+          </div>
+        </div>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Duration
+            </div>
+            <div className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">
+              {durationLabel}
+            </div>
+            <div className="text-[11px] text-muted-foreground">
+              {fmtDate(project.planned_start_date || project.start_date)} →{" "}
+              {fmtDate(project.planned_end_date || project.end_date || project.target_go_live)}
+            </div>
+          </div>
+          <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Cost
+            </div>
+            <div className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">
+              {money(budget)}
+            </div>
+            <div className="text-[11px] text-muted-foreground">
+              Budget · Actual {money(incurred)} · FAC {money(forecast)}
+            </div>
+          </div>
+          <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Go-Live Date
+            </div>
+            <div className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">
+              {fmtDate(goLive)}
+            </div>
+            <div className="text-[11px] text-muted-foreground">Target go-live</div>
           </div>
         </div>
       </SectionFrame>
@@ -959,7 +931,7 @@ function InfographicPage() {
             <div className="font-medium">{fmtDate(project.end_date)}</div>
           </div>
         </div>
-        <div className="mb-2 flex flex-wrap items-center gap-2">
+        <div className="mb-2 flex flex-wrap items-center gap-2" data-export-hide>
           <label
             className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background/95 px-2 py-1 text-[11px] font-medium text-foreground shadow-sm hover:bg-muted"
             title="Show planned vs actual timelines"
@@ -1258,7 +1230,7 @@ function InfographicPage() {
       </SectionFrame>
 
       {/* Project Brief — tabbed form */}
-      <ProjectBrief project={project} />
+      <ProjectBrief project={project} milestones={milestones as any[]} risks={risks as any[]} deps={deps as any[]} />
 
       {/* Stage Gates table */}
       <SectionFrame>
@@ -1388,8 +1360,7 @@ function InfographicPage() {
           </div>
         )}
       </SectionFrame>
-      </>
-      ) : null}
+      </div>
     </div>
   );
 }
@@ -1489,12 +1460,23 @@ const STRATEGIC_ALIGNMENT_OPTIONS = [
   "Cost Optimisation",
 ];
 
-function ProjectBrief({ project }: { project: any }) {
+function ProjectBrief({
+  project,
+  milestones = [],
+  risks = [],
+  deps = [],
+}: {
+  project: any;
+  milestones?: any[];
+  risks?: any[];
+  deps?: any[];
+}) {
   const qc = useQueryClient();
   const brief = (project.brief || {}) as { section1?: BriefSection1; section2?: BriefSection2 };
   const [s1, setS1] = useState<BriefSection1>(brief.section1 || { sponsor: project.sponsor || "" });
   const [s2, setS2] = useState<BriefSection2>(brief.section2 || {});
   const [saving, setSaving] = useState<null | 1 | 2>(null);
+  const [downloadingBrief, setDownloadingBrief] = useState(false);
 
   // Reload state when active project changes
   useEffect(() => {
@@ -1541,11 +1523,90 @@ function ProjectBrief({ project }: { project: any }) {
     }
   };
 
+  const downloadBriefPpt = async () => {
+    setDownloadingBrief(true);
+    try {
+      const incurredSpend =
+        Number(project.capex_incurred || 0) + Number(project.opex_incurred || 0);
+      await downloadProjectBriefPPT({
+        project: {
+          project_code: project.project_code,
+          name: project.name,
+          portfolio: s1.portfolio_workstream ?? null,
+          workstream: null,
+          sponsor_name: s1.sponsor ?? project.sponsor ?? null,
+          business_owner: s1.business_owner ?? null,
+          business_solution_manager: s1.business_solution_manager ?? null,
+          strategic_alignment: s1.strategic_alignment ?? null,
+          approved_budget: project.budget ?? project.approved_budget,
+          actual_spend: incurredSpend || project.actual_spend,
+          forecast_at_completion: project.forecast_at_completion,
+          expected_benefit: project.benefits_target ?? project.expected_benefit,
+          planned_start_date: project.planned_start_date ?? project.start_date,
+          planned_end_date: project.planned_end_date ?? project.end_date,
+          actual_start_date: project.actual_start_date,
+          actual_end_date: project.actual_end_date,
+          target_go_live: project.target_go_live,
+          priority: project.priority,
+          rag_overall: project.rag,
+          program: project.program,
+          status: project.status,
+          brief: {
+            section1: {
+              background_context: s1.background_context,
+              opportunity_problem: s1.opportunity_problem,
+              objective: s1.objective_smart,
+              assumptions_constraints: s1.assumptions_constraints,
+              scope_in: s1.scope_in,
+              scope_out: s1.scope_out,
+              success_measures: s1.key_metrics_success,
+            },
+            section2: s2,
+          },
+        },
+        milestones: milestones.map((m) => ({
+          name: m.name,
+          planned_date: m.planned_date,
+          status: m.status,
+          owner: m.owner,
+        })),
+        risks: risks.map((r) => ({
+          description: r.description,
+          category: r.category,
+          residual_rating: r.residual_rating ?? r.probability,
+          mitigation_plan: r.mitigation_plan,
+          owner: r.owner,
+        })),
+        dependencies: deps.map((d) => ({
+          from_project: d.from_project_name,
+          to_project: d.to_project_name,
+          dependency_type: d.dependency_type,
+          status: d.status,
+          description: d.description,
+        })),
+      });
+    } finally {
+      setDownloadingBrief(false);
+    }
+  };
+
   return (
     <SectionFrame>
-      <div className="flex items-center gap-2 mb-3">
-        <FileText className="h-5 w-5 text-slate-500" />
-        <h2 className="text-lg font-semibold text-slate-800">Project Brief — {project.name}</h2>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <FileText className="h-5 w-5 text-slate-500" />
+          <h2 className="text-lg font-semibold text-slate-800">Project Brief — {project.name}</h2>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-2 print:hidden"
+          disabled={downloadingBrief}
+          onClick={() => void downloadBriefPpt()}
+        >
+          <Presentation className="h-3.5 w-3.5" />
+          {downloadingBrief ? "Preparing PPT…" : "Download Project Brief (PPT)"}
+        </Button>
       </div>
 
       <Tabs defaultValue="s1" className="w-full">
