@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +19,9 @@ import { toast } from "sonner";
 import { Plus, Check, Mail, Eye } from "lucide-react";
 import { emailInvoice } from "@/lib/invoices.functions";
 import { calcInvoiceGst, fetchInvoiceTemplate } from "@/lib/invoice-template";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/platform/invoices")({
   component: InvoicesPage,
@@ -120,6 +123,84 @@ function InvoicesPage() {
   const formGst = invoiceTemplate
     ? calcInvoiceGst(Number(form.amount_cents) || 0, invoiceTemplate)
     : null;
+
+  const orgColumns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "name", label: "Organization" },
+      { key: "billing_email", label: "Billing email (invoices go here)" },
+    ],
+    [],
+  );
+  const orgTable = useColumnarTable(orgs, orgColumns);
+
+  const invoiceColumns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "invoice_number", label: "Invoice" },
+      {
+        key: "organization",
+        label: "Organization",
+        getValue: (i) => i.organizations?.name || "",
+      },
+      { key: "issue_date", label: "Issue" },
+      { key: "due_date", label: "Due" },
+      {
+        key: "taxable",
+        label: "Taxable",
+        getValue: (i) =>
+          calcInvoiceGst(
+            i.amount_cents,
+            invoiceTemplate ?? {
+              gst_enabled: false,
+              gst_percent: 0,
+              gst_label: "GST",
+              gst_inclusive: false,
+            },
+          ).subtotal_cents,
+      },
+      {
+        key: "gst",
+        label: "GST",
+        getValue: (i) =>
+          calcInvoiceGst(
+            i.amount_cents,
+            invoiceTemplate ?? {
+              gst_enabled: false,
+              gst_percent: 0,
+              gst_label: "GST",
+              gst_inclusive: false,
+            },
+          ).gst_cents,
+      },
+      {
+        key: "total",
+        label: "Total due",
+        getValue: (i) =>
+          calcInvoiceGst(
+            i.amount_cents,
+            invoiceTemplate ?? {
+              gst_enabled: false,
+              gst_percent: 0,
+              gst_label: "GST",
+              gst_inclusive: false,
+            },
+          ).total_cents,
+      },
+      { key: "status", label: "Status" },
+      {
+        key: "emailed",
+        label: "Emailed",
+        getValue: (i) =>
+          i.emailed_at
+            ? new Date(i.emailed_at).toLocaleString()
+            : i.email_last_error
+              ? "failed"
+              : "",
+      },
+      { key: "actions", label: "Actions", filterable: false, sortable: false },
+    ],
+    [invoiceTemplate],
+  );
+  const invoiceTable = useColumnarTable(invoices, invoiceColumns);
 
   return (
     <div className="space-y-6">
@@ -226,15 +307,32 @@ function InvoicesPage() {
           <CardTitle>Billing emails per organization</CardTitle>
         </CardHeader>
         <CardContent>
+          <ColumnarToolbar
+            globalQ={orgTable.globalQ}
+            onGlobalQ={orgTable.setGlobalQ}
+            shown={orgTable.rows.length}
+            total={orgTable.total}
+            onClear={orgTable.clearAll}
+            placeholder="Search organizations…"
+          />
           <table className="st-table w-full">
             <thead>
               <tr>
-                <th>Organization</th>
-                <th>Billing email (invoices go here)</th>
+                {orgColumns.map((col) => (
+                  <ColumnarTh
+                    key={col.key}
+                    column={col}
+                    filter={orgTable.filters[col.key]}
+                    onFilter={(v) => orgTable.setColumnFilter(col.key, v)}
+                    sortKey={orgTable.sortKey}
+                    sortDir={orgTable.sortDir}
+                    onToggleSort={orgTable.toggleSort}
+                  />
+                ))}
               </tr>
             </thead>
             <tbody>
-              {orgs.map((o: any) => (
+              {orgTable.rows.map((o: any) => (
                 <tr key={o.id}>
                   <td>{o.name}</td>
                   <td>
@@ -256,100 +354,137 @@ function InvoicesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{invoices.length} invoices</CardTitle>
+          <CardTitle>
+            {invoiceTable.rows.length}
+            {invoiceTable.rows.length !== invoiceTable.total ? ` of ${invoiceTable.total}` : ""}{" "}
+            invoices
+          </CardTitle>
         </CardHeader>
         <CardContent>
+          <ColumnarToolbar
+            globalQ={invoiceTable.globalQ}
+            onGlobalQ={invoiceTable.setGlobalQ}
+            shown={invoiceTable.rows.length}
+            total={invoiceTable.total}
+            onClear={invoiceTable.clearAll}
+            placeholder="Search invoices…"
+          />
           <table className="st-table w-full">
             <thead>
               <tr>
-                <th>Invoice</th>
-                <th>Organization</th>
-                <th>Issue</th>
-                <th>Due</th>
-                <th className="text-right">Taxable</th>
-                <th className="text-right">GST</th>
-                <th className="text-right">Total due</th>
-                <th>Status</th>
-                <th>Emailed</th>
-                <th className="text-right">Actions</th>
+                {invoiceColumns.map((col) => (
+                  <ColumnarTh
+                    key={col.key}
+                    column={col}
+                    filter={invoiceTable.filters[col.key]}
+                    onFilter={(v) => invoiceTable.setColumnFilter(col.key, v)}
+                    sortKey={invoiceTable.sortKey}
+                    sortDir={invoiceTable.sortDir}
+                    onToggleSort={invoiceTable.toggleSort}
+                    align={
+                      col.key === "taxable" ||
+                      col.key === "gst" ||
+                      col.key === "total" ||
+                      col.key === "actions"
+                        ? "right"
+                        : "left"
+                    }
+                    className={
+                      col.key === "taxable" ||
+                      col.key === "gst" ||
+                      col.key === "total" ||
+                      col.key === "actions"
+                        ? "text-right"
+                        : undefined
+                    }
+                  />
+                ))}
               </tr>
             </thead>
             <tbody>
-              {invoices.map((i: any) => {
-                const gst = calcInvoiceGst(i.amount_cents, invoiceTemplate ?? { gst_enabled: false, gst_percent: 0, gst_label: "GST", gst_inclusive: false });
+              {invoiceTable.rows.map((i: any) => {
+                const gst = calcInvoiceGst(
+                  i.amount_cents,
+                  invoiceTemplate ?? {
+                    gst_enabled: false,
+                    gst_percent: 0,
+                    gst_label: "GST",
+                    gst_inclusive: false,
+                  },
+                );
                 return (
-                <tr key={i.id}>
-                  <td className="font-mono text-xs">
-                    <Link
-                      to="/platform/invoice/$id"
-                      params={{ id: i.id }}
-                      className="text-primary underline-offset-2 hover:underline"
-                      title="Preview & download invoice"
-                    >
-                      {i.invoice_number}
-                    </Link>
-                  </td>
-                  <td>{i.organizations?.name}</td>
-                  <td>{i.issue_date}</td>
-                  <td>{i.due_date}</td>
-                  <td className="text-right tabular-nums">{money(gst.subtotal_cents)}</td>
-                  <td className="text-right tabular-nums text-muted-foreground">
-                    {gst.enabled ? `${money(gst.gst_cents)} (${gst.percent}%)` : "—"}
-                  </td>
-                  <td className="text-right tabular-nums font-medium">{money(gst.total_cents)}</td>
-                  <td>
-                    <Select
-                      value={i.status}
-                      onValueChange={(v) => setStatus.mutate({ id: i.id, status: v })}
-                    >
-                      <SelectTrigger className="h-7 w-32">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {["draft", "sent", "paid", "overdue", "void"].map((s) => (
-                          <SelectItem key={s} value={s}>
-                            {s}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </td>
-                  <td className="text-xs text-muted-foreground">
-                    {i.emailed_at ? (
-                      new Date(i.emailed_at).toLocaleString()
-                    ) : i.email_last_error ? (
-                      <span className="text-red-600" title={i.email_last_error}>
-                        failed
-                      </span>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td className="text-right space-x-2">
-                    <Link to="/platform/invoice/$id" params={{ id: i.id }}>
-                      <Button size="sm" variant="outline">
-                        <Eye className="mr-1 h-3 w-3" />
-                        Preview
+                  <tr key={i.id}>
+                    <td className="font-mono text-xs">
+                      <Link
+                        to="/platform/invoice/$id"
+                        params={{ id: i.id }}
+                        className="text-primary underline-offset-2 hover:underline"
+                        title="Preview & download invoice"
+                      >
+                        {i.invoice_number}
+                      </Link>
+                    </td>
+                    <td>{i.organizations?.name}</td>
+                    <td>{i.issue_date}</td>
+                    <td>{i.due_date}</td>
+                    <td className="text-right tabular-nums">{money(gst.subtotal_cents)}</td>
+                    <td className="text-right tabular-nums text-muted-foreground">
+                      {gst.enabled ? `${money(gst.gst_cents)} (${gst.percent}%)` : "—"}
+                    </td>
+                    <td className="text-right tabular-nums font-medium">{money(gst.total_cents)}</td>
+                    <td>
+                      <Select
+                        value={i.status}
+                        onValueChange={(v) => setStatus.mutate({ id: i.id, status: v })}
+                      >
+                        <SelectTrigger className="h-7 w-32">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {["draft", "sent", "paid", "overdue", "void"].map((s) => (
+                            <SelectItem key={s} value={s}>
+                              {s}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="text-xs text-muted-foreground">
+                      {i.emailed_at ? (
+                        new Date(i.emailed_at).toLocaleString()
+                      ) : i.email_last_error ? (
+                        <span className="text-red-600" title={i.email_last_error}>
+                          failed
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="text-right space-x-2">
+                      <Link to="/platform/invoice/$id" params={{ id: i.id }}>
+                        <Button size="sm" variant="outline">
+                          <Eye className="mr-1 h-3 w-3" />
+                          Preview
+                        </Button>
+                      </Link>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={emailIt.isPending}
+                        onClick={() => emailIt.mutate(i.id)}
+                      >
+                        <Mail className="mr-1 h-3 w-3" />
+                        {i.emailed_at ? "Re-send" : "Email"}
                       </Button>
-                    </Link>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={emailIt.isPending}
-                      onClick={() => emailIt.mutate(i.id)}
-                    >
-                      <Mail className="mr-1 h-3 w-3" />
-                      {i.emailed_at ? "Re-send" : "Email"}
-                    </Button>
-                    {i.status !== "paid" && (
-                      <Button size="sm" variant="outline" onClick={() => markPaid.mutate(i)}>
-                        <Check className="mr-1 h-3 w-3" />
-                        Mark paid
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              );
+                      {i.status !== "paid" && (
+                        <Button size="sm" variant="outline" onClick={() => markPaid.mutate(i)}>
+                          <Check className="mr-1 h-3 w-3" />
+                          Mark paid
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                );
               })}
             </tbody>
           </table>

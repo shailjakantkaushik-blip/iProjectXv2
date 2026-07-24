@@ -5,8 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/platform/limits")({
   component: LimitsPage,
@@ -81,6 +84,42 @@ function LimitsPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const columns: ColumnarColumn<Row>[] = useMemo(
+    () => [
+      { key: "name", label: "Organization" },
+      { key: "plan_name", label: "Plan", getValue: (r) => r.plan_name || "" },
+      {
+        key: "users",
+        label: "Users (used / limit)",
+        getValue: (r) => {
+          const eff = r.override_max_users ?? r.max_users;
+          return `${r.users_used} / ${eff ?? "∞"}`;
+        },
+      },
+      {
+        key: "projects",
+        label: "Projects (used / limit)",
+        getValue: (r) => {
+          const eff = r.override_max_projects ?? r.max_projects;
+          return `${r.projects_used} / ${eff ?? "∞"}`;
+        },
+      },
+      {
+        key: "override_max_users",
+        label: "Override users",
+        getValue: (r) => r.override_max_users ?? "",
+      },
+      {
+        key: "override_max_projects",
+        label: "Override projects",
+        getValue: (r) => r.override_max_projects ?? "",
+      },
+      { key: "actions", label: "", filterable: false, sortable: false },
+    ],
+    [],
+  );
+  const table = useColumnarTable(rows, columns);
+
   return (
     <div className="space-y-6">
       <div>
@@ -92,26 +131,46 @@ function LimitsPage() {
       </div>
 
       <Card>
-        <CardHeader><CardTitle>{rows.length} organizations</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle>
+            {table.rows.length}
+            {table.rows.length !== table.total ? ` of ${table.total}` : ""} organizations
+          </CardTitle>
+        </CardHeader>
         <CardContent className="overflow-x-auto">
+          <ColumnarToolbar
+            globalQ={table.globalQ}
+            onGlobalQ={table.setGlobalQ}
+            shown={table.rows.length}
+            total={table.total}
+            onClear={table.clearAll}
+            placeholder="Search limits…"
+          />
           <table className="st-table w-full min-w-[900px]">
             <thead>
               <tr>
-                <th className="text-left">Organization</th>
-                <th className="text-left">Plan</th>
-                <th className="text-left">Users (used / limit)</th>
-                <th className="text-left">Projects (used / limit)</th>
-                <th className="text-left">Override users</th>
-                <th className="text-left">Override projects</th>
-                <th></th>
+                {columns.map((col) => (
+                  <ColumnarTh
+                    key={col.key}
+                    column={col}
+                    filter={table.filters[col.key]}
+                    onFilter={(v) => table.setColumnFilter(col.key, v)}
+                    sortKey={table.sortKey}
+                    sortDir={table.sortDir}
+                    onToggleSort={table.toggleSort}
+                    className="text-left"
+                  />
+                ))}
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr><td colSpan={7} className="py-6 text-center text-muted-foreground">Loading…</td></tr>
-              ) : rows.length === 0 ? (
+              ) : table.total === 0 ? (
                 <tr><td colSpan={7} className="py-6 text-center text-muted-foreground">No organizations</td></tr>
-              ) : rows.map((r) => <LimitRow key={r.id} row={r} onSave={save.mutate} />)}
+              ) : table.rows.length === 0 ? (
+                <tr><td colSpan={7} className="py-6 text-center text-muted-foreground">No matching organizations</td></tr>
+              ) : table.rows.map((r) => <LimitRow key={r.id} row={r} onSave={save.mutate} />)}
             </tbody>
           </table>
         </CardContent>

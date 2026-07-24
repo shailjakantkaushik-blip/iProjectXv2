@@ -19,6 +19,9 @@ import {
 } from "recharts";
 import { calcInvoiceGst, fetchInvoiceTemplate } from "@/lib/invoice-template";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/platform/finance")({
   component: FinancePage,
@@ -130,6 +133,27 @@ function FinancePage() {
   }, [expenses]);
   const COLORS = ["#1d4ed8", "#f59e0b", "#22c55e", "#8b5cf6", "#ef4444"];
 
+  const pnlRows = useMemo(() => {
+    const nowKey = new Date().toISOString().slice(0, 7);
+    return monthly
+      .filter((m) => m.month <= nowKey)
+      .map((m) => ({
+        ...m,
+        net: m.revenue - m.expenses,
+      }));
+  }, [monthly]);
+
+  const pnlColumns: ColumnarColumn<(typeof pnlRows)[number]>[] = useMemo(
+    () => [
+      { key: "month", label: "Month" },
+      { key: "revenue", label: "Revenue" },
+      { key: "expenses", label: "Expenses" },
+      { key: "net", label: "Net" },
+    ],
+    [],
+  );
+  const pnlTable = useColumnarTable(pnlRows, pnlColumns);
+
   const KPI = ({ label, value, sub, tone }: any) => (
     <Card>
       <CardHeader className="pb-1">
@@ -216,40 +240,48 @@ function FinancePage() {
             <CardTitle>Profit & Loss (last 12 months)</CardTitle>
           </CardHeader>
           <CardContent>
+            <ColumnarToolbar
+              globalQ={pnlTable.globalQ}
+              onGlobalQ={pnlTable.setGlobalQ}
+              shown={pnlTable.rows.length}
+              total={pnlTable.total}
+              onClear={pnlTable.clearAll}
+              placeholder="Search P&L…"
+            />
             <table className="st-table w-full text-sm">
               <thead>
                 <tr>
-                  <th>Month</th>
-                  <th className="text-right">Revenue</th>
-                  <th className="text-right">Expenses</th>
-                  <th className="text-right">Net</th>
+                  {pnlColumns.map((col) => (
+                    <ColumnarTh
+                      key={col.key}
+                      column={col}
+                      filter={pnlTable.filters[col.key]}
+                      onFilter={(v) => pnlTable.setColumnFilter(col.key, v)}
+                      sortKey={pnlTable.sortKey}
+                      sortDir={pnlTable.sortDir}
+                      onToggleSort={pnlTable.toggleSort}
+                      align={col.key === "month" ? "left" : "right"}
+                      className={col.key === "month" ? undefined : "text-right"}
+                    />
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {monthly
-                  .filter((m) => m.month <= new Date().toISOString().slice(0, 7))
-                  .map((m) => {
-                    const net = m.revenue - m.expenses;
-                    return (
-                      <tr key={m.month}>
-                        <td>{m.month}</td>
-                        <td className="text-right tabular-nums text-green-700">
-                          {money(m.revenue)}
-                        </td>
-                        <td className="text-right tabular-nums text-red-700">
-                          {money(m.expenses)}
-                        </td>
-                        <td
-                          className={
-                            "text-right tabular-nums font-semibold " +
-                            (net >= 0 ? "text-green-800" : "text-red-800")
-                          }
-                        >
-                          {money(net)}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                {pnlTable.rows.map((m) => (
+                  <tr key={m.month}>
+                    <td>{m.month}</td>
+                    <td className="text-right tabular-nums text-green-700">{money(m.revenue)}</td>
+                    <td className="text-right tabular-nums text-red-700">{money(m.expenses)}</td>
+                    <td
+                      className={
+                        "text-right tabular-nums font-semibold " +
+                        (m.net >= 0 ? "text-green-800" : "text-red-800")
+                      }
+                    >
+                      {money(m.net)}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </CardContent>

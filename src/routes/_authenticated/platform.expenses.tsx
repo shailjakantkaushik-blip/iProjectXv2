@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Plus, Trash2 } from "lucide-react";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/platform/expenses")({
   component: ExpensesPage,
@@ -37,6 +40,19 @@ function ExpensesPage() {
 
   const total = expenses.reduce((s: number, e: any) => s + e.amount_cents, 0);
 
+  const columns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "expense_date", label: "Date" },
+      { key: "category", label: "Category" },
+      { key: "description", label: "Description" },
+      { key: "vendor", label: "Vendor" },
+      { key: "amount_cents", label: "Amount" },
+      { key: "actions", label: "", filterable: false, sortable: false },
+    ],
+    [],
+  );
+  const table = useColumnarTable(expenses, columns);
+
   return (
     <div className="space-y-6">
       <div>
@@ -57,12 +73,41 @@ function ExpensesPage() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>{expenses.length} expenses</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle>
+            {table.rows.length}
+            {table.rows.length !== table.total ? ` of ${table.total}` : ""} expenses
+          </CardTitle>
+        </CardHeader>
         <CardContent>
+          <ColumnarToolbar
+            globalQ={table.globalQ}
+            onGlobalQ={table.setGlobalQ}
+            shown={table.rows.length}
+            total={table.total}
+            onClear={table.clearAll}
+            placeholder="Search expenses…"
+          />
           <table className="st-table w-full">
-            <thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Vendor</th><th className="text-right">Amount</th><th></th></tr></thead>
+            <thead>
+              <tr>
+                {columns.map((col) => (
+                  <ColumnarTh
+                    key={col.key}
+                    column={col}
+                    filter={table.filters[col.key]}
+                    onFilter={(v) => table.setColumnFilter(col.key, v)}
+                    sortKey={table.sortKey}
+                    sortDir={table.sortDir}
+                    onToggleSort={table.toggleSort}
+                    align={col.key === "amount_cents" ? "right" : "left"}
+                    className={col.key === "amount_cents" ? "text-right" : undefined}
+                  />
+                ))}
+              </tr>
+            </thead>
             <tbody>
-              {expenses.map((e: any) => (
+              {table.rows.map((e: any) => (
                 <tr key={e.id}>
                   <td>{e.expense_date}</td>
                   <td>{e.category}</td>

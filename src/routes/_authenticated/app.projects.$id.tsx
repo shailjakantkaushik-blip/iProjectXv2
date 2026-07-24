@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, isAdmin } from "@/lib/auth-context";
 import { ProjectForm, type ProjectFormValues } from "@/components/project-form";
@@ -12,6 +12,9 @@ import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PageLoading } from "@/components/page-loading";
 import { ProjectStreamsPanel } from "@/components/project-streams-panel";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 type ProjectTab = "overview" | "decisions" | "work" | "governance" | "finance" | "streams";
 
@@ -126,6 +129,23 @@ function ProjectDetail() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const workColumns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "wbs_code", label: "WBS" },
+      { key: "title", label: "Title" },
+      { key: "status", label: "Status" },
+      {
+        key: "percent_complete",
+        label: "%",
+        getValue: (w) => w.percent_complete ?? 0,
+      },
+      { key: "owner", label: "Owner" },
+      { key: "planned_end", label: "End" },
+    ],
+    [],
+  );
+  const workTable = useColumnarTable(workItems, workColumns);
 
   if (isLoading) return <PageLoading label="Loading project…" fullScreen={false} />;
   if (!project) {
@@ -261,25 +281,42 @@ function ProjectDetail() {
               Open work board
             </Link>
           </div>
-          {workItems.length === 0 ? (
+          <ColumnarToolbar
+            globalQ={workTable.globalQ}
+            onGlobalQ={workTable.setGlobalQ}
+            shown={workTable.rows.length}
+            total={workTable.total}
+            onClear={workTable.clearAll}
+            placeholder="Search work items…"
+          />
+          {workTable.total === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">
               No work items for this project yet.
+            </div>
+          ) : workTable.rows.length === 0 ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">
+              No matching work items.
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="st-table">
                 <thead>
                   <tr>
-                    <th>WBS</th>
-                    <th>Title</th>
-                    <th>Status</th>
-                    <th>%</th>
-                    <th>Owner</th>
-                    <th>End</th>
+                    {workColumns.map((col) => (
+                      <ColumnarTh
+                        key={col.key}
+                        column={col}
+                        filter={workTable.filters[col.key]}
+                        onFilter={(v) => workTable.setColumnFilter(col.key, v)}
+                        sortKey={workTable.sortKey}
+                        sortDir={workTable.sortDir}
+                        onToggleSort={workTable.toggleSort}
+                      />
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {workItems.map((w) => (
+                  {workTable.rows.map((w) => (
                     <tr key={w.id}>
                       <td className="font-mono text-xs">{w.wbs_code || "—"}</td>
                       <td>{w.title}</td>

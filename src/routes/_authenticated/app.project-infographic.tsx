@@ -40,6 +40,9 @@ import {
   formatStreamCode,
   formatStreamLabel,
 } from "@/lib/project-streams";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/project-infographic")({
   validateSearch: (s: Record<string, unknown>) => ({ pid: (s.pid as string) || "" }),
@@ -554,6 +557,207 @@ function InfographicPage() {
       })
       .sort((a, b) => b.pct - a.pct);
   }, [resourcePlanRows, allocationMonths]);
+
+  const raidRows = useMemo(() => {
+    if (!project) return [] as any[];
+    return [
+      ...risks.map((r: any, i: number) => ({
+        raid: "R" + String(i + 1).padStart(3, "0"),
+        project_code: project.project_code || "",
+        type: "Risk",
+        desc: r.title,
+        probability: r.probability >= 4 ? "High" : r.probability >= 2 ? "Medium" : "Low",
+        impact:
+          r.impact >= 4
+            ? "Critical"
+            : r.impact >= 3
+              ? "High"
+              : r.impact >= 2
+                ? "Medium"
+                : "Low",
+        rag: (r.severity || 0) >= 12 ? "Red" : (r.severity || 0) >= 6 ? "Amber" : "Green",
+        owner: r.owner,
+        due: r.due_date,
+        mitigation: r.mitigation,
+        status: r.status,
+      })),
+      ...issues.map((r: any, i: number) => ({
+        raid: "I" + String(i + 1).padStart(3, "0"),
+        project_code: project.project_code || "",
+        type: "Issue",
+        desc: r.title,
+        probability: "—",
+        impact: r.priority || "—",
+        rag: r.priority === "Critical" ? "Red" : r.priority === "High" ? "Amber" : "Green",
+        owner: r.owner,
+        due: r.target_date,
+        mitigation: r.resolution,
+        status: r.status,
+      })),
+    ].slice(0, 10);
+  }, [project, risks, issues]);
+
+  const raidColumns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "raid", label: "RAID ID" },
+      { key: "project_code", label: "Project ID" },
+      { key: "type", label: "Type" },
+      { key: "desc", label: "Description" },
+      { key: "probability", label: "Probability" },
+      { key: "impact", label: "Impact" },
+      { key: "rag", label: "RAG" },
+      { key: "owner", label: "Owner" },
+      { key: "due", label: "Target Resolution Date" },
+      { key: "mitigation", label: "Mitigation" },
+      { key: "status", label: "Status" },
+    ],
+    [],
+  );
+  const raidTable = useColumnarTable(raidRows, raidColumns);
+
+  const milestoneRows = useMemo(() => {
+    if (!project) return [] as any[];
+    return (gates as any[]).map((g: any, i: number) => {
+      const stream = g.stream_id ? streamById.get(g.stream_id) : null;
+      return {
+        id: g.id,
+        gate_id: "SG" + String(i + 1).padStart(4, "0"),
+        project_code: project.project_code || "",
+        project_name: project.name,
+        stream_label: stream ? formatStreamLabel(stream) : "",
+        stream_ref: stream ? formatProjectStreamRef(project, stream) : "",
+        gate_name: g.gate_name,
+        planned_date: g.planned_date,
+        actual_date: g.actual_date,
+        status: g.status || "Planned",
+        approver: g.approver || "",
+        notes: g.notes || "",
+        sponsor: project.sponsor || "",
+        program: project.program || "",
+      };
+    });
+  }, [project, gates, streamById]);
+
+  const milestoneColumns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "gate_id", label: "Gate ID" },
+      { key: "project_code", label: "Project ID" },
+      { key: "project_name", label: "Project Name" },
+      ...(hasStreams
+        ? [
+            {
+              key: "stream",
+              label: "Stream",
+              getValue: (g: any) => g.stream_label || g.stream_ref || "",
+            },
+          ]
+        : []),
+      { key: "gate_name", label: "Stage Gate" },
+      { key: "planned_date", label: "Planned Date" },
+      { key: "actual_date", label: "Actual Date" },
+      { key: "status", label: "Status" },
+      { key: "approver", label: "Approver" },
+      { key: "notes", label: "Notes" },
+      { key: "sponsor", label: "Sponsor" },
+      { key: "program", label: "Program" },
+    ],
+    [hasStreams],
+  );
+  const milestoneTable = useColumnarTable(milestoneRows, milestoneColumns);
+
+  const gateDetailRows = useMemo(() => {
+    if (!project) return [] as any[];
+    const sorted = [...(projectStreams as any[])].sort(
+      (a, b) =>
+        (a.sort_order ?? 0) - (b.sort_order ?? 0) || String(a.name).localeCompare(String(b.name)),
+    );
+    const phaseCards = PHASES.map((name) => {
+      const matching = (gates as any[]).filter((g) => (g.gate_name || "").trim() === name);
+      const g = matching.find((x) => !isDoneGateStatus(x.status)) || matching[0];
+      return {
+        name,
+        status: g?.status || "Not Started",
+        planned: g?.planned_date,
+        actual: g?.actual_date,
+        approver: g?.approver,
+        budget: matching.reduce((n, x) => n + Number(x?.phase_budget ?? 0), 0),
+        forecast: matching.reduce((n, x) => n + Number(x?.phase_forecast ?? 0), 0),
+        actualSpend: matching.reduce((n, x) => n + Number(x?.phase_actual ?? 0), 0),
+      };
+    });
+    const sections =
+      sorted.length > 0
+        ? sorted.map((stream) => {
+            const streamGates = (gates as any[]).filter(
+              (g) => g.stream_id === stream.id || (!g.stream_id && stream.is_default),
+            );
+            const byName = new Map<string, any>();
+            streamGates.forEach((g) => byName.set((g.gate_name || "").trim(), g));
+            return {
+              streamLabel: formatStreamLabel(stream),
+              streamRef: formatProjectStreamRef(project, stream),
+              cards: PHASES.map((name) => {
+                const g = byName.get(name);
+                return {
+                  name,
+                  status: g?.status || "Not Started",
+                  planned: g?.planned_date,
+                  actual: g?.actual_date,
+                  approver: g?.approver,
+                  budget: Number(g?.phase_budget ?? 0),
+                  forecast: Number(g?.phase_forecast ?? 0),
+                  actualSpend: Number(g?.phase_actual ?? 0),
+                };
+              }),
+            };
+          })
+        : [
+            {
+              streamLabel: "Project",
+              streamRef: project.project_code || project.name || "Project",
+              cards: phaseCards,
+            },
+          ];
+    return sections.flatMap((section) =>
+      section.cards.map((p) => ({
+        key: `${section.streamRef}:${p.name}`,
+        streamLabel: section.streamLabel,
+        streamRef: section.streamRef,
+        name: p.name,
+        status: p.status,
+        planned: p.planned,
+        actual: p.actual,
+        approver: p.approver || "",
+        budget: p.budget,
+        forecast: p.forecast,
+        actualSpend: p.actualSpend,
+      })),
+    );
+  }, [project, projectStreams, gates]);
+
+  const gateDetailColumns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      ...(hasStreams
+        ? [
+            {
+              key: "stream",
+              label: "Stream",
+              getValue: (p: any) => p.streamLabel || p.streamRef || "",
+            },
+          ]
+        : []),
+      { key: "name", label: "Gate" },
+      { key: "status", label: "Status" },
+      { key: "planned", label: "Planned" },
+      { key: "actual", label: "Actual" },
+      { key: "approver", label: "Approver" },
+      { key: "budget", label: "Phase Budget" },
+      { key: "forecast", label: "Phase Forecast" },
+      { key: "actualSpend", label: "Phase Actual" },
+    ],
+    [hasStreams],
+  );
+  const gateDetailTable = useColumnarTable(gateDetailRows, gateDetailColumns);
 
   if (!projects.length) {
     return (
@@ -1142,77 +1346,50 @@ function InfographicPage() {
       {/* Top Risks & Issues */}
       <SectionFrame>
         <SectionTitle>⚠️ Top Risks &amp; Issues</SectionTitle>
+        <ColumnarToolbar
+          globalQ={raidTable.globalQ}
+          onGlobalQ={raidTable.setGlobalQ}
+          shown={raidTable.rows.length}
+          total={raidTable.total}
+          onClear={raidTable.clearAll}
+          placeholder="Search risks & issues…"
+        />
         <div className="overflow-x-auto">
           <table className="st-table text-xs">
             <thead>
               <tr>
-                <th>RAID ID</th>
-                <th>Project ID</th>
-                <th>Type</th>
-                <th>Description</th>
-                <th>Probability</th>
-                <th>Impact</th>
-                <th>RAG</th>
-                <th>Owner</th>
-                <th>Target Resolution Date</th>
-                <th>Mitigation</th>
-                <th>Status</th>
+                {raidColumns.map((col) => (
+                  <ColumnarTh
+                    key={col.key}
+                    column={col}
+                    filter={raidTable.filters[col.key]}
+                    onFilter={(v) => raidTable.setColumnFilter(col.key, v)}
+                    sortKey={raidTable.sortKey}
+                    sortDir={raidTable.sortDir}
+                    onToggleSort={raidTable.toggleSort}
+                  />
+                ))}
               </tr>
             </thead>
             <tbody>
-              {[
-                ...risks.map((r: any, i: number) => ({
-                  raid: "R" + String(i + 1).padStart(3, "0"),
-                  type: "Risk",
-                  desc: r.title,
-                  probability: r.probability >= 4 ? "High" : r.probability >= 2 ? "Medium" : "Low",
-                  impact:
-                    r.impact >= 4
-                      ? "Critical"
-                      : r.impact >= 3
-                        ? "High"
-                        : r.impact >= 2
-                          ? "Medium"
-                          : "Low",
-                  rag: (r.severity || 0) >= 12 ? "Red" : (r.severity || 0) >= 6 ? "Amber" : "Green",
-                  owner: r.owner,
-                  due: r.due_date,
-                  mitigation: r.mitigation,
-                  status: r.status,
-                })),
-                ...issues.map((r: any, i: number) => ({
-                  raid: "I" + String(i + 1).padStart(3, "0"),
-                  type: "Issue",
-                  desc: r.title,
-                  probability: "—",
-                  impact: r.priority || "—",
-                  rag:
-                    r.priority === "Critical" ? "Red" : r.priority === "High" ? "Amber" : "Green",
-                  owner: r.owner,
-                  due: r.target_date,
-                  mitigation: r.resolution,
-                  status: r.status,
-                })),
-              ]
-                .slice(0, 10)
-                .map((r) => (
-                  <tr key={r.raid}>
-                    <td className="font-mono">{r.raid}</td>
-                    <td className="font-mono text-blue-600">{project.project_code || "—"}</td>
-                    <td>{r.type}</td>
-                    <td>{r.desc}</td>
-                    <td>{r.probability}</td>
-                    <td>{r.impact}</td>
-                    <td>
-                      <RagChip rag={r.rag} />
-                    </td>
-                    <td>{r.owner || "NA"}</td>
-                    <td>{fmtDate(r.due)}</td>
-                    <td>{r.mitigation || "—"}</td>
-                    <td>{r.status}</td>
-                  </tr>
-                ))}
-              {risks.length === 0 && issues.length === 0 && (
+              {raidTable.rows.map((r) => (
+                <tr key={r.raid}>
+                  <td className="font-mono">{r.raid}</td>
+                  <td className="font-mono text-blue-600">{r.project_code || "—"}</td>
+                  <td>{r.type}</td>
+                  <td>{r.desc}</td>
+                  <td>{r.probability}</td>
+                  <td>{r.impact}</td>
+                  <td>
+                    <RagChip rag={r.rag} />
+                  </td>
+                  <td>{r.owner || "NA"}</td>
+                  <td>{fmtDate(r.due)}</td>
+                  <td>{r.mitigation || "—"}</td>
+                  <td>{r.status}</td>
+                </tr>
+              ))}
+              {raidTable.total === 0 && (
                 <tr>
                   <td colSpan={11} className="text-center text-slate-500 py-4">
                     No open risks or issues.
@@ -1227,44 +1404,51 @@ function InfographicPage() {
       {/* Upcoming Milestones — sourced from Stage Gate register */}
       <SectionFrame>
         <SectionTitle>📌 Upcoming Milestones (Stage Gates)</SectionTitle>
+        <ColumnarToolbar
+          globalQ={milestoneTable.globalQ}
+          onGlobalQ={milestoneTable.setGlobalQ}
+          shown={milestoneTable.rows.length}
+          total={milestoneTable.total}
+          onClear={milestoneTable.clearAll}
+          placeholder="Search milestones…"
+        />
         <div className="overflow-x-auto">
           <table className="st-table text-xs">
             <thead>
               <tr>
-                <th>Gate ID</th>
-                <th>Project ID</th>
-                <th>Project Name</th>
-                {hasStreams ? <th>Stream</th> : null}
-                <th>Stage Gate</th>
-                <th>Planned Date</th>
-                <th>Actual Date</th>
-                <th>Status</th>
-                <th>Approver</th>
-                <th>Notes</th>
-                <th>Sponsor</th>
-                <th>Program</th>
+                {milestoneColumns.map((col) => (
+                  <ColumnarTh
+                    key={col.key}
+                    column={col}
+                    filter={milestoneTable.filters[col.key]}
+                    onFilter={(v) => milestoneTable.setColumnFilter(col.key, v)}
+                    sortKey={milestoneTable.sortKey}
+                    sortDir={milestoneTable.sortDir}
+                    onToggleSort={milestoneTable.toggleSort}
+                  />
+                ))}
               </tr>
             </thead>
             <tbody>
-              {gates.length === 0 ? (
+              {milestoneTable.total === 0 ? (
                 <tr>
-                  <td colSpan={hasStreams ? 12 : 11} className="text-center text-slate-500 py-4">
+                  <td colSpan={milestoneColumns.length} className="text-center text-slate-500 py-4">
                     No stage gates captured.
                   </td>
                 </tr>
               ) : (
-                (gates as any[]).map((g: any, i: number) => (
+                milestoneTable.rows.map((g) => (
                   <tr key={g.id}>
-                    <td className="font-mono">SG{String(i + 1).padStart(4, "0")}</td>
-                    <td className="font-mono text-blue-600">{project.project_code || "—"}</td>
-                    <td>{project.name}</td>
+                    <td className="font-mono">{g.gate_id}</td>
+                    <td className="font-mono text-blue-600">{g.project_code || "—"}</td>
+                    <td>{g.project_name}</td>
                     {hasStreams ? (
                       <td>
-                        {g.stream_id && streamById.get(g.stream_id) ? (
+                        {g.stream_label ? (
                           <div className="leading-tight">
-                            <div>{formatStreamLabel(streamById.get(g.stream_id))}</div>
+                            <div>{g.stream_label}</div>
                             <div className="font-mono text-[10px] text-muted-foreground">
-                              {formatProjectStreamRef(project, streamById.get(g.stream_id))}
+                              {g.stream_ref}
                             </div>
                           </div>
                         ) : (
@@ -1278,8 +1462,8 @@ function InfographicPage() {
                     <td>{g.status || "Planned"}</td>
                     <td>{g.approver || "NA"}</td>
                     <td>{g.notes || "NA"}</td>
-                    <td>{project.sponsor || "NA"}</td>
-                    <td>{project.program || "NA"}</td>
+                    <td>{g.sponsor || "NA"}</td>
+                    <td>{g.program || "NA"}</td>
                   </tr>
                 ))
               )}
@@ -1294,30 +1478,51 @@ function InfographicPage() {
       {/* Stage Gates table */}
       <SectionFrame>
         <SectionTitle>Stage Gate Detail{hasStreams ? " by Stream" : ""}</SectionTitle>
+        <ColumnarToolbar
+          globalQ={gateDetailTable.globalQ}
+          onGlobalQ={gateDetailTable.setGlobalQ}
+          shown={gateDetailTable.rows.length}
+          total={gateDetailTable.total}
+          onClear={gateDetailTable.clearAll}
+          placeholder="Search stage gates…"
+        />
         <div className="overflow-x-auto">
           <table className="st-table text-xs">
             <thead>
               <tr>
-                {hasStreams ? <th>Stream</th> : null}
-                <th>Gate</th>
-                <th>Status</th>
-                <th>Planned</th>
-                <th>Actual</th>
-                <th>Approver</th>
-                <th className="text-right">Phase Budget</th>
-                <th className="text-right">Phase Forecast</th>
-                <th className="text-right">Phase Actual</th>
+                {gateDetailColumns.map((col) => (
+                  <ColumnarTh
+                    key={col.key}
+                    column={col}
+                    filter={gateDetailTable.filters[col.key]}
+                    onFilter={(v) => gateDetailTable.setColumnFilter(col.key, v)}
+                    sortKey={gateDetailTable.sortKey}
+                    sortDir={gateDetailTable.sortDir}
+                    onToggleSort={gateDetailTable.toggleSort}
+                    align={
+                      col.key === "budget" || col.key === "forecast" || col.key === "actualSpend"
+                        ? "right"
+                        : "left"
+                    }
+                    className={
+                      col.key === "budget" || col.key === "forecast" || col.key === "actualSpend"
+                        ? "text-right"
+                        : undefined
+                    }
+                  />
+                ))}
               </tr>
             </thead>
             <tbody>
-              {streamGateSections.flatMap((section) =>
-                section.cards.map((p) => (
-                <tr key={`${section.streamRef}:${p.name}`}>
+              {gateDetailTable.rows.map((p) => (
+                <tr key={p.key}>
                   {hasStreams ? (
                     <td>
                       <div className="leading-tight">
-                        <div className="font-medium">{section.streamLabel}</div>
-                        <div className="font-mono text-[10px] text-muted-foreground">{section.streamRef}</div>
+                        <div className="font-medium">{p.streamLabel}</div>
+                        <div className="font-mono text-[10px] text-muted-foreground">
+                          {p.streamRef}
+                        </div>
                       </div>
                     </td>
                   ) : null}
@@ -1330,8 +1535,7 @@ function InfographicPage() {
                   <td className="text-right tabular-nums">{money(p.forecast)}</td>
                   <td className="text-right tabular-nums">{money(p.actualSpend)}</td>
                 </tr>
-                )),
-              )}
+              ))}
             </tbody>
           </table>
         </div>
@@ -1619,6 +1823,17 @@ function ProjectBrief({
       ).data ?? [],
     enabled: !!project.id,
   });
+
+  const linkColumns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "name", label: "Title" },
+      { key: "url", label: "URL" },
+      { key: "doc_type", label: "Category" },
+      { key: "actions", label: "", filterable: false, sortable: false },
+    ],
+    [],
+  );
+  const linkTable = useColumnarTable(links, linkColumns);
 
   const saveSection = async (section: 1 | 2) => {
     setSaving(section);
@@ -1927,56 +2142,74 @@ function ProjectBrief({
             <div className="text-xs text-slate-500">
               Attach reference documents (SharePoint, Confluence, OneDrive, etc.)
             </div>
-            {links.length === 0 ? (
+            {linkTable.total === 0 ? (
               <div className="rounded bg-blue-50 border border-blue-100 px-3 py-2 text-sm text-slate-700">
                 No links yet.
               </div>
             ) : (
-              <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-                <table className="st-table text-xs">
-                  <thead>
-                    <tr>
-                      <th>Title</th>
-                      <th>URL</th>
-                      <th>Category</th>
-                      <th className="w-10"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {links.map((d: any) => (
-                      <tr key={d.id}>
-                        <td className="font-medium">{d.name || "—"}</td>
-                        <td>
-                          {d.url ? (
-                            <a
-                              href={d.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-blue-600 hover:underline break-all"
-                            >
-                              {d.url}
-                            </a>
-                          ) : (
-                            "—"
-                          )}
-                        </td>
-                        <td>{d.doc_type || "—"}</td>
-                        <td>
-                          <button
-                            onClick={async () => {
-                              await supabase.from("documents").delete().eq("id", d.id);
-                              qc.invalidateQueries({ queryKey: ["documents", project.id] });
-                            }}
-                            className="text-slate-400 hover:text-red-600"
-                            title="Remove"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </td>
+              <div className="space-y-2">
+                <ColumnarToolbar
+                  globalQ={linkTable.globalQ}
+                  onGlobalQ={linkTable.setGlobalQ}
+                  shown={linkTable.rows.length}
+                  total={linkTable.total}
+                  onClear={linkTable.clearAll}
+                  placeholder="Search document links…"
+                />
+                <div className="overflow-x-auto rounded border border-slate-200 bg-white">
+                  <table className="st-table text-xs">
+                    <thead>
+                      <tr>
+                        {linkColumns.map((col) => (
+                          <ColumnarTh
+                            key={col.key}
+                            column={col}
+                            filter={linkTable.filters[col.key]}
+                            onFilter={(v) => linkTable.setColumnFilter(col.key, v)}
+                            sortKey={linkTable.sortKey}
+                            sortDir={linkTable.sortDir}
+                            onToggleSort={linkTable.toggleSort}
+                            className={col.key === "actions" ? "w-10" : undefined}
+                          />
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {linkTable.rows.map((d: any) => (
+                        <tr key={d.id}>
+                          <td className="font-medium">{d.name || "—"}</td>
+                          <td>
+                            {d.url ? (
+                              <a
+                                href={d.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-blue-600 hover:underline break-all"
+                              >
+                                {d.url}
+                              </a>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                          <td>{d.doc_type || "—"}</td>
+                          <td>
+                            <button
+                              onClick={async () => {
+                                await supabase.from("documents").delete().eq("id", d.id);
+                                qc.invalidateQueries({ queryKey: ["documents", project.id] });
+                              }}
+                              className="text-slate-400 hover:text-red-600"
+                              title="Remove"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
             <AddLinkRow projectId={project.id} orgId={project.org_id} />
