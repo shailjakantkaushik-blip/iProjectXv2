@@ -34,9 +34,11 @@ export const getRouter = () => {
     routeTree,
     context: { queryClient },
     scrollRestoration: true,
-    defaultPreload: "intent",
-    // Avoid downloading route chunks on every accidental sidebar hover.
-    defaultPreloadDelay: 120,
+    // Desktop sidebar hover was prefetching many route chunks while the user
+    // only glanced at nav — mobile has no persistent hover, so it felt faster.
+    // Navigate still loads on click; intent preload is opt-in via Link props.
+    defaultPreload: false,
+    defaultPreloadDelay: 0,
     defaultPreloadStaleTime: 30_000,
     // Avoid flashing a full pending screen on fast navigations.
     defaultPendingMs: 1000,

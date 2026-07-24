@@ -75,7 +75,16 @@ export function ExpandableChart({
     };
   }, [open]);
 
-  const chart = isValidElement(children) ? children : null;
+  // Recharts defaults to animating every series on mount — painful when a
+  // desktop dashboard paints 6–8 charts at once. Keep explicit overrides.
+  const chart =
+    isValidElement(children)
+      ? cloneElement(children as ReactElement<{ isAnimationActive?: boolean }>, {
+          isAnimationActive:
+            (children as ReactElement<{ isAnimationActive?: boolean }>).props
+              .isAnimationActive ?? false,
+        })
+      : null;
 
   return (
     <>
