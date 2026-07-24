@@ -23,7 +23,7 @@ export function ColumnarToolbar({
   return (
     <div className="mb-2 flex flex-wrap items-center gap-2">
       <Input
-        className="h-8 max-w-xs text-xs"
+        className="h-9 w-full min-w-0 max-w-full text-sm sm:h-8 sm:max-w-xs sm:text-xs"
         placeholder={placeholder}
         value={globalQ}
         onChange={(e) => onGlobalQ(e.target.value)}
@@ -34,7 +34,7 @@ export function ColumnarToolbar({
       {active ? (
         <button
           type="button"
-          className="text-[11px] font-medium text-primary hover:underline"
+          className="min-h-9 px-1 text-xs font-medium text-primary hover:underline sm:min-h-0 sm:text-[11px]"
           onClick={onClear}
         >
           Clear filters

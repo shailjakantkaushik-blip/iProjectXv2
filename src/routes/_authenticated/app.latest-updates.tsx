@@ -130,7 +130,7 @@ function LatestUpdatesPage() {
     <div className="space-y-6">
       <PageHeading title="Latest Updates" subtitle="Status updates and milestone activity across the portfolio" />
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
         <KpiCard label="Activity (7d)" value={thisWeek.length} accent="var(--st-accent)" />
         <KpiCard label="Status Updates" value={updates.length} />
         <KpiCard label="Milestone Events" value={milestones.length} />

@@ -402,11 +402,40 @@ textarea.st-input { height: auto; min-height: 64px; }
 html { -webkit-text-size-adjust: 100%; }
 body { overflow-x: hidden; }
 
+/* Leave room for the floating companion on phones so CTAs aren't covered. */
+.shell-main--with-companion {
+  padding-bottom: max(5.5rem, calc(env(safe-area-inset-bottom) + 4.5rem));
+}
+@media (min-width: 768px) {
+  .shell-main--with-companion {
+    padding-bottom: max(6.5rem, calc(env(safe-area-inset-bottom) + 5.5rem));
+  }
+}
+
+/* Wide tables: prefer a single touch-friendly scrollport */
+.st-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
 @media (max-width: 640px) {
   .section-frame { padding: 12px 12px; border-radius: 8px; }
   .page-heading { font-size: 18px; }
   .kpi-value { font-size: 18px; }
   .st-table thead th, .st-table tbody td { padding: 6px 8px; font-size: 12px; }
+  .st-btn-primary,
+  .st-btn-primary.st-btn-inline {
+    min-height: 2.5rem;
+  }
+}
+
+@media (pointer: coarse) {
+  .shell-nav-link {
+    min-height: 2.5rem;
+  }
 }
 
 /* Keep Recharts legends inside their chart boxes (no absolute overflow) */

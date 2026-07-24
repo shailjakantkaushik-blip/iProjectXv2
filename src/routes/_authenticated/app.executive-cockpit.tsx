@@ -401,11 +401,16 @@ function ExecutiveCockpit() {
       </SectionFrame>
 
       {/* Portfolio Health Snapshot */}
-      <SectionFrame exportName="cockpit-health" exportTitle="Portfolio Health Snapshot">
+      <SectionFrame
+        exportName="cockpit-health"
+        exportTitle="Portfolio Health Snapshot"
+        className="section-frame--filters overflow-visible"
+      >
         <SectionTitle>🚦 Portfolio Health Snapshot</SectionTitle>
-        <div className="max-h-[520px] overflow-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-muted/70 text-xs uppercase text-muted-foreground">
+        <p className="mb-2 text-[11px] text-muted-foreground md:hidden">Swipe sideways to see all columns.</p>
+        <div className="st-table-wrap max-h-[min(520px,70dvh)] overflow-auto overscroll-contain">
+          <table className="w-full min-w-[960px] text-sm">
+            <thead className="sticky top-0 z-[1] bg-muted/70 text-xs uppercase text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 text-left">Project ID</th>
                 <th className="px-3 py-2 text-left">Project Name</th>
@@ -481,10 +486,24 @@ function ExecutiveCockpit() {
               <Tooltip formatter={(v: number) => money(v)} />
               <Legend verticalAlign="top" />
               <Bar dataKey="budget" name="Budget" fill="#3b82f6">
-                <LabelList dataKey="budget" position="top" formatter={(v: number) => money(v)} />
+                <LabelList
+                  dataKey="budget"
+                  position="top"
+                  style={{ fontSize: 10 }}
+                  formatter={(v: number) =>
+                    v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : `${Math.round(v / 1000)}K`
+                  }
+                />
               </Bar>
               <Bar dataKey="forecast" name="Forecast" fill="#f59e0b">
-                <LabelList dataKey="forecast" position="top" formatter={(v: number) => money(v)} />
+                <LabelList
+                  dataKey="forecast"
+                  position="top"
+                  style={{ fontSize: 10 }}
+                  formatter={(v: number) =>
+                    v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : `${Math.round(v / 1000)}K`
+                  }
+                />
               </Bar>
             </BarChart>
           </ExpandableChart>

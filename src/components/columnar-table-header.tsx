@@ -44,7 +44,7 @@ export function ColumnarTh<T>({
         )}
         {filterable ? (
           <input
-            className="st-input !h-7 !min-w-[4.5rem] !px-1.5 !py-0.5 !text-[10px] font-normal"
+            className="st-input !h-8 !min-w-[4.5rem] !min-h-8 !px-1.5 !py-1 !text-[11px] font-normal [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!min-h-9"
             placeholder="Filter…"
             value={filter ?? ""}
             onChange={(e) => onFilter?.(e.target.value)}

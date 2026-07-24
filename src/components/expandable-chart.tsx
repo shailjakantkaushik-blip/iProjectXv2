@@ -118,7 +118,7 @@ export function ExpandableChart({
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="z-[80] flex max-h-[94vh] w-[min(96vw,1100px)] max-w-[1100px] flex-col gap-3 overflow-hidden p-4 sm:p-6">
+        <DialogContent className="z-[80] flex max-h-[min(94dvh,940px)] w-[min(96vw,1100px)] max-w-[1100px] flex-col gap-3 overflow-hidden p-3 sm:p-6">
           <DialogHeader className="shrink-0 space-y-0 pr-8 text-left">
             <DialogTitle className="text-base sm:text-lg">{title}</DialogTitle>
           </DialogHeader>
@@ -127,7 +127,10 @@ export function ExpandableChart({
             <div
               ref={measureRef}
               className="w-full rounded-lg border border-border/70 bg-surface p-2 sm:p-3"
-              style={{ height: 520, minHeight: 520 }}
+              style={{
+                height: "min(520px, calc(100dvh - 12rem))",
+                minHeight: "min(280px, calc(100dvh - 12rem))",
+              }}
             >
               {chart && ready ? (
                 <ResponsiveContainer

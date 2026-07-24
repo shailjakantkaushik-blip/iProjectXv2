@@ -628,22 +628,22 @@ function DecisionsPage() {
                             invalidateKeys={["decisions"]}
                           />
                         </td>
-                        <td className="min-w-[9rem]">
+                        <td className="min-w-[10rem]">
                           {actionable ? (
-                            <div className="flex flex-wrap gap-1">
+                            <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap">
                               <button
                                 type="button"
-                                className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700"
+                                className="inline-flex min-h-9 items-center justify-center gap-1 rounded-md bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
                                 onClick={() => decide(d.id, "Approved")}
                               >
-                                <Check className="h-3 w-3" /> Approve
+                                <Check className="h-3.5 w-3.5" /> Approve
                               </button>
                               <button
                                 type="button"
-                                className="inline-flex items-center gap-1 rounded-md bg-rose-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-rose-700"
+                                className="inline-flex min-h-9 items-center justify-center gap-1 rounded-md bg-rose-600 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-700"
                                 onClick={() => decide(d.id, "Rejected")}
                               >
-                                <X className="h-3 w-3" /> Reject
+                                <X className="h-3.5 w-3.5" /> Reject
                               </button>
                             </div>
                           ) : d.approver_user_id && !isDecisionAwaiting(d) ? (

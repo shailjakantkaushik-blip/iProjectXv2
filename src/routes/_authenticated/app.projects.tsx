@@ -405,10 +405,16 @@ function ProjectsList() {
           <BarChart
             data={byPriority}
             layout="vertical"
-            margin={{ top: 5, right: 30, left: 60, bottom: 5 }}
+            margin={{ top: 5, right: 24, left: 4, bottom: 5 }}
           >
             <XAxis type="number" tick={{ fontSize: 10 }} />
-            <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={100} />
+            <YAxis
+              type="category"
+              dataKey="name"
+              tick={{ fontSize: 10 }}
+              width={72}
+              tickFormatter={(v: string) => (v?.length > 12 ? `${v.slice(0, 11)}…` : v)}
+            />
             <Tooltip />
             <Bar dataKey="count" radius={[0, 4, 4, 0]}>
               {byPriority.map((d, i) => (

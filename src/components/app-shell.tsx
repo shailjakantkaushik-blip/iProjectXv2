@@ -66,6 +66,7 @@ import { useOrgSupportAccess } from "@/lib/support-tickets";
 import { Button } from "@/components/ui/button";
 import { NotificationsBell } from "@/components/notifications-bell";
 import { CartoonCompanion } from "@/components/cartoon-mascots";
+import { useCartoonsEnabled } from "@/lib/use-cartoons";
 import {
   clampLogoCustom,
   fetchLandingConfig,
@@ -240,6 +241,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set());
   const [navOpenHydrated, setNavOpenHydrated] = useState(false);
   const { focusMode, toggleFocusMode } = useFocusMode();
+  const cartoonsEnabled = useCartoonsEnabled();
   useCommandPaletteHotkey(() => setCmdOpen(true));
   const desktopNavRef = useRef<HTMLElement | null>(null);
   const mobileNavRef = useRef<HTMLElement | null>(null);
@@ -361,6 +363,21 @@ export function AppShell({ children }: { children: ReactNode }) {
     setMobileOpen(false);
   }, [pathname]);
 
+  // Lock background scroll + Escape while the mobile drawer is open.
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [mobileOpen]);
+
   // Page scroll is handled by the router's scrollRestoration — do not fight it
   // with a manual window.scrollTo on every pathname change.
 
@@ -473,7 +490,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
       <button
         type="button"
-        className="ml-1 rounded-md p-1.5 text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent md:hidden"
+        className="ml-1 inline-flex h-10 w-10 items-center justify-center rounded-md text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent md:hidden"
         onClick={() => setMobileOpen(false)}
         aria-label="Close menu"
       >
@@ -487,10 +504,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       ref={navRef as any}
       className="shell-nav flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-2.5 py-2.5"
     >
-      <div className="mb-1.5 flex items-center justify-end gap-0.5 px-1.5">
+      <div className="mb-1.5 flex items-center justify-end gap-1 px-1.5">
         <button
           type="button"
-          className="rounded-md px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground disabled:opacity-35"
+          className="min-h-9 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground disabled:opacity-35 md:min-h-0 md:px-1.5 md:py-0.5 md:text-[10px]"
           onClick={expandAllNav}
           disabled={allNavExpanded}
           title="Expand all sections"
@@ -502,7 +519,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </span>
         <button
           type="button"
-          className="rounded-md px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground disabled:opacity-35"
+          className="min-h-9 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground disabled:opacity-35 md:min-h-0 md:px-1.5 md:py-0.5 md:text-[10px]"
           onClick={collapseAllNav}
           disabled={openGroups.size === 0}
           title="Collapse all sections"
@@ -635,12 +652,12 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       {mobileOpen && (
-        <div className="fixed inset-0 z-50 md:hidden">
+        <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label="Navigation menu">
           <div
             className="absolute inset-0 bg-black/35 backdrop-blur-[2px] transition-opacity"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] animate-in slide-in-from-left duration-200 flex-col border-r border-sidebar-border bg-sidebar shadow-xl">
+          <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[min(85vw,20rem)] animate-in slide-in-from-left duration-200 flex-col border-r border-sidebar-border bg-sidebar pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pt-[env(safe-area-inset-top)] shadow-xl">
             {BrandBlock}
             {renderNav(mobileNavRef)}
             {Footer}
@@ -649,13 +666,14 @@ export function AppShell({ children }: { children: ReactNode }) {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="shell-header relative sticky top-0 z-30 flex items-center gap-3 border-b border-border/50 bg-background/80 px-3 py-2 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70 sm:px-4 lg:px-6">
+        <header className="shell-header relative sticky top-0 z-30 flex items-center gap-2 border-b border-border/50 bg-background/80 px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur-xl supports-[backdrop-filter]:bg-background/70 sm:gap-3 sm:px-4 lg:px-6">
           <SoftUpdatingBar />
           <button
             type="button"
-            className="rounded-md p-2 transition-colors hover:bg-muted/80 active:scale-[0.98] md:hidden"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors hover:bg-muted/80 active:scale-[0.98] md:hidden"
             onClick={() => setMobileOpen(true)}
             aria-label="Open menu"
+            aria-expanded={mobileOpen}
           >
             <Menu className="h-5 w-5" />
           </button>
@@ -687,6 +705,17 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-1 sm:gap-1.5">
             <Button
               type="button"
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 sm:hidden"
+              onClick={() => setCmdOpen(true)}
+              title="Search"
+              aria-label="Open search"
+            >
+              <Search className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
               variant="outline"
               size="sm"
               className="hidden h-8 gap-1.5 border-border/70 bg-surface/60 px-2.5 text-[11px] text-muted-foreground shadow-none hover:bg-muted/60 sm:inline-flex"
@@ -703,7 +732,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               type="button"
               variant={focusMode ? "default" : "ghost"}
               size="icon"
-              className="h-8 w-8"
+              className="h-10 w-10 sm:h-8 sm:w-8"
               onClick={toggleFocusMode}
               title={focusMode ? "Exit focus mode" : "Focus mode — denser workspace"}
             >
@@ -716,13 +745,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8"
+                    className="h-10 w-10 sm:h-8 sm:w-8"
                     title="Style theme"
                   >
                     <Paintbrush className="h-3.5 w-3.5" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent align="end" className="w-72 p-3">
+                <PopoverContent align="end" className="w-[min(18rem,calc(100vw-1.5rem))] p-3">
                   <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Style theme
                   </div>
@@ -751,7 +780,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main className="shell-main min-w-0 flex-1 overflow-x-hidden p-3 sm:p-5 lg:p-7">
+        <main
+          className={cn(
+            "shell-main min-w-0 flex-1 overflow-x-hidden p-3 sm:p-5 lg:p-7",
+            cartoonsEnabled && !focusMode && "shell-main--with-companion",
+          )}
+        >
           {children}
         </main>
       </div>

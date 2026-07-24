@@ -132,6 +132,7 @@ export function CartoonCompanion() {
   const [dismissed, setDismissed] = useState(false);
   const [tip, setTip] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [compact, setCompact] = useState(true);
 
   useEffect(() => {
     try {
@@ -141,14 +142,23 @@ export function CartoonCompanion() {
     }
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(min-width: 768px)");
+    const apply = () => setCompact(!mq.matches);
+    apply();
+    mq.addEventListener?.("change", apply);
+    return () => mq.removeEventListener?.("change", apply);
+  }, []);
+
   if (!enabled || dismissed) return null;
 
   // Portal to body so style themes that set `.shell-root > * { position: relative }`
   // cannot turn this into a flex column (which wasted width on the right).
   const node = (
-    <div className="cartoon-companion pointer-events-none fixed bottom-4 right-4 z-40 flex flex-col items-end gap-2 print:hidden sm:bottom-6 sm:right-6">
+    <div className="cartoon-companion pointer-events-none fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] right-[max(0.75rem,env(safe-area-inset-right))] z-40 flex flex-col items-end gap-2 print:hidden sm:bottom-[max(1.25rem,env(safe-area-inset-bottom))] sm:right-[max(1.25rem,env(safe-area-inset-right))]">
       {open && tip && (
-        <div className="pointer-events-auto max-w-[220px] rounded-xl border border-border bg-surface px-3 py-2 text-xs leading-relaxed text-foreground shadow-md">
+        <div className="pointer-events-auto max-w-[min(220px,calc(100vw-5rem))] rounded-xl border border-border bg-surface px-3 py-2 text-xs leading-relaxed text-foreground shadow-md">
           {tip}
         </div>
       )}
@@ -156,7 +166,7 @@ export function CartoonCompanion() {
         <button
           type="button"
           aria-label="Dismiss cartoons for this session"
-          className="absolute -right-1 -top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-surface text-muted-foreground shadow-sm hover:text-foreground"
+          className="absolute -right-1 -top-1 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-muted-foreground shadow-sm hover:text-foreground"
           onClick={() => {
             setDismissed(true);
             try {
@@ -169,7 +179,7 @@ export function CartoonCompanion() {
           <X className="h-3.5 w-3.5" />
         </button>
         <CartoonGuide
-          size="md"
+          size={compact ? "sm" : "md"}
           mood={open ? "wave" : "idle"}
           onActivate={() => {
             setTip(TIPS[Math.floor(Math.random() * TIPS.length)]);

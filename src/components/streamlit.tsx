@@ -19,7 +19,7 @@ export function SectionFrame({
   return (
     <div id={id} ref={ref} className={cn("section-frame relative group", className)}>
       {exportable && (
-        <div className="absolute right-2 top-2 z-10 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity print:hidden">
+        <div className="absolute right-2 top-2 z-10 opacity-100 transition-opacity print:hidden md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
           <DownloadMenu targetRef={ref} name={name} title={exportTitle} label="" variant="ghost" />
         </div>
       )}
@@ -47,7 +47,7 @@ export function PageHeading({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mb-2 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 sm:flex sm:items-start sm:justify-between sm:gap-4">
+    <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
       <div className="min-w-0">
         <h1 className="page-heading">
           {icon && <span className="shrink-0">{icon}</span>}
@@ -55,7 +55,11 @@ export function PageHeading({
         </h1>
         {subtitle && <div className="mt-1 text-sm text-muted-foreground">{subtitle}</div>}
       </div>
-      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+      {actions && (
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0 sm:justify-end">
+          {actions}
+        </div>
+      )}
     </div>
   );
 }

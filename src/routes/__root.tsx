@@ -124,7 +124,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      {
+        name: "viewport",
+        content: "width=device-width, initial-scale=1, viewport-fit=cover",
+      },
       { title: "PMO Enterprise — Portfolio & Project Management" },
       { name: "description", content: "Multi-tenant portfolio and project management platform for enterprise PMOs." },
       { property: "og:title", content: "PMO Enterprise" },
