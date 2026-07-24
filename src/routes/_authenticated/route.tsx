@@ -44,23 +44,34 @@ function Gate() {
     Boolean(profile) &&
     (!session || profile!.id === session.user.id);
 
-  if (!sessionChecked && !profile) {
-    return <PageLoading label="Checking your session…" />;
-  }
-  if (sessionChecked && !session) {
-    return <PageLoading label="Checking your session…" />;
-  }
-  if (!profileMatchesSession) {
-    return <PageLoading label="Checking your session…" />;
-  }
-  if (profile?.is_active === false) {
-    return <PageLoading label="Account inactive…" />;
+  // Returning users: paint shell from cache even before getSession resolves.
+  if (profileMatchesSession) {
+    if (profile?.is_active === false) {
+      return <PageLoading label="Account inactive…" />;
+    }
+    if (bareShell) return <Outlet />;
+    return (
+      <AppShell>
+        <Outlet />
+      </AppShell>
+    );
   }
 
-  if (bareShell) return <Outlet />;
+  // Cold path — only block the whole viewport until local session is known.
+  if (!sessionChecked) {
+    return <PageLoading label="Checking your session…" />;
+  }
+  if (!session) {
+    return <PageLoading label="Checking your session…" />;
+  }
+
+  // Session is known; profile still hydrating — keep shell chrome, soft content wait.
+  if (bareShell) {
+    return <PageLoading label="Loading workspace…" fullScreen={false} />;
+  }
   return (
     <AppShell>
-      <Outlet />
+      <PageLoading label="Loading workspace…" fullScreen={false} />
     </AppShell>
   );
 }

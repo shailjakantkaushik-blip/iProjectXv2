@@ -89,6 +89,23 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
 
+const PROFILE_WITH_ORG_SELECT = `
+  id,email,full_name,org_id,must_change_password,is_active,
+  organizations (
+    id,name,slug,plan,brand_name,logo_url,primary_color,accent_color,fy_start_month,ui_config
+  )
+`.trim();
+
+type ProfileRow = Profile & {
+  organizations?: Organization | Organization[] | null;
+};
+
+function orgFromEmbed(row: ProfileRow | null): Organization | null {
+  const embedded = row?.organizations;
+  if (!embedded) return null;
+  return Array.isArray(embedded) ? (embedded[0] ?? null) : embedded;
+}
+
 function seedFromCache() {
   return readCachedAuthChrome();
 }
@@ -106,6 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(() => !cached);
   const loadedUserIdRef = useRef<string | null>(cached?.userId ?? null);
   const inflightProfileRef = useRef<{ userId: string; promise: Promise<void> } | null>(null);
+  const bootFinishedRef = useRef(false);
 
   const loadProfile = async (userId: string) => {
     if (inflightProfileRef.current?.userId === userId) {
@@ -113,35 +131,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const promise = (async () => {
-      const { data: p } = await supabase
-        .from("profiles")
-        .select("id,email,full_name,org_id,must_change_password,is_active")
-        .eq("id", userId)
-        .maybeSingle();
-
-      const rolesPromise = supabase
-        .from("user_roles")
-        .select("role,org_id")
-        .eq("user_id", userId);
-
-      const orgPromise = p?.org_id
-        ? supabase
-            .from("organizations")
-            .select(
-              "id,name,slug,plan,brand_name,logo_url,primary_color,accent_color,fy_start_month,ui_config",
-            )
-            .eq("id", p.org_id)
-            .maybeSingle()
-        : Promise.resolve({ data: null as Organization | null });
-
-      const [{ data: allRoles }, { data: orgRow }] = await Promise.all([
-        rolesPromise,
-        orgPromise,
+      // One RTT pair: profile(+org embed) and roles in parallel — not sequential hops.
+      const [profileRes, rolesRes] = await Promise.all([
+        supabase.from("profiles").select(PROFILE_WITH_ORG_SELECT).eq("id", userId).maybeSingle(),
+        supabase.from("user_roles").select("role").eq("user_id", userId),
       ]);
 
-      const nextProfile = (p as Profile) ?? null;
-      const nextRoles = (allRoles ?? []).map((r) => r.role as AppRole);
-      const nextOrg = (orgRow as Organization) ?? null;
+      const row = (profileRes.data as ProfileRow | null) ?? null;
+      const nextProfile: Profile | null = row
+        ? {
+            id: row.id,
+            email: row.email,
+            full_name: row.full_name,
+            org_id: row.org_id,
+            must_change_password: row.must_change_password,
+            is_active: row.is_active,
+          }
+        : null;
+      const nextOrg = orgFromEmbed(row);
+      const nextRoles = (rolesRes.data ?? []).map((r) => r.role as AppRole);
 
       setProfile(nextProfile);
       setRoles(nextRoles);
@@ -177,12 +185,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
 
+    const finishBoot = (s: Session | null) => {
+      if (cancelled || bootFinishedRef.current) return;
+      bootFinishedRef.current = true;
+      setSession(s);
+
+      if (s?.user) {
+        const cachedUser = readCachedAuthChrome()?.userId;
+        if (cachedUser && cachedUser !== s.user.id) {
+          // Stale chrome from another account — don't paint the wrong org.
+          clearCachedAuthChrome();
+          setProfile(null);
+          setOrganization(null);
+          setRoles([]);
+          setLoading(true);
+        } else if (cachedUser === s.user.id) {
+          // Chrome already on screen — refresh quietly in the background.
+          setLoading(false);
+        } else {
+          setLoading(true);
+        }
+
+        // Unlock the gate immediately — never wait on network profile hydrate.
+        setSessionChecked(true);
+        void loadProfile(s.user.id).finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+      } else {
+        clearCachedAuthChrome();
+        setProfile(null);
+        setOrganization(null);
+        setRoles([]);
+        setLoading(false);
+        setSessionChecked(true);
+      }
+    };
+
     const { data: sub } = supabase.auth.onAuthStateChange((evt, s) => {
+      if (evt === "INITIAL_SESSION") {
+        // Same local session as getSession — finishBoot is idempotent.
+        finishBoot(s);
+        return;
+      }
+
       setSession(s);
       if (s?.user) {
         const sameUser = loadedUserIdRef.current === s.user.id;
         if (evt === "TOKEN_REFRESHED") return;
-        if (evt === "INITIAL_SESSION") return;
         if (sameUser && evt === "SIGNED_IN") return;
 
         const switchingUser =
@@ -212,36 +261,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (cancelled) return;
-      const s = data.session;
-      setSession(s);
-
-      if (s?.user) {
-        const cachedUser = readCachedAuthChrome()?.userId;
-        if (cachedUser && cachedUser !== s.user.id) {
-          // Stale chrome from another account — don't paint the wrong org.
-          clearCachedAuthChrome();
-          setProfile(null);
-          setOrganization(null);
-          setRoles([]);
-          setLoading(true);
-        } else if (cachedUser === s.user.id) {
-          // Chrome already on screen — refresh quietly in the background.
-          setLoading(false);
-        } else {
-          setLoading(true);
-        }
-        await loadProfile(s.user.id);
-        if (!cancelled) setLoading(false);
-      } else {
-        clearCachedAuthChrome();
-        setProfile(null);
-        setOrganization(null);
-        setRoles([]);
-        setLoading(false);
-      }
-      if (!cancelled) setSessionChecked(true);
+    // getSession is a local storage read; unlock UI as soon as it returns.
+    void supabase.auth.getSession().then(({ data }) => {
+      finishBoot(data.session);
     });
 
     return () => {
