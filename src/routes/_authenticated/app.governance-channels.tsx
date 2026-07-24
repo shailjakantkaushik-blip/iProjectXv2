@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
@@ -12,6 +12,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2 } from "lucide-react";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/governance-channels")({
   component: GovernanceChannelsPage,
@@ -86,6 +89,20 @@ function GovernanceChannelsPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const columns: ColumnarColumn<Channel>[] = useMemo(
+    () => [
+      { key: "name", label: "Channel" },
+      { key: "cadence", label: "Cadence" },
+      { key: "audience", label: "Audience" },
+      { key: "chair", label: "Chair" },
+      { key: "next_meeting", label: "Next Meeting" },
+      { key: "status", label: "Status", getValue: (c) => c.status || "Active" },
+      { key: "purpose", label: "Purpose" },
+    ],
+    [],
+  );
+  const table = useColumnarTable(channels, columns);
+
   return (
     <div className="space-y-6">
       <PageHeading title="Governance Channels" subtitle="Forums, cadence, and decision rights across the portfolio" />
@@ -102,36 +119,99 @@ function GovernanceChannelsPage() {
           <SectionTitle>Governance Framework</SectionTitle>
           <Button size="sm" onClick={() => setEditing({})}><Plus className="h-4 w-4 mr-1" />Add Channel</Button>
         </div>
-        <div className="overflow-x-auto mt-3">
-          <table className="st-table">
-            <thead>
-              <tr>
-                <th>Channel</th><th>Cadence</th><th>Audience</th><th>Chair</th>
-                <th>Next Meeting</th><th>Status</th><th>Purpose</th><th className="w-24">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading && <tr><td colSpan={8} className="text-center text-muted-foreground p-4">Loading…</td></tr>}
-              {!isLoading && channels.length === 0 && <tr><td colSpan={8} className="text-center text-muted-foreground p-4">No channels yet.</td></tr>}
-              {channels.map(c => (
-                <tr key={c.id}>
-                  <td className="font-medium">{c.name}</td>
-                  <td>{c.cadence || "—"}</td>
-                  <td>{c.audience || "—"}</td>
-                  <td>{c.chair || "—"}</td>
-                  <td>{c.next_meeting || "—"}</td>
-                  <td><span className={`text-xs px-2 py-0.5 rounded ${c.status === "Retired" ? "bg-muted text-muted-foreground" : c.status === "Paused" ? "bg-amber-500/15 text-amber-600" : "bg-emerald-500/15 text-emerald-600"}`}>{c.status || "Active"}</span></td>
-                  <td className="max-w-md">{c.purpose || "—"}</td>
-                  <td>
-                    <div className="flex gap-1">
-                      <Button size="icon" variant="ghost" onClick={() => setEditing(c)}><Pencil className="h-4 w-4" /></Button>
-                      <Button size="icon" variant="ghost" onClick={() => { if (confirm(`Delete "${c.name}"?`)) del.mutate(c.id); }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                    </div>
-                  </td>
+        <div className="mt-3">
+          <ColumnarToolbar
+            globalQ={table.globalQ}
+            onGlobalQ={table.setGlobalQ}
+            shown={table.rows.length}
+            total={table.total}
+            onClear={table.clearAll}
+            placeholder="Search channels…"
+          />
+          <div className="overflow-x-auto">
+            <table className="st-table">
+              <thead>
+                <tr>
+                  {columns.map((col) => (
+                    <ColumnarTh
+                      key={col.key}
+                      column={col}
+                      filter={table.filters[col.key]}
+                      onFilter={(v) => table.setColumnFilter(col.key, v)}
+                      sortKey={table.sortKey}
+                      sortDir={table.sortDir}
+                      onToggleSort={table.toggleSort}
+                    />
+                  ))}
+                  <th className="w-24">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {isLoading && (
+                  <tr>
+                    <td colSpan={8} className="text-center text-muted-foreground p-4">
+                      Loading…
+                    </td>
+                  </tr>
+                )}
+                {!isLoading && table.total === 0 && (
+                  <tr>
+                    <td colSpan={8} className="text-center text-muted-foreground p-4">
+                      No channels yet.
+                    </td>
+                  </tr>
+                )}
+                {!isLoading &&
+                  table.total > 0 &&
+                  table.rows.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="text-center text-muted-foreground p-4">
+                        No channels match filters.
+                      </td>
+                    </tr>
+                  )}
+                {table.rows.map((c) => (
+                  <tr key={c.id}>
+                    <td className="font-medium">{c.name}</td>
+                    <td>{c.cadence || "—"}</td>
+                    <td>{c.audience || "—"}</td>
+                    <td>{c.chair || "—"}</td>
+                    <td>{c.next_meeting || "—"}</td>
+                    <td>
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded ${
+                          c.status === "Retired"
+                            ? "bg-muted text-muted-foreground"
+                            : c.status === "Paused"
+                              ? "bg-amber-500/15 text-amber-600"
+                              : "bg-emerald-500/15 text-emerald-600"
+                        }`}
+                      >
+                        {c.status || "Active"}
+                      </span>
+                    </td>
+                    <td className="max-w-md">{c.purpose || "—"}</td>
+                    <td>
+                      <div className="flex gap-1">
+                        <Button size="icon" variant="ghost" onClick={() => setEditing(c)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => {
+                            if (confirm(`Delete "${c.name}"?`)) del.mutate(c.id);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </SectionFrame>
 

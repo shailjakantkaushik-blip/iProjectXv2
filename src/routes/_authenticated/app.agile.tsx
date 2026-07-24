@@ -17,6 +17,9 @@ import {
   ReferenceLine,
 } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/agile")({ component: Page });
 
@@ -88,10 +91,53 @@ function Page() {
 
   // Project drilldown
   const [projectId, setProjectId] = useState<string>("");
+  const [sprintId, setSprintId] = useState<string>("");
   const activeProject = projectId || agileProjects[0]?.id || "";
-  const projectSprints = sprints
-    .filter((s: any) => s.project_id === activeProject)
-    .sort((a: any, b: any) => (a.sprint_number || 0) - (b.sprint_number || 0));
+  const projectSprints = useMemo(
+    () =>
+      sprints
+        .filter((s: any) => s.project_id === activeProject)
+        .sort((a: any, b: any) => (a.sprint_number || 0) - (b.sprint_number || 0)),
+    [sprints, activeProject],
+  );
+
+  const sprintColumns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "sprint_number", label: "Sprint #", getValue: (s) => Number(s.sprint_number || 0) },
+      { key: "name", label: "Sprint Name" },
+      {
+        key: "project",
+        label: "Project",
+        getValue: (s) => projById[s.project_id]?.project_code || "",
+      },
+      { key: "start_date", label: "Start" },
+      { key: "end_date", label: "End" },
+      {
+        key: "planned_points",
+        label: "Points Committed",
+        getValue: (s) => Number(s.planned_points || 0),
+      },
+      {
+        key: "completed_points",
+        label: "Points Completed",
+        getValue: (s) => Number(s.completed_points || 0),
+      },
+      {
+        key: "committed_stories",
+        label: "Stories Committed",
+        getValue: (s) => Number(s.committed_stories || 0),
+      },
+      {
+        key: "completed_stories",
+        label: "Stories Completed",
+        getValue: (s) => Number(s.completed_stories || 0),
+      },
+      { key: "status", label: "Status" },
+    ],
+    [projById],
+  );
+  const sprintTable = useColumnarTable(projectSprints, sprintColumns);
+
   const projSprintsComplete = projectSprints.filter(
     (s: any) => (s.status || "").toLowerCase() === "complete",
   );
@@ -116,7 +162,6 @@ function Page() {
   }));
 
   // Burndown
-  const [sprintId, setSprintId] = useState<string>("");
   const activeSprint =
     projectSprints.find((s: any) => s.id === sprintId) ||
     projectSprints.filter((s: any) => (s.status || "").toLowerCase() === "complete").slice(-1)[0] ||
@@ -300,31 +345,46 @@ function Page() {
 
       <SectionFrame>
         <SectionTitle>Sprint History</SectionTitle>
+        <ColumnarToolbar
+          globalQ={sprintTable.globalQ}
+          onGlobalQ={sprintTable.setGlobalQ}
+          shown={sprintTable.rows.length}
+          total={sprintTable.total}
+          onClear={sprintTable.clearAll}
+          placeholder="Search sprint history…"
+        />
         <div className="overflow-auto">
           <table className="st-table">
             <thead>
               <tr>
-                <th>Sprint #</th>
-                <th>Sprint Name</th>
-                <th>Project</th>
-                <th>Start</th>
-                <th>End</th>
-                <th>Points Committed</th>
-                <th>Points Completed</th>
-                <th>Stories Committed</th>
-                <th>Stories Completed</th>
-                <th>Status</th>
+                {sprintColumns.map((col) => (
+                  <ColumnarTh
+                    key={col.key}
+                    column={col}
+                    filter={sprintTable.filters[col.key]}
+                    onFilter={(v) => sprintTable.setColumnFilter(col.key, v)}
+                    sortKey={sprintTable.sortKey}
+                    sortDir={sprintTable.sortDir}
+                    onToggleSort={sprintTable.toggleSort}
+                  />
+                ))}
               </tr>
             </thead>
             <tbody>
-              {projectSprints.length === 0 ? (
+              {sprintTable.total === 0 ? (
                 <tr>
-                  <td colSpan={10} className="text-center text-muted-foreground py-6">
+                  <td colSpan={sprintColumns.length} className="text-center text-muted-foreground py-6">
                     No sprints
                   </td>
                 </tr>
+              ) : sprintTable.rows.length === 0 ? (
+                <tr>
+                  <td colSpan={sprintColumns.length} className="text-center text-muted-foreground py-6">
+                    No sprints match filters.
+                  </td>
+                </tr>
               ) : (
-                projectSprints.map((s: any) => (
+                sprintTable.rows.map((s: any) => (
                   <tr key={s.id}>
                     <td>{s.sprint_number}</td>
                     <td>{s.name}</td>

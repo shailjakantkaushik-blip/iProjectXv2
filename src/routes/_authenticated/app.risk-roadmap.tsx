@@ -27,6 +27,9 @@ import {
 } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { ExpandablePanel } from "@/components/expandable-panel";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/risk-roadmap")({
   head: () => ({
@@ -82,6 +85,33 @@ function RiskRoadmapPage() {
       return true;
     });
   }, [risks, projectIds, statusFilter, sevFilter]);
+
+  const riskColumns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      {
+        key: "project",
+        label: "Project",
+        getValue: (r) => (projectMap.get(r.project_id) as any)?.project_code || "",
+      },
+      { key: "title", label: "Title" },
+      { key: "category", label: "Category" },
+      { key: "owner", label: "Owner" },
+      { key: "probability", label: "Prob", getValue: (r) => Number(r.probability || 0) },
+      { key: "impact", label: "Impact", getValue: (r) => Number(r.impact || 0) },
+      {
+        key: "severity",
+        label: "Sev",
+        getValue: (r) => {
+          const sev = Number(r.severity || 0);
+          return `${sev} · ${SEV_LABEL(sev)}`;
+        },
+      },
+      { key: "status", label: "Status", getValue: (r) => r.status || "Open" },
+      { key: "due_date", label: "Due" },
+    ],
+    [projectMap],
+  );
+  const riskTable = useColumnarTable(risksFiltered, riskColumns);
 
   // KPIs
   const total = risksFiltered.length;
@@ -347,24 +377,40 @@ function RiskRoadmapPage() {
       </SectionFrame>
 
       <SectionFrame>
-        <SectionTitle>Risk Register ({risksFiltered.length})</SectionTitle>
+        <SectionTitle>
+          Risk Register ({riskTable.rows.length}
+          {riskTable.rows.length !== riskTable.total ? ` of ${riskTable.total}` : ""})
+        </SectionTitle>
+        <ColumnarToolbar
+          globalQ={riskTable.globalQ}
+          onGlobalQ={riskTable.setGlobalQ}
+          shown={riskTable.rows.length}
+          total={riskTable.total}
+          onClear={riskTable.clearAll}
+          placeholder="Search risk register…"
+        />
         <div className="max-h-[520px] overflow-auto">
           <table className="st-table">
             <thead className="sticky top-0 bg-white">
               <tr>
-                <th>Project</th>
-                <th>Title</th>
-                <th>Category</th>
-                <th>Owner</th>
-                <th className="text-center">Prob</th>
-                <th className="text-center">Impact</th>
-                <th className="text-center">Sev</th>
-                <th>Status</th>
-                <th>Due</th>
+                {riskColumns.map((col) => (
+                  <ColumnarTh
+                    key={col.key}
+                    column={col}
+                    filter={riskTable.filters[col.key]}
+                    onFilter={(v) => riskTable.setColumnFilter(col.key, v)}
+                    sortKey={riskTable.sortKey}
+                    sortDir={riskTable.sortDir}
+                    onToggleSort={riskTable.toggleSort}
+                    align={
+                      ["probability", "impact", "severity"].includes(col.key) ? "right" : "left"
+                    }
+                  />
+                ))}
               </tr>
             </thead>
             <tbody>
-              {risksFiltered.slice(0, 500).map((r: any) => {
+              {riskTable.rows.slice(0, 500).map((r: any) => {
                 const proj = projectMap.get(r.project_id) as any;
                 const sev = Number(r.severity || 0);
                 const overdue =
@@ -406,6 +452,16 @@ function RiskRoadmapPage() {
                   </tr>
                 );
               })}
+              {riskTable.rows.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={riskColumns.length}
+                    className="py-6 text-center text-sm text-muted-foreground"
+                  >
+                    No risks match filters.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

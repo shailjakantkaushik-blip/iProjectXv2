@@ -43,6 +43,9 @@ import {
   syncOrgIncurredFromMonthly,
   type MonthlyFinanceRow,
 } from "@/lib/finance-lifecycle";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/financials")({
   component: FinancialsPage,
@@ -76,6 +79,56 @@ function FinancialsPage() {
     () => monthly.filter((m: any) => ids.has(m.project_id)) as MonthlyFinanceRow[],
     [monthly, ids],
   );
+
+  const financeColumns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "project_code", label: "Code" },
+      { key: "name", label: "Project" },
+      { key: "program", label: "Program" },
+      {
+        key: "budget",
+        label: "Budget",
+        getValue: (p) => projectApprovedFunding(p),
+      },
+      {
+        key: "capex_approved",
+        label: "CAPEX Appr.",
+        getValue: (p) => Number(p.capex_approved || 0),
+      },
+      {
+        key: "capex_incurred",
+        label: "CAPEX Incd.",
+        getValue: (p) => Number(p.capex_incurred || 0),
+      },
+      {
+        key: "opex_approved",
+        label: "OPEX Appr.",
+        getValue: (p) => Number(p.opex_approved || 0),
+      },
+      {
+        key: "opex_incurred",
+        label: "OPEX Incd.",
+        getValue: (p) => Number(p.opex_incurred || 0),
+      },
+      {
+        key: "benefits",
+        label: "Benefits",
+        getValue: (p) => projectBenefitsRealised(p),
+      },
+      {
+        key: "variance",
+        label: "Variance",
+        getValue: (p) => projectApprovedFunding(p) - projectIncurred(p),
+      },
+      {
+        key: "roi",
+        label: "ROI %",
+        getValue: (p) => projectRealisedRoi(p),
+      },
+    ],
+    [],
+  );
+  const financeTable = useColumnarTable(filtered, financeColumns);
 
   const sum = (k: string) => filtered.reduce((s, p: any) => s + Number(p[k] || 0), 0);
   const capexApproved = sum("capex_approved");
@@ -337,26 +390,40 @@ function FinancialsPage() {
       </SectionFrame>
 
       <SectionFrame>
-        <SectionTitle>Project Financials ({filtered.length})</SectionTitle>
+        <SectionTitle>
+          Project Financials ({financeTable.rows.length}
+          {financeTable.rows.length !== financeTable.total ? ` of ${financeTable.total}` : ""})
+        </SectionTitle>
+        <ColumnarToolbar
+          globalQ={financeTable.globalQ}
+          onGlobalQ={financeTable.setGlobalQ}
+          shown={financeTable.rows.length}
+          total={financeTable.total}
+          onClear={financeTable.clearAll}
+          placeholder="Search project funding…"
+        />
         <div className="max-h-[500px] overflow-auto">
           <table className="st-table">
             <thead className="sticky top-0 bg-white">
               <tr>
-                <th>Code</th>
-                <th>Project</th>
-                <th>Program</th>
-                <th className="text-right">Budget</th>
-                <th className="text-right">CAPEX Appr.</th>
-                <th className="text-right">CAPEX Incd.</th>
-                <th className="text-right">OPEX Appr.</th>
-                <th className="text-right">OPEX Incd.</th>
-                <th className="text-right">Benefits</th>
-                <th className="text-right">Variance</th>
-                <th className="text-right">ROI %</th>
+                {financeColumns.map((col) => (
+                  <ColumnarTh
+                    key={col.key}
+                    column={col}
+                    filter={financeTable.filters[col.key]}
+                    onFilter={(v) => financeTable.setColumnFilter(col.key, v)}
+                    sortKey={financeTable.sortKey}
+                    sortDir={financeTable.sortDir}
+                    onToggleSort={financeTable.toggleSort}
+                    align={
+                      ["project_code", "name", "program"].includes(col.key) ? "left" : "right"
+                    }
+                  />
+                ))}
               </tr>
             </thead>
             <tbody>
-              {filtered.map((p: any) => {
+              {financeTable.rows.map((p: any) => {
                 const appr = projectApprovedFunding(p);
                 const inc = projectIncurred(p);
                 const ben = projectBenefitsRealised(p);
@@ -406,6 +473,16 @@ function FinancialsPage() {
                   </tr>
                 );
               })}
+              {financeTable.rows.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={financeColumns.length}
+                    className="py-6 text-center text-sm text-muted-foreground"
+                  >
+                    No projects match filters.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

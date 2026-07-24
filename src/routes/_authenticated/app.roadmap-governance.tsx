@@ -6,6 +6,9 @@ import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/roadmap-governance")({
   component: RoadmapGovPage,
@@ -117,6 +120,21 @@ function RoadmapGovPage() {
     }).length,
   };
 
+  const columns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "name", label: "Project" },
+      { key: "program", label: "Program" },
+      { key: "current_phase", label: "Current Phase" },
+      { key: "status", label: "Status" },
+      { key: "rag", label: "RAG" },
+      { key: "sponsor", label: "Sponsor" },
+      { key: "target_go_live", label: "Target Go-Live" },
+      { key: "end_date", label: "End" },
+    ],
+    [],
+  );
+  const table = useColumnarTable(projects, columns);
+
   return (
     <div>
       <PageHeading icon="🏛️">Governance — Stage Gates & Approvals</PageHeading>
@@ -158,22 +176,33 @@ function RoadmapGovPage() {
 
       <SectionFrame>
         <SectionTitle>Governance Register</SectionTitle>
+        <ColumnarToolbar
+          globalQ={table.globalQ}
+          onGlobalQ={table.setGlobalQ}
+          shown={table.rows.length}
+          total={table.total}
+          onClear={table.clearAll}
+          placeholder="Search governance register…"
+        />
         <div className="overflow-x-auto">
           <table className="st-table">
             <thead>
               <tr>
-                <th>Project</th>
-                <th>Program</th>
-                <th>Current Phase</th>
-                <th>Status</th>
-                <th>RAG</th>
-                <th>Sponsor</th>
-                <th>Target Go-Live</th>
-                <th>End</th>
+                {columns.map((col) => (
+                  <ColumnarTh
+                    key={col.key}
+                    column={col}
+                    filter={table.filters[col.key]}
+                    onFilter={(v) => table.setColumnFilter(col.key, v)}
+                    sortKey={table.sortKey}
+                    sortDir={table.sortDir}
+                    onToggleSort={table.toggleSort}
+                  />
+                ))}
               </tr>
             </thead>
             <tbody>
-              {projects.map((p) => (
+              {table.rows.map((p) => (
                 <tr key={p.id}>
                   <td className="font-medium">{p.name}</td>
                   <td>{p.program || "—"}</td>
@@ -187,6 +216,13 @@ function RoadmapGovPage() {
                   <td>{p.end_date || "—"}</td>
                 </tr>
               ))}
+              {table.rows.length === 0 && (
+                <tr>
+                  <td colSpan={columns.length} className="py-6 text-center text-sm text-muted-foreground">
+                    No projects match filters.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

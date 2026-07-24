@@ -25,6 +25,9 @@ import {
   projectIncurred,
 } from "@/lib/project-finance";
 import { projectScheduleEnd, projectScheduleStart, fyOf } from "@/lib/project-dates";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/programs")({
   component: ProgramsPage,
@@ -81,21 +84,7 @@ function ProgramsPage() {
     staleTime: 15_000,
   });
 
-  if (authLoading || !orgId || (isLoading && projects.length === 0)) {
-    return <PageLoading label="Loading programs…" />;
-  }
-  if (isError) {
-    return (
-      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 p-8 text-center">
-        <p className="text-sm text-muted-foreground">
-          Could not load projects{error instanceof Error ? `: ${error.message}` : "."}
-        </p>
-        <Button size="sm" onClick={() => void refetch()} disabled={isFetching}>
-          {isFetching ? "Retrying…" : "Try again"}
-        </Button>
-      </div>
-    );
-  }
+  const [selectedProgram, setSelectedProgram] = useState<string>("");
 
   const programs = useMemo(() => {
     const m = new Map<string, any>();
@@ -161,18 +150,115 @@ function ProgramsPage() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [projects, organization?.fy_start_month]);
 
-  const totBudget = programs.reduce((s, p) => s + p.budget, 0);
-  const totForecast = programs.reduce((s, p) => s + p.forecast, 0);
-  const totActual = programs.reduce((s, p) => s + p.actual, 0);
-  const totBenefits = programs.reduce((s, p) => s + p.benefits, 0);
-  const totRemaining = Math.max(0, totBudget - totActual);
-
-  const [selectedProgram, setSelectedProgram] = useState<string>("");
   const currentProgram = programs.find((p) => p.name === selectedProgram) || programs[0];
   const programProjects = useMemo(
     () => projects.filter((p: any) => (p.program || "Unassigned") === currentProgram?.name),
     [projects, currentProgram],
   );
+
+  const programColumns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "name", label: "Program" },
+      { key: "owner", label: "Owner" },
+      { key: "sponsor", label: "Sponsor" },
+      { key: "status", label: "Status" },
+      { key: "startFY", label: "Start FY" },
+      { key: "endFY", label: "End FY" },
+      { key: "budget", label: "Budget", getValue: (p) => Math.round(p.budget) },
+      { key: "forecast", label: "Forecast", getValue: (p) => Math.round(p.forecast) },
+      {
+        key: "approved",
+        label: "Approved Funding (Projects)",
+        getValue: (p) => Math.round(p.approved),
+      },
+      {
+        key: "actual",
+        label: "Actual Spend (Projects)",
+        getValue: (p) => Math.round(p.actual),
+      },
+      {
+        key: "fac",
+        label: "Forecast at Completion (Projects)",
+        getValue: (p) => Math.round(p.fac),
+      },
+      {
+        key: "committedVsBudget",
+        label: "Committed vs Program Budget",
+        getValue: (p) => Math.round(p.committedVsBudget),
+      },
+      {
+        key: "remaining",
+        label: "Remaining Budget",
+        getValue: (p) => Math.round(p.remaining),
+      },
+      {
+        key: "variance",
+        label: "Forecast Variance",
+        getValue: (p) => Math.round(p.variance),
+      },
+    ],
+    [],
+  );
+  const programTable = useColumnarTable(programs, programColumns);
+
+  const projectColumns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "project_code", label: "Project ID" },
+      { key: "name", label: "Project Name" },
+      { key: "sponsor", label: "Sponsor" },
+      { key: "status", label: "Status" },
+      { key: "rag", label: "RAG" },
+      {
+        key: "approved",
+        label: "Approved Funding",
+        getValue: (p) => Math.round(projectApprovedFunding(p)),
+      },
+      {
+        key: "actual",
+        label: "Actual Spend",
+        getValue: (p) => Math.round(projectIncurred(p)),
+      },
+      {
+        key: "fac",
+        label: "Forecast At Completion",
+        getValue: (p) => Math.round(projectForecast(p)),
+      },
+      {
+        key: "start",
+        label: "Start Date",
+        getValue: (p) => fmtDate(projectScheduleStart(p)),
+      },
+      {
+        key: "end",
+        label: "End Date",
+        getValue: (p) => fmtDate(projectScheduleEnd(p)),
+      },
+    ],
+    [],
+  );
+  const projectTable = useColumnarTable(programProjects, projectColumns);
+
+  if (authLoading || !orgId || (isLoading && projects.length === 0)) {
+    return <PageLoading label="Loading programs…" />;
+  }
+  if (isError) {
+    return (
+      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 p-8 text-center">
+        <p className="text-sm text-muted-foreground">
+          Could not load projects{error instanceof Error ? `: ${error.message}` : "."}
+        </p>
+        <Button size="sm" onClick={() => void refetch()} disabled={isFetching}>
+          {isFetching ? "Retrying…" : "Try again"}
+        </Button>
+      </div>
+    );
+  }
+
+  const totBudget = programs.reduce((s, p) => s + p.budget, 0);
+  const totForecast = programs.reduce((s, p) => s + p.forecast, 0);
+  const totActual = programs.reduce((s, p) => s + p.actual, 0);
+  const totBenefits = programs.reduce((s, p) => s + p.benefits, 0);
+  const totRemaining = Math.max(0, totBudget - totActual);
 
   const remainingSorted = [...programs].sort((a, b) => b.remaining - a.remaining);
   const remMax = Math.max(1, ...remainingSorted.map((p) => p.remaining));
@@ -293,28 +379,47 @@ function ProgramsPage() {
 
       <SectionFrame>
         <SectionTitle>📊 Program Rollup</SectionTitle>
+        <ColumnarToolbar
+          globalQ={programTable.globalQ}
+          onGlobalQ={programTable.setGlobalQ}
+          shown={programTable.rows.length}
+          total={programTable.total}
+          onClear={programTable.clearAll}
+          placeholder="Search programs…"
+        />
         <div className="overflow-x-auto">
           <table className="st-table text-xs">
             <thead>
               <tr>
-                <th>Program</th>
-                <th>Owner</th>
-                <th>Sponsor</th>
-                <th>Status</th>
-                <th>Start FY</th>
-                <th>End FY</th>
-                <th className="text-right">Budget</th>
-                <th className="text-right">Forecast</th>
-                <th className="text-right">Approved Funding (Projects)</th>
-                <th className="text-right">Actual Spend (Projects)</th>
-                <th className="text-right">Forecast at Completion (Projects)</th>
-                <th className="text-right">Committed vs Program Budget</th>
-                <th className="text-right">Remaining Budget</th>
-                <th className="text-right">Forecast Variance</th>
+                {programColumns.map((col) => (
+                  <ColumnarTh
+                    key={col.key}
+                    column={col}
+                    filter={programTable.filters[col.key]}
+                    onFilter={(v) => programTable.setColumnFilter(col.key, v)}
+                    sortKey={programTable.sortKey}
+                    sortDir={programTable.sortDir}
+                    onToggleSort={programTable.toggleSort}
+                    align={
+                      [
+                        "budget",
+                        "forecast",
+                        "approved",
+                        "actual",
+                        "fac",
+                        "committedVsBudget",
+                        "remaining",
+                        "variance",
+                      ].includes(col.key)
+                        ? "right"
+                        : "left"
+                    }
+                  />
+                ))}
               </tr>
             </thead>
             <tbody>
-              {programs.map((p) => (
+              {programTable.rows.map((p) => (
                 <tr key={p.name}>
                   <td className="font-medium">{p.name}</td>
                   <td>{p.owner}</td>
@@ -348,12 +453,16 @@ function ProgramsPage() {
                   </td>
                 </tr>
               ))}
+              {programTable.rows.length === 0 && (
+                <tr>
+                  <td colSpan={programColumns.length} className="text-center text-slate-500 py-4">
+                    No programs match filters.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
-        <p className="text-xs text-slate-500 mt-2">
-          Showing {programs.length} of {programs.length} row(s). Click a column header to sort.
-        </p>
       </SectionFrame>
 
       <SectionFrame>
@@ -397,24 +506,36 @@ function ProgramsPage() {
               <p className="text-xs text-slate-600 mb-2">
                 Projects mapped to <span className="font-semibold">{currentProgram.name}</span>
               </p>
+              <ColumnarToolbar
+                globalQ={projectTable.globalQ}
+                onGlobalQ={projectTable.setGlobalQ}
+                shown={projectTable.rows.length}
+                total={projectTable.total}
+                onClear={projectTable.clearAll}
+                placeholder="Search projects…"
+              />
               <div className="overflow-x-auto">
                 <table className="st-table text-xs">
                   <thead>
                     <tr>
-                      <th>Project ID</th>
-                      <th>Project Name</th>
-                      <th>Sponsor</th>
-                      <th>Status</th>
-                      <th>RAG</th>
-                      <th className="text-right">Approved Funding</th>
-                      <th className="text-right">Actual Spend</th>
-                      <th className="text-right">Forecast At Completion</th>
-                      <th>Start Date</th>
-                      <th>End Date</th>
+                      {projectColumns.map((col) => (
+                        <ColumnarTh
+                          key={col.key}
+                          column={col}
+                          filter={projectTable.filters[col.key]}
+                          onFilter={(v) => projectTable.setColumnFilter(col.key, v)}
+                          sortKey={projectTable.sortKey}
+                          sortDir={projectTable.sortDir}
+                          onToggleSort={projectTable.toggleSort}
+                          align={
+                            ["approved", "actual", "fac"].includes(col.key) ? "right" : "left"
+                          }
+                        />
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {programProjects.map((p: any) => (
+                    {projectTable.rows.map((p: any) => (
                       <tr key={p.id}>
                         <td className="font-mono text-[11px]">
                           {p.project_code ? (
@@ -454,19 +575,18 @@ function ProgramsPage() {
                         <td>{fmtDate(projectScheduleEnd(p))}</td>
                       </tr>
                     ))}
-                    {programProjects.length === 0 && (
+                    {projectTable.rows.length === 0 && (
                       <tr>
-                        <td colSpan={10} className="text-center text-slate-500 py-4">
-                          No projects mapped.
+                        <td colSpan={projectColumns.length} className="text-center text-slate-500 py-4">
+                          {projectTable.total === 0
+                            ? "No projects mapped."
+                            : "No projects match filters."}
                         </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs text-slate-500 mt-2">
-                Showing {programProjects.length} of {programProjects.length} row(s).
-              </p>
             </div>
           </>
         )}

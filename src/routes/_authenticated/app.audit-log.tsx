@@ -5,7 +5,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
-import { Input } from "@/components/ui/input";
 import { PageLoading } from "@/components/page-loading";
 import {
   Select,
@@ -14,6 +13,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/audit-log")({
   component: AuditLogPage,
@@ -23,7 +25,6 @@ function AuditLogPage() {
   const { organization } = useAuth();
   const orgId = organization?.id;
   const [entityType, setEntityType] = useState("All");
-  const [q, setQ] = useState("");
 
   const { data: events = [], isLoading } = useQuery({
     queryKey: ["audit_events", orgId],
@@ -47,18 +48,27 @@ function AuditLogPage() {
     return Array.from(s).sort();
   }, [events]);
 
-  const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
+  const pageFiltered = useMemo(() => {
     return (events as any[]).filter((e) => {
       if (entityType !== "All" && e.entity_type !== entityType) return false;
-      if (!needle) return true;
-      return (
-        String(e.summary ?? "").toLowerCase().includes(needle) ||
-        String(e.action ?? "").toLowerCase().includes(needle) ||
-        String(e.entity_type ?? "").toLowerCase().includes(needle)
-      );
+      return true;
     });
-  }, [events, entityType, q]);
+  }, [events, entityType]);
+
+  const columns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      {
+        key: "created_at",
+        label: "When",
+        getValue: (e) => (e.created_at ? new Date(e.created_at).toLocaleString() : ""),
+      },
+      { key: "entity_type", label: "Entity" },
+      { key: "action", label: "Action" },
+      { key: "summary", label: "Summary" },
+    ],
+    [],
+  );
+  const table = useColumnarTable(pageFiltered, columns);
 
   const last24h = (events as any[]).filter((e) => {
     const t = new Date(e.created_at).getTime();
@@ -83,12 +93,6 @@ function AuditLogPage() {
 
       <SectionFrame>
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <Input
-            className="max-w-xs"
-            placeholder="Search summary / action…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
           <Select value={entityType} onValueChange={setEntityType}>
             <SelectTrigger className="w-44">
               <SelectValue />
@@ -104,26 +108,44 @@ function AuditLogPage() {
           </Select>
         </div>
 
+        <ColumnarToolbar
+          globalQ={table.globalQ}
+          onGlobalQ={table.setGlobalQ}
+          shown={table.rows.length}
+          total={table.total}
+          onClear={table.clearAll}
+          placeholder="Search audit log…"
+        />
+
         {isLoading ? (
           <PageLoading label="Loading audit log…" fullScreen={false} size="sm" />
-        ) : filtered.length === 0 ? (
+        ) : table.total === 0 ? (
           <p className="text-sm text-muted-foreground">
             No audit events yet. Decision outcome changes and other governed actions will appear
             here after the advanced PMO migration is applied.
           </p>
+        ) : table.rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No events match filters.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="st-table w-full">
               <thead>
                 <tr>
-                  <th>When</th>
-                  <th>Entity</th>
-                  <th>Action</th>
-                  <th>Summary</th>
+                  {columns.map((col) => (
+                    <ColumnarTh
+                      key={col.key}
+                      column={col}
+                      filter={table.filters[col.key]}
+                      onFilter={(v) => table.setColumnFilter(col.key, v)}
+                      sortKey={table.sortKey}
+                      sortDir={table.sortDir}
+                      onToggleSort={table.toggleSort}
+                    />
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((e: any) => (
+                {table.rows.map((e: any) => (
                   <tr key={e.id}>
                     <td className="whitespace-nowrap text-xs text-muted-foreground">
                       {e.created_at ? new Date(e.created_at).toLocaleString() : "—"}

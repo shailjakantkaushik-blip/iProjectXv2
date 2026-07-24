@@ -5,8 +5,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth, canEditProjects, isAdmin } from "@/lib/auth-context";
 import { useCapabilityPermission } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -37,6 +35,9 @@ import {
 import { RAG_COLORS, PRIORITY_COLORS, CHART_SERIES } from "@/lib/chart-theme";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { PageLoading } from "@/components/page-loading";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/projects")({
   component: ProjectsList,
@@ -56,7 +57,6 @@ function ProjectsList() {
   const canEdit = canEditProjects(roles);
   const admin = isAdmin(roles);
   const canUploadTemplate = useCapabilityPermission("template_upload").canEdit;
-  const [q, setQ] = useState("");
   const [prog, setProg] = useState("All");
   const [ragF, setRagF] = useState("All");
   const [statusF, setStatusF] = useState("All");
@@ -105,15 +105,35 @@ function ProjectsList() {
     () =>
       projects.filter(
         (p: any) =>
-          (!q ||
-            p.name.toLowerCase().includes(q.toLowerCase()) ||
-            (p.project_code ?? "").toLowerCase().includes(q.toLowerCase())) &&
           (prog === "All" || p.program === prog) &&
           (ragF === "All" || p.rag === ragF) &&
           (statusF === "All" || p.status === statusF),
       ),
-    [projects, q, prog, ragF, statusF],
+    [projects, prog, ragF, statusF],
   );
+
+  const columns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "project_code", label: "Project ID" },
+      { key: "name", label: "Project Name" },
+      { key: "program", label: "Program" },
+      { key: "sponsor", label: "Sponsor" },
+      { key: "priority", label: "Priority" },
+      { key: "status", label: "Status" },
+      { key: "rag", label: "RAG" },
+      { key: "current_phase", label: "Current Phase" },
+      { key: "delivery_method", label: "Method" },
+      { key: "budget", label: "Budget", getValue: (p) => Number(p.budget || 0) },
+      {
+        key: "capex_incurred",
+        label: "Incurred",
+        getValue: (p) => Number(p.capex_incurred || 0),
+      },
+    ],
+    [],
+  );
+
+  const table = useColumnarTable(filtered, columns);
 
   const onImport = async (file: File) => {
     if (!organization) return;
@@ -255,12 +275,7 @@ function ProjectsList() {
 
       <SectionFrame>
         <SectionTitle>Filters</SectionTitle>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Input
-            placeholder="Search name or code…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Select value={prog} onValueChange={setProg}>
             <SelectTrigger>
               <SelectValue placeholder="Program" />
@@ -410,36 +425,50 @@ function ProjectsList() {
 
       <SectionFrame>
         <SectionTitle>
-          Portfolio Register ({filtered.length})
+          Portfolio Register ({table.rows.length}
+          {table.rows.length !== table.total ? ` of ${table.total}` : ""})
           {isFetching ? (
             <span className="ml-2 text-[11px] font-normal text-muted-foreground">Updating…</span>
           ) : null}
         </SectionTitle>
-        {filtered.length === 0 ? (
+        <ColumnarToolbar
+          globalQ={table.globalQ}
+          onGlobalQ={table.setGlobalQ}
+          shown={table.rows.length}
+          total={table.total}
+          onClear={table.clearAll}
+          placeholder="Search portfolio register…"
+        />
+        {table.total === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">
             No projects match.{" "}
             {admin ? "Import from Excel or click New." : "Ask your admin to add projects."}
+          </div>
+        ) : table.rows.length === 0 ? (
+          <div className="p-12 text-center text-sm text-muted-foreground">
+            No projects match column filters.
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="st-table">
               <thead>
                 <tr>
-                  <th>Project ID</th>
-                  <th>Project Name</th>
-                  <th>Program</th>
-                  <th>Sponsor</th>
-                  <th>Priority</th>
-                  <th>Status</th>
-                  <th>RAG</th>
-                  <th>Current Phase</th>
-                  <th>Method</th>
-                  <th className="text-right">Budget</th>
-                  <th className="text-right">Incurred</th>
+                  {columns.map((col) => (
+                    <ColumnarTh
+                      key={col.key}
+                      column={col}
+                      filter={table.filters[col.key]}
+                      onFilter={(v) => table.setColumnFilter(col.key, v)}
+                      sortKey={table.sortKey}
+                      sortDir={table.sortDir}
+                      onToggleSort={table.toggleSort}
+                      align={col.key === "budget" || col.key === "capex_incurred" ? "right" : "left"}
+                    />
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((p: any) => (
+                {table.rows.map((p: any) => (
                   <tr key={p.id}>
                     <td className="font-mono text-[11px]">
                       {p.project_code ? (
