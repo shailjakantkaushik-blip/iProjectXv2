@@ -53,6 +53,7 @@ export const TABLES: TableDef[] = [
     fields: [
       { key: "project_code", label: "Project Code", type: "text", required: true },
       { key: "name", label: "Name", type: "text", required: true },
+      { key: "portfolio", label: "Portfolio", type: "text" },
       { key: "program", label: "Program", type: "text" },
       { key: "sponsor", label: "Sponsor", type: "text" },
       { key: "bu_id", label: "Business Unit", type: "text", fk: "bu" },

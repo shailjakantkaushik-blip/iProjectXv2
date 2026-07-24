@@ -1572,6 +1572,7 @@ export type Database = {
           planned_end_date: string | null
           planned_start_date: string | null
           pm_user_id: string | null
+          portfolio: string | null
           priority: string | null
           program: string | null
           project_code: string | null
@@ -1616,6 +1617,7 @@ export type Database = {
           planned_end_date?: string | null
           planned_start_date?: string | null
           pm_user_id?: string | null
+          portfolio?: string | null
           priority?: string | null
           program?: string | null
           project_code?: string | null
@@ -1660,6 +1662,7 @@ export type Database = {
           planned_end_date?: string | null
           planned_start_date?: string | null
           pm_user_id?: string | null
+          portfolio?: string | null
           priority?: string | null
           program?: string | null
           project_code?: string | null

@@ -61,8 +61,8 @@ function money(n: number) {
 function Segmentation() {
   const { organization } = useAuth();
   const [dim, setDim] = useState<
-    "program" | "priority" | "delivery_method" | "sponsor" | "current_phase"
-  >("program");
+    "portfolio" | "program" | "priority" | "delivery_method" | "sponsor" | "current_phase"
+  >("portfolio");
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
@@ -181,6 +181,7 @@ function Segmentation() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="portfolio">Portfolio</SelectItem>
               <SelectItem value="program">Program</SelectItem>
               <SelectItem value="priority">Priority</SelectItem>
               <SelectItem value="delivery_method">Delivery method</SelectItem>
