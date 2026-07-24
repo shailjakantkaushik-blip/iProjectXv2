@@ -53,6 +53,7 @@ function exportHeaders(t: TableDef): string[] {
   for (const f of t.fields) {
     if (f.fk === "project") cols.push("project_code");
     else if (f.fk === "bu") cols.push("bu_code");
+    else if (f.fk === "stream") cols.push("stream_code");
     else cols.push(f.key);
   }
   return cols;
@@ -65,6 +66,7 @@ function toExportRow(
   projectById: Map<string, string>,
   buById: Map<string, string>,
   resourceById?: Map<string, string>,
+  streamById?: Map<string, string>,
 ): Dict {
   const out: Dict = {};
   for (const f of t.fields) {
@@ -78,6 +80,8 @@ function toExportRow(
       }
     } else if (f.fk === "bu") {
       out["bu_code"] = v ? buById.get(String(v)) ?? "" : "";
+    } else if (f.fk === "stream") {
+      out["stream_code"] = v && streamById ? streamById.get(String(v)) ?? "" : "";
     } else if (f.key === "resource_id" && resourceById) {
       out["resource_name"] = v ? resourceById.get(String(v)) ?? "" : "";
     } else if (f.type === "date") {
@@ -98,14 +102,18 @@ function toExportRow(
 // ---------- Full org export ----------
 export async function exportOrganizationWorkbook(orgId: string, orgName: string) {
   // Preload lookup maps for FK resolution.
-  const [{ data: projects }, { data: bus }, { data: resources }] = await Promise.all([
+  const [{ data: projects }, { data: bus }, { data: resources }, { data: streams }] = await Promise.all([
     supabase.from("projects").select("id,project_code,name").eq("org_id", orgId),
     supabase.from("business_units").select("id,code,name").eq("org_id", orgId),
     supabase.from("resources").select("id,name").eq("org_id", orgId),
+    supabase.from("project_streams").select("id,code,name,project_id").eq("org_id", orgId),
   ]);
   const projectById = new Map((projects ?? []).map((p) => [p.id, p.project_code || p.name]));
   const buById = new Map((bus ?? []).map((b) => [b.id, b.code || b.name]));
   const resourceById = new Map((resources ?? []).map((r) => [r.id, r.name]));
+  const streamById = new Map(
+    (streams ?? []).map((s: any) => [s.id, s.code || s.name || s.id] as [string, string]),
+  );
 
   const wb = XLSX.utils.book_new();
 
@@ -119,16 +127,18 @@ export async function exportOrganizationWorkbook(orgId: string, orgName: string)
     { A: "Match keys", B: "Rows match on the keys listed per sheet. New codes insert; existing codes update." },
     { A: "Project dates", B: "Edit planned_* and actual_* dates. start_date/end_date (Schedule Start/End) auto-sync as Actual → else Planned." },
     { A: "Current phase", B: "Prefer Stage Gates sheet status. current_phase is refreshed from the in-flight gate after gate rows are saved." },
-    { A: "FK columns", B: "Use project_code / bu_code / resource_name (not UUIDs). Dependencies also use depends_on_project_code." },
+    { A: "FK columns", B: "Use project_code / bu_code / resource_name / stream_code (not UUIDs). Dependencies also use depends_on_project_code." },
+    { A: "Streams", B: "Set projects.streams_enabled=true, then add Project Streams rows. Child sheets (gates, finance, allocations) use stream_code when streams are on." },
     { A: "", B: "" },
     { A: "Finance model (canonical)", B: "" },
-    { A: "1. Projects", B: "budget = approved funding; capex/opex approved & incurred; forecast_at_completion (FAC); benefits_* are rollups." },
-    { A: "2. Benefits sheet", B: "Benefit lines are the detail source. Keep project benefits_target / benefits_realised in sync with the sum of lines." },
-    { A: "3. FY Allocations", B: "Forward PLAN: budget + forecast $ per FY. Saving in-app cascades into monthly planned/forecast." },
-    { A: "4. Financials (Monthly)", B: "Execution: planned/forecast (from FY) + actual after kickoff. YYYY-MM-01. Sync incurred from actuals on Financials." },
-    { A: "5. ROI %", B: "Target ROI = (benefits_target − budget) / budget × 100. Store on Projects; realised ROI is computed from incurred + realised benefits." },
-    { A: "6. Stage gates", B: "gate_name must match Stage Gate Definitions. current_phase mirrors the in-flight gate. Each gate auto-creates/updates a linked milestone; use Milestones sheet only for add-on (non-gate) dates." },
-    { A: "7. Resource allocations", B: "allocation_percent is % of FTE for that month. Multiple projects in the same month are summed in capacity views." },
+    { A: "1. Projects", B: "budget = approved funding; capex/opex approved & incurred; forecast_at_completion (FAC); benefits_* are rollups. With streams on, project figures roll up from Project Streams." },
+    { A: "2. Project Streams", B: "Delivery lanes under a project. Each stream owns planned/actual dates, gates, finance, and allocations." },
+    { A: "3. Benefits sheet", B: "Benefit lines are the detail source. Keep project benefits_target / benefits_realised in sync with the sum of lines." },
+    { A: "4. FY Allocations", B: "Forward PLAN: budget + forecast $ per FY. Optional stream_code when streams are enabled." },
+    { A: "5. Financials (Monthly)", B: "Execution: planned/forecast + actual. YYYY-MM-01. Optional stream_code." },
+    { A: "6. ROI %", B: "Target ROI = (benefits_target − budget) / budget × 100. Store on Projects; realised ROI is computed from incurred + realised benefits." },
+    { A: "7. Stage gates", B: "gate_name must match Stage Gate Definitions. Include stream_code when the project uses streams." },
+    { A: "8. Resource allocations", B: "allocation_percent is % of FTE for that month. Optional stream_code scopes allocation to a stream." },
   ];
   const readmeSheet = XLSX.utils.json_to_sheet(readme, { skipHeader: true });
   XLSX.utils.book_append_sheet(wb, readmeSheet, "README");
@@ -150,7 +160,9 @@ export async function exportOrganizationWorkbook(orgId: string, orgName: string)
       const idx = headers.indexOf("resource_id");
       if (idx >= 0) headers[idx] = "resource_name";
     }
-    const rows = (data ?? []).map((r: Dict) => toExportRow(r, t, projectById, buById, resourceById));
+    const rows = (data ?? []).map((r: Dict) =>
+      toExportRow(r, t, projectById, buById, resourceById, streamById),
+    );
     // Ensure at least the header row is present
     const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [Object.fromEntries(headers.map((h) => [h, ""]))], { header: headers });
     XLSX.utils.book_append_sheet(wb, ws, t.label.slice(0, 31));
@@ -176,10 +188,11 @@ export async function importOrganizationWorkbook(orgId: string, file: File): Pro
   // Refresh lookups after each phase (projects first so downstream tables can match).
   const results: ImportReport[] = [];
 
-  // Import projects & business_units & stage_gate_definitions first
+  // Import lookup tables + projects + streams before child sheets that reference them.
+  const firstKeys = ["business_units", "stage_gate_definitions", "projects", "project_streams", "resources"];
   const ordered: TableDef[] = [
-    ...TABLES.filter((t) => ["business_units", "stage_gate_definitions", "projects", "resources"].includes(t.key)),
-    ...TABLES.filter((t) => !["business_units", "stage_gate_definitions", "projects", "resources"].includes(t.key)),
+    ...TABLES.filter((t) => firstKeys.includes(t.key)),
+    ...TABLES.filter((t) => !firstKeys.includes(t.key)),
   ];
 
   for (const t of ordered) {
@@ -198,11 +211,12 @@ export async function importOrganizationWorkbook(orgId: string, file: File): Pro
 async function importTableRows(orgId: string, t: TableDef, rows: Dict[]): Promise<ImportReport> {
   const report: ImportReport = { table: t.label, inserted: 0, updated: 0, skipped: 0, errors: [] };
 
-  // Lookup maps per import (rebuilt fresh — projects may have been added earlier).
-  const [{ data: projects }, { data: bus }, { data: resources }] = await Promise.all([
+  // Lookup maps per import (rebuilt fresh — projects/streams may have been added earlier).
+  const [{ data: projects }, { data: bus }, { data: resources }, { data: streams }] = await Promise.all([
     supabase.from("projects").select("id,project_code,name").eq("org_id", orgId),
     supabase.from("business_units").select("id,code,name").eq("org_id", orgId),
     supabase.from("resources").select("id,name").eq("org_id", orgId),
+    supabase.from("project_streams").select("id,code,name,project_id").eq("org_id", orgId),
   ]);
   const projectByCode = new Map<string, string>();
   (projects ?? []).forEach((p) => {
@@ -216,13 +230,32 @@ async function importTableRows(orgId: string, t: TableDef, rows: Dict[]): Promis
   });
   const resByName = new Map<string, string>();
   (resources ?? []).forEach((r) => { if (r.name) resByName.set(String(r.name).trim(), r.id); });
+  // stream lookup: "CODE", "NAME", and "PROJECTCODE||CODE" for disambiguation
+  const streamByCode = new Map<string, string>();
+  (streams ?? []).forEach((s: any) => {
+    const pid = String(s.project_id);
+    const code = s.code ? String(s.code).trim() : "";
+    const name = s.name ? String(s.name).trim() : "";
+    if (code) {
+      streamByCode.set(code, s.id);
+      streamByCode.set(`${pid}||${code}`, s.id);
+    }
+    if (name) {
+      streamByCode.set(name, s.id);
+      streamByCode.set(`${pid}||${name}`, s.id);
+    }
+  });
+  const streamCodeById = new Map<string, string>();
+  (streams ?? []).forEach((s: any) => {
+    streamCodeById.set(s.id, s.code || s.name || s.id);
+  });
 
   // Existing rows for match key
   let existingByKey = new Map<string, string>();
   if (t.matchOn && t.matchOn.length) {
     const { data: existing } = await (supabase as any).from(t.key).select("*").eq("org_id", orgId);
     (existing ?? []).forEach((row: any) => {
-      const key = buildMatchKey(t, row, projectByCode, "id");
+      const key = buildMatchKey(t, row, projectByCode, streamCodeById);
       if (key) existingByKey.set(key, row.id);
     });
   }
@@ -233,6 +266,7 @@ async function importTableRows(orgId: string, t: TableDef, rows: Dict[]): Promis
 
     const payload: Dict = { org_id: orgId };
     let hasRequired = true;
+    let resolvedProjectId: string | null = null;
 
     for (const f of t.fields) {
       let v: unknown;
@@ -242,10 +276,23 @@ async function importTableRows(orgId: string, t: TableDef, rows: Dict[]): Promis
         if (f.key === "depends_on_project_id") {
           const dep = raw["depends_on_project_code"] ?? raw["depends_on"];
           v = dep ? projectByCode.get(String(dep).trim()) : null;
+        } else if (v) {
+          resolvedProjectId = String(v);
         }
       } else if (f.fk === "bu") {
         const code = raw["bu_code"] ?? raw["business_unit"] ?? raw["bu"];
         v = code ? buByCode.get(String(code).trim()) : null;
+      } else if (f.fk === "stream") {
+        const code = raw["stream_code"] ?? raw["stream"] ?? raw["stream_name"];
+        if (code) {
+          const c = String(code).trim();
+          v =
+            (resolvedProjectId && streamByCode.get(`${resolvedProjectId}||${c}`)) ||
+            streamByCode.get(c) ||
+            null;
+        } else {
+          v = null;
+        }
       } else if (f.key === "resource_id") {
         const nm = raw["resource_name"] ?? raw["resource"];
         v = nm ? resByName.get(String(nm).trim()) : null;
@@ -307,7 +354,12 @@ async function importTableRows(orgId: string, t: TableDef, rows: Dict[]): Promis
   return report;
 }
 
-function buildMatchKey(t: TableDef, row: any, projectByCode: Map<string, string>, mode: "id" | "code"): string | null {
+function buildMatchKey(
+  t: TableDef,
+  row: any,
+  projectByCode: Map<string, string>,
+  streamCodeById: Map<string, string>,
+): string | null {
   if (!t.matchOn) return null;
   const parts: string[] = [];
   for (const key of t.matchOn) {
@@ -317,12 +369,13 @@ function buildMatchKey(t: TableDef, row: any, projectByCode: Map<string, string>
       let code = "";
       for (const [c, id] of projectByCode) if (id === pid) { code = c; break; }
       parts.push(code);
+    } else if (key === "stream_code") {
+      parts.push(row.stream_id ? String(streamCodeById.get(String(row.stream_id)) ?? "") : "");
     } else if (key === "resource_name") {
       parts.push(String(row.resource_id ?? ""));
     } else {
       parts.push(String(row[key] ?? "").trim());
     }
-    void mode;
   }
   return parts.join("||");
 }
@@ -333,6 +386,8 @@ function buildMatchKeyFromPayload(t: TableDef, payload: any, raw: Dict): string 
     if (key === "project_code") {
       // Reverse using the raw project_code that came from the sheet
       parts.push(String(raw["project_code"] ?? "").trim());
+    } else if (key === "stream_code") {
+      parts.push(String(raw["stream_code"] ?? raw["stream"] ?? "").trim());
     } else if (key === "resource_name") {
       parts.push(String(raw["resource_name"] ?? "").trim());
     } else {
@@ -349,14 +404,15 @@ export function downloadTemplate() {
     { A: "iProjectX — Blank Data Template", B: "" },
     { A: "Purpose", B: "Start clean: fill sheets, then upload via Data Editor → Upload (admin)." },
     { A: "", B: "" },
-    { A: "Import order", B: "Business Units → Stage Gate Definitions → Projects → Resources → all other sheets." },
+    { A: "Import order", B: "Business Units → Stage Gate Definitions → Projects → Project Streams → Resources → all other sheets." },
     { A: "Project code", B: "Human key used on every child sheet (risks, financials, allocations, etc.)." },
+    { A: "Stream code", B: "Optional. On Project Streams sheet set `code`. Child sheets reference it via stream_code when projects.streams_enabled=true." },
     { A: "Dates", B: "Use YYYY-MM-DD. Prefer Planned/Actual dates; Schedule Start/End auto-sync in the app." },
     { A: "FY labels", B: "Use FY26, FY27 style labels matching your org financial year (default April start → FY ends in labelled year)." },
-    { A: "FY Allocations", B: "Set budget and forecast $ per FY. CapEx/OpEx/Benefits are optional detail of the budget split." },
+    { A: "FY Allocations", B: "Set budget and forecast $ per FY. CapEx/OpEx/Benefits are optional detail of the budget split. Optional stream_code." },
     { A: "Benefits", B: "Add benefit lines; keep Projects.benefits_target / benefits_realised equal to the sum of lines." },
     { A: "ROI %", B: "Target ROI on Projects. Leave blank to let the app compute from benefits_target and budget." },
-    { A: "Capacity", B: "resource_allocations.allocation_percent = % of person-month. Same person on two projects in one month should total ≤100% unless intentionally over-allocated." },
+    { A: "Capacity", B: "resource_allocations.allocation_percent = % of person-month. Optional stream_code scopes the allocation to a stream." },
   ];
   XLSX.utils.book_append_sheet(
     wb,
@@ -415,8 +471,23 @@ function sampleRowForTemplate(t: TableDef, headers: string[]): Dict {
     row.benefits_target = 4000000;
     row.benefits_realised = 500000;
     row.roi_percent = 60;
+    row.streams_enabled = "true";
+  } else if (t.key === "project_streams") {
+    row.project_code = "PRJ-001";
+    row.name = "Core";
+    row.code = "CORE";
+    row.is_default = "true";
+    row.sort_order = 0;
+    row.status = "In Progress";
+    row.rag = "Green";
+    row.planned_start_date = "2025-07-01";
+    row.planned_end_date = "2026-06-30";
+    row.budget = 1500000;
+    row.capex_approved = 1200000;
+    row.opex_approved = 300000;
   } else if (t.key === "fy_allocations") {
     row.project_code = "PRJ-001";
+    row.stream_code = "CORE";
     row.fy = "FY26";
     row.budget = 1500000;
     row.forecast = 1550000;
@@ -432,6 +503,7 @@ function sampleRowForTemplate(t: TableDef, headers: string[]): Dict {
     row.status = "In Progress";
   } else if (t.key === "financials_monthly") {
     row.project_code = "PRJ-001";
+    row.stream_code = "CORE";
     row.period_month = "2026-01-01";
     row.capex_planned = 100000;
     row.capex_actual = 95000;
@@ -448,15 +520,23 @@ function sampleRowForTemplate(t: TableDef, headers: string[]): Dict {
     row.status = "Active";
   } else if (t.key === "resource_allocations") {
     row.project_code = "PRJ-001";
+    row.stream_code = "CORE";
     row.resource_name = "Alex Morgan";
     row.period_month = "2026-01-01";
     row.allocation_percent = 50;
     row.allocated_hours = 80;
   } else if (t.key === "stage_gates") {
     row.project_code = "PRJ-001";
+    row.stream_code = "CORE";
     row.gate_name = "Build";
     row.status = "In Review";
     row.planned_date = "2026-02-01";
+  } else if (t.key === "milestones") {
+    row.project_code = "PRJ-001";
+    row.stream_code = "CORE";
+    row.name = "UAT Complete";
+    row.planned_date = "2026-04-01";
+    row.status = "Not Started";
   } else if (headers.includes("project_code")) {
     row.project_code = "PRJ-001";
   }

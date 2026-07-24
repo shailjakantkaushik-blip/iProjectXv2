@@ -11,7 +11,7 @@ export interface FieldDef {
   options?: string[];
   required?: boolean;
   // In export/import, replace a UUID FK with a human-readable code column.
-  fk?: "project" | "bu";
+  fk?: "project" | "bu" | "stream";
   // Show in list/editor tables (default true)
   hidden?: boolean;
   // Width hint for the editor grid
@@ -157,11 +157,13 @@ export const TABLES: TableDef[] = [
   {
     key: "stage_gates",
     label: "Stage Gates",
-    matchOn: ["project_code", "gate_name"],
+    matchOn: ["project_code", "stream_code", "gate_name"],
     orderBy: "planned_date",
+    description:
+      "When streams are enabled, set `stream_code` (from Project Streams sheet). Leave blank for non-stream projects.",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
-      { key: "stream_id", label: "Stream ID", type: "text" },
+      { key: "stream_id", label: "Stream", type: "text", fk: "stream" },
       { key: "gate_name", label: "Gate Name", type: "text", required: true },
       { key: "planned_date", label: "Planned Date", type: "date" },
       { key: "actual_date", label: "Actual Date", type: "date" },
@@ -176,11 +178,11 @@ export const TABLES: TableDef[] = [
     // Stage-gate rows auto-sync into milestones; use this sheet for add-on
     // (non-gate) milestones only. Matching by project + name avoids clobbering
     // gate-linked rows that share a gate name.
-    matchOn: ["project_code", "name"],
+    matchOn: ["project_code", "stream_code", "name"],
     orderBy: "planned_date",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
-      { key: "stream_id", label: "Stream ID", type: "text" },
+      { key: "stream_id", label: "Stream", type: "text", fk: "stream" },
       { key: "name", label: "Milestone", type: "text", required: true },
       { key: "planned_date", label: "Planned", type: "date" },
       { key: "actual_date", label: "Actual", type: "date" },
@@ -300,14 +302,14 @@ export const TABLES: TableDef[] = [
   {
     key: "financials_monthly",
     label: "Financials (Monthly)",
-    matchOn: ["project_code", "period_month"],
+    matchOn: ["project_code", "stream_code", "period_month"],
     orderBy: "period_month",
     description:
       "Execution cashflow. Planned/forecast are cascaded from FY Allocation; enter Actual after kickoff. " +
       "Use Financials → Sync incurred from actuals to roll CapEx/OpEx actuals up to the project register.",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
-      { key: "stream_id", label: "Stream ID", type: "text" },
+      { key: "stream_id", label: "Stream", type: "text", fk: "stream" },
       { key: "period_month", label: "Month (YYYY-MM-01)", type: "date", required: true },
       { key: "capex_planned", label: "CAPEX Plan", type: "number" },
       { key: "capex_actual", label: "CAPEX Actual", type: "number" },
@@ -322,14 +324,14 @@ export const TABLES: TableDef[] = [
   {
     key: "fy_allocations",
     label: "FY Allocations",
-    matchOn: ["project_code", "fy"],
+    matchOn: ["project_code", "stream_code", "fy"],
     orderBy: "fy",
     description:
       "Split each project's Budget and Forecast across financial years. " +
       "`budget` / `forecast` drive portfolio charts; CapEx/OpEx/Benefits are the detail split of budget.",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
-      { key: "stream_id", label: "Stream ID", type: "text" },
+      { key: "stream_id", label: "Stream", type: "text", fk: "stream" },
       { key: "fy", label: "FY", type: "text", required: true },
       { key: "budget", label: "Budget $", type: "number" },
       { key: "forecast", label: "Forecast $", type: "number" },
@@ -432,11 +434,13 @@ export const TABLES: TableDef[] = [
   {
     key: "resource_allocations",
     label: "Resource Allocations",
-    matchOn: ["project_code", "resource_name", "period_month"],
+    matchOn: ["project_code", "stream_code", "resource_name", "period_month"],
     orderBy: "period_month",
+    description:
+      "Allocate people to a project (and optional stream via stream_code). allocation_percent is % of FTE for the month.",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
-      { key: "stream_id", label: "Stream ID", type: "text" },
+      { key: "stream_id", label: "Stream", type: "text", fk: "stream" },
       { key: "resource_id", label: "Resource", type: "text", required: true },
       { key: "period_month", label: "Month", type: "date", required: true },
       { key: "allocation_percent", label: "Allocation %", type: "number" },

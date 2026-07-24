@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -217,10 +217,17 @@ function AuthPage() {
     [assertOrgMembership, showOrgAccessAlert, orgLabel],
   );
 
+  // Avoid repeat navigations when auth state flickers (session refresh / Turnstile remounts).
+  const redirectedRef = useRef(false);
+  useEffect(() => {
+    if (!session) redirectedRef.current = false;
+  }, [session]);
+
   useEffect(() => {
     if (loading || !session) return;
     // Stay on the auth page while the wrong-org alert is open / was dismissed.
     if (orgAlert || orgGateBlocked) return;
+    if (redirectedRef.current) return;
     let cancelled = false;
     (async () => {
       if (orgRequested) {
@@ -239,7 +246,10 @@ function AuthPage() {
         const ok = await rejectWrongOrgSession(targetOrgSlug, false);
         if (cancelled || !ok) return;
       }
-      if (!cancelled) navigate({ to: "/app", replace: true });
+      if (!cancelled) {
+        redirectedRef.current = true;
+        navigate({ to: "/app", replace: true });
+      }
     })();
     return () => {
       cancelled = true;

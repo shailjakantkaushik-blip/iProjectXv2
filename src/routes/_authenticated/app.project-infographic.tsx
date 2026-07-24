@@ -305,6 +305,25 @@ function InfographicPage() {
     enabled: !!project?.id && !!project?.streams_enabled,
   });
 
+  const { data: projectAllocations = [] } = useQuery({
+    queryKey: ["resource_allocations", project?.id],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("resource_allocations")
+          .select("*")
+          .eq("project_id", project.id)
+          .order("period_month")
+      ).data ?? [],
+    enabled: !!project?.id,
+  });
+
+  const { data: allResources = [] } = useQuery({
+    queryKey: ["resources", organization?.id],
+    queryFn: async () => (await supabase.from("resources").select("*")).data ?? [],
+    enabled: !!organization?.id,
+  });
+
   const timelineLanes = useMemo(() => {
     if (!project) return [];
     if (!project.streams_enabled || projectStreams.length === 0) {
@@ -516,6 +535,77 @@ function InfographicPage() {
     Realised: Number(b.realised_value || 0),
   }));
 
+  const streamById = useMemo(() => {
+    const m = new Map<string, any>();
+    (projectStreams as any[]).forEach((s) => m.set(s.id, s));
+    return m;
+  }, [projectStreams]);
+
+  const resourceById = useMemo(() => {
+    const m = new Map<string, any>();
+    (allResources as any[]).forEach((r) => m.set(r.id, r));
+    return m;
+  }, [allResources]);
+
+  const allocationMonths = useMemo(() => {
+    const keys = Array.from(
+      new Set((projectAllocations as any[]).map((a) => String(a.period_month || "").slice(0, 7)).filter(Boolean)),
+    ).sort();
+    return keys.map((k) => {
+      const [y, mo] = k.split("-");
+      const d = new Date(Number(y), Number(mo) - 1, 1);
+      return {
+        key: k,
+        label: d.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+      };
+    });
+  }, [projectAllocations]);
+
+  /** One row per resource (+ stream when present) with monthly % */
+  const resourcePlanRows = useMemo(() => {
+    type Row = {
+      key: string;
+      resourceId: string;
+      name: string;
+      role: string | null;
+      streamId: string | null;
+      streamName: string | null;
+      months: Record<string, number>;
+      total: number;
+    };
+    const map = new Map<string, Row>();
+    for (const a of projectAllocations as any[]) {
+      const streamId = a.stream_id || null;
+      const key = `${a.resource_id}::${streamId || "_"}`;
+      const res = resourceById.get(a.resource_id);
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          resourceId: a.resource_id,
+          name: res?.name || "Unknown",
+          role: res?.role || a.role_on_project || null,
+          streamId,
+          streamName: streamId ? streamById.get(streamId)?.name || streamById.get(streamId)?.code || "Stream" : null,
+          months: {},
+          total: 0,
+        });
+      }
+      const row = map.get(key)!;
+      const mk = String(a.period_month || "").slice(0, 7);
+      const pct = Number(a.allocation_percent || 0);
+      row.months[mk] = (row.months[mk] || 0) + pct;
+      row.total += pct;
+    }
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name) || String(a.streamName).localeCompare(String(b.streamName)));
+  }, [projectAllocations, resourceById, streamById]);
+
+  const allocHeat = (pct: number) => {
+    if (pct <= 0) return "bg-transparent text-muted-foreground";
+    if (pct < 30) return "bg-amber-100 text-amber-900";
+    if (pct < 70) return "bg-sky-100 text-sky-900";
+    return "bg-emerald-100 text-emerald-900 font-semibold";
+  };
+
   return (
     <div>
       <PageHeading
@@ -545,6 +635,8 @@ function InfographicPage() {
                 const b: any = project.brief || {};
                 const s1: any = b.section1 || {};
                 const s2: any = b.section2 || {};
+                const incurred =
+                  Number(project.capex_incurred || 0) + Number(project.opex_incurred || 0);
                 await downloadProjectBriefPPT({
                   project: {
                     project_code: project.project_code,
@@ -555,17 +647,19 @@ function InfographicPage() {
                     business_owner: s1.business_owner ?? null,
                     business_solution_manager: s1.business_solution_manager ?? null,
                     strategic_alignment: s1.strategic_alignment ?? null,
-                    approved_budget: project.approved_budget,
-                    actual_spend: project.actual_spend,
+                    approved_budget: project.budget ?? project.approved_budget,
+                    actual_spend: incurred || project.actual_spend,
                     forecast_at_completion: project.forecast_at_completion,
-                    expected_benefit: project.expected_benefit,
+                    expected_benefit: project.benefits_target ?? project.expected_benefit,
                     planned_start_date: project.planned_start_date ?? project.start_date,
                     planned_end_date: project.planned_end_date ?? project.end_date,
                     actual_start_date: project.actual_start_date,
                     actual_end_date: project.actual_end_date,
+                    target_go_live: project.target_go_live,
                     priority: project.priority,
                     rag_overall: project.rag,
                     program: project.program,
+                    status: project.status,
                     brief: {
                       section1: {
                         background_context: s1.background_context,
@@ -600,6 +694,48 @@ function InfographicPage() {
                     description: d.description,
                   })),
                   timelineImage,
+                  streams: (projectStreams as any[]).map((s) => ({
+                    name: s.name,
+                    code: s.code,
+                    planned_start_date: s.planned_start_date,
+                    planned_end_date: s.planned_end_date,
+                    actual_start_date: s.actual_start_date,
+                    actual_end_date: s.actual_end_date,
+                    budget: s.budget,
+                    rag: s.rag,
+                    gates: (gates as any[])
+                      .filter((g) => g.stream_id === s.id || (!g.stream_id && s.is_default))
+                      .map((g) => ({
+                        gate_name: g.gate_name,
+                        planned_date: g.planned_date,
+                        actual_date: g.actual_date,
+                        status: g.status,
+                      })),
+                  })),
+                  resourcePlan: resourcePlanRows.map((r) => ({
+                    name: r.name,
+                    role: r.role,
+                    stream_name: r.streamName,
+                    months: allocationMonths.map((m) => ({
+                      key: m.key,
+                      label: m.label,
+                      pct: r.months[m.key] || 0,
+                    })),
+                  })),
+                  monthlySpend: (monthly as any[]).map((m) => ({
+                    label: new Date(m.period_month).toLocaleDateString("en-US", {
+                      month: "short",
+                      year: "2-digit",
+                    }),
+                    planned: Number(m.capex_planned || 0) + Number(m.opex_planned || 0),
+                    actual: Number(m.capex_actual || 0) + Number(m.opex_actual || 0),
+                    forecast: Number(m.capex_forecast || 0) + Number(m.opex_forecast || 0),
+                  })),
+                  benefitsSummary: (benefits as any[]).map((b) => ({
+                    title: b.title,
+                    target: b.target_value,
+                    realised: b.realised_value,
+                  })),
                 });
               }}
             >
@@ -1060,6 +1196,84 @@ function InfographicPage() {
             </tbody>
           </table>
         </div>
+      </SectionFrame>
+
+      {/* Resources & allocations — always last */}
+      <SectionFrame>
+        <SectionTitle>
+          Resources & allocations
+          {project.streams_enabled ? " (by stream)" : ""}
+        </SectionTitle>
+        <p className="mb-3 text-xs text-muted-foreground">
+          People allocated to this project
+          {project.streams_enabled
+            ? ", broken out by stream when allocations are stream-scoped."
+            : ". Enable streams to allocate capacity per delivery lane."}
+        </p>
+        {resourcePlanRows.length === 0 ? (
+          <div className="rounded-md border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
+            No resource allocations for this project yet.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="st-table text-xs">
+              <thead>
+                <tr>
+                  <th>Resource</th>
+                  <th>Role</th>
+                  {project.streams_enabled ? <th>Stream</th> : null}
+                  {allocationMonths.map((m) => (
+                    <th key={m.key} className="text-center">
+                      {m.label}
+                    </th>
+                  ))}
+                  <th className="text-right">Σ %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {resourcePlanRows.map((r) => (
+                  <tr key={r.key}>
+                    <td className="font-medium">{r.name}</td>
+                    <td>{r.role || "—"}</td>
+                    {project.streams_enabled ? (
+                      <td>
+                        {r.streamName ? (
+                          <span className="rounded bg-muted px-1.5 py-0.5 font-medium">{r.streamName}</span>
+                        ) : (
+                          <span className="text-muted-foreground">Project</span>
+                        )}
+                      </td>
+                    ) : null}
+                    {allocationMonths.map((m) => {
+                      const pct = r.months[m.key] || 0;
+                      return (
+                        <td key={m.key} className="text-center">
+                          <span
+                            className={`inline-flex min-w-[2.25rem] justify-center rounded px-1.5 py-0.5 tabular-nums ${allocHeat(pct)}`}
+                          >
+                            {pct > 0 ? `${Math.round(pct)}%` : "·"}
+                          </span>
+                        </td>
+                      );
+                    })}
+                    <td className="text-right tabular-nums font-semibold">{Math.round(r.total)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="mt-2 flex flex-wrap gap-3 text-[10px] text-muted-foreground">
+              <span className="inline-flex items-center gap-1">
+                <span className="h-2.5 w-2.5 rounded bg-amber-100 ring-1 ring-amber-200" /> Low (&lt;30%)
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="h-2.5 w-2.5 rounded bg-sky-100 ring-1 ring-sky-200" /> Medium
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="h-2.5 w-2.5 rounded bg-emerald-100 ring-1 ring-emerald-200" /> High (≥70%)
+              </span>
+            </div>
+          </div>
+        )}
       </SectionFrame>
     </div>
   );

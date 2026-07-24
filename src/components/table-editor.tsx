@@ -17,6 +17,8 @@ interface LookupMaps {
   busByCode: Map<string, string>;
   resourcesById: Map<string, string>;
   resourcesByName: Map<string, string>;
+  streamsById: Map<string, string>;
+  streamsByCode: Map<string, string>;
 }
 
 export function TableEditor({ def }: { def: TableDef }) {
@@ -32,10 +34,11 @@ export function TableEditor({ def }: { def: TableDef }) {
     queryKey: ["editor-lookups", organization?.id],
     enabled: !!organization,
     queryFn: async (): Promise<LookupMaps> => {
-      const [{ data: projects }, { data: bus }, { data: resources }] = await Promise.all([
+      const [{ data: projects }, { data: bus }, { data: resources }, { data: streams }] = await Promise.all([
         supabase.from("projects").select("id,project_code,name").eq("org_id", organization!.id),
         supabase.from("business_units").select("id,code,name").eq("org_id", organization!.id),
         supabase.from("resources").select("id,name").eq("org_id", organization!.id),
+        supabase.from("project_streams").select("id,code,name,project_id").eq("org_id", organization!.id),
       ]);
       const projectsById = new Map((projects ?? []).map((p) => [p.id, p.project_code || p.name]));
       const projectsByCode = new Map<string, string>();
@@ -46,7 +49,22 @@ export function TableEditor({ def }: { def: TableDef }) {
       const resourcesById = new Map((resources ?? []).map((r) => [r.id, r.name]));
       const resourcesByName = new Map<string, string>();
       (resources ?? []).forEach((r) => { if (r.name) resourcesByName.set(r.name, r.id); });
-      return { projectsById, projectsByCode, busById, busByCode, resourcesById, resourcesByName };
+      const streamsById = new Map((streams ?? []).map((s: any) => [s.id, s.code || s.name || s.id]));
+      const streamsByCode = new Map<string, string>();
+      (streams ?? []).forEach((s: any) => {
+        if (s.code) streamsByCode.set(String(s.code).trim(), s.id);
+        if (s.name) streamsByCode.set(String(s.name).trim(), s.id);
+      });
+      return {
+        projectsById,
+        projectsByCode,
+        busById,
+        busByCode,
+        resourcesById,
+        resourcesByName,
+        streamsById,
+        streamsByCode,
+      };
     },
   });
 
@@ -73,6 +91,7 @@ export function TableEditor({ def }: { def: TableDef }) {
         if (v == null) return false;
         if (f.fk === "project") return (lookups?.projectsById.get(String(v)) ?? "").toLowerCase().includes(needle);
         if (f.fk === "bu") return (lookups?.busById.get(String(v)) ?? "").toLowerCase().includes(needle);
+        if (f.fk === "stream") return (lookups?.streamsById.get(String(v)) ?? "").toLowerCase().includes(needle);
         return String(v).toLowerCase().includes(needle);
       })
     );
@@ -174,6 +193,7 @@ function CellRenderer({
   // FK columns: read-only display (change via Add row or Project register).
   if (field.fk === "project") return <span className="font-mono">{lookups?.projectsById.get(String(v)) ?? "—"}</span>;
   if (field.fk === "bu") return <span>{lookups?.busById.get(String(v)) ?? "—"}</span>;
+  if (field.fk === "stream") return <span className="font-mono">{lookups?.streamsById.get(String(v)) ?? "—"}</span>;
   if (field.key === "resource_id") return <span>{lookups?.resourcesById.get(String(v)) ?? "—"}</span>;
 
   const type = field.type === "textarea" ? "text" : field.type === "select" ? "select" : field.type === "number" ? "number" : field.type === "date" ? "date" : "text";
@@ -216,6 +236,10 @@ function AddRowForm({ def, lookups, orgId, onDone }: { def: TableDef; lookups: L
           const id = lookups.busByCode.get(v);
           if (!id) throw new Error(`Unknown BU code: ${v}`);
           payload[f.key] = id;
+        } else if (f.fk === "stream") {
+          const id = lookups.streamsByCode.get(v);
+          if (!id) throw new Error(`Unknown stream code: ${v}`);
+          payload[f.key] = id;
         } else if (f.key === "resource_id") {
           const id = lookups.resourcesByName.get(v);
           if (!id) throw new Error(`Unknown resource: ${v}`);
@@ -252,6 +276,7 @@ function AddRowForm({ def, lookups, orgId, onDone }: { def: TableDef; lookups: L
               {f.label}{f.required && <span className="text-destructive"> *</span>}
               {f.fk === "project" && <span className="ml-1 normal-case text-muted-foreground">(project_code)</span>}
               {f.fk === "bu" && <span className="ml-1 normal-case text-muted-foreground">(bu_code)</span>}
+              {f.fk === "stream" && <span className="ml-1 normal-case text-muted-foreground">(stream_code)</span>}
               {f.key === "resource_id" && <span className="ml-1 normal-case text-muted-foreground">(name)</span>}
             </label>
             {f.type === "select" && f.options ? (

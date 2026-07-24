@@ -44,9 +44,18 @@ interface Props {
   theme?: "light" | "dark" | "auto";
 }
 
+/**
+ * Cloudflare Turnstile widget.
+ * Callbacks are held in refs so parent re-renders do not remount/reset the
+ * challenge (which felt like the login page "refreshing").
+ */
 export function TurnstileWidget({ onToken, onExpire, theme = "auto" }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
+  const onTokenRef = useRef(onToken);
+  const onExpireRef = useRef(onExpire);
+  onTokenRef.current = onToken;
+  onExpireRef.current = onExpire;
   const siteKey = getTurnstileSiteKey();
 
   useEffect(() => {
@@ -55,12 +64,21 @@ export function TurnstileWidget({ onToken, onExpire, theme = "auto" }: Props) {
     loadScript()
       .then(() => {
         if (cancelled || !window.turnstile || !containerRef.current) return;
+        // Avoid double-render if effect re-runs before cleanup finishes.
+        if (widgetIdRef.current) {
+          try {
+            window.turnstile.remove(widgetIdRef.current);
+          } catch {
+            /* noop */
+          }
+          widgetIdRef.current = null;
+        }
         widgetIdRef.current = window.turnstile.render(containerRef.current, {
           sitekey: siteKey,
           theme,
-          callback: (token: string) => onToken(token),
+          callback: (token: string) => onTokenRef.current(token),
           "expired-callback": () => {
-            onExpire?.();
+            onExpireRef.current?.();
             if (widgetIdRef.current && window.turnstile) {
               window.turnstile.reset(widgetIdRef.current);
             }
@@ -76,12 +94,18 @@ export function TurnstileWidget({ onToken, onExpire, theme = "auto" }: Props) {
         } catch {
           /* noop */
         }
+        widgetIdRef.current = null;
       }
     };
-  }, [siteKey, theme, onToken, onExpire]);
+  }, [siteKey, theme]);
 
-  if (!siteKey) return null; // Turnstile disabled if key not configured
-  return <div ref={containerRef} className="flex justify-center" />;
+  if (!siteKey) return null;
+  return (
+    <div className="flex min-h-[65px] flex-col items-center justify-center gap-1">
+      <div ref={containerRef} className="flex justify-center" />
+      <p className="text-[10px] text-muted-foreground">Secured by Cloudflare — this check stays in place while you type.</p>
+    </div>
+  );
 }
 
 export function isTurnstileEnabled(): boolean {
