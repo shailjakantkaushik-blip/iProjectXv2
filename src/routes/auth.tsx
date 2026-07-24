@@ -357,6 +357,11 @@ function AuthPage() {
       return toast.error(error.message);
     }
     setSwitchingAccount(false);
+    try {
+      sessionStorage.removeItem("iprojectx.auth.email-draft");
+    } catch {
+      /* private mode */
+    }
 
     if (orgRequested) {
       if (!targetOrgSlug) {
