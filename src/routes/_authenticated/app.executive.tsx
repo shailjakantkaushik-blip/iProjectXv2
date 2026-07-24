@@ -727,42 +727,63 @@ function ExecutiveDashboard() {
         </ExpandablePanel>
       </SectionFrame>
 
-      {/* Governance Flow kanban */}
+      {/* Governance Flow — stage columns with project links */}
       <SectionFrame>
         <ExpandablePanel
           title="Governance Flow — active projects by current stage"
           compactMaxHeightClass="max-h-[min(60vh,640px)]"
         >
           <div
-            className="grid min-w-[720px] gap-2"
-            style={{ gridTemplateColumns: `repeat(${Math.max(1, kanban.length)}, minmax(120px, 1fr))` }}
+            className="grid min-w-[720px] gap-3"
+            style={{ gridTemplateColumns: `repeat(${Math.max(1, kanban.length)}, minmax(140px, 1fr))` }}
           >
-            {kanban.map((col, i) => (
-              <div key={col.phase} className="flex max-h-[520px] flex-col rounded-md border border-border bg-surface p-2">
+            {kanban.map((col) => (
+              <div
+                key={col.phase}
+                className="flex max-h-[520px] flex-col border-r border-border last:border-r-0 pr-3 last:pr-0"
+              >
                 <div
-                  className="mb-2 shrink-0 rounded px-2 py-1 text-center text-[11px] font-semibold text-white"
-                  style={{ background: phaseColor(col.phase, i) }}
+                  className="mb-2 shrink-0 border-b border-border pb-2"
                   title={col.phase}
                 >
-                  {col.phase}
-                  <span className="ml-1 opacity-80">({col.items.length})</span>
+                  <div className="truncate text-[11px] font-semibold text-foreground">{col.phase}</div>
+                  <div className="text-[10px] text-muted-foreground tabular-nums">
+                    {col.items.length} project{col.items.length === 1 ? "" : "s"}
+                  </div>
                 </div>
-                <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
+                <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto">
                   {col.items.length === 0 ? (
-                    <div className="px-1 py-2 text-center text-[10px] text-muted-foreground">—</div>
+                    <div className="px-0.5 py-2 text-[10px] text-muted-foreground">No active projects</div>
                   ) : (
-                    col.items.map((p: any) => (
-                      <Link
-                        key={p.id}
-                        to="/app/project-infographic"
-                        search={{ pid: p.id }}
-                        className="block truncate rounded px-2 py-1 text-[10px] text-white hover:opacity-90"
-                        style={{ background: RAG_COLORS[p.rag as string] || "#64748b" }}
-                        title={`${p.name}${resolveCurrentStage(p) ? ` · ${resolveCurrentStage(p)}` : ""}`}
-                      >
-                        {p.project_code || (p.name || "").slice(0, 18)}
-                      </Link>
-                    ))
+                    col.items.map((p: any) => {
+                      const rag = (p.rag as string) || "";
+                      const ragColor = RAG_COLORS[rag] || "var(--muted-foreground)";
+                      return (
+                        <Link
+                          key={p.id}
+                          to="/app/project-infographic"
+                          search={{ pid: p.id }}
+                          className="group flex items-start gap-2 rounded-md px-1.5 py-1.5 hover:bg-muted/60"
+                          title={p.name}
+                        >
+                          <span
+                            className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+                            style={{ background: ragColor }}
+                            aria-label={rag ? `RAG ${rag}` : "RAG unset"}
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[11px] font-medium text-primary group-hover:underline">
+                              {p.project_code || p.name}
+                            </span>
+                            {p.project_code ? (
+                              <span className="block truncate text-[10px] text-muted-foreground">
+                                {p.name}
+                              </span>
+                            ) : null}
+                          </span>
+                        </Link>
+                      );
+                    })
                   )}
                 </div>
               </div>
