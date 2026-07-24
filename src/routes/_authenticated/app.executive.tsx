@@ -17,6 +17,8 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { RAG_COLORS, PRIORITY_COLORS, CHART_SERIES } from "@/lib/chart-theme";
 import { PageLoading } from "@/components/page-loading";
 import { QueryErrorPanel } from "@/components/query-error-panel";
+import { SoftUpdatingLabel } from "@/components/soft-updating";
+import { isColdLoading } from "@/lib/query-ui";
 import {
   matchPhase,
   normLabel,
@@ -123,7 +125,14 @@ function ExecutiveDashboard() {
   const streams = streamsQ.data ?? [];
   const gateDefs = gateDefsQ.data ?? [];
   const monthly = monthlyQ.data ?? [];
-  const isLoading = projectsQ.isLoading || (!projectsQ.data && projectsQ.isFetching);
+  // Cold load only — keep the dashboard visible while background refetch runs.
+  const showColdLoad = isColdLoading(projectsQ);
+  const softUpdating =
+    projectsQ.isFetching ||
+    gatesQ.isFetching ||
+    streamsQ.isFetching ||
+    gateDefsQ.isFetching ||
+    monthlyQ.isFetching;
   const loadError =
     projectsQ.error || gatesQ.error || streamsQ.error || gateDefsQ.error || monthlyQ.error;
 
@@ -583,8 +592,11 @@ function ExecutiveDashboard() {
 
       {/* Portfolio Analytics — matches reference layout */}
       <SectionFrame>
-        <SectionTitle>Portfolio Analytics</SectionTitle>
-        {isLoading ? (
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <SectionTitle>Portfolio Analytics</SectionTitle>
+          <SoftUpdatingLabel active={!showColdLoad && softUpdating} />
+        </div>
+        {showColdLoad ? (
           <PageLoading label="Loading executive view…" fullScreen={false} />
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">

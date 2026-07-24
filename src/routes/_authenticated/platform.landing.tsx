@@ -136,7 +136,8 @@ function LandingConfigPage() {
       </div>
 
       <Tabs defaultValue="experience">
-        <TabsList className="flex flex-wrap">
+        {/* h-auto + wrap: default TabsList is h-9 and clips the second row behind content below */}
+        <TabsList className="relative z-20 mb-1 flex h-auto min-h-9 w-full flex-wrap items-center justify-start gap-1 p-1">
           <TabsTrigger value="experience">Access · Nav · Cartoons</TabsTrigger>
           <TabsTrigger value="brand">Brand & Logo</TabsTrigger>
           <TabsTrigger value="palette">Color Palette</TabsTrigger>

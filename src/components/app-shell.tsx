@@ -90,6 +90,7 @@ import { useFocusMode } from "@/lib/use-focus-mode";
 import { CommandPalette, useCommandPaletteHotkey } from "@/components/command-palette";
 import { cn } from "@/lib/utils";
 import { StyleThemePicker } from "@/components/style-theme-picker";
+import { SoftUpdatingBar } from "@/components/soft-updating";
 import {
   normalizeOrgStyleTheme,
   readUserStyleTheme,
@@ -650,7 +651,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="shell-header sticky top-0 z-30 flex items-center gap-3 border-b border-border/50 bg-background/80 px-3 py-2 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70 sm:px-4 lg:px-6">
+        <header className="shell-header relative sticky top-0 z-30 flex items-center gap-3 border-b border-border/50 bg-background/80 px-3 py-2 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70 sm:px-4 lg:px-6">
+          <SoftUpdatingBar />
           <button
             type="button"
             className="rounded-md p-2 transition-colors hover:bg-muted/80 active:scale-[0.98] md:hidden"
