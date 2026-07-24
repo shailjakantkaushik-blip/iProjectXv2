@@ -14,6 +14,9 @@ import {
   type DecisionOutcome,
   type OrgMember,
 } from "@/lib/decision-approval";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 type Props = {
   projectId: string;
@@ -150,6 +153,25 @@ export function ProjectDecisionsPanel({
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const columns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "title", label: "Title" },
+      {
+        key: "approver",
+        label: "Approver",
+        getValue: (d) => {
+          const m = d.approver_user_id ? memberById.get(d.approver_user_id) : null;
+          return m ? memberLabel(m) : d.approvers || "";
+        },
+      },
+      { key: "outcome", label: "Outcome" },
+      { key: "decision_date", label: "Date" },
+    ],
+    [memberById],
+  );
+
+  const table = useColumnarTable(decisions, columns);
+
   return (
     <SectionFrame>
       <SectionTitle>Key Decisions</SectionTitle>
@@ -229,88 +251,119 @@ export function ProjectDecisionsPanel({
 
       {isLoading ? (
         <div className="py-6 text-center text-xs text-muted-foreground">Loading decisions…</div>
-      ) : decisions.length === 0 ? (
-        <div className="py-6 text-center text-xs text-muted-foreground">
-          No key decisions for this project yet.
-        </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="st-table">
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Approver</th>
-                <th>Outcome</th>
-                <th>Date</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {decisions.map((d: any) => {
-                const approver = d.approver_user_id
-                  ? memberById.get(d.approver_user_id)
-                  : null;
-                const actionable = canActOnDecision(d, userId);
-                return (
-                  <tr key={d.id}>
-                    <td className="min-w-[10rem]">
-                      <div className="font-medium">{d.title}</div>
-                      {d.rationale ? (
-                        <div className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">
-                          {d.rationale}
-                        </div>
-                      ) : null}
-                    </td>
-                    <td className="text-xs">
-                      {approver ? memberLabel(approver) : d.approvers || "—"}
-                      {d.approver_user_id === userId && isAwaitingApproval(d.outcome) ? (
-                        <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
-                          Awaiting you
-                        </div>
-                      ) : null}
-                    </td>
-                    <td>
-                      <span
-                        className={`inline-flex rounded px-2 py-0.5 text-[11px] font-semibold ${
-                          DECISION_OUTCOME_CLASS[(d.outcome || "Pending") as DecisionOutcome] || ""
-                        }`}
-                      >
-                        {d.outcome || "Pending"}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap text-xs">{d.decision_date || "—"}</td>
-                    <td>
-                      {actionable ? (
-                        <div className="flex flex-wrap gap-1.5">
-                          <button
-                            type="button"
-                            className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700"
-                            onClick={() =>
-                              setOutcome.mutate({ id: d.id, outcome: "Approved" })
-                            }
-                          >
-                            <Check className="h-3 w-3" /> Approve
-                          </button>
-                          <button
-                            type="button"
-                            className="inline-flex items-center gap-1 rounded-md bg-rose-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-rose-700"
-                            onClick={() =>
-                              setOutcome.mutate({ id: d.id, outcome: "Rejected" })
-                            }
-                          >
-                            <X className="h-3 w-3" /> Reject
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-[11px] text-muted-foreground">—</span>
-                      )}
-                    </td>
+        <>
+          <ColumnarToolbar
+            globalQ={table.globalQ}
+            onGlobalQ={table.setGlobalQ}
+            shown={table.rows.length}
+            total={table.total}
+            onClear={table.clearAll}
+            placeholder="Search decisions…"
+          />
+          {table.total === 0 ? (
+            <div className="py-6 text-center text-xs text-muted-foreground">
+              No key decisions for this project yet.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="st-table">
+                <thead>
+                  <tr>
+                    {columns.map((col) => (
+                      <ColumnarTh
+                        key={col.key}
+                        column={col}
+                        filter={table.filters[col.key]}
+                        onFilter={(v) => table.setColumnFilter(col.key, v)}
+                        sortKey={table.sortKey}
+                        sortDir={table.sortDir}
+                        onToggleSort={table.toggleSort}
+                      />
+                    ))}
+                    <th className="align-top">
+                      <span className="font-semibold">Actions</span>
+                    </th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody>
+                  {table.rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-6 text-center text-xs text-muted-foreground">
+                        No decisions match filters.
+                      </td>
+                    </tr>
+                  ) : (
+                    table.rows.map((d: any) => {
+                      const approver = d.approver_user_id
+                        ? memberById.get(d.approver_user_id)
+                        : null;
+                      const actionable = canActOnDecision(d, userId);
+                      return (
+                        <tr key={d.id}>
+                          <td className="min-w-[10rem]">
+                            <div className="font-medium">{d.title}</div>
+                            {d.rationale ? (
+                              <div className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">
+                                {d.rationale}
+                              </div>
+                            ) : null}
+                          </td>
+                          <td className="text-xs">
+                            {approver ? memberLabel(approver) : d.approvers || "—"}
+                            {d.approver_user_id === userId && isAwaitingApproval(d.outcome) ? (
+                              <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
+                                Awaiting you
+                              </div>
+                            ) : null}
+                          </td>
+                          <td>
+                            <span
+                              className={`inline-flex rounded px-2 py-0.5 text-[11px] font-semibold ${
+                                DECISION_OUTCOME_CLASS[
+                                  (d.outcome || "Pending") as DecisionOutcome
+                                ] || ""
+                              }`}
+                            >
+                              {d.outcome || "Pending"}
+                            </span>
+                          </td>
+                          <td className="whitespace-nowrap text-xs">{d.decision_date || "—"}</td>
+                          <td>
+                            {actionable ? (
+                              <div className="flex flex-wrap gap-1.5">
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700"
+                                  onClick={() =>
+                                    setOutcome.mutate({ id: d.id, outcome: "Approved" })
+                                  }
+                                >
+                                  <Check className="h-3 w-3" /> Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center gap-1 rounded-md bg-rose-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-rose-700"
+                                  onClick={() =>
+                                    setOutcome.mutate({ id: d.id, outcome: "Rejected" })
+                                  }
+                                >
+                                  <X className="h-3 w-3" /> Reject
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-muted-foreground">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
     </SectionFrame>
   );

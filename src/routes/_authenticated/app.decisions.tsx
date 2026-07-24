@@ -19,6 +19,9 @@ import {
   type OrgMember,
 } from "@/lib/decision-approval";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 type DecisionsSearch = {
   awaiting?: "me" | "all";
@@ -95,8 +98,8 @@ function DecisionsPage() {
     enabled: !!orgId,
   });
 
-  const projectById = new Map(projects.map((p: any) => [p.id, p]));
-  const gateById = new Map(gates.map((g: any) => [g.id, g]));
+  const projectById = useMemo(() => new Map(projects.map((p: any) => [p.id, p])), [projects]);
+  const gateById = useMemo(() => new Map(gates.map((g: any) => [g.id, g])), [gates]);
   const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
 
   const invalidate = () => {
@@ -219,6 +222,43 @@ function DecisionsPage() {
     );
   }, [awaitingOnly, decisions, userId]);
 
+  const columns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      {
+        key: "project",
+        label: "Project",
+        getValue: (d) => (projectById.get(d.project_id) as any)?.project_code || "",
+      },
+      { key: "title", label: "Title" },
+      { key: "forum", label: "Forum" },
+      { key: "sponsor", label: "Sponsor" },
+      { key: "owner", label: "Owner" },
+      {
+        key: "approver",
+        label: "Approver",
+        getValue: (d) => {
+          const m = d.approver_user_id ? memberById.get(d.approver_user_id) : null;
+          return m ? memberLabel(m) : d.approvers || "";
+        },
+      },
+      {
+        key: "stage_gate",
+        label: "Stage Gate",
+        getValue: (d) => {
+          const gate = d.stage_gate_id ? (gateById.get(d.stage_gate_id) as any) : null;
+          return gate ? `${gate.gate_name} (${gate.status || "Pending"})` : "";
+        },
+      },
+      { key: "outcome", label: "Outcome" },
+      { key: "decision_date", label: "Date" },
+      { key: "rationale", label: "Rationale" },
+      { key: "notes", label: "Notes" },
+    ],
+    [projectById, gateById, memberById],
+  );
+
+  const table = useColumnarTable(visibleDecisions, columns);
+
   const myAwaitingCount = useMemo(
     () =>
       decisions.filter((d: any) => d.approver_user_id === userId && isAwaitingApproval(d.outcome))
@@ -235,6 +275,9 @@ function DecisionsPage() {
     outcome: o,
     count: counts[o],
   })).filter((d) => d.count > 0);
+
+  const dataColsBeforeActions = columns.slice(0, 9);
+  const dataColsAfterActions = columns.slice(9);
 
   return (
     <PageExport name="Decisions_Log" title="Decisions Log">
@@ -417,7 +460,15 @@ function DecisionsPage() {
         <SectionTitle>
           {awaitingOnly ? "Decisions awaiting my approval" : "Decisions Register"}
         </SectionTitle>
-        {visibleDecisions.length === 0 ? (
+        <ColumnarToolbar
+          globalQ={table.globalQ}
+          onGlobalQ={table.setGlobalQ}
+          shown={table.rows.length}
+          total={table.total}
+          onClear={table.clearAll}
+          placeholder="Search decisions…"
+        />
+        {table.total === 0 ? (
           <div className="py-8 text-center text-sm text-muted-foreground">
             {awaitingOnly ? "Nothing waiting for your approval." : "No decisions recorded yet."}
           </div>
@@ -426,203 +477,224 @@ function DecisionsPage() {
             <table className="st-table">
               <thead>
                 <tr>
-                  <th>Project</th>
-                  <th>Title</th>
-                  <th>Forum</th>
-                  <th>Sponsor</th>
-                  <th>Owner</th>
-                  <th>Approver</th>
-                  <th>Stage Gate</th>
-                  <th>Outcome</th>
-                  <th>Date</th>
-                  <th>Actions</th>
-                  <th>Rationale</th>
-                  <th>Notes</th>
+                  {dataColsBeforeActions.map((col) => (
+                    <ColumnarTh
+                      key={col.key}
+                      column={col}
+                      filter={table.filters[col.key]}
+                      onFilter={(v) => table.setColumnFilter(col.key, v)}
+                      sortKey={table.sortKey}
+                      sortDir={table.sortDir}
+                      onToggleSort={table.toggleSort}
+                    />
+                  ))}
+                  <th className="align-top">
+                    <span className="font-semibold">Actions</span>
+                  </th>
+                  {dataColsAfterActions.map((col) => (
+                    <ColumnarTh
+                      key={col.key}
+                      column={col}
+                      filter={table.filters[col.key]}
+                      onFilter={(v) => table.setColumnFilter(col.key, v)}
+                      sortKey={table.sortKey}
+                      sortDir={table.sortDir}
+                      onToggleSort={table.toggleSort}
+                    />
+                  ))}
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {visibleDecisions.map((d: any) => {
-                  const proj = projectById.get(d.project_id) as any;
-                  const gate = d.stage_gate_id ? (gateById.get(d.stage_gate_id) as any) : null;
-                  const approver = d.approver_user_id ? memberById.get(d.approver_user_id) : null;
-                  const actionable = canActOnDecision(d, userId);
-                  return (
-                    <tr key={d.id}>
-                      <td className="font-medium">{proj?.project_code || "—"}</td>
-                      <td>
-                        <EditableCell
-                          table="decisions"
-                          rowId={d.id}
-                          field="title"
-                          value={d.title}
-                          invalidateKeys={["decisions"]}
-                        />
-                      </td>
-                      <td>
-                        <EditableCell
-                          table="decisions"
-                          rowId={d.id}
-                          field="forum"
-                          value={d.forum}
-                          invalidateKeys={["decisions"]}
-                        />
-                      </td>
-                      <td>
-                        <EditableCell
-                          table="decisions"
-                          rowId={d.id}
-                          field="sponsor"
-                          value={d.sponsor}
-                          invalidateKeys={["decisions"]}
-                        />
-                      </td>
-                      <td>
-                        <EditableCell
-                          table="decisions"
-                          rowId={d.id}
-                          field="owner"
-                          value={d.owner}
-                          invalidateKeys={["decisions"]}
-                        />
-                      </td>
-                      <td>
-                        <select
-                          className="st-input !py-0.5 !text-xs"
-                          value={d.approver_user_id || ""}
-                          onChange={(e) => {
-                            const id = e.target.value || null;
-                            const m = id ? memberById.get(id) : null;
-                            updateDecision.mutate({
-                              id: d.id,
-                              patch: {
-                                approver_user_id: id,
-                                approvers: m ? memberLabel(m) : null,
-                                outcome: isAwaitingApproval(d.outcome)
-                                  ? d.outcome || "In Review"
-                                  : "In Review",
-                                status: isAwaitingApproval(d.outcome)
-                                  ? d.outcome || "In Review"
-                                  : "In Review",
-                              },
-                            });
-                          }}
-                        >
-                          <option value="">— Assign —</option>
-                          {members.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {memberLabel(m)}
-                            </option>
-                          ))}
-                        </select>
-                        {approver ? (
-                          <div className="mt-0.5 text-[10px] text-muted-foreground">
-                            {memberLabel(approver)}
-                          </div>
-                        ) : d.approvers ? (
-                          <div className="mt-0.5 text-[10px] text-muted-foreground">
-                            {d.approvers}
-                          </div>
-                        ) : null}
-                      </td>
-                      <td>{gate ? `${gate.gate_name} (${gate.status || "Pending"})` : "—"}</td>
-                      <td>
-                        <select
-                          className={`st-input !py-0.5 !text-xs ${
-                            DECISION_OUTCOME_CLASS[(d.outcome || "Pending") as DecisionOutcome] ||
-                            ""
-                          }`}
-                          value={d.outcome || "Pending"}
-                          onChange={(e) =>
-                            updateDecision.mutate({
-                              id: d.id,
-                              patch: {
-                                outcome: e.target.value,
-                                status: e.target.value,
-                              },
-                            })
-                          }
-                        >
-                          {DECISION_OUTCOMES.map((o) => (
-                            <option key={o} value={o}>
-                              {o}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <EditableCell
-                          table="decisions"
-                          rowId={d.id}
-                          field="decision_date"
-                          value={d.decision_date}
-                          type="date"
-                          invalidateKeys={["decisions"]}
-                        />
-                      </td>
-                      <td className="min-w-[9rem]">
-                        {actionable ? (
-                          <div className="flex flex-wrap gap-1">
-                            <button
-                              type="button"
-                              className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700"
-                              onClick={() => decide(d.id, "Approved")}
-                            >
-                              <Check className="h-3 w-3" /> Approve
-                            </button>
-                            <button
-                              type="button"
-                              className="inline-flex items-center gap-1 rounded-md bg-rose-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-rose-700"
-                              onClick={() => decide(d.id, "Rejected")}
-                            >
-                              <X className="h-3 w-3" /> Reject
-                            </button>
-                          </div>
-                        ) : d.approver_user_id && !isAwaitingApproval(d.outcome) ? (
-                          <span className="text-[11px] text-muted-foreground">Done</span>
-                        ) : d.approver_user_id ? (
-                          <button
-                            type="button"
-                            className="text-[11px] font-medium text-primary hover:underline"
-                            onClick={() => requestApproval(d)}
+                {table.rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={13} className="py-6 text-center text-sm text-muted-foreground">
+                      No decisions match filters.
+                    </td>
+                  </tr>
+                ) : (
+                  table.rows.map((d: any) => {
+                    const proj = projectById.get(d.project_id) as any;
+                    const gate = d.stage_gate_id ? (gateById.get(d.stage_gate_id) as any) : null;
+                    const approver = d.approver_user_id ? memberById.get(d.approver_user_id) : null;
+                    const actionable = canActOnDecision(d, userId);
+                    return (
+                      <tr key={d.id}>
+                        <td className="font-medium">{proj?.project_code || "—"}</td>
+                        <td>
+                          <EditableCell
+                            table="decisions"
+                            rowId={d.id}
+                            field="title"
+                            value={d.title}
+                            invalidateKeys={["decisions"]}
+                          />
+                        </td>
+                        <td>
+                          <EditableCell
+                            table="decisions"
+                            rowId={d.id}
+                            field="forum"
+                            value={d.forum}
+                            invalidateKeys={["decisions"]}
+                          />
+                        </td>
+                        <td>
+                          <EditableCell
+                            table="decisions"
+                            rowId={d.id}
+                            field="sponsor"
+                            value={d.sponsor}
+                            invalidateKeys={["decisions"]}
+                          />
+                        </td>
+                        <td>
+                          <EditableCell
+                            table="decisions"
+                            rowId={d.id}
+                            field="owner"
+                            value={d.owner}
+                            invalidateKeys={["decisions"]}
+                          />
+                        </td>
+                        <td>
+                          <select
+                            className="st-input !py-0.5 !text-xs"
+                            value={d.approver_user_id || ""}
+                            onChange={(e) => {
+                              const id = e.target.value || null;
+                              const m = id ? memberById.get(id) : null;
+                              updateDecision.mutate({
+                                id: d.id,
+                                patch: {
+                                  approver_user_id: id,
+                                  approvers: m ? memberLabel(m) : null,
+                                  outcome: isAwaitingApproval(d.outcome)
+                                    ? d.outcome || "In Review"
+                                    : "In Review",
+                                  status: isAwaitingApproval(d.outcome)
+                                    ? d.outcome || "In Review"
+                                    : "In Review",
+                                },
+                              });
+                            }}
                           >
-                            Re-notify
+                            <option value="">— Assign —</option>
+                            {members.map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {memberLabel(m)}
+                              </option>
+                            ))}
+                          </select>
+                          {approver ? (
+                            <div className="mt-0.5 text-[10px] text-muted-foreground">
+                              {memberLabel(approver)}
+                            </div>
+                          ) : d.approvers ? (
+                            <div className="mt-0.5 text-[10px] text-muted-foreground">
+                              {d.approvers}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td>{gate ? `${gate.gate_name} (${gate.status || "Pending"})` : "—"}</td>
+                        <td>
+                          <select
+                            className={`st-input !py-0.5 !text-xs ${
+                              DECISION_OUTCOME_CLASS[(d.outcome || "Pending") as DecisionOutcome] ||
+                              ""
+                            }`}
+                            value={d.outcome || "Pending"}
+                            onChange={(e) =>
+                              updateDecision.mutate({
+                                id: d.id,
+                                patch: {
+                                  outcome: e.target.value,
+                                  status: e.target.value,
+                                },
+                              })
+                            }
+                          >
+                            {DECISION_OUTCOMES.map((o) => (
+                              <option key={o} value={o}>
+                                {o}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <EditableCell
+                            table="decisions"
+                            rowId={d.id}
+                            field="decision_date"
+                            value={d.decision_date}
+                            type="date"
+                            invalidateKeys={["decisions"]}
+                          />
+                        </td>
+                        <td className="min-w-[9rem]">
+                          {actionable ? (
+                            <div className="flex flex-wrap gap-1">
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700"
+                                onClick={() => decide(d.id, "Approved")}
+                              >
+                                <Check className="h-3 w-3" /> Approve
+                              </button>
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1 rounded-md bg-rose-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-rose-700"
+                                onClick={() => decide(d.id, "Rejected")}
+                              >
+                                <X className="h-3 w-3" /> Reject
+                              </button>
+                            </div>
+                          ) : d.approver_user_id && !isAwaitingApproval(d.outcome) ? (
+                            <span className="text-[11px] text-muted-foreground">Done</span>
+                          ) : d.approver_user_id ? (
+                            <button
+                              type="button"
+                              className="text-[11px] font-medium text-primary hover:underline"
+                              onClick={() => requestApproval(d)}
+                            >
+                              Re-notify
+                            </button>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground">Assign</span>
+                          )}
+                        </td>
+                        <td className="max-w-[220px]">
+                          <EditableCell
+                            table="decisions"
+                            rowId={d.id}
+                            field="rationale"
+                            value={d.rationale}
+                            invalidateKeys={["decisions"]}
+                          />
+                        </td>
+                        <td className="max-w-[220px]">
+                          <EditableCell
+                            table="decisions"
+                            rowId={d.id}
+                            field="notes"
+                            value={d.notes}
+                            invalidateKeys={["decisions"]}
+                          />
+                        </td>
+                        <td>
+                          <button
+                            className="text-xs text-rose-600 hover:underline"
+                            onClick={() =>
+                              confirm("Delete this decision?") && delDecision.mutate(d.id)
+                            }
+                          >
+                            Delete
                           </button>
-                        ) : (
-                          <span className="text-[11px] text-muted-foreground">Assign</span>
-                        )}
-                      </td>
-                      <td className="max-w-[220px]">
-                        <EditableCell
-                          table="decisions"
-                          rowId={d.id}
-                          field="rationale"
-                          value={d.rationale}
-                          invalidateKeys={["decisions"]}
-                        />
-                      </td>
-                      <td className="max-w-[220px]">
-                        <EditableCell
-                          table="decisions"
-                          rowId={d.id}
-                          field="notes"
-                          value={d.notes}
-                          invalidateKeys={["decisions"]}
-                        />
-                      </td>
-                      <td>
-                        <button
-                          className="text-xs text-rose-600 hover:underline"
-                          onClick={() =>
-                            confirm("Delete this decision?") && delDecision.mutate(d.id)
-                          }
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>

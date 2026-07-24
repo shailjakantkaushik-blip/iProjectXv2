@@ -1,12 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import { EditableCell } from "@/components/editable-cell";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/lessons")({
   component: LessonsPage,
@@ -45,7 +48,7 @@ function LessonsPage() {
     enabled: !!orgId,
   });
 
-  const projectById = new Map(projects.map((p: any) => [p.id, p]));
+  const projectById = useMemo(() => new Map(projects.map((p: any) => [p.id, p])), [projects]);
   const [form, setForm] = useState({
     project_id: "",
     category: "Delivery",
@@ -54,6 +57,24 @@ function LessonsPage() {
     recommendation: "",
     captured_by: profile?.full_name || "",
   });
+
+  const columns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      {
+        key: "project",
+        label: "Project",
+        getValue: (l) => (projectById.get(l.project_id) as any)?.project_code || "",
+      },
+      { key: "category", label: "Category" },
+      { key: "what_happened", label: "What happened" },
+      { key: "recommendation", label: "Recommendation" },
+      { key: "captured_by", label: "By" },
+      { key: "captured_date", label: "Date" },
+    ],
+    [projectById],
+  );
+
+  const table = useColumnarTable(lessons, columns);
 
   const create = useMutation({
     mutationFn: async () => {
@@ -183,67 +204,88 @@ function LessonsPage() {
 
       <SectionFrame>
         <SectionTitle>Lessons Register</SectionTitle>
-        {lessons.length === 0 ? (
+        <ColumnarToolbar
+          globalQ={table.globalQ}
+          onGlobalQ={table.setGlobalQ}
+          shown={table.rows.length}
+          total={table.total}
+          onClear={table.clearAll}
+          placeholder="Search lessons…"
+        />
+        {table.total === 0 ? (
           <div className="py-8 text-center text-sm text-muted-foreground">No lessons captured yet.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="st-table">
               <thead>
                 <tr>
-                  <th>Project</th>
-                  <th>Category</th>
-                  <th>What happened</th>
-                  <th>Recommendation</th>
-                  <th>By</th>
-                  <th>Date</th>
+                  {columns.map((col) => (
+                    <ColumnarTh
+                      key={col.key}
+                      column={col}
+                      filter={table.filters[col.key]}
+                      onFilter={(v) => table.setColumnFilter(col.key, v)}
+                      sortKey={table.sortKey}
+                      sortDir={table.sortDir}
+                      onToggleSort={table.toggleSort}
+                    />
+                  ))}
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {lessons.map((l: any) => (
-                  <tr key={l.id}>
-                    <td className="font-medium">
-                      {(projectById.get(l.project_id) as any)?.project_code || "—"}
-                    </td>
-                    <td>
-                      <EditableCell
-                        table="lessons_learned"
-                        rowId={l.id}
-                        field="category"
-                        value={l.category}
-                        invalidateKeys={["lessons_learned"]}
-                      />
-                    </td>
-                    <td className="max-w-[260px]">
-                      <EditableCell
-                        table="lessons_learned"
-                        rowId={l.id}
-                        field="what_happened"
-                        value={l.what_happened}
-                        invalidateKeys={["lessons_learned"]}
-                      />
-                    </td>
-                    <td className="max-w-[260px]">
-                      <EditableCell
-                        table="lessons_learned"
-                        rowId={l.id}
-                        field="recommendation"
-                        value={l.recommendation}
-                        invalidateKeys={["lessons_learned"]}
-                      />
-                    </td>
-                    <td className="text-xs">{l.captured_by || "—"}</td>
-                    <td className="text-xs whitespace-nowrap">{l.captured_date || "—"}</td>
-                    <td>
-                      <button
-                        className="text-xs text-rose-600 hover:underline"
-                        onClick={() => confirm("Delete lesson?") && del.mutate(l.id)}
-                      >
-                        Delete
-                      </button>
+                {table.rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-6 text-center text-sm text-muted-foreground">
+                      No lessons match filters.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  table.rows.map((l: any) => (
+                    <tr key={l.id}>
+                      <td className="font-medium">
+                        {(projectById.get(l.project_id) as any)?.project_code || "—"}
+                      </td>
+                      <td>
+                        <EditableCell
+                          table="lessons_learned"
+                          rowId={l.id}
+                          field="category"
+                          value={l.category}
+                          invalidateKeys={["lessons_learned"]}
+                        />
+                      </td>
+                      <td className="max-w-[260px]">
+                        <EditableCell
+                          table="lessons_learned"
+                          rowId={l.id}
+                          field="what_happened"
+                          value={l.what_happened}
+                          invalidateKeys={["lessons_learned"]}
+                        />
+                      </td>
+                      <td className="max-w-[260px]">
+                        <EditableCell
+                          table="lessons_learned"
+                          rowId={l.id}
+                          field="recommendation"
+                          value={l.recommendation}
+                          invalidateKeys={["lessons_learned"]}
+                        />
+                      </td>
+                      <td className="text-xs">{l.captured_by || "—"}</td>
+                      <td className="text-xs whitespace-nowrap">{l.captured_date || "—"}</td>
+                      <td>
+                        <button
+                          className="text-xs text-rose-600 hover:underline"
+                          onClick={() => confirm("Delete lesson?") && del.mutate(l.id)}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
