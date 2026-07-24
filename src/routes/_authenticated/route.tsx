@@ -3,11 +3,15 @@ import { useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { readOrgAuthEntrySlug } from "@/lib/org-auth-entry";
 import { toast } from "sonner";
-import { PageLoading } from "@/components/page-loading";
+import { PageLoading, SessionPending } from "@/components/page-loading";
 import { AppShell } from "@/components/app-shell";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
+  // ClientOnly / Suspense fallback for ssr:false must match Gate exactly —
+  // otherwise "Loading…" paints near the top, then "Checking your session…"
+  // jumps to the viewport centre.
+  pendingComponent: SessionPending,
   component: Gate,
 });
 
