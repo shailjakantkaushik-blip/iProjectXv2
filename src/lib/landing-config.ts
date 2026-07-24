@@ -570,7 +570,7 @@ export const DEFAULT_LANDING: LandingConfig = {
     title_accent: "Portfolio",
     subtitle:
       "Stop flying blind. iProjectX is the single, immutable source of truth for enterprise PMOs — from executive cockpit KPIs to granular stage-gate governance across Agile and Waterfall.",
-    primary_cta: "Request demo",
+    primary_cta: "Express Interest",
     secondary_cta: "See use cases",
     alert:
       "70% of transformation programs fail to deliver expected value without integrated portfolio governance.",
@@ -750,7 +750,7 @@ export const DEFAULT_LANDING: LandingConfig = {
   final_cta: {
     title: "Secure the portfolio outcome.",
     body: "Deploy iProjectX in weeks, not months. White-label ready, multi-tenant by design, and architected for the most complex enterprise PMOs — Agile, Waterfall, and everything in between.",
-    primary: "Book enterprise review",
+    primary: "Express Interest",
     secondary: "Sign in",
   },
   footer: { text: "" },

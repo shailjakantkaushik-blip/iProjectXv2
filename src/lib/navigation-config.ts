@@ -106,8 +106,15 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
         adminOnly: true,
       },
       { to: "/app/billing", label: "Billing & Invoices", icon: "Receipt", adminOnly: true },
+      { to: "/app/licenses", label: "License Certificates", icon: "Award", adminOnly: true },
       { to: "/app/team", label: "Admin: Users", icon: "ShieldCheck", adminOnly: true },
       { to: "/app/permissions", label: "Admin: Permissions", icon: "ShieldCheck", adminOnly: true },
+    ],
+  },
+  {
+    heading: "Legal",
+    items: [
+      { to: "/app/legal", label: "Legal & Policies", icon: "FileText" },
     ],
   },
   {
@@ -158,6 +165,24 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
         to: "/platform/branding",
         label: "Branding & White Label",
         icon: "Palette",
+        platformOnly: true,
+      },
+      {
+        to: "/platform/eoi",
+        label: "Expressions of Interest",
+        icon: "Inbox",
+        platformOnly: true,
+      },
+      {
+        to: "/platform/licenses",
+        label: "License Certificates",
+        icon: "Award",
+        platformOnly: true,
+      },
+      {
+        to: "/platform/policies",
+        label: "Legal Policies",
+        icon: "FileText",
         platformOnly: true,
       },
     ],
