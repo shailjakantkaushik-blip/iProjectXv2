@@ -56,6 +56,7 @@ export const PAGES: { path: string; label: string; group: string }[] = [
   { path: "/app/executive", label: "Executive Dashboard", group: "Command" },
   { path: "/app/ai-assist", label: "AI Assist", group: "Command" },
   { path: "/app/latest-updates", label: "Latest Updates", group: "Command" },
+  { path: "/app/support", label: "Support", group: "Command" },
   { path: "/app/about", label: "About", group: "Command" },
   { path: "/app/projects", label: "Projects", group: "Portfolio" },
   { path: "/app/programs", label: "Programs", group: "Portfolio" },

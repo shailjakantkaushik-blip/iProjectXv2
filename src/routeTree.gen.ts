@@ -69,6 +69,7 @@ import { Route as AuthenticatedAppSettingsRouteImport } from './routes/_authenti
 import { Route as AuthenticatedAppStageGateConfigRouteImport } from './routes/_authenticated/app.stage-gate-config'
 import { Route as AuthenticatedAppStageGatesRouteImport } from './routes/_authenticated/app.stage-gates'
 import { Route as AuthenticatedAppStakeholdersRouteImport } from './routes/_authenticated/app.stakeholders'
+import { Route as AuthenticatedAppSupportRouteImport } from './routes/_authenticated/app.support'
 import { Route as AuthenticatedAppTeamRouteImport } from './routes/_authenticated/app.team'
 import { Route as AuthenticatedAppTimelineRouteImport } from './routes/_authenticated/app.timeline'
 import { Route as AuthenticatedAppWorkItemsRouteImport } from './routes/_authenticated/app.work-items'
@@ -87,6 +88,7 @@ import { Route as AuthenticatedPlatformPoliciesRouteImport } from './routes/_aut
 import { Route as AuthenticatedPlatformProjectPurgeRouteImport } from './routes/_authenticated/platform.project-purge'
 import { Route as AuthenticatedPlatformSettingsRouteImport } from './routes/_authenticated/platform.settings'
 import { Route as AuthenticatedPlatformSubscriptionsRouteImport } from './routes/_authenticated/platform.subscriptions'
+import { Route as AuthenticatedPlatformSupportRouteImport } from './routes/_authenticated/platform.support'
 import { Route as OSlugLoginRouteImport } from './routes/o.$slug.login'
 import { Route as AuthenticatedAppInvoiceIdRouteImport } from './routes/_authenticated/app.invoice.$id'
 import { Route as AuthenticatedAppProjectsIdRouteImport } from './routes/_authenticated/app.projects.$id'
@@ -433,6 +435,11 @@ const AuthenticatedAppStakeholdersRoute =
     path: '/stakeholders',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
+const AuthenticatedAppSupportRoute = AuthenticatedAppSupportRouteImport.update({
+  id: '/support',
+  path: '/support',
+  getParentRoute: () => AuthenticatedAppRoute,
+} as any)
 const AuthenticatedAppTeamRoute = AuthenticatedAppTeamRouteImport.update({
   id: '/team',
   path: '/team',
@@ -540,6 +547,12 @@ const AuthenticatedPlatformSubscriptionsRoute =
     path: '/subscriptions',
     getParentRoute: () => AuthenticatedPlatformRoute,
   } as any)
+const AuthenticatedPlatformSupportRoute =
+  AuthenticatedPlatformSupportRouteImport.update({
+    id: '/support',
+    path: '/support',
+    getParentRoute: () => AuthenticatedPlatformRoute,
+  } as any)
 const OSlugLoginRoute = OSlugLoginRouteImport.update({
   id: '/o/$slug/login',
   path: '/o/$slug/login',
@@ -635,6 +648,7 @@ export interface FileRoutesByFullPath {
   '/app/stage-gate-config': typeof AuthenticatedAppStageGateConfigRoute
   '/app/stage-gates': typeof AuthenticatedAppStageGatesRoute
   '/app/stakeholders': typeof AuthenticatedAppStakeholdersRoute
+  '/app/support': typeof AuthenticatedAppSupportRoute
   '/app/team': typeof AuthenticatedAppTeamRoute
   '/app/timeline': typeof AuthenticatedAppTimelineRoute
   '/app/work-items': typeof AuthenticatedAppWorkItemsRoute
@@ -653,6 +667,7 @@ export interface FileRoutesByFullPath {
   '/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
   '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
+  '/platform/support': typeof AuthenticatedPlatformSupportRoute
   '/o/$slug/login': typeof OSlugLoginRoute
   '/app/': typeof AuthenticatedAppIndexRoute
   '/app/invoice/$id': typeof AuthenticatedAppInvoiceIdRoute
@@ -719,6 +734,7 @@ export interface FileRoutesByTo {
   '/app/stage-gate-config': typeof AuthenticatedAppStageGateConfigRoute
   '/app/stage-gates': typeof AuthenticatedAppStageGatesRoute
   '/app/stakeholders': typeof AuthenticatedAppStakeholdersRoute
+  '/app/support': typeof AuthenticatedAppSupportRoute
   '/app/team': typeof AuthenticatedAppTeamRoute
   '/app/timeline': typeof AuthenticatedAppTimelineRoute
   '/app/work-items': typeof AuthenticatedAppWorkItemsRoute
@@ -737,6 +753,7 @@ export interface FileRoutesByTo {
   '/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
   '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
+  '/platform/support': typeof AuthenticatedPlatformSupportRoute
   '/o/$slug/login': typeof OSlugLoginRoute
   '/app': typeof AuthenticatedAppIndexRoute
   '/app/invoice/$id': typeof AuthenticatedAppInvoiceIdRoute
@@ -806,6 +823,7 @@ export interface FileRoutesById {
   '/_authenticated/app/stage-gate-config': typeof AuthenticatedAppStageGateConfigRoute
   '/_authenticated/app/stage-gates': typeof AuthenticatedAppStageGatesRoute
   '/_authenticated/app/stakeholders': typeof AuthenticatedAppStakeholdersRoute
+  '/_authenticated/app/support': typeof AuthenticatedAppSupportRoute
   '/_authenticated/app/team': typeof AuthenticatedAppTeamRoute
   '/_authenticated/app/timeline': typeof AuthenticatedAppTimelineRoute
   '/_authenticated/app/work-items': typeof AuthenticatedAppWorkItemsRoute
@@ -824,6 +842,7 @@ export interface FileRoutesById {
   '/_authenticated/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
   '/_authenticated/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/_authenticated/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
+  '/_authenticated/platform/support': typeof AuthenticatedPlatformSupportRoute
   '/o/$slug/login': typeof OSlugLoginRoute
   '/_authenticated/app/': typeof AuthenticatedAppIndexRoute
   '/_authenticated/app/invoice/$id': typeof AuthenticatedAppInvoiceIdRoute
@@ -893,6 +912,7 @@ export interface FileRouteTypes {
     | '/app/stage-gate-config'
     | '/app/stage-gates'
     | '/app/stakeholders'
+    | '/app/support'
     | '/app/team'
     | '/app/timeline'
     | '/app/work-items'
@@ -911,6 +931,7 @@ export interface FileRouteTypes {
     | '/platform/project-purge'
     | '/platform/settings'
     | '/platform/subscriptions'
+    | '/platform/support'
     | '/o/$slug/login'
     | '/app/'
     | '/app/invoice/$id'
@@ -977,6 +998,7 @@ export interface FileRouteTypes {
     | '/app/stage-gate-config'
     | '/app/stage-gates'
     | '/app/stakeholders'
+    | '/app/support'
     | '/app/team'
     | '/app/timeline'
     | '/app/work-items'
@@ -995,6 +1017,7 @@ export interface FileRouteTypes {
     | '/platform/project-purge'
     | '/platform/settings'
     | '/platform/subscriptions'
+    | '/platform/support'
     | '/o/$slug/login'
     | '/app'
     | '/app/invoice/$id'
@@ -1063,6 +1086,7 @@ export interface FileRouteTypes {
     | '/_authenticated/app/stage-gate-config'
     | '/_authenticated/app/stage-gates'
     | '/_authenticated/app/stakeholders'
+    | '/_authenticated/app/support'
     | '/_authenticated/app/team'
     | '/_authenticated/app/timeline'
     | '/_authenticated/app/work-items'
@@ -1081,6 +1105,7 @@ export interface FileRouteTypes {
     | '/_authenticated/platform/project-purge'
     | '/_authenticated/platform/settings'
     | '/_authenticated/platform/subscriptions'
+    | '/_authenticated/platform/support'
     | '/o/$slug/login'
     | '/_authenticated/app/'
     | '/_authenticated/app/invoice/$id'
@@ -1524,6 +1549,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppStakeholdersRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
+    '/_authenticated/app/support': {
+      id: '/_authenticated/app/support'
+      path: '/support'
+      fullPath: '/app/support'
+      preLoaderRoute: typeof AuthenticatedAppSupportRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
     '/_authenticated/app/team': {
       id: '/_authenticated/app/team'
       path: '/team'
@@ -1650,6 +1682,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPlatformSubscriptionsRouteImport
       parentRoute: typeof AuthenticatedPlatformRoute
     }
+    '/_authenticated/platform/support': {
+      id: '/_authenticated/platform/support'
+      path: '/support'
+      fullPath: '/platform/support'
+      preLoaderRoute: typeof AuthenticatedPlatformSupportRouteImport
+      parentRoute: typeof AuthenticatedPlatformRoute
+    }
     '/o/$slug/login': {
       id: '/o/$slug/login'
       path: '/o/$slug/login'
@@ -1761,6 +1800,7 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppStageGateConfigRoute: typeof AuthenticatedAppStageGateConfigRoute
   AuthenticatedAppStageGatesRoute: typeof AuthenticatedAppStageGatesRoute
   AuthenticatedAppStakeholdersRoute: typeof AuthenticatedAppStakeholdersRoute
+  AuthenticatedAppSupportRoute: typeof AuthenticatedAppSupportRoute
   AuthenticatedAppTeamRoute: typeof AuthenticatedAppTeamRoute
   AuthenticatedAppTimelineRoute: typeof AuthenticatedAppTimelineRoute
   AuthenticatedAppWorkItemsRoute: typeof AuthenticatedAppWorkItemsRoute
@@ -1823,6 +1863,7 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppStageGateConfigRoute: AuthenticatedAppStageGateConfigRoute,
   AuthenticatedAppStageGatesRoute: AuthenticatedAppStageGatesRoute,
   AuthenticatedAppStakeholdersRoute: AuthenticatedAppStakeholdersRoute,
+  AuthenticatedAppSupportRoute: AuthenticatedAppSupportRoute,
   AuthenticatedAppTeamRoute: AuthenticatedAppTeamRoute,
   AuthenticatedAppTimelineRoute: AuthenticatedAppTimelineRoute,
   AuthenticatedAppWorkItemsRoute: AuthenticatedAppWorkItemsRoute,
@@ -1849,6 +1890,7 @@ interface AuthenticatedPlatformRouteChildren {
   AuthenticatedPlatformProjectPurgeRoute: typeof AuthenticatedPlatformProjectPurgeRoute
   AuthenticatedPlatformSettingsRoute: typeof AuthenticatedPlatformSettingsRoute
   AuthenticatedPlatformSubscriptionsRoute: typeof AuthenticatedPlatformSubscriptionsRoute
+  AuthenticatedPlatformSupportRoute: typeof AuthenticatedPlatformSupportRoute
   AuthenticatedPlatformInvoiceIdRoute: typeof AuthenticatedPlatformInvoiceIdRoute
 }
 
@@ -1872,6 +1914,7 @@ const AuthenticatedPlatformRouteChildren: AuthenticatedPlatformRouteChildren = {
   AuthenticatedPlatformSettingsRoute: AuthenticatedPlatformSettingsRoute,
   AuthenticatedPlatformSubscriptionsRoute:
     AuthenticatedPlatformSubscriptionsRoute,
+  AuthenticatedPlatformSupportRoute: AuthenticatedPlatformSupportRoute,
   AuthenticatedPlatformInvoiceIdRoute: AuthenticatedPlatformInvoiceIdRoute,
 }
 
@@ -1909,13 +1952,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
