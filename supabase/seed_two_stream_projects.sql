@@ -1,12 +1,13 @@
 -- Seed: 2 sample projects with 2 streams each (plus stage gates).
 -- Run AFTER the project_streams migration.
 --
--- 1) SELECT id, name, slug FROM public.organizations;
--- 2) Replace YOUR_ORG_ID below.
+-- Optional: set v_org_slug below to target a specific organisation.
+-- Leave it NULL to use the first organisation in the database.
 
 DO $$
 DECLARE
-  v_org uuid := 'YOUR_ORG_ID'::uuid; -- << paste organizations.id
+  v_org_slug text := NULL; -- e.g. 'acme'  — or leave NULL for first org
+  v_org uuid;
   v_p1 uuid;
   v_p2 uuid;
   v_s1a uuid;
@@ -14,9 +15,17 @@ DECLARE
   v_s2a uuid;
   v_s2b uuid;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM public.organizations WHERE id = v_org) THEN
-    RAISE EXCEPTION 'Org % not found — set v_org to a real organizations.id', v_org;
+  IF v_org_slug IS NOT NULL AND btrim(v_org_slug) <> '' THEN
+    SELECT id INTO v_org FROM public.organizations WHERE slug = btrim(v_org_slug) LIMIT 1;
+  ELSE
+    SELECT id INTO v_org FROM public.organizations ORDER BY created_at NULLS LAST, name LIMIT 1;
   END IF;
+
+  IF v_org IS NULL THEN
+    RAISE EXCEPTION 'No organisation found. Create an org first, or set v_org_slug to a valid organizations.slug';
+  END IF;
+
+  RAISE NOTICE 'Seeding into organisation %', v_org;
 
   -- ========== Project 1 ==========
   SELECT id INTO v_p1 FROM public.projects WHERE org_id = v_org AND project_code = 'AR-TW-001';
