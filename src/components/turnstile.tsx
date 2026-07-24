@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 
 const TURNSTILE_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 
@@ -48,8 +48,13 @@ interface Props {
  * Cloudflare Turnstile widget.
  * Callbacks are held in refs so parent re-renders do not remount/reset the
  * challenge (which felt like the login page "refreshing").
+ * Memoized so auth form state updates (e.g. token stored) do not recreate the iframe.
  */
-export function TurnstileWidget({ onToken, onExpire, theme = "auto" }: Props) {
+export const TurnstileWidget = memo(function TurnstileWidget({
+  onToken,
+  onExpire,
+  theme = "auto",
+}: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
   const onTokenRef = useRef(onToken);
@@ -76,6 +81,9 @@ export function TurnstileWidget({ onToken, onExpire, theme = "auto" }: Props) {
         widgetIdRef.current = window.turnstile.render(containerRef.current, {
           sitekey: siteKey,
           theme,
+          // Quiet when Cloudflare can verify without interaction — avoids a
+          // visible widget swap that looked like the login form refreshing.
+          appearance: "interaction-only",
           callback: (token: string) => onTokenRef.current(token),
           "expired-callback": () => {
             onExpireRef.current?.();
@@ -103,10 +111,12 @@ export function TurnstileWidget({ onToken, onExpire, theme = "auto" }: Props) {
   return (
     <div className="flex min-h-[65px] flex-col items-center justify-center gap-1">
       <div ref={containerRef} className="flex justify-center" />
-      <p className="text-[10px] text-muted-foreground">Secured by Cloudflare — this check stays in place while you type.</p>
+      <p className="text-[10px] text-muted-foreground">
+        Secured by Cloudflare — runs quietly while you enter your details.
+      </p>
     </div>
   );
-}
+});
 
 export function isTurnstileEnabled(): boolean {
   return Boolean(getTurnstileSiteKey());

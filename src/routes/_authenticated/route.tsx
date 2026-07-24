@@ -36,10 +36,12 @@ function Gate() {
     }
   }, [session, profile, loading, navigate, pathname, signOut]);
 
-  if (loading || !session) {
+  // Prefer staying mounted when we already have a matching profile. Tab-focus
+  // session recovery must not tear down the whole authenticated shell.
+  if (!session || !profile || profile.id !== session.user.id) {
     return <PageLoading label="Checking your session…" />;
   }
-  if (profile && profile.is_active === false) {
+  if (profile.is_active === false) {
     return <PageLoading label="Account inactive…" />;
   }
   return <Outlet />;
