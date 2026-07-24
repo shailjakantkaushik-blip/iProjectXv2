@@ -13,6 +13,7 @@ const TABLES = [
   "business_units", "governance_channels", "stakeholders",
   "portfolio_scenarios", "scenario_projects", "documents", "lessons_learned",
   "notifications", "work_items", "audit_events", "stakeholders", "issues",
+  "support_tickets", "support_ticket_comments",
 ];
 
 // Cross-tab broadcast (edits made in another tab of the same app).

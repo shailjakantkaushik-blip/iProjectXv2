@@ -37,6 +37,7 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
       { to: "/app/executive", label: "Executive Dashboard", icon: "LayoutDashboard" },
       { to: "/app/ai-assist", label: "AI Assist", icon: "Sparkles" },
       { to: "/app/latest-updates", label: "Latest Updates", icon: "Bell" },
+      { to: "/app/support", label: "Support", icon: "LifeBuoy" },
       { to: "/app/about", label: "About", icon: "Info" },
     ],
   },
@@ -171,6 +172,12 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
         to: "/platform/eoi",
         label: "Expressions of Interest",
         icon: "Inbox",
+        platformOnly: true,
+      },
+      {
+        to: "/platform/support",
+        label: "Support tickets",
+        icon: "LifeBuoy",
         platformOnly: true,
       },
       {

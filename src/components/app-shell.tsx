@@ -56,11 +56,13 @@ import {
   Eye,
   Trash2,
   ChevronDown,
+  LifeBuoy,
   type LucideIcon,
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useAuth, isAdmin, isPlatformAdmin } from "@/lib/auth-context";
 import { useAllowedPages } from "@/lib/permissions";
+import { useOrgSupportAccess } from "@/lib/support-tickets";
 import { Button } from "@/components/ui/button";
 import { NotificationsBell } from "@/components/notifications-bell";
 import { CartoonCompanion } from "@/components/cartoon-mascots";
@@ -137,6 +139,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Palette,
   CreditCard,
   Landmark,
+  LifeBuoy,
 };
 
 function resolveIcon(name: string): LucideIcon {
@@ -206,6 +209,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const admin = isAdmin(roles);
   const platform = isPlatformAdmin(roles);
   const { canView: canViewPage } = useAllowedPages();
+  const { allowed: supportAllowed, isReady: supportReady } = useOrgSupportAccess();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
   /** Open section headings — default all collapsed for a quieter sidebar. */
@@ -283,13 +287,18 @@ export function AppShell({ children }: { children: ReactNode }) {
         ...group,
         items: group.items.filter((n) => {
           if (n.to === "/app/") return true;
+          if (n.to === "/app/support") {
+            // Hide until settings load; then only when org support is enabled for this role.
+            if (!supportReady) return false;
+            return supportAllowed;
+          }
           if (n.platformOnly) return platform;
           if (n.adminOnly) return admin;
           return admin || canViewPage(n.to);
         }),
       }))
       .filter((g) => g.items.length > 0);
-  }, [navGroups, platform, admin, canViewPage]);
+  }, [navGroups, platform, admin, canViewPage, supportAllowed, supportReady]);
 
   const visibleHeadings = useMemo(
     () => visibleNavGroups.map((g) => g.heading),
