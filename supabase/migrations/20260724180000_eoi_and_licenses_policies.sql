@@ -82,7 +82,7 @@ CREATE POLICY "cert_org_admin_select"
       SELECT 1 FROM public.user_roles ur
       WHERE ur.user_id = auth.uid()
         AND ur.org_id  = public.get_user_org(auth.uid())
-        AND ur.role    IN ('admin','owner')
+        AND ur.role::text IN ('admin','org_admin')
     )
   );
 
