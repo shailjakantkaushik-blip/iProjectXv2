@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Layers, Plus, Save, Trash2 } from "lucide-react";
+import { Copy, Layers, Plus, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import {
   createProjectStream,
   deleteProjectStream,
+  duplicateProjectStream,
   enableProjectStreams,
   fetchProjectStreams,
   updateProjectStream,
@@ -54,12 +55,14 @@ function StreamEditor({
   stream,
   onSave,
   onDelete,
+  onDuplicate,
   busy,
   canDelete,
 }: {
   stream: ProjectStream | (Partial<ProjectStream> & { org_id: string; project_id: string; name: string });
   onSave: (patch: Record<string, unknown>) => Promise<void>;
   onDelete?: () => Promise<void>;
+  onDuplicate?: () => Promise<void>;
   busy?: boolean;
   canDelete?: boolean;
 }) {
@@ -93,6 +96,19 @@ function StreamEditor({
           ) : null}
         </div>
         <div className="flex items-center gap-2">
+          {onDuplicate ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              title="Duplicate as a new stream template (planned dates, gates, finance plan). Clears actuals; skips resource allocations."
+              onClick={() => void onDuplicate()}
+            >
+              <Copy className="mr-1 h-3.5 w-3.5" />
+              Duplicate
+            </Button>
+          ) : null}
           {canDelete && onDelete ? (
             <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void onDelete()}>
               <Trash2 className="mr-1 h-3.5 w-3.5" />
@@ -292,6 +308,7 @@ export function ProjectStreamsPanel({
 }) {
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
 
   const { data: streams = [], isLoading } = useQuery({
     queryKey: ["project_streams", projectId],
@@ -304,6 +321,10 @@ export function ProjectStreamsPanel({
     qc.invalidateQueries({ queryKey: ["project_streams"] });
     qc.invalidateQueries({ queryKey: ["project", projectId] });
     qc.invalidateQueries({ queryKey: ["projects"] });
+    qc.invalidateQueries({ queryKey: ["stage_gates"] });
+    qc.invalidateQueries({ queryKey: ["milestones"] });
+    qc.invalidateQueries({ queryKey: ["fy_allocations"] });
+    qc.invalidateQueries({ queryKey: ["financials_monthly"] });
   };
 
   const enableMut = useMutation({
@@ -363,7 +384,8 @@ export function ProjectStreamsPanel({
         </SectionTitle>
         <p className="mb-3 text-xs text-muted-foreground">
           Project dates and finance are rolled up from streams (min/max dates, sum of budgets). Edit streams
-          below — timeline shows one planned vs actual lane per stream.
+          below — timeline shows one planned vs actual lane per stream. Use <span className="font-medium text-foreground">Duplicate</span> to
+          clone a stream’s planned schedule, gates, and finance plan into a new lane (actuals cleared; resources not copied).
         </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <KpiCard label="Streams" value={totals.count} />
@@ -405,7 +427,30 @@ export function ProjectStreamsPanel({
               <StreamEditor
                 key={s.id}
                 stream={s}
+                busy={duplicatingId === s.id}
                 canDelete={!s.is_default && streams.length > 1}
+                onDuplicate={async () => {
+                  setDuplicatingId(s.id);
+                  try {
+                    const result = await duplicateProjectStream(s.id, { existingStreams: streams });
+                    const bits = [
+                      result.gatesCopied ? `${result.gatesCopied} gates` : null,
+                      result.milestonesCopied ? `${result.milestonesCopied} milestones` : null,
+                      result.fyCopied ? `${result.fyCopied} FY rows` : null,
+                      result.monthlyCopied ? `${result.monthlyCopied} monthly rows` : null,
+                    ].filter(Boolean);
+                    toast.success(
+                      bits.length
+                        ? `Duplicated as “${result.stream.name}” (${bits.join(", ")})`
+                        : `Duplicated as “${result.stream.name}”`,
+                    );
+                    invalidate();
+                  } catch (e: any) {
+                    toast.error(e.message || "Duplicate failed");
+                  } finally {
+                    setDuplicatingId(null);
+                  }
+                }}
                 onDelete={async () => {
                   if (!confirm(`Delete stream “${s.name}”? Child gates/finance on this stream will be removed.`)) {
                     return;
