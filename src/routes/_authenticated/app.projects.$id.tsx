@@ -287,7 +287,7 @@ function ProjectDetail() {
             shown={workTable.rows.length}
             total={workTable.total}
             dirty={workTable.isDirty}
-            onClear={workTable.clearAll}
+          onClear={workTable.clearAll}
             placeholder="Search work items…"
           />
           {workTable.total === 0 ? (

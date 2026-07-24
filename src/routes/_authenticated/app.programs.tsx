@@ -385,7 +385,7 @@ function ProgramsPage() {
           shown={programTable.rows.length}
           total={programTable.total}
           dirty={programTable.isDirty}
-            onClear={programTable.clearAll}
+          onClear={programTable.clearAll}
           placeholder="Search programs…"
         />
         <div className="overflow-x-auto">
@@ -513,7 +513,7 @@ function ProgramsPage() {
                 shown={projectTable.rows.length}
                 total={projectTable.total}
                 dirty={projectTable.isDirty}
-            onClear={projectTable.clearAll}
+          onClear={projectTable.clearAll}
                 placeholder="Search projects…"
               />
               <div className="overflow-x-auto">

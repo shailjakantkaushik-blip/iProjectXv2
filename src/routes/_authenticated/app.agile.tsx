@@ -351,7 +351,7 @@ function Page() {
           shown={sprintTable.rows.length}
           total={sprintTable.total}
           dirty={sprintTable.isDirty}
-            onClear={sprintTable.clearAll}
+          onClear={sprintTable.clearAll}
           placeholder="Search sprint history…"
         />
         <div className="overflow-auto">

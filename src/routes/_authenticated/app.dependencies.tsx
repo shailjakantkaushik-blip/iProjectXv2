@@ -231,7 +231,7 @@ function DependenciesPage() {
           shown={table.rows.length}
           total={table.total}
           dirty={table.isDirty}
-            onClear={table.clearAll}
+          onClear={table.clearAll}
           placeholder="Search dependency register…"
         />
         {table.total === 0 ? (

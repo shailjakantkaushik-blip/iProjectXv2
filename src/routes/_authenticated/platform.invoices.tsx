@@ -313,7 +313,7 @@ function InvoicesPage() {
             shown={orgTable.rows.length}
             total={orgTable.total}
             dirty={orgTable.isDirty}
-            onClear={orgTable.clearAll}
+          onClear={orgTable.clearAll}
             placeholder="Search organizations…"
           />
           <table className="st-table w-full">
@@ -368,7 +368,7 @@ function InvoicesPage() {
             shown={invoiceTable.rows.length}
             total={invoiceTable.total}
             dirty={invoiceTable.isDirty}
-            onClear={invoiceTable.clearAll}
+          onClear={invoiceTable.clearAll}
             placeholder="Search invoices…"
           />
           <table className="st-table w-full">

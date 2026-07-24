@@ -321,7 +321,7 @@ function RisksPage() {
           shown={table.rows.length}
           total={table.total}
           dirty={table.isDirty}
-            onClear={table.clearAll}
+          onClear={table.clearAll}
         />
         {table.rows.length === 0 ? (
           <div className="py-8 text-center text-sm text-muted-foreground">

@@ -437,7 +437,7 @@ function ProjectsList() {
           shown={table.rows.length}
           total={table.total}
           dirty={table.isDirty}
-            onClear={table.clearAll}
+          onClear={table.clearAll}
           placeholder="Search portfolio register…"
         />
         {table.total === 0 ? (

@@ -302,7 +302,7 @@ function StageGatesPage() {
           shown={table.rows.length}
           total={table.total}
           dirty={table.isDirty}
-            onClear={table.clearAll}
+          onClear={table.clearAll}
           placeholder="Search stage gate register…"
         />
         <div className="overflow-x-auto">

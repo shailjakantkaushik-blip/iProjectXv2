@@ -89,7 +89,7 @@ function SubsPage() {
             shown={table.rows.length}
             total={table.total}
             dirty={table.isDirty}
-            onClear={table.clearAll}
+          onClear={table.clearAll}
             placeholder="Search subscriptions…"
           />
           <table className="st-table w-full">

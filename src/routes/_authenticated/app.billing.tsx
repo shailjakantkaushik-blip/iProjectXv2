@@ -215,7 +215,7 @@ function Billing() {
             shown={invoiceTable.rows.length}
             total={invoiceTable.total}
             dirty={invoiceTable.isDirty}
-            onClear={invoiceTable.clearAll}
+          onClear={invoiceTable.clearAll}
             placeholder="Search invoices…"
           />
           {invoiceTable.rows.length === 0 ? (

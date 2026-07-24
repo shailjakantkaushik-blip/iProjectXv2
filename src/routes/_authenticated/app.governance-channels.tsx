@@ -126,7 +126,7 @@ function GovernanceChannelsPage() {
             shown={table.rows.length}
             total={table.total}
             dirty={table.isDirty}
-            onClear={table.clearAll}
+          onClear={table.clearAll}
             placeholder="Search channels…"
           />
           <div className="overflow-x-auto">

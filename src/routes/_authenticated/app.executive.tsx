@@ -968,7 +968,7 @@ function ExecutiveDashboard() {
           shown={portfolioTable.rows.length}
           total={portfolioTable.total}
           dirty={portfolioTable.isDirty}
-            onClear={portfolioTable.clearAll}
+          onClear={portfolioTable.clearAll}
           placeholder="Search portfolio register…"
         />
         {portfolioTable.rows.length === 0 ? (

@@ -40,7 +40,7 @@ import {
 } from "@/lib/finance-lifecycle";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
-import { Input } from "@/components/ui/input";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/phase-financials")({
   component: PhaseFinancialsPage,
@@ -383,17 +383,15 @@ function PhaseFinancialsPage() {
 
       <SectionFrame>
         <SectionTitle>Phase register</SectionTitle>
-        <div className="mb-2 flex flex-wrap items-center gap-2">
-          <Input
-            placeholder="Search phase register…"
-            value={phaseTable.globalQ}
-            onChange={(e) => phaseTable.setGlobalQ(e.target.value)}
-            className="max-w-xs h-8 text-xs"
-          />
-          <span className="text-xs text-muted-foreground">
-            {phaseTable.rows.length} of {phaseTable.total}
-          </span>
-        </div>
+        <ColumnarToolbar
+          globalQ={phaseTable.globalQ}
+          onGlobalQ={phaseTable.setGlobalQ}
+          shown={phaseTable.rows.length}
+          total={phaseTable.total}
+          dirty={phaseTable.isDirty}
+          onClear={phaseTable.clearAll}
+          placeholder="Search phase register…"
+        />
         <div className="overflow-x-auto">
           <table className="st-table">
             <thead>
@@ -439,17 +437,15 @@ function PhaseFinancialsPage() {
 
       <SectionFrame>
         <SectionTitle>Phase · stream detail</SectionTitle>
-        <div className="mb-2 flex flex-wrap items-center gap-2">
-          <Input
-            placeholder="Search project / stream / stage…"
-            value={detailTable.globalQ}
-            onChange={(e) => detailTable.setGlobalQ(e.target.value)}
-            className="max-w-xs h-8 text-xs"
-          />
-          <span className="text-xs text-muted-foreground">
-            {detailTable.rows.length} of {detailTable.total}
-          </span>
-        </div>
+        <ColumnarToolbar
+          globalQ={detailTable.globalQ}
+          onGlobalQ={detailTable.setGlobalQ}
+          shown={detailTable.rows.length}
+          total={detailTable.total}
+          dirty={detailTable.isDirty}
+          onClear={detailTable.clearAll}
+          placeholder="Search project / stream / stage…"
+        />
         <div className="overflow-x-auto">
           <table className="st-table">
             <thead>

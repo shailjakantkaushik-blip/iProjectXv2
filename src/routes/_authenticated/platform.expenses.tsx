@@ -86,7 +86,7 @@ function ExpensesPage() {
             shown={table.rows.length}
             total={table.total}
             dirty={table.isDirty}
-            onClear={table.clearAll}
+          onClear={table.clearAll}
             placeholder="Search expenses…"
           />
           <table className="st-table w-full">

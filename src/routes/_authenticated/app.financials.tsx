@@ -400,7 +400,7 @@ function FinancialsPage() {
           shown={financeTable.rows.length}
           total={financeTable.total}
           dirty={financeTable.isDirty}
-            onClear={financeTable.clearAll}
+          onClear={financeTable.clearAll}
           placeholder="Search project funding…"
         />
         <div className="max-h-[500px] overflow-auto">

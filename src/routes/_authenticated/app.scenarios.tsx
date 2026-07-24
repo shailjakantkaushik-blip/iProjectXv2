@@ -365,7 +365,7 @@ function ScenariosPage() {
             shown={scenarioTable.rows.length}
             total={scenarioTable.total}
             dirty={scenarioTable.isDirty}
-            onClear={scenarioTable.clearAll}
+          onClear={scenarioTable.clearAll}
             placeholder="Search scenario projects…"
           />
           <div className="mt-3 overflow-x-auto">
