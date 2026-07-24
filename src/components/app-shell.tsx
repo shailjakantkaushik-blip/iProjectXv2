@@ -89,6 +89,21 @@ import {
 import { useFocusMode } from "@/lib/use-focus-mode";
 import { CommandPalette, useCommandPaletteHotkey } from "@/components/command-palette";
 import { cn } from "@/lib/utils";
+import { StyleThemePicker } from "@/components/style-theme-picker";
+import {
+  normalizeOrgStyleTheme,
+  readUserStyleTheme,
+  resolveStyleThemeId,
+  writeUserStyleTheme,
+  STYLE_THEME_CHANGE_EVENT,
+  type StyleThemeId,
+} from "@/lib/style-theme";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Paintbrush } from "lucide-react";
 
 const ICON_MAP: Record<string, LucideIcon> = {
   Home,
@@ -210,6 +225,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   const platform = isPlatformAdmin(roles);
   const { canView: canViewPage } = useAllowedPages();
   const { allowed: supportAllowed, isReady: supportReady } = useOrgSupportAccess();
+  const orgStyle = normalizeOrgStyleTheme(organization?.ui_config?.style_theme);
+  const userCanPickStyle = orgStyle.user_choice_enabled === true;
+  const [styleTick, setStyleTick] = useState(0);
+  useEffect(() => {
+    const onStyle = () => setStyleTick((n) => n + 1);
+    window.addEventListener(STYLE_THEME_CHANGE_EVENT, onStyle);
+    return () => window.removeEventListener(STYLE_THEME_CHANGE_EVENT, onStyle);
+  }, []);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
   /** Open section headings — default all collapsed for a quieter sidebar. */
@@ -274,6 +297,22 @@ export function AppShell({ children }: { children: ReactNode }) {
     initialData: cached ?? undefined,
     placeholderData: (prev) => prev ?? cached ?? undefined,
   });
+
+  const activeStyleId = useMemo(
+    () =>
+      resolveStyleThemeId({
+        platformThemeId: landing?.style_theme_id ?? cached?.style_theme_id,
+        orgConfig: orgStyle,
+        userThemeId: readUserStyleTheme(organization?.id),
+      }),
+    [
+      landing?.style_theme_id,
+      cached?.style_theme_id,
+      orgStyle,
+      organization?.id,
+      styleTick,
+    ],
+  );
 
   const navGroups = useMemo(() => {
     // Org custom nav wins for workspace groups; platform is fallback + Platform section.
@@ -672,6 +711,34 @@ export function AppShell({ children }: { children: ReactNode }) {
             >
               <Focus className="h-3.5 w-3.5" />
             </Button>
+            {userCanPickStyle && organization?.id ? (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Style theme"
+                  >
+                    <Paintbrush className="h-3.5 w-3.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-72 p-3">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Style theme
+                  </div>
+                  <StyleThemePicker
+                    compact
+                    value={activeStyleId}
+                    onChange={(id: StyleThemeId) => {
+                      if (!organization?.id) return;
+                      writeUserStyleTheme(organization.id, id);
+                    }}
+                  />
+                </PopoverContent>
+              </Popover>
+            ) : null}
             <NotificationsBell />
             <div className="hidden rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-[10.5px] font-medium capitalize tracking-wide text-muted-foreground sm:block">
               {(organization?.plan ?? "free").replace(/_/g, " ")}

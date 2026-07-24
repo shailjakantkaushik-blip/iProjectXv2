@@ -28,6 +28,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { ChartLegendList, legendItemsFromCounts } from "@/components/chart-legend-list";
 import {
   projectApprovedFunding,
   projectBenefitsTarget,
@@ -190,7 +191,19 @@ function Segmentation() {
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div>
-            <ExpandableChart title="Distribution by Segment" heightClass="h-64">
+            <ExpandableChart
+              title="Distribution by Segment"
+              heightClass="h-64"
+              legend={
+                <ChartLegendList
+                  items={legendItemsFromCounts(
+                    segCounts.map((s) => ({ name: s.name, value: s.count })),
+                    PROG_COLORS,
+                    { showPercent: true },
+                  )}
+                />
+              }
+            >
               <PieChart>
                 <Pie
                   data={segCounts}
@@ -209,24 +222,6 @@ function Segmentation() {
                 <Tooltip />
               </PieChart>
             </ExpandableChart>
-            <div className="mt-2 max-h-24 overflow-y-auto overscroll-contain pr-0.5">
-              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px] sm:grid-cols-3">
-                {segCounts.map((s, i) => (
-                  <span
-                    key={s.name}
-                    className="flex min-w-0 items-center gap-1.5"
-                    title={`${s.name} ${s.count}`}
-                  >
-                    <span
-                      className="h-2 w-2 shrink-0 rounded-full"
-                      style={{ background: PROG_COLORS[i % PROG_COLORS.length] }}
-                    />
-                    <span className="truncate font-medium">{s.name}</span>
-                    <span className="shrink-0 text-muted-foreground">{s.count}</span>
-                  </span>
-                ))}
-              </div>
-            </div>
           </div>
           <ExpandableChart title="Budget by Segment" heightClass="h-64">
             <BarChart

@@ -37,6 +37,7 @@ import {
   summarizeTimelineLaneFinancials,
 } from "@/lib/project-streams";
 import { darkenHex, scheduleCompletionPct } from "@/lib/schedule-progress";
+import { computeTimelineBounds } from "@/components/portfolio-timeline";
 
 export const Route = createFileRoute("/_authenticated/app/executive")({
   component: ExecutiveDashboard,
@@ -336,72 +337,11 @@ function ExecutiveDashboard() {
     return Array.from(groups.entries()).sort();
   }, [timelineLanes, timelineView]);
 
-  // FY runs per org's fy_start_month. FY label uses ending year.
-  const timelineBounds = useMemo(() => {
-    const startIdx = Math.max(1, Math.min(12, fyStartMonth)) - 1;
-    const fyStartFor = (d: Date) => {
-      const y = d.getFullYear();
-      const startYear = d.getMonth() >= startIdx ? y : y - 1;
-      return new Date(startYear, startIdx, 1);
-    };
-    const fyEndFor = (d: Date) => {
-      const s = fyStartFor(d);
-      return new Date(s.getFullYear() + 1, s.getMonth(), 0, 23, 59, 59);
-    };
-    const fyLabel = (d: Date) => `FY${String(fyStartFor(d).getFullYear() + 1).slice(-2)}`;
-
-    let minD: Date | null = null;
-    let maxD: Date | null = null;
-
-    if (fy !== "All") {
-      const yy = parseInt(fy.replace(/[^0-9]/g, ""), 10);
-      const endYear = 2000 + yy;
-      minD = new Date(endYear - 1, startIdx, 1);
-      maxD = new Date(endYear, startIdx, 0, 23, 59, 59);
-    } else {
-      timelineLanes.forEach((p: any) => {
-        const s = projectScheduleStart(p);
-        const e = projectScheduleEnd(p);
-        if (s) { const d = new Date(s); if (!minD || d < minD) minD = d; }
-        if (e) { const d = new Date(e); if (!maxD || d > maxD) maxD = d; }
-      });
-      if (!minD || !maxD) {
-        const now = new Date();
-        minD = fyStartFor(now); maxD = fyEndFor(now);
-      } else {
-        // Smart window: pad ~1 month — avoid snapping "All" to full FY (empty left scroll).
-        minD = new Date(minD.getFullYear(), minD.getMonth() - 1, 1);
-        maxD = new Date(maxD.getFullYear(), maxD.getMonth() + 2, 0, 23, 59, 59);
-      }
-    }
-
-    // Build month columns and FY groups
-    const months: { key: string; label: string; year: number; monthIndex: number; fy: string }[] = [];
-    const cur = new Date(minD.getFullYear(), minD.getMonth(), 1);
-    while (cur <= maxD) {
-      const mLabel = cur.toLocaleString("en", { month: "short" });
-      months.push({
-        key: `${cur.getFullYear()}-${cur.getMonth()}`,
-        label: mLabel,
-        year: cur.getFullYear(),
-        monthIndex: cur.getMonth(),
-        fy: fyLabel(cur),
-      });
-      cur.setMonth(cur.getMonth() + 1);
-    }
-    const fyGroups: { fy: string; span: number }[] = [];
-    months.forEach((m) => {
-      const last = fyGroups[fyGroups.length - 1];
-      if (last && last.fy === m.fy) last.span += 1;
-      else fyGroups.push({ fy: m.fy, span: 1 });
-    });
-
-    return {
-      start: minD, end: maxD,
-      totalMs: maxD.getTime() - minD.getTime(),
-      months, fyGroups,
-    };
-  }, [timelineLanes, fy, fyStartMonth]);
+  // Shared smart bounds — chart starts near first bar (no empty left FY scroll).
+  const timelineBounds = useMemo(
+    () => computeTimelineBounds(timelineLanes, fy, fyStartMonth),
+    [timelineLanes, fy, fyStartMonth],
+  );
 
   const toggleCollapse = (name: string) =>
     setCollapsed((c) => ({ ...c, [name]: !c[name] }));
@@ -760,18 +700,31 @@ function ExecutiveDashboard() {
             className="grid min-w-[720px] gap-3"
             style={{ gridTemplateColumns: `repeat(${Math.max(1, kanban.length)}, minmax(140px, 1fr))` }}
           >
-            {kanban.map((col) => (
+            {kanban.map((col, colIdx) => (
               <div
                 key={col.phase}
-                className="flex max-h-[520px] flex-col border-r border-border last:border-r-0 pr-3 last:pr-0"
+                className="flex max-h-[520px] flex-col border-r border-border/60 last:border-r-0 pr-3 last:pr-0"
               >
                 <div
-                  className="mb-2 shrink-0 border-b border-border pb-2"
+                  className="mb-3 shrink-0 overflow-hidden rounded-lg border border-border/70 bg-gradient-to-br from-muted/80 via-background to-background shadow-sm"
                   title={col.phase}
                 >
-                  <div className="truncate text-[11px] font-semibold text-foreground">{col.phase}</div>
-                  <div className="text-[10px] text-muted-foreground tabular-nums">
-                    {col.items.length} item{col.items.length === 1 ? "" : "s"}
+                  <div
+                    className="h-1 w-full"
+                    style={{
+                      background: `linear-gradient(90deg, var(--primary) ${Math.min(100, (colIdx + 1) * (100 / Math.max(1, kanban.length)))}%, var(--border) 0%)`,
+                    }}
+                  />
+                  <div className="px-2.5 py-2">
+                    <div className="truncate text-[11px] font-bold tracking-wide text-foreground">
+                      {col.phase}
+                    </div>
+                    <div className="mt-1 flex items-center justify-between gap-2">
+                      <span className="text-[10px] text-muted-foreground">Stage</span>
+                      <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-primary">
+                        {col.items.length}
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto">

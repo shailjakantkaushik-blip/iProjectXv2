@@ -81,9 +81,8 @@ export const TurnstileWidget = memo(function TurnstileWidget({
         widgetIdRef.current = window.turnstile.render(containerRef.current, {
           sitekey: siteKey,
           theme,
-          // Quiet when Cloudflare can verify without interaction — avoids a
-          // visible widget swap that looked like the login form refreshing.
-          appearance: "interaction-only",
+          // Always show the widget so users can see the Cloudflare check.
+          appearance: "always",
           callback: (token: string) => onTokenRef.current(token),
           "expired-callback": () => {
             onExpireRef.current?.();
@@ -112,7 +111,7 @@ export const TurnstileWidget = memo(function TurnstileWidget({
     <div className="flex min-h-[65px] flex-col items-center justify-center gap-1">
       <div ref={containerRef} className="flex justify-center" />
       <p className="text-[10px] text-muted-foreground">
-        Secured by Cloudflare — runs quietly while you enter your details.
+        Secured by Cloudflare — complete the check before signing in.
       </p>
     </div>
   );

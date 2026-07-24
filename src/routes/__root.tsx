@@ -17,6 +17,8 @@ import { PlatformThemeProvider } from "@/components/platform-theme-provider";
 import { OrgThemeProvider } from "@/components/org-theme-provider";
 import { getPlatformThemeBootScript } from "@/lib/platform-theme";
 import { getOrgThemeBootScript } from "@/lib/org-theme";
+import { getStyleThemeBootScript } from "@/lib/style-theme";
+import { StyleThemeProvider } from "@/components/style-theme-provider";
 import { LANDING_CONFIG_CACHE_KEY } from "@/lib/landing-config";
 import {
   installChunkLoadRecovery,
@@ -127,6 +129,7 @@ function RootShell({ children }: { children: ReactNode }) {
   // Order: platform first, then org (org wins on /app).
   const themeBoot = getPlatformThemeBootScript();
   const orgThemeBoot = getOrgThemeBootScript();
+  const styleThemeBoot = getStyleThemeBootScript();
   const landingBoot = `(function(){try{if(location.pathname!=="/")return;var raw=localStorage.getItem(${JSON.stringify(LANDING_CONFIG_CACHE_KEY)});if(!raw)return;var cfg=JSON.parse(raw);if(!cfg||!cfg.palette)return;var p=cfg.palette;var dark=cfg.theme==="dark";var bg=dark?p.navy:"#ffffff";document.documentElement.style.backgroundColor=bg;document.documentElement.style.color=p.textBody||"#1e3a5f";}catch(e){}})();`;
 
   return (
@@ -135,6 +138,7 @@ function RootShell({ children }: { children: ReactNode }) {
         <HeadContent />
         <script dangerouslySetInnerHTML={{ __html: themeBoot }} />
         <script dangerouslySetInnerHTML={{ __html: orgThemeBoot }} />
+        <script dangerouslySetInnerHTML={{ __html: styleThemeBoot }} />
         <script dangerouslySetInnerHTML={{ __html: landingBoot }} />
       </head>
       <body>
@@ -159,8 +163,10 @@ function RootComponent() {
       <AuthProvider>
         <PlatformThemeProvider>
           <OrgThemeProvider>
-            <Outlet />
-            <Toaster richColors closeButton />
+            <StyleThemeProvider>
+              <Outlet />
+              <Toaster richColors closeButton />
+            </StyleThemeProvider>
           </OrgThemeProvider>
         </PlatformThemeProvider>
       </AuthProvider>

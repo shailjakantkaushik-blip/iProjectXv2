@@ -22,6 +22,20 @@ import {
   normalizeOrgColorTheme,
   type OrgColorTheme,
 } from "@/lib/org-theme";
+import { OrgStyleThemeEditor, StyleThemePicker } from "@/components/style-theme-picker";
+import {
+  normalizeOrgStyleTheme,
+  writeCachedOrgStyleTheme,
+  STYLE_THEME_CHANGE_EVENT,
+  type OrgStyleThemeConfig,
+  type StyleThemeId,
+  isStyleThemeId,
+} from "@/lib/style-theme";
+import {
+  fetchLandingConfig,
+  saveLandingConfig,
+  type LandingConfig,
+} from "@/lib/landing-config";
 
 export const Route = createFileRoute("/_authenticated/platform/branding")({
   beforeLoad: () => {
@@ -42,6 +56,7 @@ type OrgUiConfig = {
     logo_custom_app?: LogoCustomDims;
   };
   color_theme?: OrgColorTheme;
+  style_theme?: OrgStyleThemeConfig;
   project_visibility?: unknown;
   [key: string]: unknown;
 };
@@ -59,7 +74,7 @@ type Org = {
 };
 
 function PlatformBrandingPage() {
-  const { roles } = useAuth();
+  const { roles, user } = useAuth();
   const qc = useQueryClient();
   const isPlat = isPlatformAdmin(roles);
 
@@ -75,6 +90,20 @@ function PlatformBrandingPage() {
       return (data ?? []) as Org[];
     },
   });
+
+  const { data: landing } = useQuery({
+    queryKey: ["landing-config"],
+    enabled: isPlat,
+    queryFn: fetchLandingConfig,
+  });
+
+  const [platformStyleId, setPlatformStyleId] = useState<StyleThemeId>("simple");
+  const [savingPlatformStyle, setSavingPlatformStyle] = useState(false);
+  useEffect(() => {
+    if (landing?.style_theme_id && isStyleThemeId(landing.style_theme_id)) {
+      setPlatformStyleId(landing.style_theme_id);
+    }
+  }, [landing?.style_theme_id]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   useEffect(() => {
@@ -94,11 +123,47 @@ function PlatformBrandingPage() {
           <Palette className="h-7 w-7" /> White Label & Branding
         </h1>
         <p className="text-sm text-muted-foreground">
-          Manage the display name, logo, logo sizes and colour palette for each organisation
-          (platform admin only). Organisation admins cannot change the palette — it is controlled
-          here. Share each org’s dedicated sign-in link so login shows only their white-label branding.
+          Manage display name, logo, colour palette, and style themes for each organisation
+          (platform admin only). Style themes change look &amp; feel — tables, surfaces, buttons,
+          motion — not just colours.
         </p>
       </div>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">General style theme (platform default)</CardTitle>
+          <CardDescription>
+            Fallback when an organisation has not set its own style theme. Current baseline is
+            called <strong>Simple</strong>.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <StyleThemePicker value={platformStyleId} onChange={setPlatformStyleId} />
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              disabled={savingPlatformStyle || !landing}
+              onClick={async () => {
+                if (!landing) return;
+                setSavingPlatformStyle(true);
+                try {
+                  const next: LandingConfig = { ...landing, style_theme_id: platformStyleId };
+                  await saveLandingConfig(next, user?.id);
+                  toast.success("Platform style theme saved");
+                  void qc.invalidateQueries({ queryKey: ["landing-config"] });
+                } catch (e: any) {
+                  toast.error(e?.message ?? "Failed to save");
+                } finally {
+                  setSavingPlatformStyle(false);
+                }
+              }}
+            >
+              <Save className="mr-2 h-4 w-4" />
+              {savingPlatformStyle ? "Saving…" : "Save general style theme"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-[260px_1fr]">
         <Card>
@@ -171,6 +236,9 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
     seeded.palette_preset = "custom";
     return seeded;
   });
+  const [styleTheme, setStyleTheme] = useState<OrgStyleThemeConfig>(() =>
+    normalizeOrgStyleTheme(existingUi.style_theme),
+  );
 
   const handleLogoPick = (file: File) => {
     if (file.size > MAX_LOGO_BYTES) {
@@ -195,6 +263,7 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
           ? (current.ui_config as OrgUiConfig)
           : {};
       const nextTheme: OrgColorTheme = { ...colorTheme, enabled: true };
+      const nextStyle = normalizeOrgStyleTheme(styleTheme);
       const nextUi: OrgUiConfig = {
         ...prev,
         branding: {
@@ -205,6 +274,7 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
           logo_custom_app: logoCustomApp,
         },
         color_theme: nextTheme,
+        style_theme: nextStyle,
       };
       const { error } = await supabase
         .from("organizations")
@@ -217,6 +287,14 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
         })
         .eq("id", org.id);
       if (error) throw error;
+      writeCachedOrgStyleTheme(org.id, nextStyle);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent(STYLE_THEME_CHANGE_EVENT, {
+            detail: { themeId: nextStyle.theme_id, source: "org" },
+          }),
+        );
+      }
     },
     onSuccess: () => {
       toast.success("Branding saved");
@@ -372,6 +450,16 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
             platform theme inside the app.
           </p>
           <ColorPaletteEditor value={colorTheme} onChange={setColorTheme} />
+        </div>
+
+        <div className="space-y-2">
+          <Label>Style theme</Label>
+          <p className="text-xs text-muted-foreground">
+            Full look &amp; feel (surfaces, tables, buttons, motion). <strong>Simple</strong> is the
+            current utilitarian UI. Enable user choice so org members can pick their own theme —
+            their selection takes precedence while Active.
+          </p>
+          <OrgStyleThemeEditor value={styleTheme} onChange={setStyleTheme} />
         </div>
 
         <div className="rounded-lg border bg-muted/30 p-4">

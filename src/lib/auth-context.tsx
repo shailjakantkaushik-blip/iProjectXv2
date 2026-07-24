@@ -42,6 +42,11 @@ export interface Organization {
       palette_preset?: string;
       palette?: Record<string, string>;
     };
+    /** Style theme (look & feel). user_choice_enabled lets users override. */
+    style_theme?: {
+      theme_id?: string;
+      user_choice_enabled?: boolean;
+    };
     project_visibility?: {
       rules?: Array<{
         role: string;

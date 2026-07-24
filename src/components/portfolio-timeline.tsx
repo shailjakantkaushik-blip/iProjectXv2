@@ -24,31 +24,51 @@ export function computeTimelineBounds(projects: any[], fy: string = "All", fySta
   const fyLabel = (d: Date) => fyLabelOrg(d, fyStartMonth);
   const startIdx = Math.max(1, Math.min(12, fyStartMonth)) - 1;
 
-  let minD: Date | null = null;
-  let maxD: Date | null = null;
+  // Always derive the data window first so the chart starts near the first bar
+  // (full-FY snap left a long empty scroll before any graph content).
+  let dataMin: Date | null = null;
+  let dataMax: Date | null = null;
+  for (const p of projects) {
+    const s = p.start_date || p.planned_start_date || p.actual_start_date;
+    const e = p.end_date || p.actual_end_date || p.planned_end_date;
+    if (s) {
+      const d = new Date(s);
+      if (!dataMin || d < dataMin) dataMin = d;
+    }
+    if (e) {
+      const d = new Date(e);
+      if (!dataMax || d > dataMax) dataMax = d;
+    }
+  }
+
+  let minD: Date;
+  let maxD: Date;
 
   if (fy !== "All") {
     const yy = parseInt(fy.replace(/[^0-9]/g, ""), 10);
     const endYear = 2000 + yy;
-    minD = new Date(endYear - 1, startIdx, 1);
-    maxD = new Date(endYear, startIdx, 0, 23, 59, 59);
-  } else {
-    // Prefer schedule fields when present (stream / rollup lanes).
-    projects.forEach((p: any) => {
-      const s = p.start_date || p.planned_start_date || p.actual_start_date;
-      const e = p.end_date || p.actual_end_date || p.planned_end_date;
-      if (s) { const d = new Date(s); if (!minD || d < minD) minD = d; }
-      if (e) { const d = new Date(e); if (!maxD || d > maxD) maxD = d; }
-    });
-    if (!minD || !maxD) {
-      const now = new Date();
-      minD = fyStartFor(now); maxD = fyEndFor(now);
+    const fyMin = new Date(endYear - 1, startIdx, 1);
+    const fyMax = new Date(endYear, startIdx, 0, 23, 59, 59);
+    if (dataMin && dataMax) {
+      const paddedMin = new Date(dataMin.getFullYear(), dataMin.getMonth() - 1, 1);
+      const paddedMax = new Date(dataMax.getFullYear(), dataMax.getMonth() + 2, 0, 23, 59, 59);
+      minD = paddedMin < fyMin ? fyMin : paddedMin;
+      maxD = paddedMax > fyMax ? fyMax : paddedMax;
+      if (minD > maxD) {
+        minD = fyMin;
+        maxD = fyMax;
+      }
     } else {
-      // Smart window: pad ~1 month around data — do NOT snap to full FY
-      // (that left a long empty scroll before the first bar).
-      minD = new Date(minD.getFullYear(), minD.getMonth() - 1, 1);
-      maxD = new Date(maxD.getFullYear(), maxD.getMonth() + 2, 0, 23, 59, 59);
+      minD = fyMin;
+      maxD = fyMax;
     }
+  } else if (dataMin && dataMax) {
+    minD = new Date(dataMin.getFullYear(), dataMin.getMonth() - 1, 1);
+    maxD = new Date(dataMax.getFullYear(), dataMax.getMonth() + 2, 0, 23, 59, 59);
+  } else {
+    const now = new Date();
+    minD = fyStartFor(now);
+    maxD = fyEndFor(now);
   }
 
   const months: TimelineBounds["months"] = [];

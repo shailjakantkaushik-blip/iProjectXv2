@@ -715,3 +715,244 @@ html[data-focus-mode="1"] .cartoon-banner,
     transform: none;
   }
 }
+
+/* ============================================================
+ * Style themes (data-style-theme on <html>)
+ * simple = current utilitarian baseline
+ * standard / space / racing = richer look & feel
+ * ============================================================ */
+
+html[data-style-theme="standard"] {
+  --radius: 0.75rem;
+  --background: #eef2f7;
+  --surface: #ffffff;
+  --border: #d8dee8;
+  --muted: #e4e9f1;
+  --sidebar: #e8eef6;
+  --sidebar-accent: #d9e3f0;
+}
+
+html[data-style-theme="standard"] body {
+  background-image:
+    radial-gradient(ellipse 80% 50% at 10% -10%, color-mix(in srgb, var(--primary) 12%, transparent), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 100% 0%, color-mix(in srgb, var(--accent2) 8%, transparent), transparent 50%);
+  background-attachment: fixed;
+}
+
+html[data-style-theme="standard"] .shell-root {
+  background: transparent;
+}
+
+html[data-style-theme="standard"] .shell-header {
+  background: color-mix(in srgb, var(--background) 82%, transparent) !important;
+  border-bottom-color: color-mix(in srgb, var(--border) 80%, transparent) !important;
+}
+
+html[data-style-theme="standard"] table,
+html[data-style-theme="standard"] .st-table,
+html[data-style-theme="standard"] [data-slot="table"] {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+html[data-style-theme="standard"] thead th,
+html[data-style-theme="standard"] .st-table thead th {
+  background: color-mix(in srgb, var(--muted) 70%, var(--surface));
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+html[data-style-theme="standard"] tbody tr:hover td {
+  background: color-mix(in srgb, var(--primary) 4%, var(--surface));
+}
+
+html[data-style-theme="standard"] .ui-btn,
+html[data-style-theme="standard"] button[data-slot="button"] {
+  box-shadow: 0 1px 0 rgba(15, 27, 61, 0.04);
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+html[data-style-theme="standard"] .ui-btn:hover:not(:disabled),
+html[data-style-theme="standard"] button[data-slot="button"]:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(15, 27, 61, 0.08);
+}
+
+html[data-style-theme="standard"] .rounded-md.border.bg-surface,
+html[data-style-theme="standard"] [class*="bg-surface"].border {
+  box-shadow: 0 1px 2px rgba(15, 27, 61, 0.04), 0 8px 24px rgba(15, 27, 61, 0.04);
+}
+
+/* ---- Space ---- */
+html[data-style-theme="space"] {
+  --radius: 0.85rem;
+  --background: #070b16;
+  --surface: #121a2e;
+  --foreground: #e8eefc;
+  --heading: #f4f7ff;
+  --muted: #1a243c;
+  --muted-foreground: #9aa8c7;
+  --border: #243152;
+  --input: #2a3a5c;
+  --card: #121a2e;
+  --card-foreground: #e8eefc;
+  --popover: #121a2e;
+  --popover-foreground: #e8eefc;
+  --primary: #38bdf8;
+  --primary-foreground: #041018;
+  --secondary: #1a243c;
+  --secondary-foreground: #e8eefc;
+  --accent: #38bdf8;
+  --accent-foreground: #041018;
+  --accent2: #22d3ee;
+  --sidebar: #0a1020;
+  --sidebar-foreground: #e8eefc;
+  --sidebar-primary: #38bdf8;
+  --sidebar-primary-foreground: #041018;
+  --sidebar-accent: #152038;
+  --sidebar-accent-foreground: #e8eefc;
+  --sidebar-border: #243152;
+  --ring: #38bdf8;
+}
+
+html[data-style-theme="space"] body {
+  background-color: #070b16;
+  background-image:
+    radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.35), transparent),
+    radial-gradient(1px 1px at 60% 70%, rgba(255,255,255,0.25), transparent),
+    radial-gradient(1px 1px at 80% 20%, rgba(255,255,255,0.3), transparent),
+    radial-gradient(ellipse 70% 50% at 50% -20%, rgba(56, 189, 248, 0.18), transparent 60%),
+    radial-gradient(ellipse 50% 40% at 100% 100%, rgba(34, 211, 238, 0.1), transparent 55%);
+  background-attachment: fixed;
+  color: var(--foreground);
+}
+
+html[data-style-theme="space"] .shell-header {
+  background: rgba(7, 11, 22, 0.82) !important;
+  border-bottom-color: rgba(56, 189, 248, 0.15) !important;
+  box-shadow: 0 0 24px rgba(56, 189, 248, 0.06);
+}
+
+html[data-style-theme="space"] aside,
+html[data-style-theme="space"] .bg-sidebar {
+  background:
+    linear-gradient(180deg, rgba(18, 26, 46, 0.95), rgba(10, 16, 32, 0.98)) !important;
+  border-color: rgba(56, 189, 248, 0.12) !important;
+}
+
+html[data-style-theme="space"] thead th {
+  background: rgba(26, 36, 60, 0.9);
+  color: #c7d4f0;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+}
+
+html[data-style-theme="space"] tbody tr:hover td {
+  background: rgba(56, 189, 248, 0.06);
+}
+
+html[data-style-theme="space"] .ui-btn,
+html[data-style-theme="space"] button[data-slot="button"] {
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.15), 0 0 18px rgba(56, 189, 248, 0.08);
+}
+
+html[data-style-theme="space"] .rounded-md.border {
+  border-color: rgba(56, 189, 248, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+/* ---- Racing ---- */
+html[data-style-theme="racing"] {
+  --radius: 0.4rem;
+  --background: #0c0c0e;
+  --surface: #16161a;
+  --foreground: #f4f4f5;
+  --heading: #fafafa;
+  --muted: #1f1f24;
+  --muted-foreground: #a1a1aa;
+  --border: #2a2a31;
+  --input: #2a2a31;
+  --card: #16161a;
+  --card-foreground: #f4f4f5;
+  --popover: #16161a;
+  --popover-foreground: #f4f4f5;
+  --primary: #e11d48;
+  --primary-foreground: #fff1f2;
+  --secondary: #1f1f24;
+  --secondary-foreground: #f4f4f5;
+  --accent: #e11d48;
+  --accent-foreground: #fff1f2;
+  --accent2: #f59e0b;
+  --sidebar: #101014;
+  --sidebar-foreground: #f4f4f5;
+  --sidebar-primary: #e11d48;
+  --sidebar-primary-foreground: #fff1f2;
+  --sidebar-accent: #1f1f24;
+  --sidebar-accent-foreground: #f4f4f5;
+  --sidebar-border: #2a2a31;
+  --ring: #e11d48;
+}
+
+html[data-style-theme="racing"] body {
+  background-color: #0c0c0e;
+  background-image:
+    linear-gradient(135deg, rgba(225, 29, 72, 0.12), transparent 40%),
+    repeating-linear-gradient(
+      -18deg,
+      transparent,
+      transparent 22px,
+      rgba(255, 255, 255, 0.015) 22px,
+      rgba(255, 255, 255, 0.015) 23px
+    );
+  background-attachment: fixed;
+  color: var(--foreground);
+}
+
+html[data-style-theme="racing"] .shell-header {
+  background: rgba(12, 12, 14, 0.9) !important;
+  border-bottom: 2px solid rgba(225, 29, 72, 0.45) !important;
+}
+
+html[data-style-theme="racing"] thead th {
+  background: #1f1f24;
+  border-bottom: 2px solid rgba(225, 29, 72, 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+html[data-style-theme="racing"] tbody tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+html[data-style-theme="racing"] tbody tr:hover td {
+  background: rgba(225, 29, 72, 0.08);
+}
+
+html[data-style-theme="racing"] .ui-btn,
+html[data-style-theme="racing"] button[data-slot="button"] {
+  border-radius: 0.35rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+
+html[data-style-theme="racing"] .rounded-md.border {
+  border-left: 3px solid rgba(225, 29, 72, 0.55);
+}
+
+/* Simple keeps defaults — mark lightly for documentation */
+html[data-style-theme="simple"] {
+  /* Utilitarian baseline: flat surfaces, standard tables, no decorative chrome */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-style-theme="standard"] .ui-btn,
+  html[data-style-theme="standard"] button[data-slot="button"] {
+    transition: none;
+  }
+}
