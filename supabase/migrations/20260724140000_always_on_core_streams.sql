@@ -38,7 +38,7 @@ BEGIN
     )
     VALUES (
       v_org, p_project_id, 'Core', 'CORE', true, 0,
-      COALESCE(v_proj.status, 'Active'), v_proj.rag, v_proj.sponsor,
+      COALESCE(v_proj.status::text, 'In Progress'), v_proj.rag, v_proj.sponsor,
       COALESCE(v_proj.planned_start_date, v_proj.start_date),
       COALESCE(v_proj.planned_end_date, v_proj.end_date),
       v_proj.actual_start_date, v_proj.actual_end_date,

@@ -16,7 +16,7 @@ import {
 } from "@/lib/project-streams";
 
 const RAG_OPTS = ["Green", "Amber", "Red"] as const;
-const STATUS_OPTS = ["Active", "On Hold", "Completed", "Cancelled"] as const;
+const STATUS_OPTS = ["Not Started", "In Progress", "On Hold", "Completed", "Cancelled"] as const;
 
 function money(n: number) {
   return "$" + new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n || 0);
@@ -33,7 +33,7 @@ function emptyDraft(orgId: string, projectId: string, sortOrder: number): Partia
     name: "",
     code: "",
     owner: "",
-    status: "Active",
+    status: "In Progress",
     rag: "Green",
     is_default: false,
     sort_order: sortOrder,
