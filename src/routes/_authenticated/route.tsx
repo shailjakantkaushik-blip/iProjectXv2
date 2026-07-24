@@ -41,7 +41,8 @@ function Gate() {
   }, [session, profile, loading, navigate, pathname, signOut]);
 
   // Prefer staying mounted when we already have a matching profile. Tab-focus
-  // session recovery must not tear down the whole authenticated shell.
+  // session recovery must not tear down the whole authenticated shell —
+  // ignore `loading` once profile matches so the centred loader doesn't bounce.
   if (!session || !profile || profile.id !== session.user.id) {
     return <PageLoading label="Checking your session…" />;
   }

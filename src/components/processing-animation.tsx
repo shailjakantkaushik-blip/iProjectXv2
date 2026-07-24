@@ -15,8 +15,8 @@ type ProcessingAnimationProps = {
 const SIZE_PX = { sm: 36, md: 48, lg: 56 } as const;
 
 /**
- * Subtle brand processing mark — centred X that slowly turns 180° (and
- * completes the circle). No bounce / float motion.
+ * Subtle brand processing mark — centred X with a steady spin.
+ * No bounce / float / Y-travel motion.
  */
 export function ProcessingAnimation({
   label = "Processing…",

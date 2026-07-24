@@ -136,28 +136,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: sub } = supabase.auth.onAuthStateChange((evt, s) => {
       setSession(s);
       if (s?.user) {
-        // Supabase re-emits SIGNED_IN on every tab focus via _recoverAndRefresh,
-        // even when the session never changed. Blocking the UI there caused the
-        // "Checking your session…" flash when switching browsers/tabs.
+        // Supabase re-emits SIGNED_IN on every tab focus via _recoverAndRefresh.
+        // Never tear down a matching session — that bounced "Checking your session…".
         const sameUser = loadedUserIdRef.current === s.user.id;
         if (evt === "TOKEN_REFRESHED") {
           return;
         }
-        // Same user: INITIAL_SESSION can race with getSession(); SIGNED_IN is
-        // re-emitted on every tab focus. Neither should block the UI again.
         if (sameUser && (evt === "SIGNED_IN" || evt === "INITIAL_SESSION")) {
           return;
         }
 
-        // Drop stale profile immediately when the user identity changes so the
-        // authenticated gate never briefly renders the previous account.
-        if (!sameUser) {
+        // Only clear chrome when switching to a *different* account.
+        // During first hydrate loadedUserIdRef is null — clearing profile here
+        // raced with getSession() and remounted the loader (up/down bounce).
+        const switchingUser =
+          loadedUserIdRef.current != null && loadedUserIdRef.current !== s.user.id;
+        if (switchingUser) {
           setProfile(null);
           setOrganization(null);
           setRoles([]);
         }
 
-        const blockUi = evt === "SIGNED_IN" || evt === "INITIAL_SESSION";
+        const blockUi =
+          switchingUser ||
+          (loadedUserIdRef.current == null &&
+            (evt === "SIGNED_IN" || evt === "INITIAL_SESSION"));
         if (blockUi) setLoading(true);
         // Defer out of the auth callback (Supabase client lock).
         setTimeout(() => {

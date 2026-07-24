@@ -13,7 +13,8 @@ type PageLoadingProps = {
 };
 
 /**
- * Standard full-page / section loading state using the brand processing mark.
+ * Standard loading state using the brand processing mark.
+ * Full-screen mode is fixed + centred so layout/auth swaps cannot bounce it.
  */
 export function PageLoading({
   label = "Loading…",
@@ -26,7 +27,9 @@ export function PageLoading({
     <div
       className={cn(
         "flex flex-col items-center justify-center gap-2 bg-background px-4",
-        fullScreen ? "min-h-screen w-full" : "min-h-[160px] w-full py-8",
+        fullScreen
+          ? "fixed inset-0 z-[90] h-[100dvh] w-full"
+          : "min-h-[160px] w-full py-8",
         className,
       )}
       style={style}

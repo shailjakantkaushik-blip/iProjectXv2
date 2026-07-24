@@ -739,8 +739,9 @@ html[data-focus-mode="1"] .cartoon-banner,
   animation: processing-panel-in 0.25s ease-out both;
 }
 .processing-anim {
-  /* Keep the mark locked to the visual centre — no bounce travel. */
+  /* Locked centre — never translateY (avoids bounce feel). */
   transform: translateZ(0);
+  contain: layout paint;
 }
 .processing-anim__stage {
   position: relative;
@@ -752,22 +753,20 @@ html[data-focus-mode="1"] .cartoon-banner,
   inset: 0;
   border-radius: 50%;
   background: radial-gradient(circle at 40% 35%, #1a2744 0%, #0b1220 62%, #050814 100%);
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.06) inset,
-    0 8px 24px rgba(15, 23, 42, 0.28);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
 }
 .processing-anim__glow {
+  /* Static halo — animated blur was costly and felt like bounce. */
   position: absolute;
-  inset: -12%;
+  inset: -10%;
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    rgba(56, 189, 248, 0.22) 0%,
-    rgba(168, 85, 247, 0.12) 45%,
+    rgba(56, 189, 248, 0.16) 0%,
+    rgba(168, 85, 247, 0.08) 45%,
     transparent 72%
   );
-  filter: blur(5px);
-  opacity: 0.85;
+  opacity: 0.7;
 }
 .processing-anim__mark {
   position: relative;
@@ -775,12 +774,14 @@ html[data-focus-mode="1"] .cartoon-banner,
   width: 78%;
   height: 78%;
   object-fit: contain;
-  /* Subtle half-turn: 0° → 180° → 360°, no scale bounce */
-  animation: processing-turn 2.8s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
-  filter: drop-shadow(0 4px 10px rgba(56, 189, 248, 0.22));
+  /* Smooth steady spin — no pause / scale / Y motion */
+  animation: processing-turn 1.4s linear infinite;
   user-select: none;
   pointer-events: none;
   will-change: transform;
+}
+.processing-anim__label {
+  min-height: 1.25rem;
 }
 
 @keyframes processing-overlay-in {
@@ -800,19 +801,10 @@ html[data-focus-mode="1"] .cartoon-banner,
   }
 }
 @keyframes processing-turn {
-  0% {
+  from {
     transform: rotate(0deg);
   }
-  45% {
-    transform: rotate(180deg);
-  }
-  50% {
-    transform: rotate(180deg);
-  }
-  95% {
-    transform: rotate(360deg);
-  }
-  100% {
+  to {
     transform: rotate(360deg);
   }
 }
