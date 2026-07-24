@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -16,6 +16,7 @@ import { ExpandablePanel } from "@/components/expandable-panel";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { RAG_COLORS, PRIORITY_COLORS, CHART_SERIES } from "@/lib/chart-theme";
 import { PageLoading } from "@/components/page-loading";
+import { QueryErrorPanel } from "@/components/query-error-panel";
 import {
   matchPhase,
   normLabel,
@@ -39,6 +40,7 @@ import {
 import { darkenHex, scheduleCompletionPct } from "@/lib/schedule-progress";
 import { computeTimelineBounds } from "@/components/portfolio-timeline";
 import { ProjectPicker } from "@/components/portfolio-filters";
+import { unwrapList } from "@/lib/query";
 
 export const Route = createFileRoute("/_authenticated/app/executive")({
   component: ExecutiveDashboard,
@@ -63,6 +65,7 @@ function moneyM(n: number) { return `$${(n / 1e6).toFixed(1)}M`; }
 
 function ExecutiveDashboard() {
   const { organization } = useAuth();
+  const qc = useQueryClient();
   const [portfolio, setPortfolio] = useState("All");
   const [program, setProgram] = useState("All");
   const [sponsor, setSponsor] = useState("All");
@@ -77,41 +80,60 @@ function ExecutiveDashboard() {
   const reportRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
 
-  const { data: projects = [], isLoading } = useQuery({
+  const projectsQ = useQuery({
     queryKey: ["projects", organization?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("projects").select("*");
-      if (error) throw error;
-      return data ?? [];
-    },
+    queryFn: async () => unwrapList(await supabase.from("projects").select("*")),
     enabled: !!organization,
   });
 
-  const { data: gates = [] } = useQuery({
+  const gatesQ = useQuery({
     queryKey: ["stage_gates", organization?.id],
-    queryFn: async () => (await supabase.from("stage_gates").select("*")).data ?? [],
+    queryFn: async () => unwrapList(await supabase.from("stage_gates").select("*")),
     enabled: !!organization,
   });
 
-  const { data: streams = [] } = useQuery({
+  const streamsQ = useQuery({
     queryKey: ["project_streams", organization?.id],
     queryFn: () => fetchOrgStreams(organization!.id),
     enabled: !!organization?.id,
   });
 
-  const { data: gateDefs = [] } = useQuery({
+  const gateDefsQ = useQuery({
     queryKey: ["stage_gate_definitions", organization?.id],
-    queryFn: async () => (await supabase.from("stage_gate_definitions")
-      .select("*").eq("org_id", organization!.id).eq("is_active", true)
-      .order("sort_order", { ascending: true })).data ?? [],
+    queryFn: async () =>
+      unwrapList(
+        await supabase
+          .from("stage_gate_definitions")
+          .select("*")
+          .eq("org_id", organization!.id)
+          .eq("is_active", true)
+          .order("sort_order", { ascending: true }),
+      ),
     enabled: !!organization,
   });
 
-  const { data: monthly = [] } = useQuery({
+  const monthlyQ = useQuery({
     queryKey: ["financials_monthly", organization?.id],
-    queryFn: async () => (await supabase.from("financials_monthly").select("*")).data ?? [],
+    queryFn: async () => unwrapList(await supabase.from("financials_monthly").select("*")),
     enabled: !!organization,
   });
+
+  const projects = projectsQ.data ?? [];
+  const gates = gatesQ.data ?? [];
+  const streams = streamsQ.data ?? [];
+  const gateDefs = gateDefsQ.data ?? [];
+  const monthly = monthlyQ.data ?? [];
+  const isLoading = projectsQ.isLoading || (!projectsQ.data && projectsQ.isFetching);
+  const loadError =
+    projectsQ.error || gatesQ.error || streamsQ.error || gateDefsQ.error || monthlyQ.error;
+
+  const retryAll = () => {
+    void qc.invalidateQueries({ queryKey: ["projects", organization?.id] });
+    void qc.invalidateQueries({ queryKey: ["stage_gates", organization?.id] });
+    void qc.invalidateQueries({ queryKey: ["project_streams", organization?.id] });
+    void qc.invalidateQueries({ queryKey: ["stage_gate_definitions", organization?.id] });
+    void qc.invalidateQueries({ queryKey: ["financials_monthly", organization?.id] });
+  };
 
   const fyStartMonth = organization?.fy_start_month || 4;
   const opts = (col: string) => Array.from(new Set(projects.map((p: any) => p[col]).filter(Boolean))).sort();
@@ -454,9 +476,21 @@ function ExecutiveDashboard() {
       </SectionFrame>
 
       <div ref={reportRef}>
-      <SectionFrame>
+      {loadError && (
+        <QueryErrorPanel
+          className="mb-4"
+          title="Executive data failed to load"
+          message={
+            loadError instanceof Error
+              ? loadError.message
+              : "A temporary issue interrupted loading. Retry to refresh portfolio data."
+          }
+          onRetry={retryAll}
+        />
+      )}
+      <SectionFrame className="section-frame--filters" exportable={false}>
         <div className="mb-3 page-heading text-base font-semibold">Portfolio filters</div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="relative z-30 flex flex-wrap items-center gap-2">
           <ProjectPicker
             projects={projects}
             selected={projectIds}
@@ -481,7 +515,7 @@ function ExecutiveDashboard() {
               key={label}
               value={val}
               onChange={(e) => setter(e.target.value)}
-              className="rounded-md border border-border bg-surface px-2 py-1 text-xs"
+              className="ui-btn rounded-md border border-border bg-surface px-2 py-1 text-xs"
             >
               <option value="All">{label}: All</option>
               {options.map((o: string) => (
@@ -500,7 +534,7 @@ function ExecutiveDashboard() {
             fy !== "All") && (
             <button
               type="button"
-              className="rounded-md border border-border bg-surface px-2 py-1 text-xs hover:bg-muted"
+              className="ui-btn rounded-md border border-border bg-surface px-2 py-1 text-xs hover:bg-muted"
               onClick={() => {
                 setProjectIds([]);
                 setPortfolio("All");

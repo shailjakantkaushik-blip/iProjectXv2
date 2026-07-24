@@ -1,6 +1,7 @@
 /**
- * Style themes — full look-and-feel presets (layout, tables, buttons, motion),
- * not just colour palettes. Applied via data-style-theme on <html>.
+ * Style themes — UI chrome presets (sections, buttons, nav shape, motion).
+ * Colour palettes stay with the separate colour-theme system.
+ * Applied via data-style-theme on <html>.
  *
  * Resolution (highest wins):
  * 1. User preference — only when org.user_choice_enabled
@@ -22,7 +23,7 @@ export type StyleThemeDef = {
   id: StyleThemeId;
   name: string;
   description: string;
-  /** Short preview swatches for the picker UI */
+  /** Structural preview chips (shape/feel), not colour palettes */
   swatches: [string, string, string];
 };
 
@@ -30,26 +31,30 @@ export const STYLE_THEMES: StyleThemeDef[] = [
   {
     id: "simple",
     name: "Simple",
-    description: "Clean, minimal tables and flat surfaces — the original utilitarian layout.",
-    swatches: ["#f3f5f8", "#ffffff", "#1d4ed8"],
+    description:
+      "Flat sections, quiet buttons, classic sidebar nav — utilitarian baseline chrome.",
+    swatches: ["#e8eaee", "#f5f6f8", "#cbd0d8"],
   },
   {
     id: "standard",
     name: "Standard",
-    description: "Polished enterprise shell with softer cards, refined tables, and subtle motion.",
-    swatches: ["#eef2f7", "#ffffff", "#0f4c81"],
+    description:
+      "Soft elevated sections, refined buttons, polished nav with clear active states.",
+    swatches: ["#dfe4ec", "#f0f3f8", "#a8b3c4"],
   },
   {
     id: "space",
     name: "Space",
-    description: "Deep cosmic surfaces, cyan accents, and soft glow — mission-control atmosphere.",
-    swatches: ["#070b16", "#121a2e", "#38bdf8"],
+    description:
+      "Inset panel sections, geometric buttons, mission-control nav — motion without recolouring.",
+    swatches: ["#c5cedd", "#e2e8f2", "#8b9bb3"],
   },
   {
     id: "racing",
     name: "Racing",
-    description: "Charcoal speed aesthetic with crimson accents and high-contrast data surfaces.",
-    swatches: ["#0c0c0e", "#1a1a1f", "#e11d48"],
+    description:
+      "Angular sections, sharp CTA edges, speed-stripe nav accents and snappy transitions.",
+    swatches: ["#d4d4d8", "#ececef", "#9ca3af"],
   },
 ];
 
@@ -148,29 +153,25 @@ export function resolveStyleThemeId(opts: {
   return platform;
 }
 
-/** Apply theme attribute without leaving a stale previous theme on the document. */
+/**
+ * Apply chrome theme attribute only — never mutates colour tokens or .dark.
+ * Colour themes remain owned by OrgThemeProvider / colour palette system.
+ */
 export function applyStyleThemeToDocument(themeId: StyleThemeId) {
   if (typeof document === "undefined") return;
   const id = isStyleThemeId(themeId) ? themeId : "simple";
   const root = document.documentElement;
-  // Remove dark class when leaving space/racing unless colour theme owns it —
-  // style themes that are dark set .dark themselves via CSS + attribute.
-  root.setAttribute("data-style-theme", id);
-  if (id === "space" || id === "racing") {
-    root.classList.add("dark");
-  } else {
-    // Only clear dark if it was style-theme driven; org colour theme may re-add.
-    // Use a marker attribute so we don't fight OrgThemeProvider.
-    if (root.getAttribute("data-style-theme-dark") === "1") {
-      root.classList.remove("dark");
-    }
+  // Clear legacy style-theme-driven dark from older builds.
+  if (root.getAttribute("data-style-theme-dark") === "1") {
+    root.classList.remove("dark");
+    root.removeAttribute("data-style-theme-dark");
   }
-  root.setAttribute("data-style-theme-dark", id === "space" || id === "racing" ? "1" : "0");
+  root.setAttribute("data-style-theme", id);
 }
 
 export function getStyleThemeBootScript(): string {
-  // Runs before paint. Uses cached org/user/platform values to avoid a flash.
-  return `(function(){try{var p=location.pathname||"";if(p==="/"||p.indexOf("/auth")===0||p.indexOf("/legal")===0||p.indexOf("/contact")===0||p.indexOf("/o/")===0)return;var platform="simple";try{var lc=JSON.parse(localStorage.getItem("pmo.landingConfig.v2")||"null");if(lc&&typeof lc.style_theme_id==="string")platform=lc.style_theme_id;}catch(e){}var orgId=null,orgTheme=null,userChoice=false;try{var oc=JSON.parse(localStorage.getItem(${JSON.stringify(ORG_STYLE_THEME_CACHE_KEY)})||"null");if(oc){orgId=oc.orgId||null;if(typeof oc.theme_id==="string")orgTheme=oc.theme_id;userChoice=oc.user_choice_enabled===true;}}catch(e){}var user=null;try{var uc=JSON.parse(localStorage.getItem(${JSON.stringify(USER_STYLE_THEME_CACHE_KEY)})||"null");if(uc&&typeof uc.theme_id==="string"&&(!orgId||!uc.orgId||uc.orgId===orgId))user=uc.theme_id;}catch(e){}var allowed=["simple","standard","space","racing"];var id=(userChoice&&user&&allowed.indexOf(user)>=0)?user:(orgTheme&&allowed.indexOf(orgTheme)>=0)?orgTheme:(allowed.indexOf(platform)>=0?platform:"simple");var r=document.documentElement;r.setAttribute("data-style-theme",id);if(id==="space"||id==="racing"){r.classList.add("dark");r.setAttribute("data-style-theme-dark","1");}else{r.setAttribute("data-style-theme-dark","0");}}catch(e){}})();`;
+  // Runs before paint. Chrome only — does not touch .dark or colour vars.
+  return `(function(){try{var p=location.pathname||"";if(p==="/"||p.indexOf("/auth")===0||p.indexOf("/legal")===0||p.indexOf("/contact")===0||p.indexOf("/o/")===0)return;var platform="simple";try{var lc=JSON.parse(localStorage.getItem("pmo.landingConfig.v2")||"null");if(lc&&typeof lc.style_theme_id==="string")platform=lc.style_theme_id;}catch(e){}var orgId=null,orgTheme=null,userChoice=false;try{var oc=JSON.parse(localStorage.getItem(${JSON.stringify(ORG_STYLE_THEME_CACHE_KEY)})||"null");if(oc){orgId=oc.orgId||null;if(typeof oc.theme_id==="string")orgTheme=oc.theme_id;userChoice=oc.user_choice_enabled===true;}}catch(e){}var user=null;try{var uc=JSON.parse(localStorage.getItem(${JSON.stringify(USER_STYLE_THEME_CACHE_KEY)})||"null");if(uc&&typeof uc.theme_id==="string"&&(!orgId||!uc.orgId||uc.orgId===orgId))user=uc.theme_id;}catch(e){}var allowed=["simple","standard","space","racing"];var id=(userChoice&&user&&allowed.indexOf(user)>=0)?user:(orgTheme&&allowed.indexOf(orgTheme)>=0)?orgTheme:(allowed.indexOf(platform)>=0?platform:"simple");var r=document.documentElement;r.setAttribute("data-style-theme",id);if(r.getAttribute("data-style-theme-dark")==="1"){r.classList.remove("dark");r.removeAttribute("data-style-theme-dark");}}catch(e){}})();`;
 }
 
 export function styleThemeLabel(id: StyleThemeId | string) {

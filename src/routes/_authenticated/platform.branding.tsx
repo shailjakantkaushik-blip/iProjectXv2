@@ -124,8 +124,8 @@ function PlatformBrandingPage() {
         </h1>
         <p className="text-sm text-muted-foreground">
           Manage display name, logo, colour palette, and style themes for each organisation
-          (platform admin only). Style themes change look &amp; feel — tables, surfaces, buttons,
-          motion — not just colours.
+          (platform admin only). Style themes change UI chrome — sections, buttons, navigation
+          shape, and motion — without changing colour palettes.
         </p>
       </div>
 
