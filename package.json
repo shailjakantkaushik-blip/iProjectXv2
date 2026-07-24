@@ -8,6 +8,8 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "vercel-build": "node scripts/env-bridge.mjs && vite build",
+    "check:preload": "node scripts/check-preload-size.mjs",
+    "build:ci": "vite build && node scripts/check-preload-size.mjs",
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write ."

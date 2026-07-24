@@ -119,25 +119,53 @@ export function useLiveSync(orgId: string | undefined) {
       /* ignore */
     }
 
-    const channel = supabase.channel(`org-sync-${orgId}`);
-    TABLES.forEach((table) => {
-      (channel as any).on(
-        "postgres_changes",
-        { event: "*", schema: "public", table, filter: `org_id=eq.${orgId}` },
-        () => scheduleInvalidate(table),
-      );
-    });
-    channel.subscribe();
+    // Defer the heavy realtime fan-out until the browser is idle so first paint
+    // and first queries are not competing with ~30 postgres_changes listeners.
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let idleId: number | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
+
+    const startRealtime = () => {
+      if (cancelled || channel) return;
+      channel = supabase.channel(`org-sync-${orgId}`);
+      TABLES.forEach((table) => {
+        (channel as any).on(
+          "postgres_changes",
+          { event: "*", schema: "public", table, filter: `org_id=eq.${orgId}` },
+          () => scheduleInvalidate(table),
+        );
+      });
+      channel.subscribe();
+    };
+
+    const ric = (window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    }).requestIdleCallback;
+
+    if (typeof ric === "function") {
+      idleId = ric(startRealtime, { timeout: 1800 });
+    } else {
+      timeoutId = setTimeout(startRealtime, 1200);
+    }
 
     return () => {
+      cancelled = true;
       window.removeEventListener("pmo:data-changed", onLocal);
       if (timerRef.current) clearTimeout(timerRef.current);
+      if (timeoutId) clearTimeout(timeoutId);
+      if (idleId != null) {
+        (window as Window & { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback?.(
+          idleId,
+        );
+      }
       try {
         bc?.close();
       } catch {
         /* ignore */
       }
-      supabase.removeChannel(channel);
+      if (channel) supabase.removeChannel(channel);
     };
   }, [orgId, qc]);
 }

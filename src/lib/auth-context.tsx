@@ -10,6 +10,11 @@ import {
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { clearCachedOrgNavigation } from "@/lib/navigation-config";
+import {
+  clearCachedAuthChrome,
+  readCachedAuthChrome,
+  writeCachedAuthChrome,
+} from "@/lib/auth-chrome-cache";
 
 export type AppRole = "admin" | "org_admin" | "bu_lead" | "pm" | "executive" | "platform_admin";
 
@@ -21,7 +26,6 @@ export interface Profile {
   must_change_password?: boolean;
   is_active?: boolean;
 }
-
 
 export interface Organization {
   id: string;
@@ -42,14 +46,12 @@ export interface Organization {
       logo_size_app?: string;
       logo_custom_app?: { heightPx: number; maxWidthPx: number };
     };
-    /** Organisation colour palette — overrides platform theme in /app when enabled. */
     color_theme?: {
       enabled?: boolean;
       theme?: "light" | "dark";
       palette_preset?: string;
       palette?: Record<string, string>;
     };
-    /** Style theme (look & feel). user_choice_enabled lets users override. */
     style_theme?: {
       theme_id?: string;
       user_choice_enabled?: boolean;
@@ -71,13 +73,15 @@ export interface Organization {
   } | null;
 }
 
-
 interface AuthState {
   session: Session | null;
   user: User | null;
   profile: Profile | null;
   organization: Organization | null;
   roles: AppRole[];
+  /** True until getSession() finishes (localStorage read — usually milliseconds). */
+  sessionChecked: boolean;
+  /** True while profile/org are fetching and no usable chrome is available yet. */
   loading: boolean;
   refresh: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -85,16 +89,22 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [organization, setOrganization] = useState<Organization | null>(null);
-  const [roles, setRoles] = useState<AppRole[]>([]);
-  const [loading, setLoading] = useState(true);
-  /** Last user we finished loading a profile for — used to ignore tab-focus recoveries. */
-  const loadedUserIdRef = useRef<string | null>(null);
+function seedFromCache() {
+  return readCachedAuthChrome();
+}
 
-  /** Dedupes getSession + onAuthStateChange both kicking off the same boot load. */
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const cached = typeof window !== "undefined" ? seedFromCache() : null;
+  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(() => cached?.profile ?? null);
+  const [organization, setOrganization] = useState<Organization | null>(
+    () => cached?.organization ?? null,
+  );
+  const [roles, setRoles] = useState<AppRole[]>(() => cached?.roles ?? []);
+  const [sessionChecked, setSessionChecked] = useState(false);
+  // With cached chrome we are not "loading" for paint — network refresh is silent.
+  const [loading, setLoading] = useState(() => !cached);
+  const loadedUserIdRef = useRef<string | null>(cached?.userId ?? null);
   const inflightProfileRef = useRef<{ userId: string; promise: Promise<void> } | null>(null);
 
   const loadProfile = async (userId: string) => {
@@ -103,7 +113,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const promise = (async () => {
-      // Profile first (need org_id), then roles + org in parallel.
       const { data: p } = await supabase
         .from("profiles")
         .select("id,email,full_name,org_id,must_change_password,is_active")
@@ -130,11 +139,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         orgPromise,
       ]);
 
-      // Publish together so /app never sees profile without organization.
-      setProfile((p as Profile) ?? null);
-      setRoles((allRoles ?? []).map((r) => r.role as AppRole));
-      setOrganization((orgRow as Organization) ?? null);
+      const nextProfile = (p as Profile) ?? null;
+      const nextRoles = (allRoles ?? []).map((r) => r.role as AppRole);
+      const nextOrg = (orgRow as Organization) ?? null;
+
+      setProfile(nextProfile);
+      setRoles(nextRoles);
+      setOrganization(nextOrg);
       loadedUserIdRef.current = userId;
+
+      if (nextProfile) {
+        writeCachedAuthChrome({
+          userId,
+          profile: nextProfile,
+          organization: nextOrg,
+          roles: nextRoles,
+        });
+      } else {
+        clearCachedAuthChrome();
+      }
     })();
 
     inflightProfileRef.current = { userId, promise };
@@ -157,38 +180,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: sub } = supabase.auth.onAuthStateChange((evt, s) => {
       setSession(s);
       if (s?.user) {
-        // Supabase re-emits SIGNED_IN on every tab focus via _recoverAndRefresh.
-        // Never tear down a matching session — that bounced "Checking your session…".
         const sameUser = loadedUserIdRef.current === s.user.id;
-        if (evt === "TOKEN_REFRESHED") {
-          return;
-        }
-        // Cold boot is owned by getSession() below — skip INITIAL_SESSION so we
-        // don't double-fetch profile/org and extend the loading screen.
-        if (evt === "INITIAL_SESSION") {
-          return;
-        }
-        if (sameUser && evt === "SIGNED_IN") {
-          return;
-        }
+        if (evt === "TOKEN_REFRESHED") return;
+        if (evt === "INITIAL_SESSION") return;
+        if (sameUser && evt === "SIGNED_IN") return;
 
-        // Only clear chrome when switching to a *different* account.
-        // During first hydrate loadedUserIdRef is null — clearing profile here
-        // raced with getSession() and remounted the loader (up/down bounce).
         const switchingUser =
           loadedUserIdRef.current != null && loadedUserIdRef.current !== s.user.id;
         if (switchingUser) {
+          clearCachedAuthChrome();
           setProfile(null);
           setOrganization(null);
           setRoles([]);
+          setLoading(true);
         }
 
-        const blockUi =
-          switchingUser ||
-          (loadedUserIdRef.current == null &&
-            (evt === "SIGNED_IN" || evt === "INITIAL_SESSION"));
+        const blockUi = switchingUser || loadedUserIdRef.current == null;
         if (blockUi) setLoading(true);
-        // Defer out of the auth callback (Supabase client lock).
         setTimeout(() => {
           void loadProfile(s.user.id).finally(() => {
             if (!cancelled && blockUi) setLoading(false);
@@ -196,6 +204,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }, 0);
       } else {
         loadedUserIdRef.current = null;
+        clearCachedAuthChrome();
         setProfile(null);
         setOrganization(null);
         setRoles([]);
@@ -205,9 +214,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     supabase.auth.getSession().then(async ({ data }) => {
       if (cancelled) return;
-      setSession(data.session);
-      if (data.session?.user) await loadProfile(data.session.user.id);
-      if (!cancelled) setLoading(false);
+      const s = data.session;
+      setSession(s);
+
+      if (s?.user) {
+        const cachedUser = readCachedAuthChrome()?.userId;
+        if (cachedUser && cachedUser !== s.user.id) {
+          // Stale chrome from another account — don't paint the wrong org.
+          clearCachedAuthChrome();
+          setProfile(null);
+          setOrganization(null);
+          setRoles([]);
+          setLoading(true);
+        } else if (cachedUser === s.user.id) {
+          // Chrome already on screen — refresh quietly in the background.
+          setLoading(false);
+        } else {
+          setLoading(true);
+        }
+        await loadProfile(s.user.id);
+        if (!cancelled) setLoading(false);
+      } else {
+        clearCachedAuthChrome();
+        setProfile(null);
+        setOrganization(null);
+        setRoles([]);
+        setLoading(false);
+      }
+      if (!cancelled) setSessionChecked(true);
     });
 
     return () => {
@@ -218,10 +252,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     clearCachedOrgNavigation();
+    clearCachedAuthChrome();
     await supabase.auth.signOut();
-    // Do not hard-reload here — the authenticated Gate already SPA-navigates
-    // to /auth (with org slug when that is how they signed in). A second
-    // window.location.assign caused the login page to refresh twice.
   };
 
   const value = useMemo(
@@ -231,11 +263,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profile,
       organization,
       roles,
+      sessionChecked,
       loading,
       refresh,
       signOut,
     }),
-    [session, profile, organization, roles, loading],
+    [session, profile, organization, roles, sessionChecked, loading],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
