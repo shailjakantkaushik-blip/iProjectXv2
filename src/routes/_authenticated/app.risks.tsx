@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -11,6 +11,9 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cel
 import { RISK_STATUS_COLORS as STATUS_COLORS } from "@/lib/chart-theme";
 import { ChartLegendList, legendItemsFromCounts } from "@/components/chart-legend-list";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/risks")({ component: RisksPage });
 
@@ -44,7 +47,10 @@ function RisksPage() {
     enabled: !!orgId,
   });
 
-  const projectById = new Map(projects.map((p: any) => [p.id, p]));
+  const projectById = useMemo(
+    () => new Map(projects.map((p: any) => [p.id, p])),
+    [projects],
+  );
 
   const [form, setForm] = useState({
     project_id: "",
@@ -58,6 +64,34 @@ function RisksPage() {
     notes: "",
     due_date: "",
   });
+
+  const columns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      {
+        key: "project",
+        label: "Project",
+        getValue: (r) => (projectById.get(r.project_id) as any)?.project_code || "",
+      },
+      { key: "title", label: "Title" },
+      { key: "category", label: "Category" },
+      { key: "owner", label: "Owner" },
+      { key: "probability", label: "P" },
+      { key: "impact", label: "I" },
+      {
+        key: "severity",
+        label: "Sev",
+        getValue: (r) =>
+          r.severity ?? (r.probability && r.impact ? r.probability * r.impact : null),
+      },
+      { key: "status", label: "Status" },
+      { key: "due_date", label: "Due" },
+      { key: "mitigation", label: "Mitigation" },
+      { key: "notes", label: "Notes" },
+    ],
+    [projectById],
+  );
+
+  const table = useColumnarTable(risks, columns);
 
   const create = useMutation({
     mutationFn: async () => {
@@ -281,29 +315,38 @@ function RisksPage() {
 
       <SectionFrame>
         <SectionTitle>Risk Register ({risks.length})</SectionTitle>
-        {risks.length === 0 ? (
-          <div className="py-8 text-center text-sm text-muted-foreground">No risks recorded.</div>
+        <ColumnarToolbar
+          globalQ={table.globalQ}
+          onGlobalQ={table.setGlobalQ}
+          shown={table.rows.length}
+          total={table.total}
+          onClear={table.clearAll}
+        />
+        {table.rows.length === 0 ? (
+          <div className="py-8 text-center text-sm text-muted-foreground">
+            {table.total === 0 ? "No risks recorded." : "No matching risks."}
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="st-table">
               <thead>
                 <tr>
-                  <th>Project</th>
-                  <th>Title</th>
-                  <th>Category</th>
-                  <th>Owner</th>
-                  <th>P</th>
-                  <th>I</th>
-                  <th>Sev</th>
-                  <th>Status</th>
-                  <th>Due</th>
-                  <th>Mitigation</th>
-                  <th>Notes</th>
+                  {columns.map((col) => (
+                    <ColumnarTh
+                      key={col.key}
+                      column={col}
+                      filter={table.filters[col.key]}
+                      onFilter={(v) => table.setColumnFilter(col.key, v)}
+                      sortKey={table.sortKey}
+                      sortDir={table.sortDir}
+                      onToggleSort={table.toggleSort}
+                    />
+                  ))}
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {risks.map((r: any) => {
+                {table.rows.map((r: any) => {
                   const p = projectById.get(r.project_id) as any;
                   return (
                     <tr key={r.id}>

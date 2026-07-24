@@ -1,12 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import { EditableCell } from "@/components/editable-cell";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/issues")({
   component: IssuesPage,
@@ -34,7 +37,11 @@ function IssuesPage() {
     enabled: !!orgId,
   });
 
-  const projectById = new Map(projects.map((p: any) => [p.id, p]));
+  const projectById = useMemo(
+    () => new Map(projects.map((p: any) => [p.id, p])),
+    [projects],
+  );
+
   const [form, setForm] = useState({
     project_id: "",
     title: "",
@@ -44,6 +51,25 @@ function IssuesPage() {
     description: "",
     target_date: "",
   });
+
+  const columns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      {
+        key: "project",
+        label: "Project",
+        getValue: (i) => (projectById.get(i.project_id) as any)?.project_code || "",
+      },
+      { key: "title", label: "Title" },
+      { key: "priority", label: "Priority" },
+      { key: "status", label: "Status" },
+      { key: "owner", label: "Owner" },
+      { key: "raised_date", label: "Raised" },
+      { key: "target_date", label: "Target" },
+    ],
+    [projectById],
+  );
+
+  const table = useColumnarTable(issues, columns);
 
   const create = useMutation({
     mutationFn: async () => {
@@ -178,25 +204,38 @@ function IssuesPage() {
 
       <SectionFrame>
         <SectionTitle>Issues Register</SectionTitle>
-        {issues.length === 0 ? (
-          <div className="py-8 text-center text-sm text-muted-foreground">No issues logged yet.</div>
+        <ColumnarToolbar
+          globalQ={table.globalQ}
+          onGlobalQ={table.setGlobalQ}
+          shown={table.rows.length}
+          total={table.total}
+          onClear={table.clearAll}
+        />
+        {table.rows.length === 0 ? (
+          <div className="py-8 text-center text-sm text-muted-foreground">
+            {table.total === 0 ? "No issues logged yet." : "No matching issues."}
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="st-table">
               <thead>
                 <tr>
-                  <th>Project</th>
-                  <th>Title</th>
-                  <th>Priority</th>
-                  <th>Status</th>
-                  <th>Owner</th>
-                  <th>Raised</th>
-                  <th>Target</th>
+                  {columns.map((col) => (
+                    <ColumnarTh
+                      key={col.key}
+                      column={col}
+                      filter={table.filters[col.key]}
+                      onFilter={(v) => table.setColumnFilter(col.key, v)}
+                      sortKey={table.sortKey}
+                      sortDir={table.sortDir}
+                      onToggleSort={table.toggleSort}
+                    />
+                  ))}
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {issues.map((i: any) => (
+                {table.rows.map((i: any) => (
                   <tr key={i.id}>
                     <td className="font-medium">
                       {(projectById.get(i.project_id) as any)?.project_code || "—"}

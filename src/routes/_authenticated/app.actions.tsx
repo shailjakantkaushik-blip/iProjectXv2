@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -10,6 +10,9 @@ import { EditableCell } from "@/components/editable-cell";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from "recharts";
 import { ChartLegendList, legendItemsFromCounts } from "@/components/chart-legend-list";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/actions")({ component: ActionsPage });
 
@@ -38,7 +41,10 @@ function ActionsPage() {
     queryFn: async () => (await supabase.from("actions").select("*").order("due_date")).data ?? [],
     enabled: !!orgId,
   });
-  const projectById = new Map(projects.map((p: any) => [p.id, p]));
+  const projectById = useMemo(
+    () => new Map(projects.map((p: any) => [p.id, p])),
+    [projects],
+  );
 
   const [form, setForm] = useState({
     project_id: "",
@@ -50,6 +56,26 @@ function ActionsPage() {
     description: "",
     notes: "",
   });
+
+  const columns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      {
+        key: "project",
+        label: "Project",
+        getValue: (a) => (projectById.get(a.project_id) as any)?.project_code || "",
+      },
+      { key: "title", label: "Title" },
+      { key: "owner", label: "Owner" },
+      { key: "priority", label: "Priority" },
+      { key: "status", label: "Status" },
+      { key: "due_date", label: "Due" },
+      { key: "description", label: "Description" },
+      { key: "notes", label: "Notes" },
+    ],
+    [projectById],
+  );
+
+  const table = useColumnarTable(actions, columns);
 
   const create = useMutation({
     mutationFn: async () => {
@@ -259,26 +285,38 @@ function ActionsPage() {
 
       <SectionFrame>
         <SectionTitle>Actions Register ({actions.length})</SectionTitle>
-        {actions.length === 0 ? (
-          <div className="py-8 text-center text-sm text-muted-foreground">No actions recorded.</div>
+        <ColumnarToolbar
+          globalQ={table.globalQ}
+          onGlobalQ={table.setGlobalQ}
+          shown={table.rows.length}
+          total={table.total}
+          onClear={table.clearAll}
+        />
+        {table.rows.length === 0 ? (
+          <div className="py-8 text-center text-sm text-muted-foreground">
+            {table.total === 0 ? "No actions recorded." : "No matching actions."}
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="st-table">
               <thead>
                 <tr>
-                  <th>Project</th>
-                  <th>Title</th>
-                  <th>Owner</th>
-                  <th>Priority</th>
-                  <th>Status</th>
-                  <th>Due</th>
-                  <th>Description</th>
-                  <th>Notes</th>
+                  {columns.map((col) => (
+                    <ColumnarTh
+                      key={col.key}
+                      column={col}
+                      filter={table.filters[col.key]}
+                      onFilter={(v) => table.setColumnFilter(col.key, v)}
+                      sortKey={table.sortKey}
+                      sortDir={table.sortDir}
+                      onToggleSort={table.toggleSort}
+                    />
+                  ))}
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {actions.map((a: any) => {
+                {table.rows.map((a: any) => {
                   const p = projectById.get(a.project_id) as any;
                   return (
                     <tr key={a.id}>
