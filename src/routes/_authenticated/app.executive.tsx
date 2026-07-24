@@ -773,20 +773,24 @@ function ExecutiveDashboard() {
             <Empty msg="No projects with start/end dates match filters" />
           ) : (
             <div className="space-y-3">
-              {timelineGroups.map(([groupName, items]) => (
-                <GanttGroup
-                  key={groupName}
-                  title={groupName}
-                  items={items}
-                  bounds={boundsByGroup.get(groupName)!}
-                  gatesByLane={gatesByLane}
-                  orgPhases={orgPhases}
-                  collapsed={!!collapsed[groupName]}
-                  onToggle={() => toggleCollapse(groupName)}
-                  showProjectTimeline={showProjectTimeline}
-                  onShowProjectTimelineChange={setShowProjectTimeline}
-                />
-              ))}
+              {timelineGroups.map(([groupName, items]) => {
+                const groupBounds = boundsByGroup.get(groupName);
+                if (!groupBounds) return null;
+                return (
+                  <GanttGroup
+                    key={groupName}
+                    title={groupName}
+                    items={items}
+                    bounds={groupBounds}
+                    gatesByLane={gatesByLane}
+                    orgPhases={orgPhases}
+                    collapsed={!!collapsed[groupName]}
+                    onToggle={() => toggleCollapse(groupName)}
+                    showProjectTimeline={showProjectTimeline}
+                    onShowProjectTimelineChange={setShowProjectTimeline}
+                  />
+                );
+              })}
             </div>
           )}
         </ExpandablePanel>
@@ -987,6 +991,10 @@ function GanttGroup({
   showProjectTimeline?: boolean;
   onShowProjectTimelineChange?: (v: boolean) => void;
 }) {
+  // Hooks must run unconditionally before any throw / early return (React #310).
+  const [showGates, setShowGates] = useState(true);
+  const [showPvA, setShowPvA] = useState(false);
+
   const laneKeyOf = (p: any) =>
     p.is_project_rollup ? (p.project_id || p.id) : (p.stream_id || p.project_id || p.id);
   const phaseOf = (p: any) =>
@@ -999,6 +1007,7 @@ function GanttGroup({
   const monthCount = months.length || 1;
   // Align to the equal-width month grid used by the header. See portfolio-timeline.tsx.
   const dateToPct = (d: Date) => {
+    if (!months.length || Number.isNaN(d.getTime())) return 0;
     const y = d.getFullYear();
     const m = d.getMonth();
     const idx = months.findIndex((mm) => mm.year === y && mm.monthIndex === m);
@@ -1044,12 +1053,12 @@ function GanttGroup({
     </div>
   );
 
-  const rangeLabel = fyGroups.length === 1
-    ? fyGroups[0].fy
-    : `${fyGroups[0].fy} – ${fyGroups[fyGroups.length - 1].fy}`;
-
-  const [showGates, setShowGates] = useState(true);
-  const [showPvA, setShowPvA] = useState(false);
+  const rangeLabel =
+    fyGroups.length === 0
+      ? "—"
+      : fyGroups.length === 1
+        ? fyGroups[0].fy
+        : `${fyGroups[0].fy} – ${fyGroups[fyGroups.length - 1].fy}`;
 
   return (
     <div className="relative rounded-md border border-border bg-surface shadow-sm">

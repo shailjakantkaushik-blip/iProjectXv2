@@ -26,19 +26,18 @@ export function computeTimelineBounds(projects: any[], fy: string = "All", fySta
 
   // Always derive the data window first so the chart starts near the first bar
   // (full-FY snap left a long empty scroll before any graph content).
+  const validDate = (v: unknown): Date | null => {
+    if (v == null || v === "") return null;
+    const d = new Date(v as string);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
   let dataMin: Date | null = null;
   let dataMax: Date | null = null;
   for (const p of projects) {
-    const s = p.start_date || p.planned_start_date || p.actual_start_date;
-    const e = p.end_date || p.actual_end_date || p.planned_end_date;
-    if (s) {
-      const d = new Date(s);
-      if (!dataMin || d < dataMin) dataMin = d;
-    }
-    if (e) {
-      const d = new Date(e);
-      if (!dataMax || d > dataMax) dataMax = d;
-    }
+    const s = validDate(p.start_date || p.planned_start_date || p.actual_start_date);
+    const e = validDate(p.end_date || p.actual_end_date || p.planned_end_date);
+    if (s && (!dataMin || s < dataMin)) dataMin = s;
+    if (e && (!dataMax || e > dataMax)) dataMax = e;
   }
 
   let minD: Date;
@@ -66,6 +65,13 @@ export function computeTimelineBounds(projects: any[], fy: string = "All", fySta
     minD = new Date(dataMin.getFullYear(), dataMin.getMonth() - 1, 1);
     maxD = new Date(dataMax.getFullYear(), dataMax.getMonth() + 2, 0, 23, 59, 59);
   } else {
+    const now = new Date();
+    minD = fyStartFor(now);
+    maxD = fyEndFor(now);
+  }
+
+  // Guard inverted / invalid windows so month grid is never empty (avoids Gantt crashes).
+  if (!(minD instanceof Date) || Number.isNaN(minD.getTime()) || !(maxD instanceof Date) || Number.isNaN(maxD.getTime()) || minD > maxD) {
     const now = new Date();
     minD = fyStartFor(now);
     maxD = fyEndFor(now);
@@ -118,6 +124,7 @@ export function GanttGroup({
   // from the visual columns. Convert any date into "month index + day fraction"
   // so bars, gate diamonds and the TODAY line all sit on the same grid.
   const dateToPct = (d: Date) => {
+    if (!months.length || Number.isNaN(d.getTime())) return 0;
     const y = d.getFullYear();
     const m = d.getMonth();
     let idx = months.findIndex((mm) => mm.year === y && mm.monthIndex === m);
@@ -162,9 +169,12 @@ export function GanttGroup({
     </div>
   );
 
-  const rangeLabel = fyGroups.length === 1
-    ? fyGroups[0].fy
-    : `${fyGroups[0].fy} – ${fyGroups[fyGroups.length - 1].fy}`;
+  const rangeLabel =
+    fyGroups.length === 0
+      ? "—"
+      : fyGroups.length === 1
+        ? fyGroups[0].fy
+        : `${fyGroups[0].fy} – ${fyGroups[fyGroups.length - 1].fy}`;
 
   const showInlineControls = showProjectToggle || !isControlled;
 
