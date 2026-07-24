@@ -1091,6 +1091,319 @@ html[data-style-theme="racing"] thead th {
   to { opacity: 1; transform: none; }
 }
 
+/* ---- Wildlife: organic habitats + savannah atmosphere ---- */
+html[data-style-theme="wildlife"] {
+  --style-section-radius: 18px;
+  --style-btn-radius: 999px;
+  --style-nav-radius: 14px;
+  --radius: 1rem;
+}
+html[data-style-theme="wildlife"] .shell-root {
+  isolation: isolate;
+}
+html[data-style-theme="wildlife"] .shell-root::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(ellipse 70% 45% at 15% 0%, color-mix(in srgb, var(--primary) 10%, transparent), transparent 60%),
+    radial-gradient(ellipse 55% 40% at 90% 100%, color-mix(in srgb, var(--accent2, var(--primary)) 8%, transparent), transparent 55%),
+    radial-gradient(1.5px 1.5px at 20% 30%, color-mix(in srgb, var(--color-foreground) 12%, transparent), transparent),
+    radial-gradient(1px 1px at 70% 55%, color-mix(in srgb, var(--color-foreground) 10%, transparent), transparent),
+    radial-gradient(1.2px 1.2px at 40% 80%, color-mix(in srgb, var(--color-foreground) 8%, transparent), transparent);
+}
+html[data-style-theme="wildlife"] .shell-root > * { position: relative; z-index: 1; }
+html[data-style-theme="wildlife"] .shell-main { background: transparent; }
+html[data-style-theme="wildlife"] .section-frame,
+html[data-style-theme="wildlife"] .kpi-card,
+html[data-style-theme="wildlife"] .shell-main .rounded-md.border {
+  border-radius: var(--style-section-radius);
+  background: color-mix(in srgb, var(--color-surface) 96%, transparent);
+  box-shadow:
+    0 1px 0 color-mix(in srgb, var(--color-foreground) 4%, transparent) inset,
+    0 10px 28px color-mix(in srgb, #000 8%, transparent),
+    0 2px 6px color-mix(in srgb, var(--primary) 8%, transparent);
+}
+html[data-style-theme="wildlife"] .shell-nav-link {
+  border-radius: var(--style-nav-radius);
+}
+html[data-style-theme="wildlife"] .shell-nav-link[data-nav-active="true"] {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sidebar-primary) 25%, transparent);
+}
+html[data-style-theme="wildlife"] .ui-btn,
+html[data-style-theme="wildlife"] button[data-slot="button"] {
+  border-radius: var(--style-btn-radius);
+}
+html[data-style-theme="wildlife"] .section-title {
+  letter-spacing: 0.04em;
+}
+
+/* ---- Forest: canopy depth + bark edges ---- */
+html[data-style-theme="forest"] {
+  --style-section-radius: 10px;
+  --style-btn-radius: 8px;
+  --style-nav-radius: 8px;
+}
+html[data-style-theme="forest"] .shell-root { isolation: isolate; }
+html[data-style-theme="forest"] .shell-root::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, color-mix(in srgb, var(--primary) 14%, transparent), transparent 55%),
+    radial-gradient(ellipse 40% 30% at 10% 60%, color-mix(in srgb, var(--color-foreground) 4%, transparent), transparent 70%),
+    radial-gradient(ellipse 45% 35% at 95% 40%, color-mix(in srgb, var(--primary) 8%, transparent), transparent 65%),
+    linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--color-foreground) 3%, transparent) 100%);
+}
+html[data-style-theme="forest"] .shell-root > * { position: relative; z-index: 1; }
+html[data-style-theme="forest"] .shell-main { background: transparent; }
+html[data-style-theme="forest"] .section-frame,
+html[data-style-theme="forest"] .kpi-card,
+html[data-style-theme="forest"] .shell-main .rounded-md.border {
+  border-radius: var(--style-section-radius);
+  border-left: 3px solid color-mix(in srgb, var(--primary) 40%, var(--color-border));
+  background: color-mix(in srgb, var(--color-surface) 95%, transparent);
+  box-shadow:
+    0 8px 24px color-mix(in srgb, #000 10%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--primary) 8%, transparent);
+}
+html[data-style-theme="forest"] .shell-nav-group-label {
+  letter-spacing: 0.1em;
+}
+html[data-style-theme="forest"] .shell-nav-link[data-nav-active="true"] {
+  border-left: 3px solid var(--sidebar-primary);
+  border-radius: 0 8px 8px 0;
+}
+html[data-style-theme="forest"] .shell-nav-active-bar { display: none; }
+html[data-style-theme="forest"] .ui-btn,
+html[data-style-theme="forest"] button[data-slot="button"] {
+  border-radius: var(--style-btn-radius);
+}
+
+/* ---- Mission: tactical HUD briefing ---- */
+html[data-style-theme="mission"] {
+  --style-section-radius: 2px;
+  --style-btn-radius: 2px;
+  --style-nav-radius: 2px;
+  --radius: 0.2rem;
+}
+html[data-style-theme="mission"] .section-frame,
+html[data-style-theme="mission"] .kpi-card,
+html[data-style-theme="mission"] .shell-main .rounded-md.border {
+  border-radius: var(--style-section-radius);
+  background: var(--color-surface);
+  border-color: color-mix(in srgb, var(--color-border) 80%, var(--primary));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--primary) 10%, transparent),
+    0 12px 28px color-mix(in srgb, #000 12%, transparent);
+  position: relative;
+}
+html[data-style-theme="mission"] .section-frame::before,
+html[data-style-theme="mission"] .section-frame::after {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  border-style: solid;
+  pointer-events: none;
+}
+html[data-style-theme="mission"] .section-frame::before {
+  top: 4px; left: 4px;
+  border-width: 2px 0 0 2px;
+}
+html[data-style-theme="mission"] .section-frame::after {
+  bottom: 4px; right: 4px;
+  border-width: 0 2px 2px 0;
+}
+html[data-style-theme="mission"] .section-title {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+html[data-style-theme="mission"] .shell-header {
+  border-bottom: 2px solid color-mix(in srgb, var(--primary) 35%, var(--color-border));
+}
+html[data-style-theme="mission"] .shell-nav-link {
+  border-radius: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+html[data-style-theme="mission"] .shell-nav-link[data-nav-active="true"] {
+  background: color-mix(in srgb, var(--sidebar-primary) 16%, transparent);
+  box-shadow: inset 3px 0 0 var(--sidebar-primary);
+}
+html[data-style-theme="mission"] .shell-nav-active-bar { display: none; }
+html[data-style-theme="mission"] .ui-btn,
+html[data-style-theme="mission"] button[data-slot="button"] {
+  border-radius: var(--style-btn-radius);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+/* ---- Aurora: luminous glass + curtain backdrop ---- */
+html[data-style-theme="aurora"] {
+  --style-section-radius: 16px;
+  --style-btn-radius: 10px;
+  --style-nav-radius: 10px;
+}
+html[data-style-theme="aurora"] .shell-root { isolation: isolate; }
+html[data-style-theme="aurora"] .shell-root::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.9;
+  background-image:
+    radial-gradient(ellipse 50% 35% at 20% 20%, color-mix(in srgb, var(--primary) 18%, transparent), transparent 70%),
+    radial-gradient(ellipse 45% 40% at 70% 15%, color-mix(in srgb, var(--accent2, var(--primary)) 14%, transparent), transparent 65%),
+    radial-gradient(ellipse 60% 30% at 50% 85%, color-mix(in srgb, var(--primary) 10%, transparent), transparent 70%),
+    linear-gradient(115deg, transparent 40%, color-mix(in srgb, var(--primary) 6%, transparent) 50%, transparent 60%);
+  animation: style-aurora-drift 18s ease-in-out infinite alternate;
+}
+html[data-style-theme="aurora"] .shell-root > * { position: relative; z-index: 1; }
+html[data-style-theme="aurora"] .shell-main { background: transparent; }
+html[data-style-theme="aurora"] .section-frame,
+html[data-style-theme="aurora"] .kpi-card,
+html[data-style-theme="aurora"] .shell-main .rounded-md.border {
+  border-radius: var(--style-section-radius);
+  background: color-mix(in srgb, var(--color-surface) 82%, transparent);
+  backdrop-filter: blur(14px);
+  border-color: color-mix(in srgb, var(--primary) 18%, var(--color-border));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--primary) 8%, transparent),
+    0 16px 40px color-mix(in srgb, #000 10%, transparent),
+    0 0 48px color-mix(in srgb, var(--primary) 10%, transparent);
+}
+html[data-style-theme="aurora"] .shell-nav-link[data-nav-active="true"] {
+  box-shadow: 0 0 20px color-mix(in srgb, var(--sidebar-primary) 25%, transparent);
+}
+html[data-style-theme="aurora"] .ui-btn,
+html[data-style-theme="aurora"] button[data-slot="button"] {
+  border-radius: var(--style-btn-radius);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+html[data-style-theme="aurora"] .ui-btn:hover:not(:disabled),
+html[data-style-theme="aurora"] button[data-slot="button"]:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--primary) 22%, transparent);
+}
+@keyframes style-aurora-drift {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(-2%, 1%, 0) scale(1.03); }
+}
+
+/* ---- Coastal: maritime bands + wave edges ---- */
+html[data-style-theme="coastal"] {
+  --style-section-radius: 12px;
+  --style-btn-radius: 999px;
+  --style-nav-radius: 10px;
+}
+html[data-style-theme="coastal"] .shell-root { isolation: isolate; }
+html[data-style-theme="coastal"] .shell-root::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--primary) 6%, transparent) 0%,
+      transparent 28%,
+      transparent 72%,
+      color-mix(in srgb, var(--accent2, var(--primary)) 7%, transparent) 100%),
+    repeating-linear-gradient(
+      180deg,
+      transparent,
+      transparent 48px,
+      color-mix(in srgb, var(--color-foreground) 2.5%, transparent) 48px,
+      color-mix(in srgb, var(--color-foreground) 2.5%, transparent) 49px
+    );
+}
+html[data-style-theme="coastal"] .shell-root > * { position: relative; z-index: 1; }
+html[data-style-theme="coastal"] .shell-main { background: transparent; }
+html[data-style-theme="coastal"] .section-frame,
+html[data-style-theme="coastal"] .kpi-card,
+html[data-style-theme="coastal"] .shell-main .rounded-md.border {
+  border-radius: var(--style-section-radius);
+  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+  box-shadow:
+    0 4px 16px color-mix(in srgb, #000 6%, transparent),
+    0 18px 36px color-mix(in srgb, var(--primary) 6%, transparent);
+  border-bottom: 2px solid color-mix(in srgb, var(--primary) 22%, var(--color-border));
+}
+html[data-style-theme="coastal"] .shell-nav-link {
+  border-radius: var(--style-nav-radius);
+}
+html[data-style-theme="coastal"] .ui-btn,
+html[data-style-theme="coastal"] button[data-slot="button"] {
+  border-radius: var(--style-btn-radius);
+}
+html[data-style-theme="coastal"] .shell-main {
+  animation: style-coastal-in 0.4s ease-out both;
+}
+@keyframes style-coastal-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ---- Atelier: gallery restraint ---- */
+html[data-style-theme="atelier"] {
+  --style-section-radius: 4px;
+  --style-btn-radius: 4px;
+  --style-nav-radius: 4px;
+}
+html[data-style-theme="atelier"] .shell-root {
+  background-image:
+    linear-gradient(180deg, color-mix(in srgb, var(--background) 96%, var(--muted)) 0%, var(--background) 40%);
+}
+html[data-style-theme="atelier"] .section-frame,
+html[data-style-theme="atelier"] .kpi-card,
+html[data-style-theme="atelier"] .shell-main .rounded-md.border {
+  border-radius: var(--style-section-radius);
+  background: var(--color-surface);
+  border-color: color-mix(in srgb, var(--color-border) 90%, var(--color-foreground));
+  box-shadow:
+    0 1px 0 color-mix(in srgb, var(--color-foreground) 4%, transparent),
+    0 20px 40px color-mix(in srgb, #000 7%, transparent);
+  padding-top: 1.35rem;
+}
+html[data-style-theme="atelier"] .section-title {
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+  font-size: 10px;
+  border-bottom-width: 1px;
+}
+html[data-style-theme="atelier"] .shell-nav-group-label {
+  letter-spacing: 0.16em;
+  font-size: 9px;
+}
+html[data-style-theme="atelier"] .shell-nav-link {
+  border-radius: 0;
+  border-bottom: 1px solid transparent;
+}
+html[data-style-theme="atelier"] .shell-nav-link[data-nav-active="true"] {
+  border-bottom-color: var(--sidebar-primary);
+  background: transparent;
+  font-weight: 650;
+}
+html[data-style-theme="atelier"] .shell-nav-active-bar { display: none; }
+html[data-style-theme="atelier"] .ui-btn,
+html[data-style-theme="atelier"] button[data-slot="button"] {
+  border-radius: var(--style-btn-radius);
+  letter-spacing: 0.04em;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .soft-updating-bar {
     animation: none !important;
@@ -1102,9 +1415,13 @@ html[data-style-theme="racing"] thead th {
   html[data-style-theme="space"] button[data-slot="button"],
   html[data-style-theme="racing"] .ui-btn,
   html[data-style-theme="racing"] button[data-slot="button"],
+  html[data-style-theme="aurora"] .ui-btn,
+  html[data-style-theme="aurora"] button[data-slot="button"],
   html[data-style-theme="space"] .shell-main,
   html[data-style-theme="racing"] .shell-main,
   html[data-style-theme="standard"] .shell-main,
+  html[data-style-theme="coastal"] .shell-main,
+  html[data-style-theme="aurora"] .shell-root::before,
   html[data-style-theme="space"] .section-frame,
   html[data-style-theme="racing"] .section-frame,
   html[data-style-theme="space"] .kpi-card,

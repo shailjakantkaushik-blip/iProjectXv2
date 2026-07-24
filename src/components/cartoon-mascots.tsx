@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCartoonsEnabled } from "@/lib/use-cartoons";
+import { STYLE_THEME_CHANGE_EVENT, type StyleThemeId } from "@/lib/style-theme";
 
 const TIPS = [
   "Tip: Check My Work for approvals waiting on you.",
@@ -17,7 +18,31 @@ function sizePx(size: Size) {
   return size === "lg" ? 148 : size === "sm" ? 88 : 112;
 }
 
-/** Flat vector PMO “guide” character — CSS animated, clickable. */
+function useDocumentStyleTheme(): StyleThemeId | string {
+  const [theme, setTheme] = useState<StyleThemeId | string>(() =>
+    typeof document !== "undefined"
+      ? document.documentElement.getAttribute("data-style-theme") || "simple"
+      : "simple",
+  );
+  useEffect(() => {
+    const read = () =>
+      setTheme(document.documentElement.getAttribute("data-style-theme") || "simple");
+    read();
+    window.addEventListener(STYLE_THEME_CHANGE_EVENT, read);
+    const obs = new MutationObserver(read);
+    obs.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-style-theme"],
+    });
+    return () => {
+      window.removeEventListener(STYLE_THEME_CHANGE_EVENT, read);
+      obs.disconnect();
+    };
+  }, []);
+  return theme;
+}
+
+/** Flat vector PMO “guide” character — CSS animated, clickable. Wildlife theme → tiger. */
 export function CartoonGuide({
   size = "md",
   mood = "idle",
@@ -34,10 +59,12 @@ export function CartoonGuide({
   onActivate?: () => void;
 }) {
   const [localMood, setLocalMood] = useState(mood);
+  const styleTheme = useDocumentStyleTheme();
   const px = sizePx(size);
   const uid = useId().replace(/:/g, "");
   const bodyGrad = `cg-body-${uid}`;
   const screenGrad = `cg-screen-${uid}`;
+  const isTiger = styleTheme === "wildlife";
 
   useEffect(() => setLocalMood(mood), [mood]);
 
@@ -51,7 +78,7 @@ export function CartoonGuide({
     <button
       type="button"
       disabled={!interactive}
-      aria-label={label}
+      aria-label={isTiger ? "Wildlife guide — tiger" : label}
       title={interactive ? "Click for a tip" : label}
       onClick={activate}
       className={cn(
@@ -61,6 +88,54 @@ export function CartoonGuide({
       )}
       style={{ width: px, height: px }}
     >
+      {isTiger ? (
+        <svg
+          viewBox="0 0 160 160"
+          width={px}
+          height={px}
+          className={cn(
+            "cartoon-svg overflow-visible",
+            localMood === "wave" && "is-wave",
+            localMood === "think" && "is-think",
+          )}
+          role="img"
+          aria-hidden
+        >
+          <ellipse className="cg-shadow" cx="80" cy="148" rx="44" ry="7" fill="currentColor" opacity="0.12" />
+          <g className="cg-body">
+            <ellipse cx="80" cy="98" rx="36" ry="30" fill="var(--primary)" opacity="0.92" />
+            <ellipse cx="80" cy="102" rx="22" ry="16" fill="#f8fafc" opacity="0.85" />
+            {/* stripes */}
+            <path d="M58 88 Q70 92 58 104" fill="none" stroke="#0f172a" strokeWidth="3.5" opacity="0.35" strokeLinecap="round" />
+            <path d="M102 88 Q90 92 102 104" fill="none" stroke="#0f172a" strokeWidth="3.5" opacity="0.35" strokeLinecap="round" />
+            <path d="M80 78 V92" fill="none" stroke="#0f172a" strokeWidth="3" opacity="0.28" strokeLinecap="round" />
+          </g>
+          <g className="cg-head">
+            <circle cx="80" cy="52" r="30" fill="var(--primary)" />
+            <ellipse cx="80" cy="58" rx="16" ry="12" fill="#f8fafc" opacity="0.9" />
+            {/* ears */}
+            <path d="M54 34 L48 18 L66 28 Z" fill="var(--primary)" />
+            <path d="M106 34 L112 18 L94 28 Z" fill="var(--primary)" />
+            <path d="M54 32 L52 22 L62 28 Z" fill="#f8fafc" opacity="0.7" />
+            <path d="M106 32 L108 22 L98 28 Z" fill="#f8fafc" opacity="0.7" />
+            {/* face stripes */}
+            <path d="M56 48 L66 52" stroke="#0f172a" strokeWidth="2.5" opacity="0.4" strokeLinecap="round" />
+            <path d="M104 48 L94 52" stroke="#0f172a" strokeWidth="2.5" opacity="0.4" strokeLinecap="round" />
+            <circle className="cg-eye cg-eye-l" cx="70" cy="50" r="3.4" fill="#0f172a" />
+            <circle className="cg-eye cg-eye-r" cx="90" cy="50" r="3.4" fill="#0f172a" />
+            <ellipse cx="80" cy="60" rx="4" ry="3" fill="#0f172a" opacity="0.75" />
+            <path className="cg-mouth" d="M72 68 Q80 74 88 68" fill="none" stroke="#0f172a" strokeWidth="2.2" strokeLinecap="round" />
+          </g>
+          <g className="cg-arm-r">
+            <path d="M112 90 Q128 86 122 68" fill="none" stroke="var(--primary)" strokeWidth="9" strokeLinecap="round" />
+            <ellipse cx="120" cy="64" rx="8" ry="6" fill="var(--primary)" />
+          </g>
+          <g className="cg-sparkles" fill="var(--accent2, #15803d)">
+            <circle cx="30" cy="42" r="2.2" />
+            <circle cx="134" cy="56" r="1.8" />
+          </g>
+        </svg>
+      ) : (
       <svg
         viewBox="0 0 160 160"
         width={px}
@@ -143,6 +218,7 @@ export function CartoonGuide({
           <circle cx="138" cy="92" r="1.8" />
         </g>
       </svg>
+      )}
     </button>
   );
 }

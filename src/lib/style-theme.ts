@@ -1,5 +1,5 @@
 /**
- * Style themes — UI chrome presets (sections, buttons, nav shape, motion).
+ * Style themes — UI chrome presets (sections, buttons, nav shape, motion, atmosphere).
  * Colour palettes stay with the separate colour-theme system.
  * Applied via data-style-theme on <html>.
  *
@@ -10,7 +10,18 @@
  * 4. "simple"
  */
 
-export const STYLE_THEME_IDS = ["simple", "standard", "space", "racing"] as const;
+export const STYLE_THEME_IDS = [
+  "simple",
+  "standard",
+  "space",
+  "racing",
+  "wildlife",
+  "forest",
+  "mission",
+  "aurora",
+  "coastal",
+  "atelier",
+] as const;
 export type StyleThemeId = (typeof STYLE_THEME_IDS)[number];
 
 export type OrgStyleThemeConfig = {
@@ -31,30 +42,63 @@ export const STYLE_THEMES: StyleThemeDef[] = [
   {
     id: "simple",
     name: "Simple",
-    description:
-      "Flat sections, quiet buttons, classic sidebar nav — utilitarian baseline chrome.",
+    description: "Flat sections, quiet buttons, classic sidebar — utilitarian baseline.",
     swatches: ["#e8eaee", "#f5f6f8", "#cbd0d8"],
   },
   {
     id: "standard",
     name: "Standard",
-    description:
-      "Soft elevated sections, refined buttons, polished nav with clear active states.",
+    description: "Soft elevated panels, refined buttons, polished nav active states.",
     swatches: ["#dfe4ec", "#f0f3f8", "#a8b3c4"],
   },
   {
     id: "space",
     name: "Space",
-    description:
-      "Inset panel sections, geometric buttons, mission-control nav — motion without recolouring.",
+    description: "Solar-system canvas, glass mission panels, geometric nav chrome.",
     swatches: ["#c5cedd", "#e2e8f2", "#8b9bb3"],
   },
   {
     id: "racing",
     name: "Racing",
-    description:
-      "Angular sections, sharp CTA edges, speed-stripe nav accents and snappy transitions.",
+    description: "Angular speed chrome, hard left accents, offset block shadows.",
     swatches: ["#d4d4d8", "#ececef", "#9ca3af"],
+  },
+  {
+    id: "wildlife",
+    name: "Wildlife",
+    description:
+      "Organic rounded habitats, soft savannah atmosphere — guide becomes a tiger.",
+    swatches: ["#e7e0d4", "#f4efe6", "#b7a48a"],
+  },
+  {
+    id: "forest",
+    name: "Forest",
+    description: "Canopy layers behind lifted mossy panels, bark-edge nav, calm depth.",
+    swatches: ["#d7e0d4", "#eef3ea", "#8fa88a"],
+  },
+  {
+    id: "mission",
+    name: "Mission",
+    description: "Tactical briefing UI — HUD corners, status strips, command nav.",
+    swatches: ["#d5d8de", "#eef0f3", "#7d8796"],
+  },
+  {
+    id: "aurora",
+    name: "Aurora",
+    description: "Northern-light curtains, luminous glass cards, soft glow lift.",
+    swatches: ["#d6e4ef", "#eef5fa", "#8aa8c0"],
+  },
+  {
+    id: "coastal",
+    name: "Coastal",
+    description: "Airy maritime bands, wave-edge sections, light breeze motion.",
+    swatches: ["#d9e6ea", "#f2f7f8", "#86a8b4"],
+  },
+  {
+    id: "atelier",
+    name: "Atelier",
+    description: "Gallery restraint — thin frames, generous calm, museum-card lift.",
+    swatches: ["#e5e2dc", "#f7f5f1", "#b0aaa0"],
   },
 ];
 
@@ -161,7 +205,6 @@ export function applyStyleThemeToDocument(themeId: StyleThemeId) {
   if (typeof document === "undefined") return;
   const id = isStyleThemeId(themeId) ? themeId : "simple";
   const root = document.documentElement;
-  // Clear legacy style-theme-driven dark from older builds.
   if (root.getAttribute("data-style-theme-dark") === "1") {
     root.classList.remove("dark");
     root.removeAttribute("data-style-theme-dark");
@@ -170,8 +213,8 @@ export function applyStyleThemeToDocument(themeId: StyleThemeId) {
 }
 
 export function getStyleThemeBootScript(): string {
-  // Runs before paint. Chrome only — does not touch .dark or colour vars.
-  return `(function(){try{var p=location.pathname||"";if(p==="/"||p.indexOf("/auth")===0||p.indexOf("/legal")===0||p.indexOf("/contact")===0||p.indexOf("/o/")===0)return;var platform="simple";try{var lc=JSON.parse(localStorage.getItem("pmo.landingConfig.v2")||"null");if(lc&&typeof lc.style_theme_id==="string")platform=lc.style_theme_id;}catch(e){}var orgId=null,orgTheme=null,userChoice=false;try{var oc=JSON.parse(localStorage.getItem(${JSON.stringify(ORG_STYLE_THEME_CACHE_KEY)})||"null");if(oc){orgId=oc.orgId||null;if(typeof oc.theme_id==="string")orgTheme=oc.theme_id;userChoice=oc.user_choice_enabled===true;}}catch(e){}var user=null;try{var uc=JSON.parse(localStorage.getItem(${JSON.stringify(USER_STYLE_THEME_CACHE_KEY)})||"null");if(uc&&typeof uc.theme_id==="string"&&(!orgId||!uc.orgId||uc.orgId===orgId))user=uc.theme_id;}catch(e){}var allowed=["simple","standard","space","racing"];var id=(userChoice&&user&&allowed.indexOf(user)>=0)?user:(orgTheme&&allowed.indexOf(orgTheme)>=0)?orgTheme:(allowed.indexOf(platform)>=0?platform:"simple");var r=document.documentElement;r.setAttribute("data-style-theme",id);if(r.getAttribute("data-style-theme-dark")==="1"){r.classList.remove("dark");r.removeAttribute("data-style-theme-dark");}}catch(e){}})();`;
+  const allowed = JSON.stringify([...STYLE_THEME_IDS]);
+  return `(function(){try{var p=location.pathname||"";if(p==="/"||p.indexOf("/auth")===0||p.indexOf("/legal")===0||p.indexOf("/contact")===0||p.indexOf("/o/")===0)return;var platform="simple";try{var lc=JSON.parse(localStorage.getItem("pmo.landingConfig.v2")||"null");if(lc&&typeof lc.style_theme_id==="string")platform=lc.style_theme_id;}catch(e){}var orgId=null,orgTheme=null,userChoice=false;try{var oc=JSON.parse(localStorage.getItem(${JSON.stringify(ORG_STYLE_THEME_CACHE_KEY)})||"null");if(oc){orgId=oc.orgId||null;if(typeof oc.theme_id==="string")orgTheme=oc.theme_id;userChoice=oc.user_choice_enabled===true;}}catch(e){}var user=null;try{var uc=JSON.parse(localStorage.getItem(${JSON.stringify(USER_STYLE_THEME_CACHE_KEY)})||"null");if(uc&&typeof uc.theme_id==="string"&&(!orgId||!uc.orgId||uc.orgId===orgId))user=uc.theme_id;}catch(e){}var allowed=${allowed};var id=(userChoice&&user&&allowed.indexOf(user)>=0)?user:(orgTheme&&allowed.indexOf(orgTheme)>=0)?orgTheme:(allowed.indexOf(platform)>=0?platform:"simple");var r=document.documentElement;r.setAttribute("data-style-theme",id);if(r.getAttribute("data-style-theme-dark")==="1"){r.classList.remove("dark");r.removeAttribute("data-style-theme-dark");}}catch(e){}})();`;
 }
 
 export function styleThemeLabel(id: StyleThemeId | string) {
