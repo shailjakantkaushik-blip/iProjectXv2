@@ -301,14 +301,22 @@ export function GanttGroup({
                 <div
                   key={rowKey}
                   className={`flex items-center border-b border-border/40 py-2 hover:bg-muted/30 ${
-                    p.is_project_rollup ? "bg-muted/20" : ""
+                    p.is_project_rollup
+                      ? "bg-muted/55"
+                      : p.is_stream_lane
+                        ? "bg-background/40"
+                        : ""
                   }`}
                 >
                   <div style={{ width: COL_PROJECT }} className="shrink-0 pl-1 pr-2">
                     <Link
                       to="/app/project-infographic"
                       search={{ pid: p.project_id || p.id }}
-                      className="block truncate text-[12px] font-medium text-foreground hover:text-primary hover:underline"
+                      className={`block truncate text-[12px] hover:text-primary hover:underline ${
+                        p.is_project_rollup
+                          ? "font-semibold text-foreground"
+                          : "font-medium text-foreground/80"
+                      }`}
                       title={p.stream_ref || p.name}
                     >
                       {p.is_project_rollup ? (
@@ -320,9 +328,9 @@ export function GanttGroup({
                         </>
                       ) : p.is_stream_lane && (p.stream_name || p.stream_code) ? (
                         <>
-                          <span className="text-muted-foreground">{p.project_name || "Project"}</span>
+                          <span className="font-normal text-muted-foreground">{p.project_name || "Project"}</span>
                           <span className="text-muted-foreground"> · </span>
-                          <span>{p.stream_name || p.stream_code}</span>
+                          <span className="font-medium text-foreground/75">{p.stream_name || p.stream_code}</span>
                           {p.stream_code ? (
                             <span className="ml-1.5 rounded bg-muted px-1 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
                               {p.stream_code}

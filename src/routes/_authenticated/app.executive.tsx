@@ -367,11 +367,15 @@ function ExecutiveDashboard() {
     return Array.from(groups.entries()).sort();
   }, [timelineLanes, timelineView]);
 
-  // Shared smart bounds — chart starts near first bar (no empty left FY scroll).
-  const timelineBounds = useMemo(
-    () => computeTimelineBounds(timelineLanes, fy, fyStartMonth),
-    [timelineLanes, fy, fyStartMonth],
-  );
+  // Per-group bounds — each Program/Theme/etc. axis starts near its own bars
+  // so earlier groups don't leave empty lead-in on later sections.
+  const boundsByGroup = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof computeTimelineBounds>>();
+    for (const [name, items] of timelineGroups) {
+      m.set(name, computeTimelineBounds(items, fy, fyStartMonth));
+    }
+    return m;
+  }, [timelineGroups, fy, fyStartMonth]);
 
   const toggleCollapse = (name: string) =>
     setCollapsed((c) => ({ ...c, [name]: !c[name] }));
@@ -762,7 +766,7 @@ function ExecutiveDashboard() {
                   key={groupName}
                   title={groupName}
                   items={items}
-                  bounds={timelineBounds}
+                  bounds={boundsByGroup.get(groupName)!}
                   gatesByLane={gatesByLane}
                   orgPhases={orgPhases}
                   collapsed={!!collapsed[groupName]}
@@ -1160,14 +1164,22 @@ function GanttGroup({
                 <div
                   key={rowKey}
                   className={`flex items-center border-b border-border/40 py-2 hover:bg-muted/30 ${
-                    p.is_project_rollup ? "bg-muted/20" : ""
+                    p.is_project_rollup
+                      ? "bg-muted/55"
+                      : p.is_stream_lane
+                        ? "bg-background/40"
+                        : ""
                   }`}
                 >
                   <div style={{ width: COL_PROJECT }} className="shrink-0 pl-1 pr-2">
                     <Link
                       to="/app/project-infographic"
                       search={{ pid: projectId }}
-                      className="block truncate text-[12px] font-medium text-foreground hover:text-primary hover:underline"
+                      className={`block truncate text-[12px] hover:text-primary hover:underline ${
+                        p.is_project_rollup
+                          ? "font-semibold text-foreground"
+                          : "font-medium text-foreground/80"
+                      }`}
                       title={p.name}
                     >
                       {p.is_project_rollup ? (
@@ -1179,9 +1191,9 @@ function GanttGroup({
                         </>
                       ) : p.is_stream_lane && (p.stream_name || p.stream_code) ? (
                         <>
-                          <span className="text-muted-foreground">{p.project_name || "Project"}</span>
+                          <span className="font-normal text-muted-foreground">{p.project_name || "Project"}</span>
                           <span className="text-muted-foreground"> · </span>
-                          <span>{p.stream_name || p.stream_code}</span>
+                          <span className="font-medium text-foreground/75">{p.stream_name || p.stream_code}</span>
                           {p.stream_code ? (
                             <span className="ml-1.5 rounded bg-muted px-1 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
                               {p.stream_code}
