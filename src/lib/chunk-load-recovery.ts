@@ -10,15 +10,26 @@ export function isChunkLoadError(error: unknown): boolean {
         ? error
         : String((error as { message?: unknown } | null)?.message ?? error ?? "");
 
+  const name =
+    error instanceof Error
+      ? error.name
+      : String((error as { name?: unknown } | null)?.name ?? "");
+
   return (
     /Failed to fetch dynamically imported module/i.test(message) ||
     /Importing a module script failed/i.test(message) ||
     /error loading dynamically imported module/i.test(message) ||
-    /Loading chunk [\w-]+ failed/i.test(message)
+    /Loading chunk [\w.-]+ failed/i.test(message) ||
+    /Loading CSS chunk [\w.-]+ failed/i.test(message) ||
+    /ChunkLoadError/i.test(name) ||
+    /ChunkLoadError/i.test(message) ||
+    // Stale index often serves HTML for a missing .js chunk
+    (/Unexpected token\s*['"]?</i.test(message) && /module|import|chunk/i.test(message)) ||
+    (/Failed to fetch/i.test(message) && /chunk|module|assets\//i.test(message))
   );
 }
 
-function recentlyReloaded(): boolean {
+export function recentlyReloadedForChunk(): boolean {
   try {
     const raw = sessionStorage.getItem(RELOAD_KEY);
     if (!raw) return false;
@@ -38,14 +49,37 @@ function markReloaded() {
   }
 }
 
+/** Clear the one-shot reload marker after a successful boot. */
+export function clearChunkReloadMarker() {
+  try {
+    sessionStorage.removeItem(RELOAD_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Hard navigation that bypasses a cached document shell so new chunk hashes load.
+ * Soft location.reload() often reuses the stale HTML and loops the error screen.
+ */
+export function hardReloadToLatest(force = false): boolean {
+  if (typeof window === "undefined") return false;
+  if (!force && recentlyReloadedForChunk()) return false;
+  markReloaded();
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set("_v", String(Date.now()));
+    window.location.replace(url.toString());
+  } catch {
+    window.location.reload();
+  }
+  return true;
+}
+
 /** Hard-reload once to pick up the latest deployment assets. */
 export function recoverFromChunkLoadError(error?: unknown): boolean {
   if (error != null && !isChunkLoadError(error)) return false;
-  if (typeof window === "undefined") return false;
-  if (recentlyReloaded()) return false;
-  markReloaded();
-  window.location.reload();
-  return true;
+  return hardReloadToLatest(false);
 }
 
 /**
@@ -64,4 +98,23 @@ export function installChunkLoadRecovery() {
       event.preventDefault();
     }
   });
+
+  // Clear the marker only after a short healthy boot. Clearing immediately
+  // would allow an infinite reload loop if the new deploy is still broken.
+  window.setTimeout(() => {
+    clearChunkReloadMarker();
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("_v")) {
+        url.searchParams.delete("_v");
+        const next =
+          url.pathname +
+          (url.searchParams.toString() ? `?${url.searchParams}` : "") +
+          url.hash;
+        window.history.replaceState(null, "", next);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, 2500);
 }

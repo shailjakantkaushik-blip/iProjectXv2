@@ -21,8 +21,10 @@ import { getStyleThemeBootScript } from "@/lib/style-theme";
 import { StyleThemeProvider } from "@/components/style-theme-provider";
 import { LANDING_CONFIG_CACHE_KEY } from "@/lib/landing-config";
 import {
+  hardReloadToLatest,
   installChunkLoadRecovery,
   isChunkLoadError,
+  recentlyReloadedForChunk,
   recoverFromChunkLoadError,
 } from "@/lib/chunk-load-recovery";
 
@@ -46,27 +48,38 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
   const chunkError = isChunkLoadError(error);
+  const alreadyTried = chunkError && recentlyReloadedForChunk();
 
   useEffect(() => {
-    if (chunkError) recoverFromChunkLoadError(error);
+    if (!chunkError) return;
+    // One automatic hard reload. If we already tried, stay on this screen
+    // with clear actions instead of looping "Reloading…".
+    recoverFromChunkLoadError(error);
   }, [chunkError, error]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
         <h1 className="text-xl font-semibold text-foreground">
-          {chunkError ? "Updating the app" : "Something went wrong"}
+          {chunkError
+            ? alreadyTried
+              ? "Update still loading"
+              : "Updating the app"
+            : "Something went wrong"}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {chunkError
-            ? "A newer version was just deployed. Reloading to load the latest files…"
+            ? alreadyTried
+              ? "A newer version was deployed, but the previous reload did not finish cleanly. Use Reload now for a hard refresh, or go home."
+              : "A newer version was just deployed. Reloading to load the latest files…"
             : error.message}
         </p>
         <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
           <button
+            type="button"
             onClick={() => {
               if (chunkError) {
-                window.location.reload();
+                hardReloadToLatest(true);
                 return;
               }
               router.invalidate();
@@ -77,13 +90,30 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
             {chunkError ? "Reload now" : "Try again"}
           </button>
           {chunkError ? (
+            <a
+              href="/"
+              className="inline-flex items-center justify-center rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground"
+              onClick={(e) => {
+                e.preventDefault();
+                try {
+                  sessionStorage.removeItem("pmo:chunk-reload");
+                } catch {
+                  /* ignore */
+                }
+                // Full document navigation avoids reusing a broken SPA chunk graph.
+                window.location.assign("/");
+              }}
+            >
+              Go home
+            </a>
+          ) : (
             <Link
               to="/"
               className="inline-flex items-center justify-center rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground"
             >
               Go home
             </Link>
-          ) : null}
+          )}
         </div>
       </div>
     </div>
