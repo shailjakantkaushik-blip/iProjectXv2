@@ -1163,15 +1163,18 @@ function GanttGroup({
               return (
                 <div
                   key={rowKey}
-                  className={`flex items-center border-b border-border/40 py-2 hover:bg-muted/30 ${
-                    p.is_project_rollup
-                      ? "bg-muted/55"
-                      : p.is_stream_lane
-                        ? "bg-background/40"
-                        : ""
-                  }`}
+                  className="flex items-center border-b border-border/40 py-2 hover:bg-muted/30"
                 >
-                  <div style={{ width: COL_PROJECT }} className="shrink-0 pl-1 pr-2">
+                  <div
+                    style={{ width: COL_PROJECT }}
+                    className={`shrink-0 self-stretch pl-1 pr-2 ${
+                      p.is_project_rollup
+                        ? "rounded-sm bg-muted/55"
+                        : p.is_stream_lane
+                          ? "bg-transparent"
+                          : ""
+                    }`}
+                  >
                     <Link
                       to="/app/project-infographic"
                       search={{ pid: projectId }}
