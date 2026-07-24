@@ -147,7 +147,8 @@ function ActionsPage() {
         icon="✅"
         actions={
           <button
-            className="st-btn-primary"
+            type="button"
+            className="st-btn-primary st-btn-inline"
             onClick={() =>
               document
                 .getElementById("log-form")
@@ -274,6 +275,7 @@ function ActionsPage() {
             onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
           />
           <button
+            type="button"
             className="st-btn-primary"
             disabled={create.isPending}
             onClick={() => create.mutate()}

@@ -297,7 +297,8 @@ function DecisionsPage() {
               Awaiting my approval{myAwaitingCount ? ` (${myAwaitingCount})` : ""}
             </button>
             <button
-              className="st-btn-primary"
+              type="button"
+              className="st-btn-primary st-btn-inline"
               onClick={() =>
                 document.getElementById("log-form")?.scrollIntoView({
                   behavior: "smooth",

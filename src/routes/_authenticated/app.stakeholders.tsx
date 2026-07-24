@@ -108,7 +108,8 @@ function StakeholdersPage() {
         subtitle="Map influence, interest, and engagement strategy"
         actions={
           <button
-            className="st-btn-primary"
+            type="button"
+            className="st-btn-primary st-btn-inline"
             onClick={() =>
               document.getElementById("log-form")?.scrollIntoView({ behavior: "smooth" })
             }
@@ -191,7 +192,12 @@ function StakeholdersPage() {
             value={form.engagement_strategy}
             onChange={(e) => setForm((f) => ({ ...f, engagement_strategy: e.target.value }))}
           />
-          <button className="st-btn-primary md:col-span-4" disabled={create.isPending} onClick={() => create.mutate()}>
+          <button
+            type="button"
+            className="st-btn-primary md:col-span-4"
+            disabled={create.isPending}
+            onClick={() => create.mutate()}
+          >
             {create.isPending ? "Saving…" : "Save stakeholder"}
           </button>
         </div>

@@ -118,7 +118,8 @@ function IssuesPage() {
         subtitle="Track delivery blockers and defects across the portfolio"
         actions={
           <button
-            className="st-btn-primary"
+            type="button"
+            className="st-btn-primary st-btn-inline"
             onClick={() =>
               document.getElementById("log-form")?.scrollIntoView({ behavior: "smooth" })
             }
@@ -196,7 +197,12 @@ function IssuesPage() {
             value={form.description}
             onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
           />
-          <button className="st-btn-primary" disabled={create.isPending} onClick={() => create.mutate()}>
+          <button
+            type="button"
+            className="st-btn-primary"
+            disabled={create.isPending}
+            onClick={() => create.mutate()}
+          >
             {create.isPending ? "Saving…" : "Save issue"}
           </button>
         </div>

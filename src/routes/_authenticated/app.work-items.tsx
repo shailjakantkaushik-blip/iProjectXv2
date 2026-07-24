@@ -299,7 +299,12 @@ function WorkItemsPage() {
             value={form.planned_end}
             onChange={(e) => setForm((f) => ({ ...f, planned_end: e.target.value }))}
           />
-          <button className="st-btn-primary md:col-span-2" disabled={create.isPending} onClick={() => create.mutate()}>
+          <button
+            type="button"
+            className="st-btn-primary md:col-span-2"
+            disabled={create.isPending}
+            onClick={() => create.mutate()}
+          >
             {create.isPending ? "Saving…" : "Create work item"}
           </button>
         </div>

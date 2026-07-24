@@ -120,7 +120,8 @@ function LessonsPage() {
         subtitle="Capture what worked, what failed, and how to improve"
         actions={
           <button
-            className="st-btn-primary"
+            type="button"
+            className="st-btn-primary st-btn-inline"
             onClick={() =>
               document.getElementById("log-form")?.scrollIntoView({ behavior: "smooth" })
             }
@@ -196,7 +197,12 @@ function LessonsPage() {
             value={form.recommendation}
             onChange={(e) => setForm((f) => ({ ...f, recommendation: e.target.value }))}
           />
-          <button className="st-btn-primary" disabled={create.isPending} onClick={() => create.mutate()}>
+          <button
+            type="button"
+            className="st-btn-primary"
+            disabled={create.isPending}
+            onClick={() => create.mutate()}
+          >
             {create.isPending ? "Saving…" : "Save lesson"}
           </button>
         </div>

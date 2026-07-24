@@ -164,7 +164,8 @@ function ReleaseRegisterPage() {
         icon="🚀"
         actions={
           <button
-            className="st-btn-primary"
+            type="button"
+            className="st-btn-primary st-btn-inline"
             onClick={() =>
               document
                 .getElementById("log-form")
@@ -328,6 +329,7 @@ function ReleaseRegisterPage() {
             onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
           />
           <button
+            type="button"
             className="st-btn-primary"
             disabled={create.isPending}
             onClick={() => create.mutate()}
