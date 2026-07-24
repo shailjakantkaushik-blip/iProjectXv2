@@ -360,7 +360,7 @@ function TimelinePage() {
           </label>
           <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1 text-foreground hover:bg-muted">
             <input type="checkbox" checked={showGates} onChange={(e) => setShowGates(e.target.checked)} />
-            Show stage gates
+            Stage gates
           </label>
         </div>
       </SectionFrame>
@@ -375,19 +375,6 @@ function TimelinePage() {
           showPlannedVsActual
           showGates={showGates}
           showProjectTimeline={showProjectTimeline}
-          onShowProjectTimelineChange={setShowProjectTimeline}
-          expandToolbar={
-            <div className="flex flex-wrap items-center gap-1.5">
-              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted">
-                <input type="checkbox" checked={showProjectTimeline} onChange={(e) => setShowProjectTimeline(e.target.checked)} />
-                Project timeline
-              </label>
-              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted">
-                <input type="checkbox" checked={showGates} onChange={(e) => setShowGates(e.target.checked)} />
-                Show stage gates
-              </label>
-            </div>
-          }
         />
       </SectionFrame>
 

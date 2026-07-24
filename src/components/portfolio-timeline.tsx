@@ -139,46 +139,13 @@ export function GanttGroup({
     ? fyGroups[0].fy
     : `${fyGroups[0].fy} – ${fyGroups[fyGroups.length - 1].fy}`;
 
+  const showInlineControls = showProjectToggle || !isControlled;
+
   return (
     <div className="relative rounded-md border border-border bg-surface shadow-sm">
-      {(!isControlled || showProjectToggle) && (
-        <div
-          onClick={(e) => e.stopPropagation()}
-          className="absolute right-2 top-2 z-30 flex flex-wrap items-center justify-end gap-1.5"
-        >
-          {showProjectToggle && (
-            <label
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background/95 px-2 py-0.5 text-[10px] font-medium text-foreground shadow-sm hover:bg-muted"
-              title="Show project rollup lane (start→end + financials from streams)"
-            >
-              <input
-                type="checkbox"
-                checked={!!showProjectTimeline}
-                onChange={(e) => onShowProjectTimelineChange?.(e.target.checked)}
-                className="h-3 w-3"
-              />
-              Project timeline
-            </label>
-          )}
-          {!isControlled && (
-            <label
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background/95 px-2 py-0.5 text-[10px] font-medium text-foreground shadow-sm hover:bg-muted"
-              title="Show or hide stage-gate markers"
-            >
-              <input
-                type="checkbox"
-                checked={effectiveShowGates}
-                onChange={(e) => setInternalShowGates(e.target.checked)}
-                className="h-3 w-3"
-              />
-              Stage gates
-            </label>
-          )}
-        </div>
-      )}
       <button
         onClick={onToggle}
-        className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-3 py-2 pr-32 text-left hover:bg-muted/50"
+        className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-3 py-2 text-left hover:bg-muted/50"
         aria-expanded={!collapsed}
       >
         <div className="flex min-w-0 items-center gap-2">
@@ -206,6 +173,39 @@ export function GanttGroup({
 
       {!collapsed && (
         <div className="border-t border-border p-3 overflow-x-auto">
+          {/* Controls stay left of the grid — never over the RAG summary in the header */}
+          {showInlineControls && (
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              {showProjectToggle && (
+                <label
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-0.5 text-[10px] font-medium text-foreground hover:bg-muted"
+                  title="Show project rollup lane (start→end + financials from streams)"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!showProjectTimeline}
+                    onChange={(e) => onShowProjectTimelineChange?.(e.target.checked)}
+                    className="h-3 w-3"
+                  />
+                  Project timeline
+                </label>
+              )}
+              {!isControlled && (
+                <label
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-0.5 text-[10px] font-medium text-foreground hover:bg-muted"
+                  title="Show or hide stage-gate markers"
+                >
+                  <input
+                    type="checkbox"
+                    checked={effectiveShowGates}
+                    onChange={(e) => setInternalShowGates(e.target.checked)}
+                    className="h-3 w-3"
+                  />
+                  Stage gates
+                </label>
+              )}
+            </div>
+          )}
           <div style={{ minWidth: LEFT + Math.max(560, monthCount * 34) }}>
           <div className="flex items-stretch text-[10px] font-semibold uppercase tracking-wide">
             <div style={{ width: LEFT }} className="shrink-0" />
@@ -218,7 +218,7 @@ export function GanttGroup({
             </div>
           </div>
           <div className="flex items-center border-b border-border pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            <div style={{ width: COL_PROJECT }} className="shrink-0 pl-1">Project</div>
+            <div style={{ width: COL_PROJECT }} className="shrink-0 pl-1">Project / Stream</div>
             <div style={{ width: COL_SPONSOR }} className="shrink-0">Sponsor · Phase</div>
             <div style={{ width: COL_FIN }} className="shrink-0">Budget · Incurred · %</div>
             <div className="relative grid flex-1" style={{ gridTemplateColumns: `repeat(${monthCount}, minmax(34px, 1fr))` }}>
@@ -279,7 +279,7 @@ export function GanttGroup({
                       to="/app/project-infographic"
                       search={{ pid: p.project_id || p.id }}
                       className="block truncate text-[12px] font-medium text-foreground hover:text-primary hover:underline"
-                      title={p.name}
+                      title={p.stream_ref || p.name}
                     >
                       {p.is_project_rollup ? (
                         <>
@@ -288,26 +288,42 @@ export function GanttGroup({
                             Project
                           </span>
                         </>
-                      ) : p.is_stream_lane && p.stream_name ? (
+                      ) : p.is_stream_lane && (p.stream_name || p.stream_code) ? (
                         <>
                           <span className="text-muted-foreground">{p.project_name || "Project"}</span>
                           <span className="text-muted-foreground"> · </span>
-                          <span>{p.stream_name}</span>
+                          <span>{p.stream_name || p.stream_code}</span>
+                          {p.stream_code ? (
+                            <span className="ml-1.5 rounded bg-muted px-1 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              {p.stream_code}
+                            </span>
+                          ) : null}
                         </>
                       ) : (
                         p.name
                       )}
                     </Link>
                     <div className="truncate text-[10px] text-muted-foreground">
-                      {p.project_code ? (
+                      {p.is_stream_lane && p.stream_ref ? (
                         <Link
                           to="/app/project-infographic"
                           search={{ pid: p.project_id || p.id }}
-                          className="text-primary hover:underline"
+                          className="font-mono text-primary hover:underline"
+                          title="Project · stream code"
+                        >
+                          {p.stream_ref}
+                        </Link>
+                      ) : p.project_code ? (
+                        <Link
+                          to="/app/project-infographic"
+                          search={{ pid: p.project_id || p.id }}
+                          className="font-mono text-primary hover:underline"
                         >
                           {p.project_code}
                         </Link>
-                      ) : "—"}{" "}
+                      ) : (
+                        "—"
+                      )}{" "}
                       · {p.is_project_rollup ? "Rollup" : p.is_stream_lane ? "Stream" : p.program || "Unassigned"}
                       {(p.is_stream_lane || p.is_project_rollup) && p.program ? ` · ${p.program}` : ""}
                     </div>

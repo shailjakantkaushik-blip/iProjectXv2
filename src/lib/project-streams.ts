@@ -5,6 +5,47 @@ export type ProjectStream = Tables<"project_streams">;
 export type ProjectStreamInsert = TablesInsert<"project_streams">;
 export type ProjectStreamUpdate = TablesUpdate<"project_streams">;
 
+/**
+ * Short stable stream code under a project (Excel `stream_code`, UI badges).
+ * Prefer explicit `code`, else CORE for default, else a compact name slug.
+ */
+export function formatStreamCode(stream: {
+  code?: string | null;
+  name?: string | null;
+  is_default?: boolean | null;
+}) {
+  const code = String(stream.code || "").trim();
+  if (code) return code.toUpperCase();
+  if (stream.is_default) return "CORE";
+  const name = String(stream.name || "").trim();
+  if (!name) return "STR";
+  const slug = name.replace(/[^A-Za-z0-9]+/g, "").toUpperCase();
+  return (slug.slice(0, 6) || "STR");
+}
+
+/** Display label: "Experience (XP)" when code differs from name. */
+export function formatStreamLabel(stream: {
+  code?: string | null;
+  name?: string | null;
+  is_default?: boolean | null;
+}) {
+  const name = String(stream.name || "").trim() || "Stream";
+  const code = formatStreamCode(stream);
+  return code && code !== name.toUpperCase() ? `${name} (${code})` : name;
+}
+
+/**
+ * Cross-app identity for a stream within a project: `PRJ-001 · CORE`.
+ * Prefer this over raw UUIDs in tables, timelines, and registers.
+ */
+export function formatProjectStreamRef(
+  project: { project_code?: string | null; name?: string | null },
+  stream: { code?: string | null; name?: string | null; is_default?: boolean | null },
+) {
+  const proj = String(project.project_code || "").trim() || project.name || "Project";
+  return `${proj} · ${formatStreamCode(stream)}`;
+}
+
 /** Shape a stream row into a timeline / PvA lane (project-compatible fields). */
 export function streamToTimelineLane(
   project: {
@@ -30,6 +71,9 @@ export function streamToTimelineLane(
   const actualEnd = s.actual_end_date;
   const start = plannedStart || actualStart || null;
   const end = actualEnd || plannedEnd || null;
+  const streamCode = formatStreamCode(s);
+  const streamLabel = formatStreamLabel(s);
+  const streamRef = formatProjectStreamRef(project, s);
   return {
     ...s,
     // Lane identity: unique per stream for gates + React keys
@@ -39,6 +83,10 @@ export function streamToTimelineLane(
     is_stream_lane: true as const,
     name: `${project.name || "Project"} · ${s.name}`,
     stream_name: s.name as string | null,
+    stream_code: streamCode,
+    stream_label: streamLabel,
+    /** Human stream id under the project, e.g. PRJ-001 · CORE */
+    stream_ref: streamRef,
     project_name: project.name,
     project_code: project.project_code,
     program: project.program,
@@ -191,10 +239,10 @@ export function expandProjectsToTimelineLanes(
       );
       const phase = opts?.resolvePhase?.(p, streamGates) ?? p.current_phase;
       const lane = streamToTimelineLane(p, s, phase);
-      // Single Core without project rollup: project-first label (still stream-backed).
+      // Single Core without project rollup: project-first label, keep stream code identity.
       if (!multi && s.is_default && !opts?.includeProjectRollup) {
         lane.name = p.name || lane.name;
-        lane.stream_name = null;
+        // Keep stream_name / stream_code / stream_ref so the lane stays identifiable.
       }
       lanes.push(lane);
     }

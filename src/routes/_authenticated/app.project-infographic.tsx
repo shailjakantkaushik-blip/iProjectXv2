@@ -33,7 +33,13 @@ import { Button } from "@/components/ui/button";
 import { downloadProjectBriefPPT } from "@/lib/project-brief-ppt";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { isDoneGateStatus, resolveCurrentStage } from "@/lib/project-phase";
-import { expandProjectsToTimelineLanes, fetchProjectStreams } from "@/lib/project-streams";
+import {
+  expandProjectsToTimelineLanes,
+  fetchProjectStreams,
+  formatProjectStreamRef,
+  formatStreamCode,
+  formatStreamLabel,
+} from "@/lib/project-streams";
 
 export const Route = createFileRoute("/_authenticated/app/project-infographic")({
   validateSearch: (s: Record<string, unknown>) => ({ pid: (s.pid as string) || "" }),
@@ -272,6 +278,7 @@ function InfographicPage() {
   const [pid, setPid] = useState<string>(search.pid || "");
   const [showPvA, setShowPvA] = useState<boolean>(false);
   const [showProjectTimeline, setShowProjectTimeline] = useState<boolean>(false);
+  const [showGates, setShowGates] = useState<boolean>(true);
   const [pageView, setPageView] = useState<"infographic" | "summary">("infographic");
   useEffect(() => {
     if (search.pid) setPid(search.pid);
@@ -452,22 +459,66 @@ function InfographicPage() {
   const remaining = Math.max(0, budget - incurred);
   const utilPct = budget ? (incurred / budget) * 100 : 0;
 
-  // Build phase list — merge PHASES with any gates in DB, prefer DB row when present
-  const gateByName = new Map<string, any>();
-  gates.forEach((g: any) => gateByName.set((g.gate_name || "").trim(), g));
+  // Project-level phase rollup (sums stream gate $; status from earliest in-flight)
   const phaseCards = PHASES.map((name) => {
-    const g = gateByName.get(name);
+    const matching = (gates as any[]).filter((g) => (g.gate_name || "").trim() === name);
+    const g =
+      matching.find((x) => !isDoneGateStatus(x.status)) ||
+      matching[0];
     return {
       name,
       status: g?.status || "Not Started",
       planned: g?.planned_date,
       actual: g?.actual_date,
       approver: g?.approver,
-      budget: Number(g?.phase_budget ?? 0),
-      forecast: Number(g?.phase_forecast ?? 0),
-      actualSpend: Number(g?.phase_actual ?? 0),
+      budget: matching.reduce((n, x) => n + Number(x?.phase_budget ?? 0), 0),
+      forecast: matching.reduce((n, x) => n + Number(x?.phase_forecast ?? 0), 0),
+      actualSpend: matching.reduce((n, x) => n + Number(x?.phase_actual ?? 0), 0),
     };
   });
+
+  // Stage gates by stream — primary view when streams exist
+  const sortedStreams = [...(projectStreams as any[])].sort(
+    (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || String(a.name).localeCompare(String(b.name)),
+  );
+  const streamGateSections =
+    sortedStreams.length > 0
+      ? sortedStreams.map((stream) => {
+          const streamGates = (gates as any[]).filter(
+            (g) => g.stream_id === stream.id || (!g.stream_id && stream.is_default),
+          );
+          const byName = new Map<string, any>();
+          streamGates.forEach((g) => byName.set((g.gate_name || "").trim(), g));
+          const cards = PHASES.map((name) => {
+            const g = byName.get(name);
+            return {
+              name,
+              status: g?.status || "Not Started",
+              planned: g?.planned_date,
+              actual: g?.actual_date,
+              approver: g?.approver,
+              budget: Number(g?.phase_budget ?? 0),
+              forecast: Number(g?.phase_forecast ?? 0),
+              actualSpend: Number(g?.phase_actual ?? 0),
+            };
+          });
+          return {
+            stream,
+            streamCode: formatStreamCode(stream),
+            streamLabel: formatStreamLabel(stream),
+            streamRef: formatProjectStreamRef(project, stream),
+            cards,
+          };
+        })
+      : [
+          {
+            stream: null,
+            streamCode: "",
+            streamLabel: "Project",
+            streamRef: project.project_code || project.name || "Project",
+            cards: phaseCards,
+          },
+        ];
 
   // Health chips (simple heuristics)
   const scheduleHealth = phaseCards.some((p) => p.status === "Delayed" || p.status === "Blocked")
@@ -564,6 +615,7 @@ function InfographicPage() {
       role: string | null;
       streamId: string | null;
       streamName: string | null;
+      streamRef: string | null;
       months: Record<string, number>;
       total: number;
     };
@@ -572,6 +624,7 @@ function InfographicPage() {
       const streamId = a.stream_id || null;
       const key = `${a.resource_id}::${streamId || "_"}`;
       const res = resourceById.get(a.resource_id);
+      const stream = streamId ? streamById.get(streamId) : null;
       if (!map.has(key)) {
         map.set(key, {
           key,
@@ -579,7 +632,8 @@ function InfographicPage() {
           name: res?.name || "Unknown",
           role: res?.role || a.role_on_project || null,
           streamId,
-          streamName: streamId ? streamById.get(streamId)?.name || streamById.get(streamId)?.code || "Stream" : null,
+          streamName: stream ? formatStreamLabel(stream) : null,
+          streamRef: stream ? formatProjectStreamRef(project, stream) : null,
           months: {},
           total: 0,
         });
@@ -834,43 +888,57 @@ function InfographicPage() {
         </div>
       </SectionFrame>
 
-      {/* Stage Gate cards */}
+      {/* Stage Gate cards — one lane per stream */}
       <SectionFrame>
-        <SectionTitle>Stage Gates</SectionTitle>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8">
-          {phaseCards.map((p) => {
-            const s = STATUS_STYLE[p.status] || STATUS_STYLE["Not Started"];
-            const done = isDoneGateStatus(p.status);
-            return (
-              <div
-                key={p.name}
-                className={`bg-white rounded-lg border border-slate-200 p-3 ring-1 ${s.ring} min-h-[110px]`}
-              >
-                <div className="flex items-start gap-2">
-                  <div
-                    className={`w-5 h-5 rounded-full ${s.dot} flex items-center justify-center text-white text-[10px] font-bold shrink-0`}
-                    title={done ? "Approved / completed" : p.status}
-                  >
-                    {done ? "✓" : "○"}
-                  </div>
-                  <div className="text-xs font-semibold text-slate-800 leading-tight">{p.name}</div>
+        <SectionTitle>Stage Gates{hasStreams ? " by Stream" : ""}</SectionTitle>
+        <div className="space-y-5">
+          {streamGateSections.map((section) => (
+            <div key={section.stream?.id || "project"}>
+              {hasStreams ? (
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold text-foreground">{section.streamLabel}</span>
+                  <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {section.streamRef}
+                  </span>
                 </div>
-                <div className={`text-xs mt-2 font-medium ${s.text}`}>{p.status}</div>
-                {p.planned && (
-                  <div className="text-[10px] text-slate-500 mt-1">Plan: {fmtDate(p.planned)}</div>
-                )}
-                {p.actual && (
-                  <div className="text-[10px] text-slate-500">Actual: {fmtDate(p.actual)}</div>
-                )}
-                {(p.budget > 0 || p.actualSpend > 0) && (
-                  <div className="text-[10px] text-slate-600 mt-1 border-t pt-1">
-                    <div>Bud: {money(p.budget)}</div>
-                    <div>Act: {money(p.actualSpend)}</div>
-                  </div>
-                )}
+              ) : null}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8">
+                {section.cards.map((p) => {
+                  const s = STATUS_STYLE[p.status] || STATUS_STYLE["Not Started"];
+                  const done = isDoneGateStatus(p.status);
+                  return (
+                    <div
+                      key={`${section.streamRef}:${p.name}`}
+                      className={`bg-white rounded-lg border border-slate-200 p-3 ring-1 ${s.ring} min-h-[110px]`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <div
+                          className={`w-5 h-5 rounded-full ${s.dot} flex items-center justify-center text-white text-[10px] font-bold shrink-0`}
+                          title={done ? "Approved / completed" : p.status}
+                        >
+                          {done ? "✓" : "○"}
+                        </div>
+                        <div className="text-xs font-semibold text-slate-800 leading-tight">{p.name}</div>
+                      </div>
+                      <div className={`text-xs mt-2 font-medium ${s.text}`}>{p.status}</div>
+                      {p.planned && (
+                        <div className="text-[10px] text-slate-500 mt-1">Plan: {fmtDate(p.planned)}</div>
+                      )}
+                      {p.actual && (
+                        <div className="text-[10px] text-slate-500">Actual: {fmtDate(p.actual)}</div>
+                      )}
+                      {(p.budget > 0 || p.actualSpend > 0) && (
+                        <div className="text-[10px] text-slate-600 mt-1 border-t pt-1">
+                          <div>Bud: {money(p.budget)}</div>
+                          <div>Act: {money(p.actualSpend)}</div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       </SectionFrame>
 
@@ -902,7 +970,7 @@ function InfographicPage() {
               onChange={(e) => setShowPvA(e.target.checked)}
               className="h-3 w-3"
             />
-            Show Planned vs Actual
+            Planned vs Actual
           </label>
           {hasStreams ? (
             <label
@@ -918,6 +986,18 @@ function InfographicPage() {
               Project timeline
             </label>
           ) : null}
+          <label
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background/95 px-2 py-1 text-[11px] font-medium text-foreground shadow-sm hover:bg-muted"
+            title="Show or hide stage-gate markers on the timeline"
+          >
+            <input
+              type="checkbox"
+              checked={showGates}
+              onChange={(e) => setShowGates(e.target.checked)}
+              className="h-3 w-3"
+            />
+            Stage gates
+          </label>
         </div>
         <PortfolioTimeline
           projects={timelineLanes}
@@ -928,8 +1008,8 @@ function InfographicPage() {
               : project.name || "Project Timeline"
           }
           showPlannedVsActual={showPvA}
+          showGates={showGates}
           showProjectTimeline={showProjectTimeline}
-          onShowProjectTimelineChange={hasStreams ? setShowProjectTimeline : undefined}
           captureId="project-timeline-capture"
         />
       </SectionFrame>
@@ -1149,9 +1229,16 @@ function InfographicPage() {
                     <td>{project.name}</td>
                     {hasStreams ? (
                       <td>
-                        {g.stream_id
-                          ? streamById.get(g.stream_id)?.name || streamById.get(g.stream_id)?.code || "Stream"
-                          : "—"}
+                        {g.stream_id && streamById.get(g.stream_id) ? (
+                          <div className="leading-tight">
+                            <div>{formatStreamLabel(streamById.get(g.stream_id))}</div>
+                            <div className="font-mono text-[10px] text-muted-foreground">
+                              {formatProjectStreamRef(project, streamById.get(g.stream_id))}
+                            </div>
+                          </div>
+                        ) : (
+                          "—"
+                        )}
                       </td>
                     ) : null}
                     <td>{g.gate_name}</td>
@@ -1175,11 +1262,12 @@ function InfographicPage() {
 
       {/* Stage Gates table */}
       <SectionFrame>
-        <SectionTitle>Stage Gate Detail</SectionTitle>
+        <SectionTitle>Stage Gate Detail{hasStreams ? " by Stream" : ""}</SectionTitle>
         <div className="overflow-x-auto">
           <table className="st-table text-xs">
             <thead>
               <tr>
+                {hasStreams ? <th>Stream</th> : null}
                 <th>Gate</th>
                 <th>Status</th>
                 <th>Planned</th>
@@ -1191,8 +1279,17 @@ function InfographicPage() {
               </tr>
             </thead>
             <tbody>
-              {phaseCards.map((p) => (
-                <tr key={p.name}>
+              {streamGateSections.flatMap((section) =>
+                section.cards.map((p) => (
+                <tr key={`${section.streamRef}:${p.name}`}>
+                  {hasStreams ? (
+                    <td>
+                      <div className="leading-tight">
+                        <div className="font-medium">{section.streamLabel}</div>
+                        <div className="font-mono text-[10px] text-muted-foreground">{section.streamRef}</div>
+                      </div>
+                    </td>
+                  ) : null}
                   <td className="font-medium">{p.name}</td>
                   <td>{p.status}</td>
                   <td>{fmtDate(p.planned)}</td>
@@ -1202,7 +1299,8 @@ function InfographicPage() {
                   <td className="text-right tabular-nums">{money(p.forecast)}</td>
                   <td className="text-right tabular-nums">{money(p.actualSpend)}</td>
                 </tr>
-              ))}
+                )),
+              )}
             </tbody>
           </table>
         </div>
@@ -1248,7 +1346,12 @@ function InfographicPage() {
                     {hasStreams ? (
                       <td>
                         {r.streamName ? (
-                          <span className="rounded bg-muted px-1.5 py-0.5 font-medium">{r.streamName}</span>
+                          <div className="leading-tight">
+                            <span className="rounded bg-muted px-1.5 py-0.5 font-medium">{r.streamName}</span>
+                            {r.streamRef ? (
+                              <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">{r.streamRef}</div>
+                            ) : null}
+                          </div>
                         ) : (
                           <span className="text-muted-foreground">Project</span>
                         )}

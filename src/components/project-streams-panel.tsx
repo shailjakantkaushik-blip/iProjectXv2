@@ -11,6 +11,8 @@ import {
   duplicateProjectStream,
   ensureProjectCoreStream,
   fetchProjectStreams,
+  formatProjectStreamRef,
+  formatStreamCode,
   updateProjectStream,
   type ProjectStream,
 } from "@/lib/project-streams";
@@ -53,6 +55,7 @@ function emptyDraft(orgId: string, projectId: string, sortOrder: number): Partia
 
 function StreamEditor({
   stream,
+  projectCode,
   onSave,
   onDelete,
   onDuplicate,
@@ -60,6 +63,7 @@ function StreamEditor({
   canDelete,
 }: {
   stream: ProjectStream | (Partial<ProjectStream> & { org_id: string; project_id: string; name: string });
+  projectCode?: string | null;
   onSave: (patch: Record<string, unknown>) => Promise<void>;
   onDelete?: () => Promise<void>;
   onDuplicate?: () => Promise<void>;
@@ -89,6 +93,14 @@ function StreamEditor({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm font-semibold text-foreground">
           {draft.name || "New stream"}
+          <span
+            className="ml-2 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+            title="Project · stream code (use this in Excel as stream_code)"
+          >
+            {projectCode
+              ? formatProjectStreamRef({ project_code: projectCode }, draft)
+              : formatStreamCode(draft)}
+          </span>
           {draft.is_default ? (
             <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
               Default / Core
@@ -291,11 +303,14 @@ function StreamEditor({
 
 export function ProjectStreamsPanel({
   projectId,
+  projectCode,
   orgId,
   streamsEnabled: _streamsEnabled = true,
   projectRollup,
 }: {
   projectId: string;
+  /** Optional project code for `PRJ-001 · CORE` identity labels. */
+  projectCode?: string | null;
   orgId: string;
   /** @deprecated Always-on Core — kept for call-site compat. */
   streamsEnabled?: boolean;
@@ -414,6 +429,7 @@ export function ProjectStreamsPanel({
               <StreamEditor
                 key={s.id}
                 stream={s}
+                projectCode={projectCode}
                 busy={duplicatingId === s.id}
                 canDelete={!s.is_default && streams.length > 1}
                 onDuplicate={async () => {
@@ -465,6 +481,7 @@ export function ProjectStreamsPanel({
             {adding ? (
               <StreamEditor
                 stream={emptyDraft(orgId, projectId, streams.length)}
+                projectCode={projectCode}
                 onSave={async (patch) => {
                   try {
                     await createProjectStream({

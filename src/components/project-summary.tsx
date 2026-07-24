@@ -300,11 +300,18 @@ function StreamTimeline({
             key={s.id}
             className="grid grid-cols-[140px_1fr] items-center gap-2 sm:grid-cols-[160px_1fr]"
           >
-            <div className="flex min-w-0 items-center gap-2 text-xs font-semibold">
-              <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: accent }} />
-              <span className="truncate" title={s.name}>
-                {s.name}
-              </span>
+            <div className="flex min-w-0 flex-col gap-0.5 text-xs font-semibold">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: accent }} />
+                <span className="truncate" title={s.name}>
+                  {s.name}
+                </span>
+              </div>
+              {(s.code || s.is_default) && (
+                <span className="pl-4 font-mono text-[10px] font-medium text-muted-foreground">
+                  {(project.project_code || "PRJ").trim()} · {String(s.code || (s.is_default ? "CORE" : "")).toUpperCase()}
+                </span>
+              )}
             </div>
             <div className="relative h-9 rounded-md border border-border bg-muted/30">
               {segs.map((seg, si) => (

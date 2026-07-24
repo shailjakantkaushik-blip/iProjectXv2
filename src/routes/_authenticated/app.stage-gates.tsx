@@ -8,7 +8,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, Legend } fro
 import { GATE_STATUS_COLORS as STATUS_COLORS, CHART_SERIES } from "@/lib/chart-theme";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { resolveCurrentAndNextGate, resolveCurrentStage } from "@/lib/project-phase";
-import { fetchOrgStreams } from "@/lib/project-streams";
+import { fetchOrgStreams, formatProjectStreamRef, formatStreamLabel } from "@/lib/project-streams";
 
 export const Route = createFileRoute("/_authenticated/app/stage-gates")({
   component: StageGatesPage,
@@ -123,7 +123,8 @@ function StageGatesPage() {
     const rows: {
       key: string;
       project: any;
-      streamName: string | null;
+      streamLabel: string | null;
+      streamRef: string | null;
       current: any;
       next: any;
       phase: string | null;
@@ -144,7 +145,8 @@ function StageGatesPage() {
           rows.push({
             key: `${p.id}:${s.id}`,
             project: p,
-            streamName: s.name,
+            streamLabel: formatStreamLabel(s),
+            streamRef: formatProjectStreamRef(p, s),
             current,
             next,
             phase,
@@ -158,7 +160,8 @@ function StageGatesPage() {
         rows.push({
           key: p.id,
           project: p,
-          streamName: null,
+          streamLabel: null,
+          streamRef: null,
           current,
           next,
           phase,
@@ -228,6 +231,7 @@ function StageGatesPage() {
               <tr>
                 <th>Project</th>
                 <th>Stream</th>
+                <th>Project · Stream</th>
                 <th>Program</th>
                 <th>Sponsor</th>
                 <th>RAG</th>
@@ -240,10 +244,18 @@ function StageGatesPage() {
               </tr>
             </thead>
             <tbody>
-              {register.map(({ key, project, streamName, current, next, phase, rag }) => (
+              {register.map(({ key, project, streamLabel, streamRef, current, next, phase, rag }) => (
                 <tr key={key}>
-                  <td className="font-medium">{project.name}</td>
-                  <td>{streamName || "—"}</td>
+                  <td>
+                    <div className="leading-tight">
+                      <div className="font-medium">{project.name}</div>
+                      {project.project_code ? (
+                        <div className="font-mono text-[10px] text-muted-foreground">{project.project_code}</div>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td>{streamLabel || "—"}</td>
+                  <td className="font-mono text-[11px]">{streamRef || project.project_code || "—"}</td>
                   <td>{project.program || "—"}</td>
                   <td>{project.sponsor || "—"}</td>
                   <td>

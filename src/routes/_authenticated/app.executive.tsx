@@ -953,8 +953,8 @@ function GanttGroup({
       {!collapsed && (
         <div className="border-t border-border p-3 overflow-x-auto">
           <div style={{ minWidth: LEFT + Math.max(560, monthCount * 34) }}>
-          {/* Timeline controls — placed above the grid to avoid overlapping the RAG summary */}
-          <div className="mb-2 flex flex-wrap items-center justify-end gap-2">
+          {/* Timeline controls — left of grid, never over the RAG summary in the header */}
+          <div className="mb-2 flex flex-wrap items-center gap-2">
             <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-0.5 text-[10px] font-medium text-foreground hover:bg-muted">
               <input type="checkbox" checked={showPvA} onChange={(e) => setShowPvA(e.target.checked)} className="h-3 w-3" />
               Planned vs Actual
@@ -1057,19 +1057,26 @@ function GanttGroup({
                             Project
                           </span>
                         </>
-                      ) : p.is_stream_lane && p.stream_name ? (
+                      ) : p.is_stream_lane && (p.stream_name || p.stream_code) ? (
                         <>
                           <span className="text-muted-foreground">{p.project_name || "Project"}</span>
                           <span className="text-muted-foreground"> · </span>
-                          <span>{p.stream_name}</span>
+                          <span>{p.stream_name || p.stream_code}</span>
+                          {p.stream_code ? (
+                            <span className="ml-1.5 rounded bg-muted px-1 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              {p.stream_code}
+                            </span>
+                          ) : null}
                         </>
                       ) : (
                         p.name
                       )}
                     </Link>
                     <div className="truncate text-[10px] text-muted-foreground">
-                      {p.project_code ? (
-                        <Link to="/app/project-infographic" search={{ pid: projectId }} className="text-primary hover:underline">{p.project_code}</Link>
+                      {p.is_stream_lane && p.stream_ref ? (
+                        <Link to="/app/project-infographic" search={{ pid: projectId }} className="font-mono text-primary hover:underline" title="Project · stream code">{p.stream_ref}</Link>
+                      ) : p.project_code ? (
+                        <Link to="/app/project-infographic" search={{ pid: projectId }} className="font-mono text-primary hover:underline">{p.project_code}</Link>
                       ) : "—"}{" "}
                       · {p.is_project_rollup ? "Rollup" : p.is_stream_lane ? "Stream" : p.program || "Unassigned"}
                       {(p.is_stream_lane || p.is_project_rollup) && p.program ? ` · ${p.program}` : ""}

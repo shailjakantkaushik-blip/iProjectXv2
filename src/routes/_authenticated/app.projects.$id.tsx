@@ -228,6 +228,7 @@ function ProjectDetail() {
       {tab === "streams" && organization?.id && (
         <ProjectStreamsPanel
           projectId={id}
+          projectCode={project.project_code}
           orgId={organization.id}
           streamsEnabled={!!project.streams_enabled}
           projectRollup={{
