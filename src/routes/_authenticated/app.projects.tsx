@@ -235,7 +235,7 @@ function ProjectsList() {
         actions={
           <div className="flex flex-wrap gap-2">
             {canUploadTemplate && (
-              <Button variant="outline" size="sm" onClick={downloadTemplate}>
+              <Button variant="outline" size="sm" onClick={() => void downloadTemplate()}>
                 <FileDown className="mr-2 h-4 w-4" />
                 Template
               </Button>
@@ -263,7 +263,7 @@ function ProjectsList() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => exportProjects(filtered)}
+              onClick={() => void exportProjects(filtered)}
               disabled={filtered.length === 0}
             >
               <Download className="mr-2 h-4 w-4" />
