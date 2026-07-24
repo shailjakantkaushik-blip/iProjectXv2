@@ -32,8 +32,10 @@ export const getRouter = () => {
     routeTree,
     context: { queryClient },
     scrollRestoration: true,
+    defaultPreload: "intent",
     defaultPreloadStaleTime: 30_000,
-    defaultPendingMs: 0,
+    // Avoid flashing a full pending screen on fast navigations.
+    defaultPendingMs: 1000,
     defaultPendingComponent: RoutePending,
   });
 

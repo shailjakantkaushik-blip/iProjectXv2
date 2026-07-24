@@ -361,14 +361,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     setMobileOpen(false);
   }, [pathname]);
 
-  // Right pane / window: always start the new page at the top.
-  useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    const main = document.querySelector<HTMLElement>(".shell-main");
-    if (main) main.scrollTop = 0;
-  }, [pathname]);
+  // Page scroll is handled by the router's scrollRestoration — do not fight it
+  // with a manual window.scrollTo on every pathname change.
 
-  // Left nav only: keep the selected item visible without moving the page.
+  // Left nav only: keep the selected item visible when it is off-screen.
   useEffect(() => {
     const scrollNavToActive = (root: HTMLElement | null) => {
       if (!root) return;
@@ -377,20 +373,22 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       const rootRect = root.getBoundingClientRect();
       const activeRect = active.getBoundingClientRect();
+      const pad = 8;
+      const fullyVisible =
+        activeRect.top >= rootRect.top + pad && activeRect.bottom <= rootRect.bottom - pad;
+      if (fullyVisible) return;
+
       const offset =
         activeRect.top - rootRect.top - rootRect.height / 2 + activeRect.height / 2;
       const nextTop = root.scrollTop + offset;
       const max = root.scrollHeight - root.clientHeight;
       const clamped = Math.max(0, Math.min(nextTop, max));
 
-      const reduce =
-        typeof window !== "undefined" &&
-        window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-
-      if (reduce || typeof root.scrollTo !== "function") {
-        root.scrollTop = clamped;
+      // Instant — smooth sidebar scroll on every route change feels laggy.
+      if (typeof root.scrollTo === "function") {
+        root.scrollTo({ top: clamped, behavior: "auto" });
       } else {
-        root.scrollTo({ top: clamped, behavior: "smooth" });
+        root.scrollTop = clamped;
       }
     };
 
@@ -680,10 +678,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <div className="hidden truncate text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70 sm:block">
                 {brandName}
               </div>
-              <div
-                key={pageTitle}
-                className="shell-page-title truncate text-[13px] font-semibold tracking-[-0.02em] text-foreground"
-              >
+              <div className="shell-page-title truncate text-[13px] font-semibold tracking-[-0.02em] text-foreground">
                 {pageTitle}
               </div>
             </div>
@@ -756,10 +751,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main
-          key={pathname}
-          className="shell-main min-w-0 flex-1 overflow-x-hidden p-3 sm:p-5 lg:p-7"
-        >
+        <main className="shell-main min-w-0 flex-1 overflow-x-hidden p-3 sm:p-5 lg:p-7">
           {children}
         </main>
       </div>

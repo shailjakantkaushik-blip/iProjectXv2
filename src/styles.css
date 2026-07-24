@@ -555,13 +555,15 @@ body { overflow-x: hidden; }
   box-shadow: 0 1px 0 color-mix(in oklab, var(--border) 65%, transparent);
 }
 .shell-page-title {
-  animation: shell-title-in 0.32s ease-out both;
+  /* Title text updates in place — no remount fade on every navigation. */
+  transition: opacity 0.15s ease-out;
 }
 .shell-main {
   width: 100%;
   max-width: none;
   box-sizing: border-box;
-  animation: shell-main-in 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* Stay mounted across routes; avoid opacity/transform enter on every nav. */
+  animation: none;
 }
 .shell-nav {
   scrollbar-width: thin;
@@ -897,7 +899,7 @@ html[data-style-theme="standard"] .st-table thead th {
   text-transform: uppercase;
 }
 html[data-style-theme="standard"] .shell-main {
-  animation: shell-main-in 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: none;
 }
 
 /* ---- Space: geometric / mission-control chrome (no recolour) ---- */
@@ -958,7 +960,7 @@ html[data-style-theme="space"] .shell-root > *:not(.cartoon-companion) {
 }
 html[data-style-theme="space"] .shell-main {
   background: transparent;
-  animation: style-space-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: none;
 }
 /* Lifted opaque panels with depth shadow (no clip-path so shadows read) */
 html[data-style-theme="space"] .section-frame,
@@ -1060,7 +1062,7 @@ html[data-style-theme="racing"] .shell-main {
       color-mix(in srgb, var(--color-foreground) 2%, transparent) 28px,
       color-mix(in srgb, var(--color-foreground) 2%, transparent) 29px
     );
-  animation: style-racing-in 0.28s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+  animation: none;
 }
 html[data-style-theme="racing"] .section-frame,
 html[data-style-theme="racing"] .kpi-card,
@@ -1403,7 +1405,7 @@ html[data-style-theme="coastal"] button[data-slot="button"] {
   border-radius: var(--style-btn-radius);
 }
 html[data-style-theme="coastal"] .shell-main {
-  animation: style-coastal-in 0.4s ease-out both;
+  animation: none;
 }
 @keyframes style-coastal-in {
   from { opacity: 0; transform: translateY(8px); }

@@ -37,7 +37,7 @@ export function PageLoading({
   );
 }
 
-/** Router default pending — used while route loaders run. */
+/** Router default pending — used while route loaders run (in-shell, not fullscreen). */
 export function RoutePending() {
-  return <PageLoading label="Loading…" size="sm" />;
+  return <PageLoading label="Loading…" size="sm" fullScreen={false} />;
 }

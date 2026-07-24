@@ -1,7 +1,6 @@
 import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { AppShell } from "@/components/app-shell";
 import { useLiveSync } from "@/lib/use-live-sync";
 import { PageLoading } from "@/components/page-loading";
 
@@ -25,16 +24,12 @@ function AppLayout() {
   }, [loading, needsOnboarding, navigate]);
 
   if (loading || !profile) {
-    return <PageLoading label="Loading workspace…" />;
+    return <PageLoading label="Loading workspace…" fullScreen={false} />;
   }
   if (profile.org_id && !organization) {
-    return <PageLoading label="Loading workspace…" />;
+    return <PageLoading label="Loading workspace…" fullScreen={false} />;
   }
   if (needsOnboarding) return null;
 
-  return (
-    <AppShell>
-      <Outlet />
-    </AppShell>
-  );
+  return <Outlet />;
 }

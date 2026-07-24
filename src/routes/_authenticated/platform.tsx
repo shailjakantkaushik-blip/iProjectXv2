@@ -1,6 +1,5 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
-import { AppShell } from "@/components/app-shell";
 
 export const Route = createFileRoute("/_authenticated/platform")({
   beforeLoad: async () => {
@@ -10,5 +9,5 @@ export const Route = createFileRoute("/_authenticated/platform")({
     const isPlatform = (roles ?? []).some((r: any) => r.role === "platform_admin");
     if (!isPlatform) throw redirect({ to: "/app" });
   },
-  component: () => <AppShell><Outlet /></AppShell>,
+  component: () => <Outlet />,
 });

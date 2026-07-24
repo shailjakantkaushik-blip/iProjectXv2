@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth-context";
 import { readOrgAuthEntrySlug } from "@/lib/org-auth-entry";
 import { toast } from "sonner";
 import { PageLoading } from "@/components/page-loading";
+import { AppShell } from "@/components/app-shell";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -14,6 +15,9 @@ function Gate() {
   const { session, profile, loading, signOut } = useAuth();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  // Onboarding is a focused flow — keep chrome off.
+  const bareShell = pathname.startsWith("/onboarding");
+
   useEffect(() => {
     if (loading) return;
     if (!session) {
@@ -44,5 +48,11 @@ function Gate() {
   if (profile.is_active === false) {
     return <PageLoading label="Account inactive…" />;
   }
-  return <Outlet />;
+  // One shell for /app and /platform so chrome stays mounted across nav.
+  if (bareShell) return <Outlet />;
+  return (
+    <AppShell>
+      <Outlet />
+    </AppShell>
+  );
 }
