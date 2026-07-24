@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -10,6 +10,9 @@ import { EditableCell } from "@/components/editable-cell";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from "recharts";
 import { ChartLegendList, legendItemsFromCounts } from "@/components/chart-legend-list";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/release-register")({
   component: ReleaseRegisterPage,
@@ -42,7 +45,10 @@ function ReleaseRegisterPage() {
       ).data ?? [],
     enabled: !!orgId,
   });
-  const projectById = new Map(projects.map((p: any) => [p.id, p]));
+  const projectById = useMemo(
+    () => new Map(projects.map((p: any) => [p.id, p])),
+    [projects],
+  );
 
   const [form, setForm] = useState({
     project_id: "",
@@ -59,6 +65,31 @@ function ReleaseRegisterPage() {
     notes: "",
     description: "",
   });
+
+  const columns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "cr_number", label: "CR #" },
+      {
+        key: "project",
+        label: "Project",
+        getValue: (c) => (projectById.get(c.project_id) as any)?.project_code || "",
+      },
+      { key: "title", label: "Title" },
+      { key: "change_type", label: "Type" },
+      { key: "owner", label: "Owner" },
+      { key: "raised_by", label: "Raised By" },
+      { key: "approver", label: "Approver" },
+      { key: "impact_scope", label: "Impact" },
+      { key: "impact_schedule_days", label: "Days" },
+      { key: "impact_cost", label: "Cost" },
+      { key: "status", label: "Status" },
+      { key: "raised_date", label: "Raised" },
+      { key: "notes", label: "Notes" },
+    ],
+    [projectById],
+  );
+
+  const table = useColumnarTable(crs, columns);
 
   const create = useMutation({
     mutationFn: async () => {
@@ -307,8 +338,16 @@ function ReleaseRegisterPage() {
       </SectionFrame>
 
       <SectionFrame>
-        <SectionTitle>Release Register ({crs.length})</SectionTitle>
-        {crs.length === 0 ? (
+        <SectionTitle>Release Register</SectionTitle>
+        <ColumnarToolbar
+          globalQ={table.globalQ}
+          onGlobalQ={table.setGlobalQ}
+          shown={table.rows.length}
+          total={table.total}
+          onClear={table.clearAll}
+          placeholder="Search release register…"
+        />
+        {table.total === 0 ? (
           <div className="py-8 text-center text-sm text-muted-foreground">
             No releases / change requests logged.
           </div>
@@ -317,157 +356,163 @@ function ReleaseRegisterPage() {
             <table className="st-table">
               <thead>
                 <tr>
-                  <th>CR #</th>
-                  <th>Project</th>
-                  <th>Title</th>
-                  <th>Type</th>
-                  <th>Owner</th>
-                  <th>Raised By</th>
-                  <th>Approver</th>
-                  <th>Impact</th>
-                  <th>Days</th>
-                  <th>Cost</th>
-                  <th>Status</th>
-                  <th>Raised</th>
-                  <th>Notes</th>
+                  {columns.map((col) => (
+                    <ColumnarTh
+                      key={col.key}
+                      column={col}
+                      filter={table.filters[col.key]}
+                      onFilter={(v) => table.setColumnFilter(col.key, v)}
+                      sortKey={table.sortKey}
+                      sortDir={table.sortDir}
+                      onToggleSort={table.toggleSort}
+                    />
+                  ))}
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {crs.map((c: any) => {
-                  const p = projectById.get(c.project_id) as any;
-                  return (
-                    <tr key={c.id}>
-                      <td>
-                        <EditableCell
-                          table="change_requests"
-                          rowId={c.id}
-                          field="cr_number"
-                          value={c.cr_number}
-                          invalidateKeys={["change_requests"]}
-                        />
-                      </td>
-                      <td className="font-medium">{p?.project_code || "—"}</td>
-                      <td>
-                        <EditableCell
-                          table="change_requests"
-                          rowId={c.id}
-                          field="title"
-                          value={c.title}
-                          invalidateKeys={["change_requests"]}
-                        />
-                      </td>
-                      <td>
-                        <EditableCell
-                          table="change_requests"
-                          rowId={c.id}
-                          field="change_type"
-                          value={c.change_type}
-                          type="select"
-                          options={TYPES.map((t) => ({ label: t, value: t }))}
-                          invalidateKeys={["change_requests"]}
-                        />
-                      </td>
-                      <td>
-                        <EditableCell
-                          table="change_requests"
-                          rowId={c.id}
-                          field="owner"
-                          value={c.owner}
-                          invalidateKeys={["change_requests"]}
-                        />
-                      </td>
-                      <td>
-                        <EditableCell
-                          table="change_requests"
-                          rowId={c.id}
-                          field="raised_by"
-                          value={c.raised_by}
-                          invalidateKeys={["change_requests"]}
-                        />
-                      </td>
-                      <td>
-                        <EditableCell
-                          table="change_requests"
-                          rowId={c.id}
-                          field="approver"
-                          value={c.approver}
-                          invalidateKeys={["change_requests"]}
-                        />
-                      </td>
-                      <td>
-                        <EditableCell
-                          table="change_requests"
-                          rowId={c.id}
-                          field="impact_scope"
-                          value={c.impact_scope}
-                          type="select"
-                          options={IMPACT.map((i) => ({ label: i, value: i }))}
-                          invalidateKeys={["change_requests"]}
-                        />
-                      </td>
-                      <td>
-                        <EditableCell
-                          table="change_requests"
-                          rowId={c.id}
-                          field="impact_schedule_days"
-                          value={c.impact_schedule_days}
-                          type="number"
-                          invalidateKeys={["change_requests"]}
-                        />
-                      </td>
-                      <td>
-                        <EditableCell
-                          table="change_requests"
-                          rowId={c.id}
-                          field="impact_cost"
-                          value={c.impact_cost}
-                          type="number"
-                          invalidateKeys={["change_requests"]}
-                          display={(v) => `$${Number(v || 0).toLocaleString()}`}
-                        />
-                      </td>
-                      <td>
-                        <EditableCell
-                          table="change_requests"
-                          rowId={c.id}
-                          field="status"
-                          value={c.status}
-                          type="select"
-                          options={STATUSES.map((s) => ({ label: s, value: s }))}
-                          invalidateKeys={["change_requests"]}
-                        />
-                      </td>
-                      <td>
-                        <EditableCell
-                          table="change_requests"
-                          rowId={c.id}
-                          field="raised_date"
-                          value={c.raised_date}
-                          type="date"
-                          invalidateKeys={["change_requests"]}
-                        />
-                      </td>
-                      <td className="max-w-[220px]">
-                        <EditableCell
-                          table="change_requests"
-                          rowId={c.id}
-                          field="notes"
-                          value={c.notes}
-                          invalidateKeys={["change_requests"]}
-                        />
-                      </td>
-                      <td>
-                        <button
-                          className="text-xs text-rose-600 hover:underline"
-                          onClick={() => confirm("Delete this entry?") && del.mutate(c.id)}
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {table.rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={columns.length + 1} className="py-6 text-center text-muted-foreground">
+                      No rows match filters
+                    </td>
+                  </tr>
+                ) : (
+                  table.rows.map((c: any) => {
+                    const p = projectById.get(c.project_id) as any;
+                    return (
+                      <tr key={c.id}>
+                        <td>
+                          <EditableCell
+                            table="change_requests"
+                            rowId={c.id}
+                            field="cr_number"
+                            value={c.cr_number}
+                            invalidateKeys={["change_requests"]}
+                          />
+                        </td>
+                        <td className="font-medium">{p?.project_code || "—"}</td>
+                        <td>
+                          <EditableCell
+                            table="change_requests"
+                            rowId={c.id}
+                            field="title"
+                            value={c.title}
+                            invalidateKeys={["change_requests"]}
+                          />
+                        </td>
+                        <td>
+                          <EditableCell
+                            table="change_requests"
+                            rowId={c.id}
+                            field="change_type"
+                            value={c.change_type}
+                            type="select"
+                            options={TYPES.map((t) => ({ label: t, value: t }))}
+                            invalidateKeys={["change_requests"]}
+                          />
+                        </td>
+                        <td>
+                          <EditableCell
+                            table="change_requests"
+                            rowId={c.id}
+                            field="owner"
+                            value={c.owner}
+                            invalidateKeys={["change_requests"]}
+                          />
+                        </td>
+                        <td>
+                          <EditableCell
+                            table="change_requests"
+                            rowId={c.id}
+                            field="raised_by"
+                            value={c.raised_by}
+                            invalidateKeys={["change_requests"]}
+                          />
+                        </td>
+                        <td>
+                          <EditableCell
+                            table="change_requests"
+                            rowId={c.id}
+                            field="approver"
+                            value={c.approver}
+                            invalidateKeys={["change_requests"]}
+                          />
+                        </td>
+                        <td>
+                          <EditableCell
+                            table="change_requests"
+                            rowId={c.id}
+                            field="impact_scope"
+                            value={c.impact_scope}
+                            type="select"
+                            options={IMPACT.map((i) => ({ label: i, value: i }))}
+                            invalidateKeys={["change_requests"]}
+                          />
+                        </td>
+                        <td>
+                          <EditableCell
+                            table="change_requests"
+                            rowId={c.id}
+                            field="impact_schedule_days"
+                            value={c.impact_schedule_days}
+                            type="number"
+                            invalidateKeys={["change_requests"]}
+                          />
+                        </td>
+                        <td>
+                          <EditableCell
+                            table="change_requests"
+                            rowId={c.id}
+                            field="impact_cost"
+                            value={c.impact_cost}
+                            type="number"
+                            invalidateKeys={["change_requests"]}
+                            display={(v) => `$${Number(v || 0).toLocaleString()}`}
+                          />
+                        </td>
+                        <td>
+                          <EditableCell
+                            table="change_requests"
+                            rowId={c.id}
+                            field="status"
+                            value={c.status}
+                            type="select"
+                            options={STATUSES.map((s) => ({ label: s, value: s }))}
+                            invalidateKeys={["change_requests"]}
+                          />
+                        </td>
+                        <td>
+                          <EditableCell
+                            table="change_requests"
+                            rowId={c.id}
+                            field="raised_date"
+                            value={c.raised_date}
+                            type="date"
+                            invalidateKeys={["change_requests"]}
+                          />
+                        </td>
+                        <td className="max-w-[220px]">
+                          <EditableCell
+                            table="change_requests"
+                            rowId={c.id}
+                            field="notes"
+                            value={c.notes}
+                            invalidateKeys={["change_requests"]}
+                          />
+                        </td>
+                        <td>
+                          <button
+                            className="text-xs text-rose-600 hover:underline"
+                            onClick={() => confirm("Delete this entry?") && del.mutate(c.id)}
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>

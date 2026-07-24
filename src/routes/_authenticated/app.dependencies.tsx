@@ -7,6 +7,9 @@ import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/s
 import { PageExport } from "@/components/page-export";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LabelList } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/dependencies")({
   component: DependenciesPage,
@@ -92,6 +95,21 @@ function DependenciesPage() {
       }),
     [deps, projById],
   );
+
+  const columns: ColumnarColumn<(typeof rows)[number]>[] = useMemo(
+    () => [
+      { key: "fromName", label: "From" },
+      { key: "fromPortfolio", label: "From Portfolio" },
+      { key: "toName", label: "To" },
+      { key: "toPortfolio", label: "To Portfolio" },
+      { key: "dep_type", label: "Dependency Type" },
+      { key: "status", label: "Status" },
+      { key: "impact", label: "Impact" },
+    ],
+    [],
+  );
+
+  const table = useColumnarTable(rows, columns);
 
   const total = rows.length;
   const projectsInvolved = new Set(rows.flatMap((r) => [r.project_id, r.depends_on_project_id]))
@@ -206,8 +224,16 @@ function DependenciesPage() {
       </div>
 
       <SectionFrame>
-        <SectionTitle>Dependency Register ({rows.length})</SectionTitle>
-        {rows.length === 0 ? (
+        <SectionTitle>Dependency Register</SectionTitle>
+        <ColumnarToolbar
+          globalQ={table.globalQ}
+          onGlobalQ={table.setGlobalQ}
+          shown={table.rows.length}
+          total={table.total}
+          onClear={table.clearAll}
+          placeholder="Search dependency register…"
+        />
+        {table.total === 0 ? (
           <div className="py-8 text-center text-sm text-muted-foreground">
             No dependencies recorded yet.
           </div>
@@ -216,58 +242,70 @@ function DependenciesPage() {
             <table className="st-table">
               <thead>
                 <tr>
-                  <th>From</th>
-                  <th>From Portfolio</th>
-                  <th>To</th>
-                  <th>To Portfolio</th>
-                  <th>Dependency Type</th>
-                  <th>Status</th>
-                  <th>Impact</th>
+                  {columns.map((col) => (
+                    <ColumnarTh
+                      key={col.key}
+                      column={col}
+                      filter={table.filters[col.key]}
+                      onFilter={(v) => table.setColumnFilter(col.key, v)}
+                      sortKey={table.sortKey}
+                      sortDir={table.sortDir}
+                      onToggleSort={table.toggleSort}
+                    />
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id}>
-                    <td className="font-medium">
-                      {r.from ? (
-                        <Link
-                          to="/app/project-infographic"
-                          search={{ pid: r.from.id }}
-                          className="text-primary hover:underline"
-                        >
-                          {r.fromName}
-                        </Link>
-                      ) : (
-                        r.fromName
-                      )}
+                {table.rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={columns.length} className="py-6 text-center text-muted-foreground">
+                      No rows match filters
                     </td>
-                    <td>{r.fromPortfolio}</td>
-                    <td className="font-medium">
-                      {r.to ? (
-                        <Link
-                          to="/app/project-infographic"
-                          search={{ pid: r.to.id }}
-                          className="text-primary hover:underline"
-                        >
-                          {r.toName}
-                        </Link>
-                      ) : (
-                        r.toName
-                      )}
-                    </td>
-                    <td>{r.toPortfolio}</td>
-                    <td>{r.dep_type}</td>
-                    <td>
-                      <span
-                        className="inline-block rounded-full px-2 py-0.5 text-xs font-medium text-white"
-                        style={{ background: STATUS_COLORS[r.status] }}
-                      >
-                        {r.status}
-                      </span>
-                    </td>
-                    <td>{r.impact}</td>
                   </tr>
-                ))}
+                ) : (
+                  table.rows.map((r) => (
+                    <tr key={r.id}>
+                      <td className="font-medium">
+                        {r.from ? (
+                          <Link
+                            to="/app/project-infographic"
+                            search={{ pid: r.from.id }}
+                            className="text-primary hover:underline"
+                          >
+                            {r.fromName}
+                          </Link>
+                        ) : (
+                          r.fromName
+                        )}
+                      </td>
+                      <td>{r.fromPortfolio}</td>
+                      <td className="font-medium">
+                        {r.to ? (
+                          <Link
+                            to="/app/project-infographic"
+                            search={{ pid: r.to.id }}
+                            className="text-primary hover:underline"
+                          >
+                            {r.toName}
+                          </Link>
+                        ) : (
+                          r.toName
+                        )}
+                      </td>
+                      <td>{r.toPortfolio}</td>
+                      <td>{r.dep_type}</td>
+                      <td>
+                        <span
+                          className="inline-block rounded-full px-2 py-0.5 text-xs font-medium text-white"
+                          style={{ background: STATUS_COLORS[r.status] }}
+                        >
+                          {r.status}
+                        </span>
+                      </td>
+                      <td>{r.impact}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

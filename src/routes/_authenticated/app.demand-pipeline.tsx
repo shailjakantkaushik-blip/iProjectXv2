@@ -26,6 +26,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/demand-pipeline")({
   component: DemandPipeline,
@@ -68,6 +71,23 @@ function DemandPipeline() {
     () => (statusF === "All" ? ideas : ideas.filter((i: any) => i.status === statusF)),
     [ideas, statusF],
   );
+
+  const columns: ColumnarColumn<any>[] = useMemo(
+    () => [
+      { key: "idea_name", label: "Idea" },
+      { key: "sponsor", label: "Sponsor" },
+      { key: "status", label: "Status" },
+      { key: "estimated_cost", label: "Est Cost" },
+      { key: "estimated_benefit", label: "Est Benefit" },
+      { key: "estimated_roi", label: "ROI %" },
+      { key: "strategic_alignment", label: "Align" },
+      { key: "complexity", label: "Complex" },
+      { key: "submitted_date", label: "Submitted" },
+    ],
+    [],
+  );
+
+  const table = useColumnarTable(filtered, columns);
 
   const funnel = useMemo(
     () =>
@@ -246,31 +266,63 @@ function DemandPipeline() {
       </SectionFrame>
 
       <SectionFrame>
-        <SectionTitle>Pipeline Register ({filtered.length})</SectionTitle>
+        <SectionTitle>Pipeline Register</SectionTitle>
+        <ColumnarToolbar
+          globalQ={table.globalQ}
+          onGlobalQ={table.setGlobalQ}
+          shown={table.rows.length}
+          total={table.total}
+          onClear={table.clearAll}
+          placeholder="Search pipeline register…"
+        />
         <div className="overflow-x-auto">
           <table className="st-table">
             <thead>
               <tr>
-                <th>Idea</th>
-                <th>Sponsor</th>
-                <th>Status</th>
-                <th className="text-right">Est Cost</th>
-                <th className="text-right">Est Benefit</th>
-                <th className="text-right">ROI %</th>
-                <th className="text-right">Align</th>
-                <th className="text-right">Complex</th>
-                <th>Submitted</th>
+                {columns.map((col) => (
+                  <ColumnarTh
+                    key={col.key}
+                    column={col}
+                    filter={table.filters[col.key]}
+                    onFilter={(v) => table.setColumnFilter(col.key, v)}
+                    sortKey={table.sortKey}
+                    sortDir={table.sortDir}
+                    onToggleSort={table.toggleSort}
+                    align={
+                      [
+                        "estimated_cost",
+                        "estimated_benefit",
+                        "estimated_roi",
+                        "strategic_alignment",
+                        "complexity",
+                      ].includes(col.key)
+                        ? "right"
+                        : "left"
+                    }
+                    className={
+                      [
+                        "estimated_cost",
+                        "estimated_benefit",
+                        "estimated_roi",
+                        "strategic_alignment",
+                        "complexity",
+                      ].includes(col.key)
+                        ? "text-right"
+                        : ""
+                    }
+                  />
+                ))}
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {table.rows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center text-muted-foreground py-4">
-                    No ideas in the pipeline.
+                  <td colSpan={columns.length} className="text-center text-muted-foreground py-4">
+                    {table.total === 0 ? "No ideas in the pipeline." : "No rows match filters"}
                   </td>
                 </tr>
               ) : (
-                filtered.map((i: any) => (
+                table.rows.map((i: any) => (
                   <tr key={i.id}>
                     <td className="font-medium">{i.idea_name}</td>
                     <td>{i.sponsor || "—"}</td>

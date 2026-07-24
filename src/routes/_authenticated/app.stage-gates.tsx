@@ -9,6 +9,9 @@ import { GATE_STATUS_COLORS as STATUS_COLORS, CHART_SERIES } from "@/lib/chart-t
 import { ExpandableChart } from "@/components/expandable-chart";
 import { resolveCurrentAndNextGate, resolveCurrentStage } from "@/lib/project-phase";
 import { fetchOrgStreams, formatProjectStreamRef, formatStreamLabel } from "@/lib/project-streams";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/stage-gates")({
   component: StageGatesPage,
@@ -172,6 +175,74 @@ function StageGatesPage() {
     return rows;
   }, [projects, gatesByProject, orgPhases, streams, gates]);
 
+  const columns: ColumnarColumn<(typeof register)[number]>[] = useMemo(
+    () => [
+      {
+        key: "project",
+        label: "Project",
+        getValue: (r) => r.project.name || r.project.project_code || "",
+      },
+      {
+        key: "stream",
+        label: "Stream",
+        getValue: (r) => r.streamLabel || "",
+      },
+      {
+        key: "streamRef",
+        label: "Project · Stream",
+        getValue: (r) => r.streamRef || r.project.project_code || "",
+      },
+      {
+        key: "program",
+        label: "Program",
+        getValue: (r) => r.project.program || "",
+      },
+      {
+        key: "sponsor",
+        label: "Sponsor",
+        getValue: (r) => r.project.sponsor || "",
+      },
+      {
+        key: "rag",
+        label: "RAG",
+        getValue: (r) => r.rag || "",
+      },
+      {
+        key: "phase",
+        label: "Current Phase",
+        getValue: (r) => r.phase || "",
+      },
+      {
+        key: "currentGate",
+        label: "Current Gate",
+        getValue: (r) => r.current?.gate_name || "",
+      },
+      {
+        key: "currentStatus",
+        label: "Current Status",
+        getValue: (r) => r.current?.status || "",
+      },
+      {
+        key: "nextGate",
+        label: "Next Gate",
+        getValue: (r) => r.next?.gate_name || (r.next ? "" : "All complete"),
+      },
+      {
+        key: "nextPlanned",
+        label: "Next Planned Date",
+        getValue: (r) => r.next?.planned_date || "",
+      },
+      {
+        key: "nextStatus",
+        label: "Next Status",
+        getValue: (r) => r.next?.status || "",
+      },
+    ],
+    [],
+  );
+
+  const table = useColumnarTable(register, columns);
+
   return (
     <div>
       <PageHeading icon="🚦">Stage Gates</PageHeading>
@@ -225,74 +296,99 @@ function StageGatesPage() {
 
       <SectionFrame>
         <SectionTitle>Stage Gate Register</SectionTitle>
+        <ColumnarToolbar
+          globalQ={table.globalQ}
+          onGlobalQ={table.setGlobalQ}
+          shown={table.rows.length}
+          total={table.total}
+          onClear={table.clearAll}
+          placeholder="Search stage gate register…"
+        />
         <div className="overflow-x-auto">
           <table className="st-table">
             <thead>
               <tr>
-                <th>Project</th>
-                <th>Stream</th>
-                <th>Project · Stream</th>
-                <th>Program</th>
-                <th>Sponsor</th>
-                <th>RAG</th>
-                <th>Current Phase</th>
-                <th>Current Gate</th>
-                <th>Current Status</th>
-                <th>Next Gate</th>
-                <th>Next Planned Date</th>
-                <th>Next Status</th>
+                {columns.map((col) => (
+                  <ColumnarTh
+                    key={col.key}
+                    column={col}
+                    filter={table.filters[col.key]}
+                    onFilter={(v) => table.setColumnFilter(col.key, v)}
+                    sortKey={table.sortKey}
+                    sortDir={table.sortDir}
+                    onToggleSort={table.toggleSort}
+                  />
+                ))}
               </tr>
             </thead>
             <tbody>
-              {register.map(({ key, project, streamLabel, streamRef, current, next, phase, rag }) => (
-                <tr key={key}>
-                  <td>
-                    <div className="leading-tight">
-                      <div className="font-medium">{project.name}</div>
-                      {project.project_code ? (
-                        <div className="font-mono text-[10px] text-muted-foreground">{project.project_code}</div>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td>{streamLabel || "—"}</td>
-                  <td className="font-mono text-[11px]">{streamRef || project.project_code || "—"}</td>
-                  <td>{project.program || "—"}</td>
-                  <td>{project.sponsor || "—"}</td>
-                  <td>
-                    <RagChip rag={rag} />
-                  </td>
-                  <td className="font-medium">{phase || "—"}</td>
-                  <td>{current?.gate_name || "—"}</td>
-                  <td>
-                    {current ? (
-                      <span
-                        className="rounded px-2 py-0.5 text-[11px] text-white"
-                        style={{ background: STATUS_COLORS[current.status || "Pending"] || "#94a3b8" }}
-                      >
-                        {current.status || "Pending"}
-                      </span>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td className="font-medium">
-                    {next?.gate_name || <span className="text-muted-foreground">All complete</span>}
-                  </td>
-                  <td>{next?.planned_date || "—"}</td>
-                  <td>
-                    {next ? (
-                      <span
-                        className="rounded px-2 py-0.5 text-[11px] text-white"
-                        style={{ background: STATUS_COLORS[next.status || "Pending"] || "#94a3b8" }}
-                      >
-                        {next.status || "Pending"}
-                      </span>
-                    ) : (
-                      "—"
-                    )}
+              {table.rows.length === 0 ? (
+                <tr>
+                  <td colSpan={columns.length} className="py-6 text-center text-muted-foreground">
+                    {table.total === 0 ? "No stage gate rows yet." : "No rows match filters"}
                   </td>
                 </tr>
-              ))}
+              ) : (
+                table.rows.map(({ key, project, streamLabel, streamRef, current, next, phase, rag }) => (
+                  <tr key={key}>
+                    <td>
+                      <div className="leading-tight">
+                        <div className="font-medium">{project.name}</div>
+                        {project.project_code ? (
+                          <div className="font-mono text-[10px] text-muted-foreground">
+                            {project.project_code}
+                          </div>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td>{streamLabel || "—"}</td>
+                    <td className="font-mono text-[11px]">
+                      {streamRef || project.project_code || "—"}
+                    </td>
+                    <td>{project.program || "—"}</td>
+                    <td>{project.sponsor || "—"}</td>
+                    <td>
+                      <RagChip rag={rag} />
+                    </td>
+                    <td className="font-medium">{phase || "—"}</td>
+                    <td>{current?.gate_name || "—"}</td>
+                    <td>
+                      {current ? (
+                        <span
+                          className="rounded px-2 py-0.5 text-[11px] text-white"
+                          style={{
+                            background: STATUS_COLORS[current.status || "Pending"] || "#94a3b8",
+                          }}
+                        >
+                          {current.status || "Pending"}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="font-medium">
+                      {next?.gate_name || (
+                        <span className="text-muted-foreground">All complete</span>
+                      )}
+                    </td>
+                    <td>{next?.planned_date || "—"}</td>
+                    <td>
+                      {next ? (
+                        <span
+                          className="rounded px-2 py-0.5 text-[11px] text-white"
+                          style={{
+                            background: STATUS_COLORS[next.status || "Pending"] || "#94a3b8",
+                          }}
+                        >
+                          {next.status || "Pending"}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
