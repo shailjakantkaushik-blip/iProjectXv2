@@ -674,7 +674,9 @@ function InfographicPage() {
                     },
                   },
                   milestones: (milestones as any[]).map((m) => ({
-                    name: m.name,
+                    name: m.stream_id
+                      ? `${streamById.get(m.stream_id)?.name || streamById.get(m.stream_id)?.code || "Stream"} · ${m.name}`
+                      : m.name,
                     planned_date: m.planned_date,
                     status: m.status,
                     owner: m.owner,
@@ -1121,6 +1123,7 @@ function InfographicPage() {
                 <th>Gate ID</th>
                 <th>Project ID</th>
                 <th>Project Name</th>
+                {project.streams_enabled ? <th>Stream</th> : null}
                 <th>Stage Gate</th>
                 <th>Planned Date</th>
                 <th>Actual Date</th>
@@ -1134,7 +1137,7 @@ function InfographicPage() {
             <tbody>
               {gates.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="text-center text-slate-500 py-4">
+                  <td colSpan={project.streams_enabled ? 12 : 11} className="text-center text-slate-500 py-4">
                     No stage gates captured.
                   </td>
                 </tr>
@@ -1144,6 +1147,13 @@ function InfographicPage() {
                     <td className="font-mono">SG{String(i + 1).padStart(4, "0")}</td>
                     <td className="font-mono text-blue-600">{project.project_code || "—"}</td>
                     <td>{project.name}</td>
+                    {project.streams_enabled ? (
+                      <td>
+                        {g.stream_id
+                          ? streamById.get(g.stream_id)?.name || streamById.get(g.stream_id)?.code || "Stream"
+                          : "—"}
+                      </td>
+                    ) : null}
                     <td>{g.gate_name}</td>
                     <td>{fmtDate(g.planned_date)}</td>
                     <td>{g.actual_date ? fmtDate(g.actual_date) : "NA"}</td>

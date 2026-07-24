@@ -29,6 +29,10 @@ import {
   projectRemaining,
   projectRealisedRoi,
 } from "@/lib/project-finance";
+import {
+  expandProjectsToTimelineLanes,
+  fetchOrgStreams,
+} from "@/lib/project-streams";
 
 export const Route = createFileRoute("/_authenticated/app/executive")({
   component: ExecutiveDashboard,
@@ -82,6 +86,12 @@ function ExecutiveDashboard() {
     queryKey: ["stage_gates", organization?.id],
     queryFn: async () => (await supabase.from("stage_gates").select("*")).data ?? [],
     enabled: !!organization,
+  });
+
+  const { data: streams = [] } = useQuery({
+    queryKey: ["project_streams", organization?.id],
+    queryFn: () => fetchOrgStreams(organization!.id),
+    enabled: !!organization?.id,
   });
 
   const { data: gateDefs = [] } = useQuery({
@@ -268,7 +278,40 @@ function ExecutiveDashboard() {
     return Array.from(m, ([name, value]) => ({ name, value }));
   }, [filtered]);
 
-  // ── Timeline ──────────────────────────────────────────────
+  const orgPhases = useMemo(() => {
+    const fromDefs = (gateDefs as any[]).map((d) => d.gate_name).filter(Boolean);
+    return fromDefs.length > 0 ? fromDefs : PHASES;
+  }, [gateDefs]);
+
+  // Project-level gates (kanban / register). Timeline uses lane-keyed map below.
+  const gatesByProject = useMemo(() => {
+    const m = new Map<string, any[]>();
+    gates.forEach((g: any) => {
+      if (!m.has(g.project_id)) m.set(g.project_id, []);
+      m.get(g.project_id)!.push(g);
+    });
+    return m;
+  }, [gates]);
+
+  // Stream lanes own their gates; non-stream projects key by project_id.
+  const gatesByLane = useMemo(() => {
+    const m = new Map<string, any[]>();
+    gates.forEach((g: any) => {
+      const laneKey = g.stream_id || g.project_id;
+      if (!m.has(laneKey)) m.set(laneKey, []);
+      m.get(laneKey)!.push(g);
+    });
+    return m;
+  }, [gates]);
+
+  // ── Timeline (stream lanes when a project has streams enabled) ──
+  const timelineLanes = useMemo(() => {
+    return expandProjectsToTimelineLanes(filtered, streams as any[], {
+      gates: gates as any[],
+      resolvePhase: (p, streamGates) => resolveStageShared(p, streamGates, orgPhases),
+    });
+  }, [filtered, streams, gates, orgPhases]);
+
   const timelineGroups = useMemo(() => {
     const groups = new Map<string, any[]>();
     const keyFor = (p: any): string => {
@@ -282,16 +325,14 @@ function ExecutiveDashboard() {
         case "Status":    return p.status || "Unset";
       }
     };
-    filtered.forEach((p: any) => {
+    timelineLanes.forEach((p: any) => {
       if (!projectScheduleStart(p) || !projectScheduleEnd(p)) return;
       const k = keyFor(p);
       if (!groups.has(k)) groups.set(k, []);
       groups.get(k)!.push(p);
     });
     return Array.from(groups.entries()).sort();
-  }, [filtered, timelineView]);
-
-
+  }, [timelineLanes, timelineView]);
 
   // FY runs per org's fy_start_month. FY label uses ending year.
   const timelineBounds = useMemo(() => {
@@ -316,7 +357,7 @@ function ExecutiveDashboard() {
       minD = new Date(endYear - 1, startIdx, 1);
       maxD = new Date(endYear, startIdx, 0, 23, 59, 59);
     } else {
-      filtered.forEach((p: any) => {
+      timelineLanes.forEach((p: any) => {
         const s = projectScheduleStart(p);
         const e = projectScheduleEnd(p);
         if (s) { const d = new Date(s); if (!minD || d < minD) minD = d; }
@@ -356,24 +397,10 @@ function ExecutiveDashboard() {
       totalMs: maxD.getTime() - minD.getTime(),
       months, fyGroups,
     };
-  }, [filtered, fy, fyStartMonth]);
-
-  const gatesByProject = useMemo(() => {
-    const m = new Map<string, any[]>();
-    gates.forEach((g: any) => {
-      if (!m.has(g.project_id)) m.set(g.project_id, []);
-      m.get(g.project_id)!.push(g);
-    });
-    return m;
-  }, [gates]);
+  }, [timelineLanes, fy, fyStartMonth]);
 
   const toggleCollapse = (name: string) =>
     setCollapsed((c) => ({ ...c, [name]: !c[name] }));
-
-  const orgPhases = useMemo(() => {
-    const fromDefs = (gateDefs as any[]).map((d) => d.gate_name).filter(Boolean);
-    return fromDefs.length > 0 ? fromDefs : PHASES;
-  }, [gateDefs]);
 
   const phaseColor = (name: string, i: number) =>
     PHASE_HEADER_COLORS[name] || THEME_PALETTE[i % THEME_PALETTE.length];
@@ -684,7 +711,7 @@ function ExecutiveDashboard() {
                   title={groupName}
                   items={items}
                   bounds={timelineBounds}
-                  gatesByProject={gatesByProject}
+                  gatesByLane={gatesByLane}
                   orgPhases={orgPhases}
                   collapsed={!!collapsed[groupName]}
                   onToggle={() => toggleCollapse(groupName)}
@@ -799,12 +826,14 @@ type TimelineBounds = {
 };
 
 function GanttGroup({
-  title, items, bounds, gatesByProject, orgPhases = [], collapsed, onToggle,
+  title, items, bounds, gatesByLane, orgPhases = [], collapsed, onToggle,
 }: {
   title: string; items: any[]; bounds: TimelineBounds;
-  gatesByProject: Map<string, any[]>; orgPhases?: string[]; collapsed: boolean; onToggle: () => void;
+  gatesByLane: Map<string, any[]>; orgPhases?: string[]; collapsed: boolean; onToggle: () => void;
 }) {
-  const phaseOf = (p: any) => resolveStageShared(p, gatesByProject.get(p.id) || [], orgPhases);
+  const laneKeyOf = (p: any) => p.stream_id || p.project_id || p.id;
+  const phaseOf = (p: any) =>
+    resolveStageShared(p, gatesByLane.get(laneKeyOf(p)) || gatesByLane.get(p.project_id || p.id) || [], orgPhases);
   const { start: rangeStart, totalMs, months, fyGroups } = bounds;
   const monthShort = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const now = new Date();
@@ -925,7 +954,7 @@ function GanttGroup({
           </div>
           {/* Month header row */}
           <div className="flex items-center border-b border-border pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            <div style={{ width: COL_PROJECT }} className="shrink-0 pl-1">Project</div>
+            <div style={{ width: COL_PROJECT }} className="shrink-0 pl-1">Project / Stream</div>
             <div style={{ width: COL_SPONSOR }} className="shrink-0">Sponsor · Phase</div>
             <div style={{ width: COL_FIN }} className="shrink-0">Budget · Incurred · %</div>
             <div className="relative grid flex-1" style={{ gridTemplateColumns: `repeat(${monthCount}, minmax(34px, 1fr))` }}>
@@ -939,6 +968,7 @@ function GanttGroup({
 
           <div className="relative">
             {items.map((p: any) => {
+              const projectId = p.project_id || p.id;
               const startIso = projectScheduleStart(p);
               const endIso = projectScheduleEnd(p);
               const s = startIso ? new Date(startIso).getTime() : NaN;
@@ -955,7 +985,8 @@ function GanttGroup({
               const incurred = projectIncurred(p);
               const pct = budget > 0 ? Math.min(100, Math.round((incurred / budget) * 100)) : 0;
               const overBudget = incurred > budget && budget > 0;
-              const projGates = (gatesByProject.get(p.id) || [])
+              const laneKey = laneKeyOf(p);
+              const projGates = (gatesByLane.get(laneKey) || gatesByLane.get(projectId) || [])
                 .filter((g: any) => g.planned_date || g.actual_date)
                 .sort((a: any, b: any) =>
                   new Date(a.actual_date || a.planned_date).getTime() -
@@ -965,11 +996,28 @@ function GanttGroup({
               return (
                 <div key={p.id} className="flex items-center border-b border-border/40 py-2 hover:bg-muted/30">
                   <div style={{ width: COL_PROJECT }} className="shrink-0 pl-1 pr-2">
-                    <div className="truncate text-[12px] font-medium text-foreground" title={p.name}>{p.name}</div>
+                    <Link
+                      to="/app/project-infographic"
+                      search={{ pid: projectId }}
+                      className="block truncate text-[12px] font-medium text-foreground hover:text-primary hover:underline"
+                      title={p.name}
+                    >
+                      {p.is_stream_lane && p.stream_name ? (
+                        <>
+                          <span className="text-muted-foreground">{p.project_name || "Project"}</span>
+                          <span className="text-muted-foreground"> · </span>
+                          <span>{p.stream_name}</span>
+                        </>
+                      ) : (
+                        p.name
+                      )}
+                    </Link>
                     <div className="truncate text-[10px] text-muted-foreground">
                       {p.project_code ? (
-                        <Link to="/app/project-infographic" search={{ pid: p.id }} className="text-primary hover:underline">{p.project_code}</Link>
-                      ) : "—"} · {p.program || "Unassigned"}
+                        <Link to="/app/project-infographic" search={{ pid: projectId }} className="text-primary hover:underline">{p.project_code}</Link>
+                      ) : "—"}{" "}
+                      · {p.is_stream_lane ? "Stream" : p.program || "Unassigned"}
+                      {p.is_stream_lane && p.program ? ` · ${p.program}` : ""}
                     </div>
                   </div>
                   <div style={{ width: COL_SPONSOR }} className="shrink-0 pr-2">

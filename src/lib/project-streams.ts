@@ -14,6 +14,9 @@ export function streamToTimelineLane(
     program?: string | null;
     sponsor?: string | null;
     current_phase?: string | null;
+    status?: string | null;
+    priority?: string | null;
+    theme?: string | null;
     benefits_realised?: number | null;
     benefits_target?: number | null;
   },
@@ -35,10 +38,14 @@ export function streamToTimelineLane(
     project_id: project.id,
     is_stream_lane: true as const,
     name: `${project.name || "Project"} · ${s.name}`,
-    stream_name: s.name,
+    stream_name: s.name as string | null,
     project_name: project.name,
     project_code: project.project_code,
     program: project.program,
+    // Grouping dimensions stay at project level for portfolio/executive views
+    status: project.status ?? s.status ?? null,
+    priority: project.priority ?? null,
+    theme: project.theme ?? null,
     sponsor: s.owner || project.sponsor,
     current_phase: phase ?? project.current_phase,
     rag: s.rag || null,
@@ -94,12 +101,19 @@ export function expandProjectsToTimelineLanes(
       lanes.push({ ...p, is_stream_lane: false, project_id: p.id });
       continue;
     }
+    const multi = projectStreams.length > 1;
     for (const s of projectStreams) {
       const streamGates = (opts?.gates || []).filter(
         (g) => g.stream_id === s.id || (!g.stream_id && g.project_id === p.id && s.is_default),
       );
       const phase = opts?.resolvePhase?.(p, streamGates) ?? p.current_phase;
-      lanes.push(streamToTimelineLane(p, s, phase));
+      const lane = streamToTimelineLane(p, s, phase);
+      // Single default stream: project-first label; stream_id still keys gates/finance.
+      if (!multi && s.is_default) {
+        lane.name = p.name || lane.name;
+        lane.stream_name = null;
+      }
+      lanes.push(lane);
     }
   }
   return lanes;

@@ -138,6 +138,7 @@ export async function exportOrganizationWorkbook(orgId: string, orgName: string)
     { A: "5. Financials (Monthly)", B: "Execution: planned/forecast + actual. YYYY-MM-01. Optional stream_code." },
     { A: "6. ROI %", B: "Target ROI = (benefits_target − budget) / budget × 100. Store on Projects; realised ROI is computed from incurred + realised benefits." },
     { A: "7. Stage gates", B: "gate_name must match Stage Gate Definitions. Include stream_code when the project uses streams." },
+    { A: "7b. Milestones", B: "Standalone milestones. Include stream_code when the project uses streams so they land on the right lane." },
     { A: "8. Resource allocations", B: "allocation_percent is % of FTE for that month. Optional stream_code scopes allocation to a stream." },
   ];
   const readmeSheet = XLSX.utils.json_to_sheet(readme, { skipHeader: true });

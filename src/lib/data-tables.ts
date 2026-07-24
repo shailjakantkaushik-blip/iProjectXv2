@@ -180,6 +180,8 @@ export const TABLES: TableDef[] = [
     // gate-linked rows that share a gate name.
     matchOn: ["project_code", "stream_code", "name"],
     orderBy: "planned_date",
+    description:
+      "When streams are enabled, set `stream_code` so milestones sit on the correct delivery lane. Leave blank for non-stream projects.",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
       { key: "stream_id", label: "Stream", type: "text", fk: "stream" },

@@ -360,10 +360,10 @@ export function ProjectStreamsPanel({
               </span>
             </SectionTitle>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              Optional. When enabled, each stream owns its planned vs actual dates, stage gates, budget, and
-              resource allocations. The project becomes a rollup of its streams. Enabling creates a default{" "}
-              <span className="font-medium text-foreground">Core</span> stream and migrates existing project
-              child data onto it.
+              When enabled, each stream owns planned vs actual dates, stage gates, milestones, budget, and
+              resource allocations — the project is the rollup. Enabling creates a bare-minimum{" "}
+              <span className="font-medium text-foreground">Core</span> stream and migrates existing child
+              data onto it. Add more streams when a project has parallel delivery lanes.
             </p>
           </div>
           <Button disabled={enableMut.isPending} onClick={() => enableMut.mutate()}>

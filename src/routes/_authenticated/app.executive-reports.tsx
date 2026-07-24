@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Download, FileText } from "lucide-react";
 import { PageLoading } from "@/components/page-loading";
+import { resolveCurrentAndNextGate } from "@/lib/project-phase";
+import { fetchOrgStreams } from "@/lib/project-streams";
 
 export const Route = createFileRoute("/_authenticated/app/executive-reports")({
   component: ExecutiveReportsPage,
@@ -82,6 +84,12 @@ function ExecutiveReportsPage() {
     enabled: !!orgId,
   });
 
+  const { data: streams = [] } = useQuery({
+    queryKey: ["project_streams", orgId],
+    queryFn: () => fetchOrgStreams(orgId!),
+    enabled: !!orgId,
+  });
+
   const { data: businessUnits = [] } = useQuery({
     queryKey: ["business_units", orgId],
     queryFn: async () =>
@@ -92,6 +100,11 @@ function ExecutiveReportsPage() {
   const projectById = useMemo(
     () => new Map(projects.map((p: any) => [p.id, p])),
     [projects],
+  );
+
+  const streamById = useMemo(
+    () => new Map((streams as any[]).map((s) => [s.id, s])),
+    [streams],
   );
 
   const buNameById = useMemo(
@@ -279,18 +292,59 @@ function ExecutiveReportsPage() {
   }, [benefits, projects, projectById]);
 
   const gateRegister = useMemo(() => {
-    return projects.map((p: any) => {
-      const gs = gates.filter((g: any) => g.project_id === p.id);
-      const current =
-        [...gs].reverse().find((g: any) => String(g.status || "").toLowerCase() === "approved") ||
-        gs[gs.length - 1];
-      const next = gs.find((g: any) => {
-        const s = String(g.status || "").toLowerCase();
-        return s !== "approved" && s !== "rejected";
-      });
-      return { project: p, current, next, count: gs.length };
+    const streamsByProject = new Map<string, any[]>();
+    (streams as any[]).forEach((s) => {
+      const list = streamsByProject.get(s.project_id) || [];
+      list.push(s);
+      streamsByProject.set(s.project_id, list);
     });
-  }, [projects, gates]);
+
+    const rows: {
+      key: string;
+      project: any;
+      streamName: string | null;
+      current: any;
+      next: any;
+      count: number;
+      rag: string | null;
+    }[] = [];
+
+    for (const p of projects as any[]) {
+      const projectStreams = (streamsByProject.get(p.id) || []).sort(
+        (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
+      );
+      if (p.streams_enabled && projectStreams.length > 0) {
+        for (const s of projectStreams) {
+          const gs = (gates as any[]).filter(
+            (g) => g.stream_id === s.id || (!g.stream_id && g.project_id === p.id && s.is_default),
+          );
+          const { current, next } = resolveCurrentAndNextGate(gs);
+          rows.push({
+            key: `${p.id}:${s.id}`,
+            project: p,
+            streamName: s.name,
+            current,
+            next,
+            count: gs.length,
+            rag: s.rag || p.rag,
+          });
+        }
+      } else {
+        const gs = (gates as any[]).filter((g) => g.project_id === p.id);
+        const { current, next } = resolveCurrentAndNextGate(gs);
+        rows.push({
+          key: p.id,
+          project: p,
+          streamName: null,
+          current,
+          next,
+          count: gs.length,
+          rag: p.rag,
+        });
+      }
+    }
+    return rows;
+  }, [projects, gates, streams]);
 
   const upcomingMilestones = useMemo(() => {
     return [...milestones]
@@ -300,8 +354,12 @@ function ExecutiveReportsPage() {
         return !done;
       })
       .sort((a: any, b: any) => String(a.planned_date || "9999").localeCompare(String(b.planned_date || "9999")))
-      .slice(0, 40);
-  }, [milestones]);
+      .slice(0, 40)
+      .map((m: any) => ({
+        ...m,
+        streamName: m.stream_id ? streamById.get(m.stream_id)?.name || streamById.get(m.stream_id)?.code || "Stream" : null,
+      }));
+  }, [milestones, streamById]);
 
   const loading =
     loadingProjects ||
@@ -660,6 +718,7 @@ function ExecutiveReportsPage() {
                   <thead>
                     <tr>
                       <th>Project</th>
+                      <th>Stream</th>
                       <th>Program</th>
                       <th>RAG</th>
                       <th>Gates</th>
@@ -671,14 +730,15 @@ function ExecutiveReportsPage() {
                   </thead>
                   <tbody>
                     {gateRegister.length === 0 ? (
-                      <EmptyRow colSpan={8} />
+                      <EmptyRow colSpan={9} />
                     ) : (
-                      gateRegister.map(({ project, current, next, count }) => (
-                        <tr key={project.id}>
+                      gateRegister.map(({ key, project, streamName, current, next, count, rag }) => (
+                        <tr key={key}>
                           <td className="font-medium">{project.name}</td>
+                          <td>{streamName || "—"}</td>
                           <td>{project.program || "—"}</td>
                           <td>
-                            <RagChip rag={project.rag} />
+                            <RagChip rag={rag} />
                           </td>
                           <td>{count}</td>
                           <td>{current?.gate_name || "—"}</td>
@@ -710,6 +770,7 @@ function ExecutiveReportsPage() {
                     <tr>
                       <th>Milestone</th>
                       <th>Project</th>
+                      <th>Stream</th>
                       <th>Status</th>
                       <th>Owner</th>
                       <th>Planned</th>
@@ -717,12 +778,13 @@ function ExecutiveReportsPage() {
                   </thead>
                   <tbody>
                     {upcomingMilestones.length === 0 ? (
-                      <EmptyRow colSpan={5} label="No upcoming milestones." />
+                      <EmptyRow colSpan={6} label="No upcoming milestones." />
                     ) : (
                       upcomingMilestones.map((m: any) => (
                         <tr key={m.id}>
                           <td className="font-medium">{m.name}</td>
                           <td>{projectById.get(m.project_id)?.name || "—"}</td>
+                          <td>{m.streamName || "—"}</td>
                           <td>{m.status || "—"}</td>
                           <td>{m.owner || "—"}</td>
                           <td>{m.planned_date || "—"}</td>
