@@ -174,9 +174,9 @@ function ExecutiveCockpit() {
   const benefitsRealised = benefits.reduce((s: number, b: any) => s + num(b.realised_value), 0);
 
   const decisionsPending = decisions.filter((d: any) => {
-    const s = String(d.status || d.outcome || "").toLowerCase();
-    return s === "pending" || s === "in review" || s === "";
-  }).length;
+    const s = String(d.outcome || d.status || "").toLowerCase().trim();
+    return !s || s === "pending" || s === "in review" || s === "open";
+  }).length
   const today = new Date();
   const overdueActions = actions.filter((a: any) => {
     const s = String(a.status || "").toLowerCase();

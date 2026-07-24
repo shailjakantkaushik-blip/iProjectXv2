@@ -14,7 +14,8 @@ import {
   DECISION_OUTCOME_CLASS,
   DECISION_OUTCOMES,
   canActOnDecision,
-  isAwaitingApproval,
+  decisionOutcome,
+  isDecisionAwaiting,
   memberLabel,
   type DecisionOutcome,
   type OrgMember,
@@ -212,7 +213,7 @@ function DecisionsPage() {
   const visibleDecisions = useMemo(() => {
     if (!awaitingOnly || !userId) return decisions;
     return decisions.filter(
-      (d: any) => d.approver_user_id === userId && isAwaitingApproval(d.outcome),
+      (d: any) => d.approver_user_id === userId && isDecisionAwaiting(d),
     );
   }, [awaitingOnly, decisions, userId]);
 
@@ -243,7 +244,7 @@ function DecisionsPage() {
           return gate ? `${gate.gate_name} (${gate.status || "Pending"})` : "";
         },
       },
-      { key: "outcome", label: "Outcome" },
+      { key: "outcome", label: "Outcome", getValue: (d) => decisionOutcome(d) },
       { key: "decision_date", label: "Date" },
       { key: "rationale", label: "Rationale" },
       { key: "notes", label: "Notes" },
@@ -255,20 +256,20 @@ function DecisionsPage() {
 
   const myAwaitingCount = useMemo(
     () =>
-      decisions.filter((d: any) => d.approver_user_id === userId && isAwaitingApproval(d.outcome))
-        .length,
+      decisions.filter((d: any) => d.approver_user_id === userId && isDecisionAwaiting(d)).length,
     [decisions, userId],
   );
 
   const total = decisions.length;
+  // Resolve outcome || legacy status (null/empty → Pending) so the chart isn't blank.
   const counts = DECISION_OUTCOMES.reduce<Record<string, number>>((acc, o) => {
-    acc[o] = decisions.filter((d: any) => d.outcome === o).length;
+    acc[o] = decisions.filter((d: any) => decisionOutcome(d) === o).length;
     return acc;
   }, {});
   const byOutcome = DECISION_OUTCOMES.map((o) => ({
     outcome: o,
-    count: counts[o],
-  })).filter((d) => d.count > 0);
+    count: counts[o] || 0,
+  }));
 
   const dataColsBeforeActions = columns.slice(0, 9);
   const dataColsAfterActions = columns.slice(9);
@@ -310,12 +311,13 @@ function DecisionsPage() {
 
       <SectionFrame>
         <SectionTitle>Decision KPIs</SectionTitle>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <KpiCard label="Total" value={total} />
+          <KpiCard label="Pending" value={counts.Pending || 0} />
+          <KpiCard label="In Review" value={counts["In Review"] || 0} />
           <KpiCard label="Approved" value={counts.Approved || 0} />
           <KpiCard label="Rejected" value={counts.Rejected || 0} />
           <KpiCard label="On Hold" value={counts["On Hold"] || 0} />
-          <KpiCard label="In Review" value={counts["In Review"] || 0} />
         </div>
       </SectionFrame>
 
@@ -565,11 +567,11 @@ function DecisionsPage() {
                                 patch: {
                                   approver_user_id: id,
                                   approvers: m ? memberLabel(m) : null,
-                                  outcome: isAwaitingApproval(d.outcome)
-                                    ? d.outcome || "In Review"
+                                  outcome: isDecisionAwaiting(d)
+                                    ? decisionOutcome(d)
                                     : "In Review",
-                                  status: isAwaitingApproval(d.outcome)
-                                    ? d.outcome || "In Review"
+                                  status: isDecisionAwaiting(d)
+                                    ? decisionOutcome(d)
                                     : "In Review",
                                 },
                               });
@@ -596,10 +598,9 @@ function DecisionsPage() {
                         <td>
                           <select
                             className={`st-input !py-0.5 !text-xs ${
-                              DECISION_OUTCOME_CLASS[(d.outcome || "Pending") as DecisionOutcome] ||
-                              ""
+                              DECISION_OUTCOME_CLASS[decisionOutcome(d)] || ""
                             }`}
-                            value={d.outcome || "Pending"}
+                            value={decisionOutcome(d)}
                             onChange={(e) =>
                               updateDecision.mutate({
                                 id: d.id,
@@ -645,7 +646,7 @@ function DecisionsPage() {
                                 <X className="h-3 w-3" /> Reject
                               </button>
                             </div>
-                          ) : d.approver_user_id && !isAwaitingApproval(d.outcome) ? (
+                          ) : d.approver_user_id && !isDecisionAwaiting(d) ? (
                             <span className="text-[11px] text-muted-foreground">Done</span>
                           ) : d.approver_user_id ? (
                             <button

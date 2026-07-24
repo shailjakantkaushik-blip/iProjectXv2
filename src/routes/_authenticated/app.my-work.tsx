@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import {
   canActOnDecision,
+  decisionOutcome,
   isAwaitingApproval,
   type DecisionOutcome,
 } from "@/lib/decision-approval";
@@ -148,7 +149,7 @@ function MyWorkPage() {
                       <div className="min-w-0">
                         <div className="truncate text-sm font-semibold">{d.title}</div>
                         <div className="mt-0.5 text-[11px] text-muted-foreground">
-                          {proj?.project_code || "Project"} · {d.outcome || "Pending"}
+                          {proj?.project_code || "Project"} · {decisionOutcome(d)}
                         </div>
                       </div>
                       <div className="flex shrink-0 gap-1.5">

@@ -45,9 +45,12 @@ function AiAssistPage() {
     const budget = projects.reduce((s: number, p: any) => s + Number(p.budget || 0), 0);
     const openRisks = risks.filter((r: any) => r.status === "Open" || r.status === "Mitigating").length;
     const criticalRisks = risks.filter((r: any) => Number(r.severity || 0) >= 15).length;
-    const pendingDecisions = decisions.filter(
-      (d: any) => !d.outcome || d.outcome === "Pending" || d.outcome === "In Review",
-    ).length;
+    const pendingDecisions = decisions.filter((d: any) => {
+      const o = String(d.outcome || d.status || "")
+        .trim()
+        .toLowerCase();
+      return !o || o === "pending" || o === "in review" || o === "open";
+    }).length;
     return { red, amber, budget, openRisks, criticalRisks, pendingDecisions, total: projects.length };
   }, [projects, risks, decisions]);
 

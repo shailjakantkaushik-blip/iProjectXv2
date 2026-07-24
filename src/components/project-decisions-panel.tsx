@@ -9,7 +9,8 @@ import {
   DECISION_OUTCOME_CLASS,
   DECISION_OUTCOMES,
   canActOnDecision,
-  isAwaitingApproval,
+  decisionOutcome,
+  isDecisionAwaiting,
   memberLabel,
   type DecisionOutcome,
   type OrgMember,
@@ -312,7 +313,7 @@ export function ProjectDecisionsPanel({
                           </td>
                           <td className="text-xs">
                             {approver ? memberLabel(approver) : d.approvers || "—"}
-                            {d.approver_user_id === userId && isAwaitingApproval(d.outcome) ? (
+                            {d.approver_user_id === userId && isDecisionAwaiting(d) ? (
                               <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
                                 Awaiting you
                               </div>
@@ -321,12 +322,10 @@ export function ProjectDecisionsPanel({
                           <td>
                             <span
                               className={`inline-flex rounded px-2 py-0.5 text-[11px] font-semibold ${
-                                DECISION_OUTCOME_CLASS[
-                                  (d.outcome || "Pending") as DecisionOutcome
-                                ] || ""
+                                DECISION_OUTCOME_CLASS[decisionOutcome(d)] || ""
                               }`}
                             >
-                              {d.outcome || "Pending"}
+                              {decisionOutcome(d)}
                             </span>
                           </td>
                           <td className="whitespace-nowrap text-xs">{d.decision_date || "—"}</td>
