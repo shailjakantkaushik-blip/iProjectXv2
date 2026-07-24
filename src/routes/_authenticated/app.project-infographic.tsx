@@ -645,7 +645,7 @@ function InfographicPage() {
       row.total += pct;
     }
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name) || String(a.streamName).localeCompare(String(b.streamName)));
-  }, [projectAllocations, resourceById, streamById]);
+  }, [projectAllocations, resourceById, streamById, project]);
 
   const allocHeat = (pct: number) => {
     if (pct <= 0) return "bg-transparent text-muted-foreground";
