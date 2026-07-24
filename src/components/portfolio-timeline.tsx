@@ -646,7 +646,7 @@ export function PortfolioTimeline({
 }: {
   projects: any[];
   gates: any[];
-  fy?: string;
+  fy?: string | string[];
   title?: string;
   showPlannedVsActual?: boolean;
   showGates?: boolean;
