@@ -31,7 +31,6 @@ import {
 import { PortfolioTimeline } from "@/components/portfolio-timeline";
 import { Button } from "@/components/ui/button";
 import { downloadProjectBriefPPT } from "@/lib/project-brief-ppt";
-import { toPng } from "html-to-image";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { isDoneGateStatus, resolveCurrentStage } from "@/lib/project-phase";
 import { expandProjectsToTimelineLanes, fetchProjectStreams } from "@/lib/project-streams";
