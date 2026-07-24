@@ -35,6 +35,7 @@ import {
   projectRoiPercent,
 } from "@/lib/project-finance";
 import { projectPortfolio } from "@/lib/project-health";
+import { PROJECT_PORTFOLIO_SELECT } from "@/lib/project-selects";
 
 export const Route = createFileRoute("/_authenticated/app/portfolio-segmentation")({
   component: Segmentation,
@@ -67,7 +68,8 @@ function Segmentation() {
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
-    queryFn: async () => (await supabase.from("projects").select("*")).data ?? [],
+    queryFn: async () =>
+      (await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*")).data ?? [],
     enabled: !!organization,
   });
 

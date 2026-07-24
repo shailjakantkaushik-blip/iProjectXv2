@@ -22,6 +22,7 @@ import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/s
 import { CartoonWelcomeBanner } from "@/components/cartoon-mascots";
 import { useAuth, type AppRole } from "@/lib/auth-context";
 import { canActOnDecision } from "@/lib/decision-approval";
+import { PROJECT_HOME_SELECT, projectHomeQueryKey } from "@/lib/project-selects";
 
 export const Route = createFileRoute("/_authenticated/app/")({
   component: Home,
@@ -175,9 +176,9 @@ function Home() {
   const shortcuts = useMemo(() => shortcutsForRoles(roles), [roles]);
 
   const { data: projects = [], isLoading } = useQuery({
-    queryKey: ["projects", organization?.id],
+    queryKey: projectHomeQueryKey(organization?.id),
     queryFn: async () => {
-      const { data, error } = await supabase.from("projects").select("*");
+      const { data, error } = await supabase.from("projects").select(PROJECT_HOME_SELECT);
       if (error) throw error;
       return data;
     },
@@ -198,7 +199,7 @@ function Home() {
   const myApprovals = decisions.filter((d: any) => canActOnDecision(d, userId)).length;
 
   return (
-    <div className="animate-in fade-in-0 duration-300">
+    <div>
       <PageHeading
         title={`${greeting()}${firstName ? `, ${firstName}` : ""}`}
         subtitle={`${organization?.name ?? "Your organization"} · ${roleHomeLabel(roles)}`}

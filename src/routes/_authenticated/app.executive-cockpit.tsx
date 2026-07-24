@@ -30,6 +30,7 @@ import {
   portfolioSegmentLabels,
   projectPortfolio,
 } from "@/lib/project-health";
+import { PROJECT_PORTFOLIO_SELECT } from "@/lib/project-selects";
 
 export const Route = createFileRoute("/_authenticated/app/executive-cockpit")({
   head: () => ({
@@ -83,32 +84,50 @@ function ExecutiveCockpit() {
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", orgId],
-    queryFn: async () => (await supabase.from("projects").select("*")).data ?? [],
+    queryFn: async () =>
+      (await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*")).data ?? [],
     enabled: !!orgId,
   });
   const { data: gates = [] } = useQuery({
     queryKey: ["stage_gates", orgId],
-    queryFn: async () => (await supabase.from("stage_gates").select("*")).data ?? [],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("stage_gates")
+          .select("id,project_id,gate_name,planned_date,actual_date,status")
+      ).data ?? [],
     enabled: !!orgId,
   });
   const { data: decisions = [] } = useQuery({
     queryKey: ["decisions", orgId],
-    queryFn: async () => (await supabase.from("decisions").select("*")).data ?? [],
+    queryFn: async () =>
+      (await supabase.from("decisions").select("id,outcome,status")).data ?? [],
     enabled: !!orgId,
   });
   const { data: actions = [] } = useQuery({
     queryKey: ["actions", orgId],
-    queryFn: async () => (await supabase.from("actions").select("*")).data ?? [],
+    queryFn: async () =>
+      (await supabase.from("actions").select("id,status,due_date")).data ?? [],
     enabled: !!orgId,
   });
   const { data: benefits = [] } = useQuery({
     queryKey: ["benefits", orgId],
-    queryFn: async () => (await supabase.from("benefits").select("*")).data ?? [],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("benefits")
+          .select("id,project_id,target_value,realised_value")
+      ).data ?? [],
     enabled: !!orgId,
   });
   const { data: fyAlloc = [] } = useQuery({
     queryKey: ["fy_allocations", orgId],
-    queryFn: async () => (await supabase.from("fy_allocations").select("*")).data ?? [],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("fy_allocations")
+          .select("id,fy,budget,forecast,capex,opex,benefits,allocated_amount,forecast_amount")
+      ).data ?? [],
     enabled: !!orgId,
   });
   const { data: profiles = [] } = useQuery({

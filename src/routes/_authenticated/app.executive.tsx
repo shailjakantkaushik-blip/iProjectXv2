@@ -43,6 +43,7 @@ import { darkenHex, scheduleCompletionPct } from "@/lib/schedule-progress";
 import { computeTimelineBounds } from "@/components/portfolio-timeline";
 import { FyPicker, ProjectPicker } from "@/components/portfolio-filters";
 import { unwrapList } from "@/lib/query";
+import { PROJECT_PORTFOLIO_SELECT } from "@/lib/project-selects";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
@@ -88,13 +89,19 @@ function ExecutiveDashboard() {
 
   const projectsQ = useQuery({
     queryKey: ["projects", organization?.id],
-    queryFn: async () => unwrapList(await supabase.from("projects").select("*")),
+    queryFn: async () =>
+      unwrapList(await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*")),
     enabled: !!organization,
   });
 
   const gatesQ = useQuery({
     queryKey: ["stage_gates", organization?.id],
-    queryFn: async () => unwrapList(await supabase.from("stage_gates").select("*")),
+    queryFn: async () =>
+      unwrapList(
+        await supabase
+          .from("stage_gates")
+          .select("id,project_id,stream_id,gate_name,planned_date,actual_date,status"),
+      ),
     enabled: !!organization,
   });
 
@@ -120,7 +127,14 @@ function ExecutiveDashboard() {
 
   const monthlyQ = useQuery({
     queryKey: ["financials_monthly", organization?.id],
-    queryFn: async () => unwrapList(await supabase.from("financials_monthly").select("*")),
+    queryFn: async () =>
+      unwrapList(
+        await supabase
+          .from("financials_monthly")
+          .select(
+            "id,project_id,period_month,capex_planned,capex_actual,capex_forecast,opex_planned,opex_actual,opex_forecast,benefits_actual",
+          ),
+      ),
     enabled: !!organization,
   });
 

@@ -333,14 +333,11 @@ export function ProjectStreamsPanel({
   });
 
   const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ["project_streams", projectId] });
-    qc.invalidateQueries({ queryKey: ["project_streams"] });
-    qc.invalidateQueries({ queryKey: ["project", projectId] });
-    qc.invalidateQueries({ queryKey: ["projects"] });
-    qc.invalidateQueries({ queryKey: ["stage_gates"] });
-    qc.invalidateQueries({ queryKey: ["milestones"] });
-    qc.invalidateQueries({ queryKey: ["fy_allocations"] });
-    qc.invalidateQueries({ queryKey: ["financials_monthly"] });
+    // Only the tables this panel mutates — avoid refetching the whole portfolio.
+    void qc.invalidateQueries({ queryKey: ["project_streams", projectId], refetchType: "active" });
+    void qc.invalidateQueries({ queryKey: ["project_streams"], refetchType: "active" });
+    void qc.invalidateQueries({ queryKey: ["project", projectId], refetchType: "active" });
+    void qc.invalidateQueries({ queryKey: ["projects"], refetchType: "active" });
   };
 
   // Always-on Core: if migration hasn't landed yet, ensure on first visit.

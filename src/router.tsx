@@ -17,7 +17,8 @@ export const getRouter = () => {
         // Live-sync covers cross-user edits; reconnect still refreshes.
         refetchOnWindowFocus: false,
         refetchOnReconnect: true,
-        refetchOnMount: true,
+        // Cached data is good enough within staleTime; live-sync covers edits.
+        refetchOnMount: false,
         networkMode: "online",
         // Keep prior data on screen while background refetch runs.
         placeholderData: keepPreviousData,
@@ -34,6 +35,8 @@ export const getRouter = () => {
     context: { queryClient },
     scrollRestoration: true,
     defaultPreload: "intent",
+    // Avoid downloading route chunks on every accidental sidebar hover.
+    defaultPreloadDelay: 120,
     defaultPreloadStaleTime: 30_000,
     // Avoid flashing a full pending screen on fast navigations.
     defaultPendingMs: 1000,

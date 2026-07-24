@@ -33,6 +33,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { RAG_COLORS, PRIORITY_COLORS, CHART_SERIES } from "@/lib/chart-theme";
+import { PROJECT_PORTFOLIO_SELECT } from "@/lib/project-selects";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { PageLoading } from "@/components/page-loading";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
@@ -77,7 +78,7 @@ function ProjectsList() {
     queryFn: async () => {
       const { data, error: qErr } = await supabase
         .from("projects")
-        .select("*")
+        .select(PROJECT_PORTFOLIO_SELECT as "*")
         .order("created_at", { ascending: false });
       if (qErr) throw qErr;
       return data ?? [];

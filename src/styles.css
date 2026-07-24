@@ -479,39 +479,43 @@ body { overflow-x: hidden; }
   max-width: 11rem;
 }
 
-/* ========== Interactive cartoon mascots (platform-toggleable) ========== */
+/* ========== Interactive cartoon mascots (platform-toggleable) ==========
+   Idle = static (continuous bob/wave was burning GPU on every /app page).
+   Animate only on hover / explicit mood classes. */
 .cartoon-svg .cg-body {
   transform-origin: 80px 120px;
-  animation: cg-bob 3.2s ease-in-out infinite;
+  animation: none;
 }
 .cartoon-svg .cg-head {
   transform-origin: 80px 48px;
-  animation: cg-tilt 4s ease-in-out infinite;
+  animation: none;
 }
 .cartoon-svg .cg-arm-r {
   transform-origin: 108px 88px;
-  animation: cg-wave 2.8s ease-in-out infinite;
+  animation: none;
+}
+.cartoon-svg .cg-eye {
+  transform-origin: center;
+  animation: none;
+}
+.cartoon-svg .cg-sparkles circle {
+  animation: none;
+  opacity: 0.45;
+}
+.cartoon-svg .cg-shadow {
+  animation: none;
+}
+.cartoon-mascot:hover .cartoon-svg .cg-body {
+  animation: cg-bob 1.6s ease-in-out infinite;
+}
+.cartoon-mascot:hover .cartoon-svg .cg-head {
+  animation: cg-tilt 2.4s ease-in-out infinite;
 }
 .cartoon-svg.is-wave .cg-arm-r {
   animation: cg-wave-fast 0.7s ease-in-out 3;
 }
 .cartoon-svg.is-think .cg-head {
   animation: cg-nod 1.2s ease-in-out 2;
-}
-.cartoon-svg .cg-eye {
-  transform-origin: center;
-  animation: cg-blink 5.5s step-end infinite;
-}
-.cartoon-svg .cg-sparkles circle {
-  animation: cg-twinkle 2.4s ease-in-out infinite;
-}
-.cartoon-svg .cg-sparkles circle:nth-child(2) { animation-delay: 0.4s; }
-.cartoon-svg .cg-sparkles circle:nth-child(3) { animation-delay: 0.9s; }
-.cartoon-svg .cg-shadow {
-  animation: cg-shadow-pulse 3.2s ease-in-out infinite;
-}
-.cartoon-mascot:hover .cartoon-svg .cg-body {
-  animation-duration: 1.6s;
 }
 .cartoon-banner {
   animation: cg-fade-in 0.45s ease-out both;
