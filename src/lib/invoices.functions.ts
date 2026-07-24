@@ -1,9 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { writeSecurityEvent } from "@/lib/security-audit";
 
 export const emailInvoice = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { invoiceId: string }) => input)
+  .inputValidator((input) => z.object({ invoiceId: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
     // Authorization: caller must be a platform admin OR org admin of the invoice's org.
     const { data: isPlatform } = await context.supabase.rpc("is_platform_admin", {
@@ -41,9 +43,7 @@ export const emailInvoice = createServerFn({ method: "POST" })
       .select("config")
       .eq("id", "singleton")
       .maybeSingle();
-    const { mergeInvoiceTemplate, calcInvoiceGst } = await import(
-      "@/lib/invoice-template"
-    );
+    const { mergeInvoiceTemplate, calcInvoiceGst } = await import("@/lib/invoice-template");
     const template = mergeInvoiceTemplate((templateRow as any)?.config);
     const gst = calcInvoiceGst((inv as any).amount_cents, template);
 
@@ -67,6 +67,16 @@ export const emailInvoice = createServerFn({ method: "POST" })
       .from("invoices")
       .update({ emailed_at: new Date().toISOString(), email_last_error: null })
       .eq("id", data.invoiceId);
+
+    await writeSecurityEvent({
+      orgId: (inv as any).org_id,
+      actorUserId: context.userId,
+      eventType: "invoice_email",
+      entityType: "invoices",
+      entityId: data.invoiceId,
+      summary: `Emailed invoice to ${to}`,
+      meta: { to },
+    });
 
     return { ok: true, to };
   });

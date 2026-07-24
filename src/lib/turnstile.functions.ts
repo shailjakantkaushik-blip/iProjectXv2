@@ -1,11 +1,21 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
 export const verifyTurnstile = createServerFn({ method: "POST" })
-  .inputValidator((data) => z.object({ token: z.string().min(1) }).parse(data))
+  .inputValidator((data) => z.object({ token: z.string().min(1).max(2048) }).parse(data))
   .handler(async ({ data }) => {
+    const limited = checkRateLimit({
+      key: `turnstile:${data.token.slice(0, 16)}`,
+      limit: 30,
+      windowMs: 60_000,
+    });
+    if (!limited.ok) {
+      throw new Error("Too many verification attempts. Please wait and try again.");
+    }
+
     const secret =
       process.env.TURNSTILE_SECRET_KEY ||
       process.env.CF_TURNSTILE_SECRET_KEY ||

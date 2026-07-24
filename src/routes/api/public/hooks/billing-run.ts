@@ -14,16 +14,22 @@ export const Route = createFileRoute("/api/public/hooks/billing-run")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        // Fail closed: never allow unauthenticated service-role billing runs.
         const cronSecret = process.env.BILLING_CRON_SECRET;
-        if (cronSecret) {
-          const provided = request.headers.get("x-cron-secret");
-          if (provided !== cronSecret) {
-            return new Response("Unauthorized", { status: 401 });
-          }
+        if (!cronSecret) {
+          console.error("BILLING_CRON_SECRET is not configured — refusing billing-run");
+          return new Response("Unauthorized", { status: 401 });
+        }
+        const provided = request.headers.get("x-cron-secret");
+        if (provided !== cronSecret) {
+          return new Response("Unauthorized", { status: 401 });
         }
 
         const url = process.env.SUPABASE_URL!;
         const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+        if (!url || !serviceKey) {
+          return Response.json({ error: "Server misconfigured" }, { status: 500 });
+        }
         const admin = createClient(url, serviceKey, {
           auth: { persistSession: false, autoRefreshToken: false },
         });
@@ -78,6 +84,20 @@ export const Route = createFileRoute("/api/public/hooks/billing-run")({
               .update({ email_last_error: String(e?.message ?? e).slice(0, 500) })
               .eq("id", inv.id);
           }
+        }
+
+        try {
+          const { writeSecurityEvent } = await import("@/lib/security-audit");
+          await writeSecurityEvent({
+            eventType: "billing_run",
+            entityType: "billing",
+            summary: `Billing run emailed ${sent}/${pending?.length ?? 0} invoices`,
+            meta: { sent, candidates: pending?.length ?? 0, failures: failures.length },
+            ip: request.headers.get("x-forwarded-for"),
+            userAgent: request.headers.get("user-agent"),
+          });
+        } catch {
+          /* non-blocking */
         }
 
         return Response.json({

@@ -57,7 +57,7 @@ function ResetPasswordPage() {
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (password.length < 6) return toast.error("Password must be at least 6 characters.");
+    if (password.length < 8) return toast.error("Password must be at least 8 characters.");
     if (password !== confirm) return toast.error("Passwords do not match.");
     setBusy(true);
     const { error } = await supabase.auth.updateUser({ password });
@@ -95,10 +95,10 @@ function ResetPasswordPage() {
           value={password}
           onChange={setPassword}
           required
-          minLength={6}
+          minLength={8}
           autoComplete="new-password"
           disabled={!ready}
-          placeholder="At least 6 characters"
+          placeholder="At least 8 characters"
         />
         <PasswordField
           id="confirm"
@@ -106,7 +106,7 @@ function ResetPasswordPage() {
           value={confirm}
           onChange={setConfirm}
           required
-          minLength={6}
+          minLength={8}
           autoComplete="new-password"
           disabled={!ready}
         />

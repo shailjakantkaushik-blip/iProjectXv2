@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Check, X } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { useServerFn } from "@tanstack/react-start";
 import { Label } from "@/components/ui/label";
 import type { LandingConfig } from "@/lib/landing-config";
+import { submitEoiRequest } from "@/lib/eoi.functions";
 
 const HEADING = { fontFamily: "'Sora', system-ui, sans-serif" } as const;
 
@@ -39,6 +40,7 @@ export function EoiForm({
   onSuccess?: () => void;
 }) {
   const p = cfg.palette;
+  const submitEoi = useServerFn(submitEoiRequest);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [form, setForm] = useState<EoiFormState>(EMPTY);
@@ -53,8 +55,12 @@ export function EoiForm({
     if (!form.full_name || !form.email) return;
     setSubmitting(true);
     try {
-      const { error } = await (supabase as any).from("eoi_requests").insert({ ...form, source });
-      if (error) throw error;
+      await submitEoi({
+        data: {
+          ...form,
+          source,
+        },
+      });
       setSubmitted(true);
       onSuccess?.();
     } catch (err: any) {

@@ -1,11 +1,10 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { clearMustChangePassword } from "@/lib/platform-admin.functions";
+import { completeForcedPasswordChange } from "@/lib/platform-admin.functions";
 import { ProcessingOverlay } from "@/components/processing-animation";
 import { DEFAULT_LANDING, fetchLandingConfig, resolveBrandLogoUrl } from "@/lib/landing-config";
 import { AuthLayout, PasswordField, type AuthBrand } from "@/components/auth-layout";
@@ -34,7 +33,7 @@ function toAuthBrand(brand: typeof DEFAULT_LANDING.brand): AuthBrand {
 function ForcePwdPage() {
   const navigate = useNavigate();
   const { session, loading, refresh } = useAuth();
-  const clearFlag = useServerFn(clearMustChangePassword);
+  const completeChange = useServerFn(completeForcedPasswordChange);
   const [busy, setBusy] = useState(false);
   const [pwd, setPwd] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -58,18 +57,15 @@ function ForcePwdPage() {
     if (pwd.length < 8) return toast.error("Password must be at least 8 characters.");
     if (pwd !== confirm) return toast.error("Passwords do not match.");
     setBusy(true);
-    const { error } = await supabase.auth.updateUser({ password: pwd });
-    if (error) {
-      setBusy(false);
-      return toast.error(error.message);
-    }
     try {
-      await clearFlag({});
-    } catch (e: any) {
+      // Server sets password + clears must_change_password (cannot skip password update).
+      await completeChange({ data: { password: pwd } });
+    } catch (err: any) {
       setBusy(false);
-      return toast.error(e.message);
+      return toast.error(err?.message ?? "Could not update password");
     }
     await refresh();
+    setBusy(false);
     toast.success("Password updated");
     navigate({ to: "/app", replace: true });
   };
@@ -78,35 +74,35 @@ function ForcePwdPage() {
     <>
       <ProcessingOverlay open={busy} label="Updating password…" />
       <AuthLayout
-      platform={brand}
-      title="Choose a new password"
-      description="Your administrator created this account with a temporary password. Set your own password to continue."
-    >
-      <form onSubmit={onSubmit} className="space-y-4">
-        <PasswordField
-          id="pwd"
-          label="New password"
-          value={pwd}
-          onChange={setPwd}
-          required
-          minLength={8}
-          autoComplete="new-password"
-          placeholder="At least 8 characters"
-        />
-        <PasswordField
-          id="confirm"
-          label="Confirm password"
-          value={confirm}
-          onChange={setConfirm}
-          required
-          minLength={8}
-          autoComplete="new-password"
-        />
-        <Button type="submit" className="h-10 w-full" disabled={busy}>
-          {busy ? "Updating…" : "Update password & continue"}
-        </Button>
-      </form>
-    </AuthLayout>
+        platform={brand}
+        title="Choose a new password"
+        description="Your administrator created this account with a temporary password. Set your own password to continue."
+      >
+        <form onSubmit={onSubmit} className="space-y-4">
+          <PasswordField
+            id="pwd"
+            label="New password"
+            value={pwd}
+            onChange={setPwd}
+            required
+            minLength={8}
+            autoComplete="new-password"
+            placeholder="At least 8 characters"
+          />
+          <PasswordField
+            id="confirm"
+            label="Confirm password"
+            value={confirm}
+            onChange={setConfirm}
+            required
+            minLength={8}
+            autoComplete="new-password"
+          />
+          <Button type="submit" className="h-10 w-full" disabled={busy}>
+            {busy ? "Updating…" : "Update password & continue"}
+          </Button>
+        </form>
+      </AuthLayout>
     </>
   );
 }
