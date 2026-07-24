@@ -28,7 +28,7 @@ export function ProcessingAnimation({
     <div
       className={cn(
         "processing-anim flex flex-col items-center justify-center text-center",
-        size === "sm" ? "gap-3" : "gap-3.5",
+        "gap-2.5",
         className,
       )}
       role="status"
@@ -53,8 +53,8 @@ export function ProcessingAnimation({
         />
       </div>
       {label ? (
-        <div className="processing-anim__label px-2">
-          <div className="text-sm font-medium tracking-wide text-muted-foreground">{label}</div>
+        <div className="processing-anim__label px-2 text-sm font-medium tracking-wide text-muted-foreground">
+          {label}
         </div>
       ) : null}
     </div>

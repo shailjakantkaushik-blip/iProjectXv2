@@ -739,10 +739,9 @@ html[data-focus-mode="1"] .cartoon-banner,
   animation: processing-panel-in 0.25s ease-out both;
 }
 .processing-anim {
-  /* One compact block: mark + label stay together at the viewport centre. */
+  /* Compact mark + label stack — positioning is owned by PageLoading. */
   transform: translateZ(0);
-  contain: layout paint;
-  margin: 0 auto;
+  margin: 0;
 }
 .processing-anim__stage {
   position: relative;
