@@ -580,6 +580,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                       <Link
                         key={n.to}
                         to={n.to}
+                        preload={false}
                         aria-current={active ? "page" : undefined}
                         data-nav-active={active ? "true" : undefined}
                         className={cn(
@@ -645,7 +646,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       className={cn("shell-root flex min-h-screen bg-background", focusMode && "shell-focus")}
       data-focus-mode={focusMode ? "1" : undefined}
     >
-      <aside className="shell-sidebar sticky top-0 hidden h-svh w-[15rem] shrink-0 flex-col border-r border-sidebar-border/70 bg-sidebar/90 backdrop-blur-md md:flex lg:w-[16.25rem]">
+      <aside className="shell-sidebar sticky top-0 hidden h-svh w-[15rem] shrink-0 flex-col border-r border-sidebar-border/70 bg-sidebar md:flex lg:w-[16.25rem]">
         {BrandBlock}
         {renderNav(desktopNavRef)}
         {Footer}
@@ -666,7 +667,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="shell-header relative sticky top-0 z-30 flex items-center gap-2 border-b border-border/50 bg-background/80 px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur-xl supports-[backdrop-filter]:bg-background/70 sm:gap-3 sm:px-4 lg:px-6">
+        <header className="shell-header relative sticky top-0 z-30 flex items-center gap-2 border-b border-border/50 bg-background/95 px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:gap-3 sm:px-4 lg:px-6">
           <SoftUpdatingBar />
           <button
             type="button"
