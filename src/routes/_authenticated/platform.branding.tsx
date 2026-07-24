@@ -288,6 +288,13 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
         .eq("id", org.id);
       if (error) throw error;
       writeCachedOrgStyleTheme(org.id, nextStyle);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent(STYLE_THEME_CHANGE_EVENT, {
+            detail: { themeId: nextStyle.theme_id, source: "org" },
+          }),
+        );
+      }
     },
     onSuccess: () => {
       toast.success("Branding saved");
