@@ -27,15 +27,15 @@ export function ProcessingAnimation({
   return (
     <div
       className={cn(
-        "processing-anim flex flex-col items-center justify-center",
-        size === "sm" ? "gap-2.5" : "gap-3",
+        "processing-anim flex flex-col items-center justify-center text-center",
+        size === "sm" ? "gap-3" : "gap-3.5",
         className,
       )}
       role="status"
       aria-live="polite"
       aria-label={label}
     >
-      <div className="processing-anim__stage" style={{ width: px, height: px }}>
+      <div className="processing-anim__stage shrink-0" style={{ width: px, height: px }}>
         <span className="processing-anim__stage-bg" aria-hidden />
         <span className="processing-anim__glow" aria-hidden />
         <img
@@ -53,8 +53,8 @@ export function ProcessingAnimation({
         />
       </div>
       {label ? (
-        <div className="processing-anim__label text-center">
-          <div className="text-xs font-medium tracking-wide text-muted-foreground">{label}</div>
+        <div className="processing-anim__label px-2">
+          <div className="text-sm font-medium tracking-wide text-muted-foreground">{label}</div>
         </div>
       ) : null}
     </div>
