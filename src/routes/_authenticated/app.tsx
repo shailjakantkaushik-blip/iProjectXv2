@@ -9,27 +9,27 @@ export const Route = createFileRoute("/_authenticated/app")({
 });
 
 function AppLayout() {
-  const { profile, organization, loading } = useAuth();
+  const { profile, organization, loading, sessionChecked } = useAuth();
   const navigate = useNavigate();
   useLiveSync(organization?.id);
 
-  // Only send users who truly have no org membership to create-org.
-  // Do not treat a still-loading organization object as "needs onboarding".
-  const needsOnboarding = Boolean(profile && !profile.org_id && !organization);
+  const needsOnboarding = Boolean(
+    sessionChecked && !loading && profile && !profile.org_id && !organization,
+  );
 
   useEffect(() => {
-    if (!loading && needsOnboarding) {
+    if (needsOnboarding) {
       navigate({ to: "/onboarding", replace: true });
     }
-  }, [loading, needsOnboarding, navigate]);
+  }, [needsOnboarding, navigate]);
 
-  // Full-screen centred — same placement as "Checking your session…"
-  // (in-shell fullScreen={false} left the spinner near the top of the page).
-  if (loading || !profile) {
-    return <PageLoading label="Loading workspace…" />;
+  // Never cover the shell with a full-screen loader when we already have chrome.
+  // Other fast SaaS apps paint the frame first; content fills in after.
+  if (!profile) {
+    return <PageLoading label="Loading workspace…" fullScreen={false} />;
   }
   if (profile.org_id && !organization) {
-    return <PageLoading label="Loading workspace…" />;
+    return <PageLoading label="Loading workspace…" fullScreen={false} />;
   }
   if (needsOnboarding) return null;
 

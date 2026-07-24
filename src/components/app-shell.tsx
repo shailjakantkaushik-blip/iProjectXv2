@@ -1,5 +1,13 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   BarChart3,
@@ -64,9 +72,17 @@ import { useAuth, isAdmin, isPlatformAdmin } from "@/lib/auth-context";
 import { useAllowedPages } from "@/lib/permissions";
 import { useOrgSupportAccess } from "@/lib/support-tickets";
 import { Button } from "@/components/ui/button";
-import { NotificationsBell } from "@/components/notifications-bell";
-import { CartoonCompanion } from "@/components/cartoon-mascots";
 import { useCartoonsEnabled } from "@/lib/use-cartoons";
+
+const NotificationsBell = lazy(() =>
+  import("@/components/notifications-bell").then((m) => ({ default: m.NotificationsBell })),
+);
+const CartoonCompanion = lazy(() =>
+  import("@/components/cartoon-mascots").then((m) => ({ default: m.CartoonCompanion })),
+);
+const CommandPaletteLazy = lazy(() =>
+  import("@/components/command-palette").then((m) => ({ default: m.CommandPalette })),
+);
 import {
   clampLogoCustom,
   fetchLandingConfig,
@@ -88,9 +104,10 @@ import {
   type NavigationConfig,
 } from "@/lib/navigation-config";
 import { useFocusMode } from "@/lib/use-focus-mode";
-import { CommandPalette, useCommandPaletteHotkey } from "@/components/command-palette";
 import { cn } from "@/lib/utils";
-import { StyleThemePicker } from "@/components/style-theme-picker";
+const StyleThemePicker = lazy(() =>
+  import("@/components/style-theme-picker").then((m) => ({ default: m.StyleThemePicker })),
+);
 import { SoftUpdatingBar } from "@/components/soft-updating";
 import {
   normalizeOrgStyleTheme,
@@ -240,11 +257,36 @@ export function AppShell({ children }: { children: ReactNode }) {
   /** Open section headings — default all collapsed for a quieter sidebar. */
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set());
   const [navOpenHydrated, setNavOpenHydrated] = useState(false);
+  /** Mount bell / mascot / palette after first paint so reload stays snappy. */
+  const [deferChrome, setDeferChrome] = useState(false);
   const { focusMode, toggleFocusMode } = useFocusMode();
   const cartoonsEnabled = useCartoonsEnabled();
-  useCommandPaletteHotkey(() => setCmdOpen(true));
   const desktopNavRef = useRef<HTMLElement | null>(null);
   const mobileNavRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCmdOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    const w = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (typeof w.requestIdleCallback === "function") {
+      const id = w.requestIdleCallback(() => setDeferChrome(true), { timeout: 1600 });
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const t = window.setTimeout(() => setDeferChrome(true), 900);
+    return () => window.clearTimeout(t);
+  }, []);
 
   /**
    * Org navigation takes precedence. Seed from live org config, else last
@@ -756,18 +798,34 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Style theme
                   </div>
-                  <StyleThemePicker
-                    compact
-                    value={activeStyleId}
-                    onChange={(id: StyleThemeId) => {
-                      if (!organization?.id) return;
-                      writeUserStyleTheme(organization.id, id);
-                    }}
-                  />
+                  <Suspense fallback={null}>
+                    <StyleThemePicker
+                      compact
+                      value={activeStyleId}
+                      onChange={(id: StyleThemeId) => {
+                        if (!organization?.id) return;
+                        writeUserStyleTheme(organization.id, id);
+                      }}
+                    />
+                  </Suspense>
                 </PopoverContent>
               </Popover>
             ) : null}
-            <NotificationsBell />
+            {deferChrome ? (
+              <Suspense
+                fallback={
+                  <Button type="button" variant="ghost" size="icon" className="h-10 w-10 sm:h-8 sm:w-8" disabled>
+                    <Bell className="h-4 w-4" />
+                  </Button>
+                }
+              >
+                <NotificationsBell />
+              </Suspense>
+            ) : (
+              <Button type="button" variant="ghost" size="icon" className="h-10 w-10 sm:h-8 sm:w-8" disabled>
+                <Bell className="h-4 w-4" />
+              </Button>
+            )}
             <div className="hidden rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-[10.5px] font-medium capitalize tracking-wide text-muted-foreground sm:block">
               {(organization?.plan ?? "free").replace(/_/g, " ")}
             </div>
@@ -791,11 +849,19 @@ export function AppShell({ children }: { children: ReactNode }) {
         </main>
       </div>
 
-      <CommandPalette open={cmdOpen} onOpenChange={setCmdOpen} groups={visibleNavForPalette} />
+      {(cmdOpen || deferChrome) && (
+        <Suspense fallback={null}>
+          <CommandPaletteLazy open={cmdOpen} onOpenChange={setCmdOpen} groups={visibleNavForPalette} />
+        </Suspense>
+      )}
       {/* Portal-like sibling: must stay out of theme stacking rules that set
           .shell-root > * { position: relative }, which would turn the mascot
           into a flex column and waste page width on the right. */}
-      {!focusMode && <CartoonCompanion />}
+      {deferChrome && !focusMode && cartoonsEnabled && (
+        <Suspense fallback={null}>
+          <CartoonCompanion />
+        </Suspense>
+      )}
     </div>
   );
 }
