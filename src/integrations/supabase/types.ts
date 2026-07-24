@@ -2412,6 +2412,10 @@ export type Database = {
         Args: { p_project_id: string }
         Returns: string
       }
+      ensure_project_core_stream: {
+        Args: { p_project_id: string }
+        Returns: string
+      }
       rollup_project_from_streams: {
         Args: { p_project_id: string }
         Returns: undefined

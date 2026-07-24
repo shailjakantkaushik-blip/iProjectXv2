@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Layers, Plus, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -9,7 +9,7 @@ import {
   createProjectStream,
   deleteProjectStream,
   duplicateProjectStream,
-  enableProjectStreams,
+  ensureProjectCoreStream,
   fetchProjectStreams,
   updateProjectStream,
   type ProjectStream,
@@ -292,12 +292,13 @@ function StreamEditor({
 export function ProjectStreamsPanel({
   projectId,
   orgId,
-  streamsEnabled,
+  streamsEnabled: _streamsEnabled = true,
   projectRollup,
 }: {
   projectId: string;
   orgId: string;
-  streamsEnabled: boolean;
+  /** @deprecated Always-on Core — kept for call-site compat. */
+  streamsEnabled?: boolean;
   projectRollup?: {
     budget?: number | null;
     planned_start_date?: string | null;
@@ -313,7 +314,7 @@ export function ProjectStreamsPanel({
   const { data: streams = [], isLoading } = useQuery({
     queryKey: ["project_streams", projectId],
     queryFn: () => fetchProjectStreams(projectId),
-    enabled: !!projectId && streamsEnabled,
+    enabled: !!projectId,
   });
 
   const invalidate = () => {
@@ -327,14 +328,22 @@ export function ProjectStreamsPanel({
     qc.invalidateQueries({ queryKey: ["financials_monthly"] });
   };
 
-  const enableMut = useMutation({
-    mutationFn: () => enableProjectStreams(projectId),
-    onSuccess: () => {
-      toast.success("Streams enabled — Core stream created and child data migrated");
-      invalidate();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  // Always-on Core: if migration hasn't landed yet, ensure on first visit.
+  useEffect(() => {
+    if (!projectId || isLoading || streams.length > 0) return;
+    let cancelled = false;
+    void ensureProjectCoreStream(projectId)
+      .then(() => {
+        if (!cancelled) invalidate();
+      })
+      .catch((e: Error) => {
+        if (!cancelled) toast.error(e.message || "Could not create Core stream");
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, isLoading, streams.length]);
 
   const totals = useMemo(() => {
     const budget = streams.reduce((s, x) => s + Number(x.budget || 0), 0);
@@ -349,31 +358,6 @@ export function ProjectStreamsPanel({
     return { budget, incurred, approved, count: streams.length };
   }, [streams]);
 
-  if (!streamsEnabled) {
-    return (
-      <SectionFrame>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <SectionTitle>
-              <span className="inline-flex items-center gap-2">
-                <Layers className="h-4 w-4" /> Delivery streams
-              </span>
-            </SectionTitle>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              When enabled, each stream owns planned vs actual dates, stage gates, milestones, budget, and
-              resource allocations — the project is the rollup. Enabling creates a bare-minimum{" "}
-              <span className="font-medium text-foreground">Core</span> stream and migrates existing child
-              data onto it. Add more streams when a project has parallel delivery lanes.
-            </p>
-          </div>
-          <Button disabled={enableMut.isPending} onClick={() => enableMut.mutate()}>
-            {enableMut.isPending ? "Enabling…" : "Enable streams"}
-          </Button>
-        </div>
-      </SectionFrame>
-    );
-  }
-
   return (
     <div className="space-y-4">
       <SectionFrame>
@@ -383,9 +367,12 @@ export function ProjectStreamsPanel({
           </span>
         </SectionTitle>
         <p className="mb-3 text-xs text-muted-foreground">
-          Project dates and finance are rolled up from streams (min/max dates, sum of budgets). Edit streams
-          below — timeline shows one planned vs actual lane per stream. Use <span className="font-medium text-foreground">Duplicate</span> to
-          clone a stream’s planned schedule, gates, and finance plan into a new lane (actuals cleared; resources not copied).
+          Every project has at least a <span className="font-medium text-foreground">Core</span> stream.
+          Streams own planned vs actual dates, gates, milestones, budget, and allocations — the project is the
+          rollup (min/max dates, sum of finance). Timelines show stream lanes by default; turn on{" "}
+          <span className="font-medium text-foreground">Project timeline</span> to also see the project
+          start→end rollup. Use <span className="font-medium text-foreground">Duplicate</span> to clone a
+          stream’s planned schedule, gates, and finance plan (actuals cleared; resources not copied).
         </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <KpiCard label="Streams" value={totals.count} />

@@ -313,7 +313,7 @@ function ExecutiveReportsPage() {
       const projectStreams = (streamsByProject.get(p.id) || []).sort(
         (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
       );
-      if (p.streams_enabled && projectStreams.length > 0) {
+      if (projectStreams.length > 0) {
         for (const s of projectStreams) {
           const gs = (gates as any[]).filter(
             (g) => g.stream_id === s.id || (!g.stream_id && g.project_id === p.id && s.is_default),

@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth-context";
 import { fyStartFor as fyStartForOrg, fyEndFor as fyEndForOrg, fyLabel as fyLabelOrg } from "@/lib/fiscal-year";
 import { RAG_COLORS } from "@/lib/chart-theme";
 import { ExpandablePanel } from "@/components/expandable-panel";
+import { summarizeTimelineLaneFinancials } from "@/lib/project-streams";
 
 function money(n: number) {
   return "$" + new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n || 0);
@@ -67,15 +68,20 @@ export function computeTimelineBounds(projects: any[], fy: string = "All", fySta
 
 export function GanttGroup({
   title, items, bounds, gatesByProject, collapsed, onToggle, showPlannedVsActual = false, showGates,
+  showProjectTimeline, onShowProjectTimelineChange,
 }: {
   title: string; items: any[]; bounds: TimelineBounds;
   gatesByProject: Map<string, any[]>; collapsed: boolean; onToggle: () => void;
   showPlannedVsActual?: boolean;
   showGates?: boolean;
+  /** Controlled: show project rollup lane checkbox (parent expands lanes). */
+  showProjectTimeline?: boolean;
+  onShowProjectTimelineChange?: (v: boolean) => void;
 }) {
   const [internalShowGates, setInternalShowGates] = useState(true);
   const isControlled = showGates !== undefined;
   const effectiveShowGates = isControlled ? !!showGates : internalShowGates;
+  const showProjectToggle = typeof onShowProjectTimelineChange === "function";
   const { start: rangeStart, totalMs, months, fyGroups } = bounds;
   const monthShort = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const now = new Date();
@@ -112,14 +118,15 @@ export function GanttGroup({
   const COL_FIN = 200;
   const LEFT = COL_PROJECT + COL_SPONSOR + COL_FIN;
 
-  const groupIncurred = items.reduce((s, p) => s + Number(p.capex_incurred || 0) + Number(p.opex_incurred || 0), 0);
-  const groupApproved = items.reduce((s, p) => s + Number(p.capex_approved || 0) + Number(p.opex_approved || 0), 0);
-  const groupFAC = items.reduce((s, p) => s + Number(p.forecast_at_completion || p.fac || (Number(p.budget || 0) * 1.05)), 0);
-  const groupBenefits = items.reduce((s, p) => s + Number(p.benefits_realised || 0), 0);
-  const groupUtil = groupApproved > 0 ? Math.round((groupIncurred / groupApproved) * 100) : 0;
-  const rGreen = items.filter((p) => p.rag === "Green").length;
-  const rAmber = items.filter((p) => p.rag === "Amber").length;
-  const rRed = items.filter((p) => p.rag === "Red").length;
+  const fin = summarizeTimelineLaneFinancials(items);
+  const groupIncurred = fin.incurred;
+  const groupApproved = fin.approved;
+  const groupFAC = fin.fac;
+  const groupBenefits = fin.benefits;
+  const groupUtil = fin.utilPct;
+  const rGreen = fin.green;
+  const rAmber = fin.amber;
+  const rRed = fin.red;
 
   const Stat = ({ label, value }: { label: string; value: React.ReactNode }) => (
     <div className="flex flex-col items-start leading-tight">
@@ -134,20 +141,40 @@ export function GanttGroup({
 
   return (
     <div className="relative rounded-md border border-border bg-surface shadow-sm">
-      {!isControlled && (
-        <label
+      {(!isControlled || showProjectToggle) && (
+        <div
           onClick={(e) => e.stopPropagation()}
-          className="absolute right-2 top-2 z-30 inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background/95 px-2 py-0.5 text-[10px] font-medium text-foreground shadow-sm hover:bg-muted"
-          title="Show or hide stage-gate markers"
+          className="absolute right-2 top-2 z-30 flex flex-wrap items-center justify-end gap-1.5"
         >
-          <input
-            type="checkbox"
-            checked={effectiveShowGates}
-            onChange={(e) => setInternalShowGates(e.target.checked)}
-            className="h-3 w-3"
-          />
-          Stage gates
-        </label>
+          {showProjectToggle && (
+            <label
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background/95 px-2 py-0.5 text-[10px] font-medium text-foreground shadow-sm hover:bg-muted"
+              title="Show project rollup lane (start→end + financials from streams)"
+            >
+              <input
+                type="checkbox"
+                checked={!!showProjectTimeline}
+                onChange={(e) => onShowProjectTimelineChange?.(e.target.checked)}
+                className="h-3 w-3"
+              />
+              Project timeline
+            </label>
+          )}
+          {!isControlled && (
+            <label
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background/95 px-2 py-0.5 text-[10px] font-medium text-foreground shadow-sm hover:bg-muted"
+              title="Show or hide stage-gate markers"
+            >
+              <input
+                type="checkbox"
+                checked={effectiveShowGates}
+                onChange={(e) => setInternalShowGates(e.target.checked)}
+                className="h-3 w-3"
+              />
+              Stage gates
+            </label>
+          )}
+        </div>
       )}
       <button
         onClick={onToggle}
@@ -160,7 +187,7 @@ export function GanttGroup({
           <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{rangeLabel}</span>
         </div>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
-          <Stat label="Projects" value={items.length} />
+          <Stat label="Projects" value={fin.projectCount} />
           <Stat label="Approved" value={money(groupApproved)} />
           <Stat label="Actual" value={money(groupIncurred)} />
           <Stat label="FAC" value={money(groupFAC)} />
@@ -226,19 +253,27 @@ export function GanttGroup({
               const pct = budget > 0 ? Math.min(100, Math.round((incurred / budget) * 100)) : 0;
               const overBudget = incurred > budget && budget > 0;
               const slipDays = Math.round((aE - pE) / 86400000);
-              // Lane key: stream id for stream lanes, else project id
-              const laneKey = p.stream_id || p.id;
-              const rawGates = (gatesByProject.get(laneKey) || gatesByProject.get(p.project_id) || [])
-                .filter((g: any) => g.planned_date || g.actual_date);
+              // Lane key: stream id for stream lanes; project id for rollup / fallback.
+              // Project rollup intentionally omits stream-scoped gates (those sit on stream lanes).
+              const laneKey = p.is_project_rollup ? (p.project_id || p.id) : (p.stream_id || p.id);
+              const rawGates = p.is_project_rollup
+                ? []
+                : (gatesByProject.get(laneKey) || []).filter((g: any) => g.planned_date || g.actual_date);
               const projGates = rawGates
                 .slice()
                 .sort((a: any, b: any) =>
                   new Date(a.actual_date || a.planned_date).getTime() -
                   new Date(b.actual_date || b.planned_date).getTime()
                 );
+              const rowKey = p.is_project_rollup ? `rollup:${p.project_id || p.id}` : p.id;
 
               return (
-                <div key={p.id} className="flex items-center border-b border-border/40 py-2 hover:bg-muted/30">
+                <div
+                  key={rowKey}
+                  className={`flex items-center border-b border-border/40 py-2 hover:bg-muted/30 ${
+                    p.is_project_rollup ? "bg-muted/20" : ""
+                  }`}
+                >
                   <div style={{ width: COL_PROJECT }} className="shrink-0 pl-1 pr-2">
                     <Link
                       to="/app/project-infographic"
@@ -246,7 +281,14 @@ export function GanttGroup({
                       className="block truncate text-[12px] font-medium text-foreground hover:text-primary hover:underline"
                       title={p.name}
                     >
-                      {p.is_stream_lane && p.stream_name ? (
+                      {p.is_project_rollup ? (
+                        <>
+                          <span>{p.name}</span>
+                          <span className="ml-1.5 rounded bg-primary/10 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary">
+                            Project
+                          </span>
+                        </>
+                      ) : p.is_stream_lane && p.stream_name ? (
                         <>
                           <span className="text-muted-foreground">{p.project_name || "Project"}</span>
                           <span className="text-muted-foreground"> · </span>
@@ -266,8 +308,8 @@ export function GanttGroup({
                           {p.project_code}
                         </Link>
                       ) : "—"}{" "}
-                      · {p.is_stream_lane ? "Stream" : p.program || "Unassigned"}
-                      {p.is_stream_lane && p.program ? ` · ${p.program}` : ""}
+                      · {p.is_project_rollup ? "Rollup" : p.is_stream_lane ? "Stream" : p.program || "Unassigned"}
+                      {(p.is_stream_lane || p.is_project_rollup) && p.program ? ` · ${p.program}` : ""}
                     </div>
                   </div>
                   <div style={{ width: COL_SPONSOR }} className="shrink-0 pr-2">
@@ -460,6 +502,8 @@ export function PortfolioTimeline({
   title,
   showPlannedVsActual = false,
   showGates,
+  showProjectTimeline,
+  onShowProjectTimelineChange,
   expandable = true,
   expandToolbar,
   captureId,
@@ -471,6 +515,9 @@ export function PortfolioTimeline({
   title?: string;
   showPlannedVsActual?: boolean;
   showGates?: boolean;
+  /** Controlled: parent expands lanes with includeProjectRollup when true. */
+  showProjectTimeline?: boolean;
+  onShowProjectTimelineChange?: (v: boolean) => void;
   /** When true (default), timeline gets an Expand control app-wide. */
   expandable?: boolean;
   expandToolbar?: ReactNode;
@@ -518,6 +565,8 @@ export function PortfolioTimeline({
         onToggle={() => setCollapsed((c) => !c)}
         showPlannedVsActual={showPlannedVsActual}
         showGates={showGates}
+        showProjectTimeline={showProjectTimeline}
+        onShowProjectTimelineChange={onShowProjectTimelineChange}
       />
     </div>
   );

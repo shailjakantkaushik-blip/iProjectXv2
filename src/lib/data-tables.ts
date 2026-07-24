@@ -99,6 +99,7 @@ export const TABLES: TableDef[] = [
       { key: "baseline_date", label: "Baseline Date", type: "date" },
       { key: "baseline_label", label: "Baseline Label", type: "text" },
       { key: "description", label: "Description", type: "textarea" },
+      // Always-on Core: new projects default true; kept for import compat.
       { key: "streams_enabled", label: "Streams Enabled", type: "select", options: ["true", "false"] },
     ],
   },

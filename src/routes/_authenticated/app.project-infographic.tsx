@@ -271,6 +271,7 @@ function InfographicPage() {
   const search = Route.useSearch();
   const [pid, setPid] = useState<string>(search.pid || "");
   const [showPvA, setShowPvA] = useState<boolean>(false);
+  const [showProjectTimeline, setShowProjectTimeline] = useState<boolean>(false);
   useEffect(() => {
     if (search.pid) setPid(search.pid);
   }, [search.pid]);
@@ -302,8 +303,9 @@ function InfographicPage() {
   const { data: projectStreams = [] } = useQuery({
     queryKey: ["project_streams", project?.id],
     queryFn: () => fetchProjectStreams(project.id),
-    enabled: !!project?.id && !!project?.streams_enabled,
+    enabled: !!project?.id,
   });
+  const hasStreams = (projectStreams as any[]).length > 0;
 
   const { data: projectAllocations = [] } = useQuery({
     queryKey: ["resource_allocations", project?.id],
@@ -326,19 +328,10 @@ function InfographicPage() {
 
   const timelineLanes = useMemo(() => {
     if (!project) return [];
-    if (!project.streams_enabled || projectStreams.length === 0) {
-      return [
-        {
-          ...project,
-          start_date: project.planned_start_date || project.actual_start_date || project.start_date,
-          end_date: project.actual_end_date || project.planned_end_date || project.end_date,
-          project_id: project.id,
-        },
-      ].filter((p: any) => p.start_date && p.end_date);
-    }
     return expandProjectsToTimelineLanes([project], projectStreams as any[], {
       gates: gates as any[],
       resolvePhase: (p, streamGates) => resolveCurrentStage(p, streamGates, []),
+      includeProjectRollup: showProjectTimeline,
     })
       .map((lane: any) => ({
         ...lane,
@@ -346,7 +339,7 @@ function InfographicPage() {
         end_date: lane.actual_end_date || lane.planned_end_date || lane.end_date,
       }))
       .filter((p: any) => p.start_date && p.end_date);
-  }, [project, projectStreams, gates]);
+  }, [project, projectStreams, gates, showProjectTimeline]);
   const { data: monthly = [] } = useQuery({
     queryKey: ["financials_monthly", project?.id],
     queryFn: async () =>
@@ -907,7 +900,7 @@ function InfographicPage() {
             <div className="font-medium">{fmtDate(project.end_date)}</div>
           </div>
         </div>
-        <div className="mb-2 flex items-center gap-2">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
           <label
             className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background/95 px-2 py-1 text-[11px] font-medium text-foreground shadow-sm hover:bg-muted"
             title="Show planned vs actual timelines"
@@ -920,16 +913,32 @@ function InfographicPage() {
             />
             Show Planned vs Actual
           </label>
+          {hasStreams ? (
+            <label
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background/95 px-2 py-1 text-[11px] font-medium text-foreground shadow-sm hover:bg-muted"
+              title="Show project rollup lane (start→end + financials from streams)"
+            >
+              <input
+                type="checkbox"
+                checked={showProjectTimeline}
+                onChange={(e) => setShowProjectTimeline(e.target.checked)}
+                className="h-3 w-3"
+              />
+              Project timeline
+            </label>
+          ) : null}
         </div>
         <PortfolioTimeline
           projects={timelineLanes}
           gates={gates}
           title={
-            project.streams_enabled
-              ? `${project.name || "Project"} · Streams (planned vs actual)`
+            hasStreams
+              ? `${project.name || "Project"} · Streams`
               : project.name || "Project Timeline"
           }
           showPlannedVsActual={showPvA}
+          showProjectTimeline={showProjectTimeline}
+          onShowProjectTimelineChange={hasStreams ? setShowProjectTimeline : undefined}
           captureId="project-timeline-capture"
         />
       </SectionFrame>
@@ -1123,7 +1132,7 @@ function InfographicPage() {
                 <th>Gate ID</th>
                 <th>Project ID</th>
                 <th>Project Name</th>
-                {project.streams_enabled ? <th>Stream</th> : null}
+                {hasStreams ? <th>Stream</th> : null}
                 <th>Stage Gate</th>
                 <th>Planned Date</th>
                 <th>Actual Date</th>
@@ -1137,7 +1146,7 @@ function InfographicPage() {
             <tbody>
               {gates.length === 0 ? (
                 <tr>
-                  <td colSpan={project.streams_enabled ? 12 : 11} className="text-center text-slate-500 py-4">
+                  <td colSpan={hasStreams ? 12 : 11} className="text-center text-slate-500 py-4">
                     No stage gates captured.
                   </td>
                 </tr>
@@ -1147,7 +1156,7 @@ function InfographicPage() {
                     <td className="font-mono">SG{String(i + 1).padStart(4, "0")}</td>
                     <td className="font-mono text-blue-600">{project.project_code || "—"}</td>
                     <td>{project.name}</td>
-                    {project.streams_enabled ? (
+                    {hasStreams ? (
                       <td>
                         {g.stream_id
                           ? streamById.get(g.stream_id)?.name || streamById.get(g.stream_id)?.code || "Stream"
@@ -1212,13 +1221,13 @@ function InfographicPage() {
       <SectionFrame>
         <SectionTitle>
           Resources & allocations
-          {project.streams_enabled ? " (by stream)" : ""}
+          {hasStreams ? " (by stream)" : ""}
         </SectionTitle>
         <p className="mb-3 text-xs text-muted-foreground">
           People allocated to this project
-          {project.streams_enabled
+          {hasStreams
             ? ", broken out by stream when allocations are stream-scoped."
-            : ". Enable streams to allocate capacity per delivery lane."}
+            : "."}
         </p>
         {resourcePlanRows.length === 0 ? (
           <div className="rounded-md border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
@@ -1231,7 +1240,7 @@ function InfographicPage() {
                 <tr>
                   <th>Resource</th>
                   <th>Role</th>
-                  {project.streams_enabled ? <th>Stream</th> : null}
+                  {hasStreams ? <th>Stream</th> : null}
                   {allocationMonths.map((m) => (
                     <th key={m.key} className="text-center">
                       {m.label}
@@ -1245,7 +1254,7 @@ function InfographicPage() {
                   <tr key={r.key}>
                     <td className="font-medium">{r.name}</td>
                     <td>{r.role || "—"}</td>
-                    {project.streams_enabled ? (
+                    {hasStreams ? (
                       <td>
                         {r.streamName ? (
                           <span className="rounded bg-muted px-1.5 py-0.5 font-medium">{r.streamName}</span>

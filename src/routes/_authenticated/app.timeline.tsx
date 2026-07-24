@@ -122,6 +122,7 @@ function TimelinePage() {
   const [pidsOpen, setPidsOpen] = useState(false);
   const [pidsSearch, setPidsSearch] = useState("");
   const [showGates, setShowGates] = useState(true);
+  const [showProjectTimeline, setShowProjectTimeline] = useState(false);
 
   const scheduleStatus = (p: any): "On Track" | "Delayed" | "Ahead" => {
     const pE = p.planned_end_date ? new Date(p.planned_end_date).getTime() : (p.end_date ? new Date(p.end_date).getTime() : null);
@@ -167,13 +168,14 @@ function TimelinePage() {
     const lanes = expandProjectsToTimelineLanes(base, streams as any[], {
       gates: gates as any[],
       resolvePhase: (p, streamGates) => resolveCurrentStage(p, streamGates, orgPhases),
+      includeProjectRollup: showProjectTimeline,
     }).map((lane: any) => ({
       ...lane,
       start_date: lane.planned_start_date || lane.actual_start_date || lane.start_date,
       end_date: lane.actual_end_date || lane.planned_end_date || lane.end_date,
     }));
     return lanes.filter((p: any) => p.start_date && p.end_date);
-  }, [filtered, streams, gates, orgPhases]);
+  }, [filtered, streams, gates, orgPhases, showProjectTimeline]);
 
   // ---------- Quick shift ----------
   const [shiftPid, setShiftPid] = useState<string>("");
@@ -211,7 +213,7 @@ function TimelinePage() {
 
     setShifting(true);
     try {
-      if (proj.streams_enabled && shiftProjectStreams.length > 0) {
+      if (shiftProjectStreams.length > 0) {
         const targets = shiftStreamId
           ? shiftProjectStreams.filter((s) => s.id === shiftStreamId)
           : shiftProjectStreams;
@@ -353,13 +355,17 @@ function TimelinePage() {
           <span className="inline-flex items-center gap-1"><span className="inline-block h-2.5 w-4 rounded-sm bg-sky-500" /> Planned</span>
           <span className="inline-flex items-center gap-1"><span className="inline-block h-2.5 w-4 rounded-sm bg-emerald-500" /> Actual (RAG-coloured)</span>
           <label className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1 text-foreground hover:bg-muted">
+            <input type="checkbox" checked={showProjectTimeline} onChange={(e) => setShowProjectTimeline(e.target.checked)} />
+            Project timeline
+          </label>
+          <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1 text-foreground hover:bg-muted">
             <input type="checkbox" checked={showGates} onChange={(e) => setShowGates(e.target.checked)} />
             Show stage gates
           </label>
         </div>
       </SectionFrame>
 
-      {/* Planned vs Actual timeline (per project, side by side) */}
+      {/* Planned vs Actual timeline (stream lanes; optional project rollup) */}
       <SectionFrame>
         <PortfolioTimeline
           projects={combinedProjects}
@@ -368,11 +374,19 @@ function TimelinePage() {
           title="Planned vs Actual Timeline"
           showPlannedVsActual
           showGates={showGates}
+          showProjectTimeline={showProjectTimeline}
+          onShowProjectTimelineChange={setShowProjectTimeline}
           expandToolbar={
-            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted">
-              <input type="checkbox" checked={showGates} onChange={(e) => setShowGates(e.target.checked)} />
-              Show stage gates
-            </label>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted">
+                <input type="checkbox" checked={showProjectTimeline} onChange={(e) => setShowProjectTimeline(e.target.checked)} />
+                Project timeline
+              </label>
+              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted">
+                <input type="checkbox" checked={showGates} onChange={(e) => setShowGates(e.target.checked)} />
+                Show stage gates
+              </label>
+            </div>
           }
         />
       </SectionFrame>
@@ -405,11 +419,11 @@ function TimelinePage() {
             <select
               value={shiftStreamId}
               onChange={(e) => setShiftStreamId(e.target.value)}
-              disabled={!shiftProject?.streams_enabled || shiftProjectStreams.length === 0}
+              disabled={shiftProjectStreams.length === 0}
               className="rounded-md border border-input bg-background px-2 py-2 text-sm disabled:opacity-50"
             >
               <option value="">
-                {shiftProject?.streams_enabled ? "All streams" : "N/A (streams off)"}
+                {shiftProjectStreams.length > 0 ? "All streams" : "N/A (no streams)"}
               </option>
               {shiftProjectStreams.map((s: any) => (
                 <option key={s.id} value={s.id}>{s.code ? `${s.code} · ` : ""}{s.name}</option>

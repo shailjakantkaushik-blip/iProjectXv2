@@ -32,6 +32,7 @@ import {
 import {
   expandProjectsToTimelineLanes,
   fetchOrgStreams,
+  summarizeTimelineLaneFinancials,
 } from "@/lib/project-streams";
 
 export const Route = createFileRoute("/_authenticated/app/executive")({
@@ -69,6 +70,7 @@ function ExecutiveDashboard() {
   type TimelineView = "Portfolio" | "Program" | "Health" | "Priority" | "Theme" | "Sponsor" | "Status";
   const [timelineView, setTimelineView] = useState<TimelineView>("Program");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [showProjectTimeline, setShowProjectTimeline] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
 
@@ -304,13 +306,14 @@ function ExecutiveDashboard() {
     return m;
   }, [gates]);
 
-  // ── Timeline (stream lanes when a project has streams enabled) ──
+  // ── Timeline (stream lanes by default; optional project rollup lane) ──
   const timelineLanes = useMemo(() => {
     return expandProjectsToTimelineLanes(filtered, streams as any[], {
       gates: gates as any[],
       resolvePhase: (p, streamGates) => resolveStageShared(p, streamGates, orgPhases),
+      includeProjectRollup: showProjectTimeline,
     });
-  }, [filtered, streams, gates, orgPhases]);
+  }, [filtered, streams, gates, orgPhases, showProjectTimeline]);
 
   const timelineGroups = useMemo(() => {
     const groups = new Map<string, any[]>();
@@ -715,6 +718,8 @@ function ExecutiveDashboard() {
                   orgPhases={orgPhases}
                   collapsed={!!collapsed[groupName]}
                   onToggle={() => toggleCollapse(groupName)}
+                  showProjectTimeline={showProjectTimeline}
+                  onShowProjectTimelineChange={setShowProjectTimeline}
                 />
               ))}
             </div>
@@ -827,13 +832,19 @@ type TimelineBounds = {
 
 function GanttGroup({
   title, items, bounds, gatesByLane, orgPhases = [], collapsed, onToggle,
+  showProjectTimeline, onShowProjectTimelineChange,
 }: {
   title: string; items: any[]; bounds: TimelineBounds;
   gatesByLane: Map<string, any[]>; orgPhases?: string[]; collapsed: boolean; onToggle: () => void;
+  showProjectTimeline?: boolean;
+  onShowProjectTimelineChange?: (v: boolean) => void;
 }) {
-  const laneKeyOf = (p: any) => p.stream_id || p.project_id || p.id;
+  const laneKeyOf = (p: any) =>
+    p.is_project_rollup ? (p.project_id || p.id) : (p.stream_id || p.project_id || p.id);
   const phaseOf = (p: any) =>
-    resolveStageShared(p, gatesByLane.get(laneKeyOf(p)) || gatesByLane.get(p.project_id || p.id) || [], orgPhases);
+    p.is_project_rollup
+      ? (p.current_phase || null)
+      : resolveStageShared(p, gatesByLane.get(laneKeyOf(p)) || [], orgPhases);
   const { start: rangeStart, totalMs, months, fyGroups } = bounds;
   const monthShort = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const now = new Date();
@@ -867,15 +878,16 @@ function GanttGroup({
   const COL_FIN = 200;
   const LEFT = COL_PROJECT + COL_SPONSOR + COL_FIN;
 
-  // aggregate group financials for header summary
-  const groupIncurred = items.reduce((s, p) => s + Number(p.capex_incurred || 0) + Number(p.opex_incurred || 0), 0);
-  const groupApproved = items.reduce((s, p) => s + Number(p.capex_approved || 0) + Number(p.opex_approved || 0), 0);
-  const groupFAC = items.reduce((s, p) => s + projectForecast(p), 0);
-  const groupBenefits = items.reduce((s, p) => s + Number(p.benefits_realised || 0), 0);
-  const groupUtil = groupApproved > 0 ? Math.round((groupIncurred / groupApproved) * 100) : 0;
-  const rGreen = items.filter((p) => p.rag === "Green").length;
-  const rAmber = items.filter((p) => p.rag === "Amber").length;
-  const rRed = items.filter((p) => p.rag === "Red").length;
+  // aggregate group financials without double-counting rollup + stream lanes
+  const fin = summarizeTimelineLaneFinancials(items);
+  const groupIncurred = fin.incurred;
+  const groupApproved = fin.approved;
+  const groupFAC = fin.fac;
+  const groupBenefits = fin.benefits;
+  const groupUtil = fin.utilPct;
+  const rGreen = fin.green;
+  const rAmber = fin.amber;
+  const rRed = fin.red;
 
   const Stat = ({ label, value }: { label: string; value: React.ReactNode }) => (
     <div className="flex flex-col items-start leading-tight">
@@ -907,7 +919,7 @@ function GanttGroup({
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
-          <Stat label="Projects" value={items.length} />
+          <Stat label="Projects" value={fin.projectCount} />
           <Stat label="Approved" value={money(groupApproved)} />
           <Stat label="Actual" value={money(groupIncurred)} />
           <Stat label="FAC" value={money(groupFAC)} />
@@ -933,6 +945,20 @@ function GanttGroup({
               <input type="checkbox" checked={showPvA} onChange={(e) => setShowPvA(e.target.checked)} className="h-3 w-3" />
               Planned vs Actual
             </label>
+            {onShowProjectTimelineChange && (
+              <label
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-0.5 text-[10px] font-medium text-foreground hover:bg-muted"
+                title="Show project rollup lane (start→end + financials from streams)"
+              >
+                <input
+                  type="checkbox"
+                  checked={!!showProjectTimeline}
+                  onChange={(e) => onShowProjectTimelineChange(e.target.checked)}
+                  className="h-3 w-3"
+                />
+                Project timeline
+              </label>
+            )}
             <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-0.5 text-[10px] font-medium text-foreground hover:bg-muted">
               <input type="checkbox" checked={showGates} onChange={(e) => setShowGates(e.target.checked)} className="h-3 w-3" />
               Stage gates
@@ -986,15 +1012,23 @@ function GanttGroup({
               const pct = budget > 0 ? Math.min(100, Math.round((incurred / budget) * 100)) : 0;
               const overBudget = incurred > budget && budget > 0;
               const laneKey = laneKeyOf(p);
-              const projGates = (gatesByLane.get(laneKey) || gatesByLane.get(projectId) || [])
-                .filter((g: any) => g.planned_date || g.actual_date)
-                .sort((a: any, b: any) =>
-                  new Date(a.actual_date || a.planned_date).getTime() -
-                  new Date(b.actual_date || b.planned_date).getTime()
-                );
+              const projGates = p.is_project_rollup
+                ? []
+                : (gatesByLane.get(laneKey) || [])
+                    .filter((g: any) => g.planned_date || g.actual_date)
+                    .sort((a: any, b: any) =>
+                      new Date(a.actual_date || a.planned_date).getTime() -
+                      new Date(b.actual_date || b.planned_date).getTime()
+                    );
+              const rowKey = p.is_project_rollup ? `rollup:${projectId}` : p.id;
 
               return (
-                <div key={p.id} className="flex items-center border-b border-border/40 py-2 hover:bg-muted/30">
+                <div
+                  key={rowKey}
+                  className={`flex items-center border-b border-border/40 py-2 hover:bg-muted/30 ${
+                    p.is_project_rollup ? "bg-muted/20" : ""
+                  }`}
+                >
                   <div style={{ width: COL_PROJECT }} className="shrink-0 pl-1 pr-2">
                     <Link
                       to="/app/project-infographic"
@@ -1002,7 +1036,14 @@ function GanttGroup({
                       className="block truncate text-[12px] font-medium text-foreground hover:text-primary hover:underline"
                       title={p.name}
                     >
-                      {p.is_stream_lane && p.stream_name ? (
+                      {p.is_project_rollup ? (
+                        <>
+                          <span>{p.name}</span>
+                          <span className="ml-1.5 rounded bg-primary/10 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary">
+                            Project
+                          </span>
+                        </>
+                      ) : p.is_stream_lane && p.stream_name ? (
                         <>
                           <span className="text-muted-foreground">{p.project_name || "Project"}</span>
                           <span className="text-muted-foreground"> · </span>
@@ -1016,8 +1057,8 @@ function GanttGroup({
                       {p.project_code ? (
                         <Link to="/app/project-infographic" search={{ pid: projectId }} className="text-primary hover:underline">{p.project_code}</Link>
                       ) : "—"}{" "}
-                      · {p.is_stream_lane ? "Stream" : p.program || "Unassigned"}
-                      {p.is_stream_lane && p.program ? ` · ${p.program}` : ""}
+                      · {p.is_project_rollup ? "Rollup" : p.is_stream_lane ? "Stream" : p.program || "Unassigned"}
+                      {(p.is_stream_lane || p.is_project_rollup) && p.program ? ` · ${p.program}` : ""}
                     </div>
                   </div>
                   <div style={{ width: COL_SPONSOR }} className="shrink-0 pr-2">

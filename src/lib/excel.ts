@@ -128,7 +128,7 @@ export async function exportOrganizationWorkbook(orgId: string, orgName: string)
     { A: "Project dates", B: "Edit planned_* and actual_* dates. start_date/end_date (Schedule Start/End) auto-sync as Actual → else Planned." },
     { A: "Current phase", B: "Prefer Stage Gates sheet status. current_phase is refreshed from the in-flight gate after gate rows are saved." },
     { A: "FK columns", B: "Use project_code / bu_code / resource_name / stream_code (not UUIDs). Dependencies also use depends_on_project_code." },
-    { A: "Streams", B: "Set projects.streams_enabled=true, then add Project Streams rows. Child sheets (gates, finance, allocations) use stream_code when streams are on." },
+    { A: "Streams", B: "Every project has a Core stream. Add Project Streams rows for more lanes. Child sheets (gates, milestones, finance, allocations) use stream_code." },
     { A: "", B: "" },
     { A: "Finance model (canonical)", B: "" },
     { A: "1. Projects", B: "budget = approved funding; capex/opex approved & incurred; forecast_at_completion (FAC); benefits_* are rollups. With streams on, project figures roll up from Project Streams." },

@@ -203,20 +203,18 @@ function ProjectDetail() {
               <KpiCard label="Benefits target" value={money(Number(project.benefits_target || 0))} />
               <KpiCard label="ROI %" value={Number(project.roi_percent || 0)} />
             </div>
-            {project.streams_enabled ? (
-              <p className="mt-3 text-xs text-muted-foreground">
-                Streams are enabled — schedule and funding figures on this project are rollups from the{" "}
-                <Link
-                  to="/app/projects/$id"
-                  params={{ id }}
-                  search={{ tab: "streams" }}
-                  className="font-medium text-primary hover:underline"
-                >
-                  Streams
-                </Link>{" "}
-                tab. Prefer editing dates, gates, and budgets there.
-              </p>
-            ) : null}
+            <p className="mt-3 text-xs text-muted-foreground">
+              Schedule and funding on this project are rollups from{" "}
+              <Link
+                to="/app/projects/$id"
+                params={{ id }}
+                search={{ tab: "streams" }}
+                className="font-medium text-primary hover:underline"
+              >
+                Streams
+              </Link>{" "}
+              (at least Core). Prefer editing dates, gates, and budgets on streams.
+            </p>
           </SectionFrame>
           <ProjectForm
             defaultValues={project as unknown as Partial<ProjectFormValues>}

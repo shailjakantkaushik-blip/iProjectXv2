@@ -66,13 +66,97 @@ export function streamToTimelineLane(
   };
 }
 
-/** Expand projects into timeline lanes: one row per project, or one per stream when enabled. */
+/** Min/max dates + summed finance from streams (mirrors DB rollup_project_from_streams). */
+export function rollupFieldsFromStreams(
+  project: Record<string, any>,
+  streams: (ProjectStream | Record<string, any>)[],
+) {
+  if (!streams.length) {
+    return {
+      planned_start_date: project.planned_start_date ?? null,
+      planned_end_date: project.planned_end_date ?? null,
+      actual_start_date: project.actual_start_date ?? null,
+      actual_end_date: project.actual_end_date ?? null,
+      start_date: project.start_date ?? project.planned_start_date ?? project.actual_start_date ?? null,
+      end_date: project.end_date ?? project.actual_end_date ?? project.planned_end_date ?? null,
+      budget: Number(project.budget || 0),
+      capex_approved: Number(project.capex_approved || 0),
+      capex_incurred: Number(project.capex_incurred || 0),
+      opex_approved: Number(project.opex_approved || 0),
+      opex_incurred: Number(project.opex_incurred || 0),
+      forecast_at_completion: project.forecast_at_completion ?? null,
+    };
+  }
+  const asRec = (s: ProjectStream | Record<string, any>) => s as Record<string, any>;
+  const dates = (key: string) =>
+    streams.map((s) => asRec(s)[key]).filter(Boolean).map((d) => String(d).slice(0, 10)).sort();
+  const min = (key: string) => {
+    const arr = dates(key);
+    return arr.length ? arr[0] : null;
+  };
+  const max = (key: string) => {
+    const arr = dates(key);
+    return arr.length ? arr[arr.length - 1] : null;
+  };
+  const sum = (key: string) => streams.reduce((n, s) => n + Number(asRec(s)[key] || 0), 0);
+  const plannedStart = min("planned_start_date");
+  const plannedEnd = max("planned_end_date");
+  const actualStart = min("actual_start_date");
+  const actualEnd = max("actual_end_date");
+  return {
+    planned_start_date: plannedStart,
+    planned_end_date: plannedEnd,
+    actual_start_date: actualStart,
+    actual_end_date: actualEnd,
+    start_date: actualStart || plannedStart || project.start_date || null,
+    end_date: actualEnd || plannedEnd || project.end_date || null,
+    budget: sum("budget"),
+    capex_approved: sum("capex_approved"),
+    capex_incurred: sum("capex_incurred"),
+    opex_approved: sum("opex_approved"),
+    opex_incurred: sum("opex_incurred"),
+    forecast_at_completion: streams.reduce(
+      (n, s) => n + Number(s.forecast_at_completion ?? s.budget ?? 0),
+      0,
+    ),
+  };
+}
+
+/** Project-level timeline lane (rollup of streams) for optional Project timeline view. */
+export function projectToRollupLane(
+  project: Record<string, any>,
+  streams: (ProjectStream | Record<string, any>)[],
+  phase?: string | null,
+) {
+  const rolled = rollupFieldsFromStreams(project, streams);
+  return {
+    ...project,
+    ...rolled,
+    id: project.id,
+    project_id: project.id,
+    stream_id: null,
+    is_stream_lane: false as const,
+    is_project_rollup: true as const,
+    name: project.name,
+    stream_name: null,
+    project_name: project.name,
+    current_phase: phase ?? project.current_phase,
+  };
+}
+
+/**
+ * Expand projects into timeline lanes.
+ * Default: one lane per stream (always-on Core). Fallback to project row if no streams yet.
+ * Optional `includeProjectRollup` prepends a project start→end / finance rollup lane.
+ */
 export function expandProjectsToTimelineLanes(
   projects: any[],
   streams: ProjectStream[] | Record<string, any>[],
   opts?: {
     gates?: { project_id: string; stream_id?: string | null; gate_name?: string | null; status?: string | null }[];
     resolvePhase?: (project: any, streamGates: any[]) => string | null;
+    /** When true, insert a project rollup lane (dates + finance from streams) above stream lanes. */
+    includeProjectRollup?: boolean;
   },
 ) {
   const byProject = new Map<string, any[]>();
@@ -87,20 +171,19 @@ export function expandProjectsToTimelineLanes(
 
   const lanes: any[] = [];
   for (const p of projects) {
-    if (!p.streams_enabled) {
-      lanes.push({
-        ...p,
-        is_stream_lane: false,
-        project_id: p.id,
-      });
-      continue;
-    }
     const projectStreams = byProject.get(p.id) || [];
     if (projectStreams.length === 0) {
-      // Enabled but no streams yet — keep project lane as fallback
-      lanes.push({ ...p, is_stream_lane: false, project_id: p.id });
+      // No streams yet (pre-migration) — project lane only
+      lanes.push({ ...p, is_stream_lane: false, is_project_rollup: false, project_id: p.id });
       continue;
     }
+
+    if (opts?.includeProjectRollup) {
+      const allGates = (opts?.gates || []).filter((g) => g.project_id === p.id);
+      const phase = opts?.resolvePhase?.(p, allGates) ?? p.current_phase;
+      lanes.push(projectToRollupLane(p, projectStreams, phase));
+    }
+
     const multi = projectStreams.length > 1;
     for (const s of projectStreams) {
       const streamGates = (opts?.gates || []).filter(
@@ -108,8 +191,8 @@ export function expandProjectsToTimelineLanes(
       );
       const phase = opts?.resolvePhase?.(p, streamGates) ?? p.current_phase;
       const lane = streamToTimelineLane(p, s, phase);
-      // Single default stream: project-first label; stream_id still keys gates/finance.
-      if (!multi && s.is_default) {
+      // Single Core without project rollup: project-first label (still stream-backed).
+      if (!multi && s.is_default && !opts?.includeProjectRollup) {
         lane.name = p.name || lane.name;
         lane.stream_name = null;
       }
@@ -117,6 +200,55 @@ export function expandProjectsToTimelineLanes(
     }
   }
   return lanes;
+}
+
+/** Aggregate group header financials without double-counting project rollup + stream lanes. */
+export function summarizeTimelineLaneFinancials(items: any[]) {
+  const byPid = new Map<string, any[]>();
+  for (const item of items) {
+    const pid = String(item.project_id || item.id);
+    const list = byPid.get(pid) || [];
+    list.push(item);
+    byPid.set(pid, list);
+  }
+  let budget = 0;
+  let approved = 0;
+  let incurred = 0;
+  let fac = 0;
+  let benefits = 0;
+  let green = 0;
+  let amber = 0;
+  let red = 0;
+  for (const lanes of byPid.values()) {
+    const rollup = lanes.find((l) => l.is_project_rollup);
+    const source = rollup
+      ? [rollup]
+      : lanes.filter((l) => l.is_stream_lane || (!l.is_stream_lane && !l.is_project_rollup));
+    const use = source.length ? source : lanes;
+    for (const row of use) {
+      budget += Number(row.budget || 0);
+      approved += Number(row.capex_approved || 0) + Number(row.opex_approved || 0);
+      incurred += Number(row.capex_incurred || 0) + Number(row.opex_incurred || 0);
+      fac += Number(row.forecast_at_completion || row.fac || 0);
+      benefits += Number(row.benefits_realised || 0);
+    }
+    const ragRow = rollup || use[0];
+    if (ragRow?.rag === "Green") green += 1;
+    else if (ragRow?.rag === "Amber") amber += 1;
+    else if (ragRow?.rag === "Red") red += 1;
+  }
+  return {
+    projectCount: byPid.size,
+    budget,
+    approved,
+    incurred,
+    fac,
+    benefits,
+    utilPct: approved > 0 ? Math.round((incurred / approved) * 100) : 0,
+    green,
+    amber,
+    red,
+  };
 }
 
 /** Group gates by lane key: stream_id when present, else project_id. */
@@ -153,13 +285,18 @@ export async function fetchOrgStreams(orgId: string) {
   return (data ?? []) as ProjectStream[];
 }
 
-/** Enable streams on a project: creates Core + migrates children. */
+/** Ensure Core stream exists (always-on model) + migrate null-stream children. */
 export async function enableProjectStreams(projectId: string) {
   const { data, error } = await supabase.rpc("enable_project_streams", {
     p_project_id: projectId,
   });
   if (error) throw error;
   return data as string;
+}
+
+/** Alias for always-on Core ensure (same RPC). */
+export async function ensureProjectCoreStream(projectId: string) {
+  return enableProjectStreams(projectId);
 }
 
 export async function createProjectStream(
