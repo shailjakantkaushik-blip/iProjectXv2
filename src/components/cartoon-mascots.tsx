@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCartoonId, useCartoonsEnabled } from "@/lib/use-cartoons";
@@ -142,7 +143,9 @@ export function CartoonCompanion() {
 
   if (!enabled || dismissed) return null;
 
-  return (
+  // Portal to body so style themes that set `.shell-root > * { position: relative }`
+  // cannot turn this into a flex column (which wasted width on the right).
+  const node = (
     <div className="cartoon-companion pointer-events-none fixed bottom-4 right-4 z-40 flex flex-col items-end gap-2 print:hidden sm:bottom-6 sm:right-6">
       {open && tip && (
         <div className="pointer-events-auto max-w-[220px] rounded-xl border border-border bg-surface px-3 py-2 text-xs leading-relaxed text-foreground shadow-md">
@@ -176,6 +179,9 @@ export function CartoonCompanion() {
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") return node;
+  return createPortal(node, document.body);
 }
 
 /** Static preview used on Platform Settings (always visible regardless of flag). */

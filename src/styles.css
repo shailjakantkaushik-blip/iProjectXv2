@@ -475,6 +475,9 @@ body { overflow-x: hidden; }
   animation: cg-fade-in 0.45s ease-out both;
 }
 .cartoon-companion {
+  /* Stay viewport-fixed — never participate in shell flex width. */
+  position: fixed !important;
+  z-index: 40;
   animation: cg-pop-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
@@ -555,6 +558,9 @@ body { overflow-x: hidden; }
   animation: shell-title-in 0.32s ease-out both;
 }
 .shell-main {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
   animation: shell-main-in 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .shell-nav {
@@ -945,7 +951,8 @@ html[data-style-theme="space"] .shell-root::before {
     radial-gradient(ellipse 40% 30% at 70% 90%, color-mix(in srgb, var(--accent2, var(--primary)) 10%, transparent), transparent 65%);
   opacity: 1;
 }
-html[data-style-theme="space"] .shell-root > * {
+/* Exclude floating cartoon so themes never reserve a right column for it. */
+html[data-style-theme="space"] .shell-root > *:not(.cartoon-companion) {
   position: relative;
   z-index: 1;
 }
@@ -1065,7 +1072,7 @@ html[data-style-theme="racing"] .shell-main .rounded-md.border {
   box-shadow:
     0 1px 0 color-mix(in srgb, var(--color-foreground) 5%, transparent),
     0 6px 16px color-mix(in srgb, #000 12%, transparent),
-    8px 12px 0 color-mix(in srgb, var(--color-foreground) 5%, transparent),
+    0 14px 0 color-mix(in srgb, var(--color-foreground) 5%, transparent),
     0 20px 40px color-mix(in srgb, #000 10%, transparent);
 }
 html[data-style-theme="racing"] .section-frame:hover,
@@ -1161,7 +1168,7 @@ html[data-style-theme="wildlife"] .shell-root::before {
     radial-gradient(1px 1px at 70% 55%, color-mix(in srgb, var(--color-foreground) 10%, transparent), transparent),
     radial-gradient(1.2px 1.2px at 40% 80%, color-mix(in srgb, var(--color-foreground) 8%, transparent), transparent);
 }
-html[data-style-theme="wildlife"] .shell-root > * { position: relative; z-index: 1; }
+html[data-style-theme="wildlife"] .shell-root > *:not(.cartoon-companion) { position: relative; z-index: 1; }
 html[data-style-theme="wildlife"] .shell-main { background: transparent; }
 html[data-style-theme="wildlife"] .section-frame,
 html[data-style-theme="wildlife"] .kpi-card,
@@ -1206,7 +1213,7 @@ html[data-style-theme="forest"] .shell-root::before {
     radial-gradient(ellipse 45% 35% at 95% 40%, color-mix(in srgb, var(--primary) 8%, transparent), transparent 65%),
     linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--color-foreground) 3%, transparent) 100%);
 }
-html[data-style-theme="forest"] .shell-root > * { position: relative; z-index: 1; }
+html[data-style-theme="forest"] .shell-root > *:not(.cartoon-companion) { position: relative; z-index: 1; }
 html[data-style-theme="forest"] .shell-main { background: transparent; }
 html[data-style-theme="forest"] .section-frame,
 html[data-style-theme="forest"] .kpi-card,
@@ -1317,7 +1324,7 @@ html[data-style-theme="aurora"] .shell-root::before {
     linear-gradient(115deg, transparent 40%, color-mix(in srgb, var(--primary) 6%, transparent) 50%, transparent 60%);
   animation: style-aurora-drift 18s ease-in-out infinite alternate;
 }
-html[data-style-theme="aurora"] .shell-root > * { position: relative; z-index: 1; }
+html[data-style-theme="aurora"] .shell-root > *:not(.cartoon-companion) { position: relative; z-index: 1; }
 html[data-style-theme="aurora"] .shell-main { background: transparent; }
 html[data-style-theme="aurora"] .section-frame,
 html[data-style-theme="aurora"] .kpi-card,
@@ -1376,7 +1383,7 @@ html[data-style-theme="coastal"] .shell-root::before {
       color-mix(in srgb, var(--color-foreground) 2.5%, transparent) 49px
     );
 }
-html[data-style-theme="coastal"] .shell-root > * { position: relative; z-index: 1; }
+html[data-style-theme="coastal"] .shell-root > *:not(.cartoon-companion) { position: relative; z-index: 1; }
 html[data-style-theme="coastal"] .shell-main { background: transparent; }
 html[data-style-theme="coastal"] .section-frame,
 html[data-style-theme="coastal"] .kpi-card,

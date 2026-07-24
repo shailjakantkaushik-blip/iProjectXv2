@@ -765,6 +765,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
 
       <CommandPalette open={cmdOpen} onOpenChange={setCmdOpen} groups={visibleNavForPalette} />
+      {/* Portal-like sibling: must stay out of theme stacking rules that set
+          .shell-root > * { position: relative }, which would turn the mascot
+          into a flex column and waste page width on the right. */}
       {!focusMode && <CartoonCompanion />}
     </div>
   );
