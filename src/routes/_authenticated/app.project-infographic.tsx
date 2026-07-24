@@ -13,7 +13,8 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { FileText, Link as LinkIcon, Save, Plus, Trash2, Presentation } from "lucide-react";
+import { FileText, Link as LinkIcon, Save, Plus, Trash2, Presentation, LayoutTemplate, ImageIcon } from "lucide-react";
+import { ProjectSummary } from "@/components/project-summary";
 import {
   BarChart,
   Bar,
@@ -272,6 +273,7 @@ function InfographicPage() {
   const [pid, setPid] = useState<string>(search.pid || "");
   const [showPvA, setShowPvA] = useState<boolean>(false);
   const [showProjectTimeline, setShowProjectTimeline] = useState<boolean>(false);
+  const [pageView, setPageView] = useState<"infographic" | "summary">("infographic");
   useEffect(() => {
     if (search.pid) setPid(search.pid);
   }, [search.pid]);
@@ -603,32 +605,49 @@ function InfographicPage() {
     <div>
       <PageHeading
         icon="🖼️"
-        title="Project Infographic"
-        subtitle="One-page visual summary for any project."
+        title={pageView === "summary" ? "Project Summary" : "Project Infographic"}
+        subtitle={
+          pageView === "summary"
+            ? "Delivery-plan style overview — streams, capacity, cost and brief."
+            : "One-page visual summary for any project."
+        }
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-md border border-border bg-surface p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => setPageView("infographic")}
+                className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 font-medium ${
+                  pageView === "infographic"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                <ImageIcon className="h-3.5 w-3.5" />
+                Infographic
+              </button>
+              <button
+                type="button"
+                onClick={() => setPageView("summary")}
+                className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 font-medium ${
+                  pageView === "summary"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                <LayoutTemplate className="h-3.5 w-3.5" />
+                Project Summary
+              </button>
+            </div>
             <Button
               variant="outline"
               size="sm"
               className="gap-2"
               onClick={async () => {
-                let timelineImage: string | null = null;
-                const el = document.getElementById("project-timeline-capture");
-                if (el) {
-                  try {
-                    timelineImage = await toPng(el, {
-                      backgroundColor: "#ffffff",
-                      pixelRatio: 2,
-                      cacheBust: true,
-                    });
-                  } catch {
-                    /* skip on failure */
-                  }
-                }
                 const b: any = project.brief || {};
                 const s1: any = b.section1 || {};
                 const s2: any = b.section2 || {};
-                const incurred =
+                const incurredSpend =
                   Number(project.capex_incurred || 0) + Number(project.opex_incurred || 0);
                 await downloadProjectBriefPPT({
                   project: {
@@ -641,7 +660,7 @@ function InfographicPage() {
                     business_solution_manager: s1.business_solution_manager ?? null,
                     strategic_alignment: s1.strategic_alignment ?? null,
                     approved_budget: project.budget ?? project.approved_budget,
-                    actual_spend: incurred || project.actual_spend,
+                    actual_spend: incurredSpend || project.actual_spend,
                     forecast_at_completion: project.forecast_at_completion,
                     expected_benefit: project.benefits_target ?? project.expected_benefit,
                     planned_start_date: project.planned_start_date ?? project.start_date,
@@ -667,9 +686,7 @@ function InfographicPage() {
                     },
                   },
                   milestones: (milestones as any[]).map((m) => ({
-                    name: m.stream_id
-                      ? `${streamById.get(m.stream_id)?.name || streamById.get(m.stream_id)?.code || "Stream"} · ${m.name}`
-                      : m.name,
+                    name: m.name,
                     planned_date: m.planned_date,
                     status: m.status,
                     owner: m.owner,
@@ -687,49 +704,6 @@ function InfographicPage() {
                     dependency_type: d.dependency_type,
                     status: d.status,
                     description: d.description,
-                  })),
-                  timelineImage,
-                  streams: (projectStreams as any[]).map((s) => ({
-                    name: s.name,
-                    code: s.code,
-                    planned_start_date: s.planned_start_date,
-                    planned_end_date: s.planned_end_date,
-                    actual_start_date: s.actual_start_date,
-                    actual_end_date: s.actual_end_date,
-                    budget: s.budget,
-                    rag: s.rag,
-                    gates: (gates as any[])
-                      .filter((g) => g.stream_id === s.id || (!g.stream_id && s.is_default))
-                      .map((g) => ({
-                        gate_name: g.gate_name,
-                        planned_date: g.planned_date,
-                        actual_date: g.actual_date,
-                        status: g.status,
-                      })),
-                  })),
-                  resourcePlan: resourcePlanRows.map((r) => ({
-                    name: r.name,
-                    role: r.role,
-                    stream_name: r.streamName,
-                    months: allocationMonths.map((m) => ({
-                      key: m.key,
-                      label: m.label,
-                      pct: r.months[m.key] || 0,
-                    })),
-                  })),
-                  monthlySpend: (monthly as any[]).map((m) => ({
-                    label: new Date(m.period_month).toLocaleDateString("en-US", {
-                      month: "short",
-                      year: "2-digit",
-                    }),
-                    planned: Number(m.capex_planned || 0) + Number(m.opex_planned || 0),
-                    actual: Number(m.capex_actual || 0) + Number(m.opex_actual || 0),
-                    forecast: Number(m.capex_forecast || 0) + Number(m.opex_forecast || 0),
-                  })),
-                  benefitsSummary: (benefits as any[]).map((b) => ({
-                    title: b.title,
-                    target: b.target_value,
-                    realised: b.realised_value,
                   })),
                 });
               }}
@@ -753,6 +727,24 @@ function InfographicPage() {
         }
       />
 
+      {pageView === "summary" ? (
+        <>
+          <ProjectSummary
+            project={project}
+            streams={projectStreams as any[]}
+            gates={gates as any[]}
+            resourceRows={resourcePlanRows}
+            allocationMonths={allocationMonths}
+            monthly={monthly as any[]}
+            benefits={benefits as any[]}
+            phaseCards={phaseCards}
+          />
+          <ProjectBrief project={project} />
+        </>
+      ) : null}
+
+      {pageView === "infographic" ? (
+      <>
       {/* Project header */}
       <SectionFrame>
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1294,6 +1286,8 @@ function InfographicPage() {
           </div>
         )}
       </SectionFrame>
+      </>
+      ) : null}
     </div>
   );
 }
