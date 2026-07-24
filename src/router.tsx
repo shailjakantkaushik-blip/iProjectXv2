@@ -8,13 +8,14 @@ export const getRouter = () => {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
-        // Fresh enough to feel snappy; long enough to avoid refetch storms.
-        staleTime: 30_000,
+        // Longer stale window + scoped live-sync keeps UI snappy.
+        staleTime: 60_000,
         gcTime: 15 * 60_000,
-        retry: 3,
+        retry: 2,
         retryDelay: queryRetryDelay,
-        // Safety net when live-sync misses an edit — refetch quietly if stale.
-        refetchOnWindowFocus: true,
+        // Tab focus was causing full refetch waves across open dashboards.
+        // Live-sync covers cross-user edits; reconnect still refreshes.
+        refetchOnWindowFocus: false,
         refetchOnReconnect: true,
         refetchOnMount: true,
         networkMode: "online",

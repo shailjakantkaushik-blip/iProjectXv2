@@ -402,6 +402,19 @@ textarea.st-input { height: auto; min-height: 64px; }
 html { -webkit-text-size-adjust: 100%; }
 body { overflow-x: hidden; }
 
+/* Fixed backgrounds + heavy blur are costly while scrolling on tablets/phones. */
+@media (max-width: 1024px) {
+  .shell-root {
+    background-attachment: scroll !important;
+  }
+  .section-frame,
+  html[data-style-theme="space"] .section-frame,
+  html[data-style-theme="space"] .kpi-card,
+  html[data-style-theme="aurora"] .section-frame {
+    backdrop-filter: none !important;
+  }
+}
+
 /* Leave room for the floating companion on phones so CTAs aren't covered. */
 .shell-main--with-companion {
   padding-bottom: max(5.5rem, calc(env(safe-area-inset-bottom) + 4.5rem));

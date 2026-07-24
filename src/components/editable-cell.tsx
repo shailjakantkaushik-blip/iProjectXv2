@@ -100,11 +100,18 @@ export function EditableCell({
 
       toast.success("Saved — syncing across app");
       setEditing(false);
-      // Broad invalidation so every dashboard/chart/table that reads from
-      // this data recomputes immediately — no page reload needed.
-      (invalidateKeys ?? []).forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
-      await qc.invalidateQueries();
-      try { window.dispatchEvent(new CustomEvent("pmo:data-changed", { detail: { table, rowId, field } })); } catch {}
+      // Scoped invalidation only — never wipe the whole query cache.
+      const keys = new Set<string>([table, ...(invalidateKeys ?? [])]);
+      for (const k of keys) {
+        void qc.invalidateQueries({ queryKey: [k], refetchType: "active" });
+      }
+      try {
+        window.dispatchEvent(
+          new CustomEvent("pmo:data-changed", { detail: { table, rowId, field } }),
+        );
+      } catch {
+        /* ignore */
+      }
     } catch (e: any) {
       toast.error(e.message ?? "Save failed");
     } finally {

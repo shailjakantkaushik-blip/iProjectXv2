@@ -1,4 +1,12 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { clearCachedOrgNavigation } from "@/lib/navigation-config";
@@ -87,14 +95,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadedUserIdRef = useRef<string | null>(null);
 
   const loadProfile = async (userId: string) => {
-    const { data: p } = await supabase
-      .from("profiles")
-      .select("id,email,full_name,org_id,must_change_password,is_active")
-      .eq("id", userId)
-      .maybeSingle();
-
-    // Load ALL roles for this user (platform_admin may have no org)
-    const { data: allRoles } = await supabase.from("user_roles").select("role,org_id").eq("user_id", userId);
+    // Parallelize profile + roles (was sequential waterfall).
+    const [{ data: p }, { data: allRoles }] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id,email,full_name,org_id,must_change_password,is_active")
+        .eq("id", userId)
+        .maybeSingle(),
+      supabase.from("user_roles").select("role,org_id").eq("user_id", userId),
+    ]);
     const roleList = (allRoles ?? []).map((r) => r.role as AppRole);
 
     // Resolve org before publishing profile — otherwise /app briefly sees
@@ -103,7 +112,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (p?.org_id) {
       const { data: orgRow } = await supabase
         .from("organizations")
-        .select("id,name,slug,plan,brand_name,logo_url,primary_color,accent_color,fy_start_month,ui_config")
+        .select(
+          "id,name,slug,plan,brand_name,logo_url,primary_color,accent_color,fy_start_month,ui_config",
+        )
         .eq("id", p.org_id)
         .maybeSingle();
       org = (orgRow as Organization) ?? null;
@@ -184,22 +195,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // window.location.assign caused the login page to refresh twice.
   };
 
-  return (
-    <AuthContext.Provider
-      value={{
-        session,
-        user: session?.user ?? null,
-        profile,
-        organization,
-        roles,
-        loading,
-        refresh,
-        signOut,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo(
+    () => ({
+      session,
+      user: session?.user ?? null,
+      profile,
+      organization,
+      roles,
+      loading,
+      refresh,
+      signOut,
+    }),
+    [session, profile, organization, roles, loading],
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

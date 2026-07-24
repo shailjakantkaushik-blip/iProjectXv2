@@ -180,69 +180,101 @@ function ExecutiveDashboard() {
     });
   }, [projects, portfolio, program, sponsor, priority, status, fySelected, fyStartMonth, projectIds]);
 
-  const filteredIds = new Set(filtered.map((p: any) => p.id));
+  const filteredIds = useMemo(
+    () => new Set(filtered.map((p: any) => p.id as string)),
+    [filtered],
+  );
 
-  // KPI totals — approved funding / incurred / FAC / remaining via project-finance helpers
-  const approvedFunding = filtered.reduce((s, p) => s + projectApprovedFunding(p), 0);
-  const totalIncurred = filtered.reduce((s, p) => s + projectIncurred(p), 0);
-  const totalForecast = filtered.reduce((s, p) => s + projectForecast(p), 0);
-  const remaining = filtered.reduce((s, p) => s + projectRemaining(p), 0);
-  const active = filtered.filter((p: any) => p.status === "In Progress").length;
-  const completed = filtered.filter((p: any) => p.status === "Completed").length;
-  const today = new Date();
-  const overdue = filtered.filter((p: any) => p.end_date && new Date(p.end_date) < today && p.status !== "Completed").length;
-  const ragScore = filtered.length
-    ? Math.round((filtered.filter((p: any) => p.rag === "Green").length / filtered.length) * 100)
-    : 0;
+  // KPI totals + sparklines — memoized so filter typing doesn't rescan monthly ×8.
+  const {
+    approvedFunding,
+    totalIncurred,
+    totalForecast,
+    remaining,
+    kpis,
+    ragData,
+    capexBars,
+  } = useMemo(() => {
+    const approvedFunding = filtered.reduce((s, p) => s + projectApprovedFunding(p), 0);
+    const totalIncurred = filtered.reduce((s, p) => s + projectIncurred(p), 0);
+    const totalForecast = filtered.reduce((s, p) => s + projectForecast(p), 0);
+    const remaining = filtered.reduce((s, p) => s + projectRemaining(p), 0);
+    const active = filtered.filter((p: any) => p.status === "In Progress").length;
+    const completed = filtered.filter((p: any) => p.status === "Completed").length;
+    const today = new Date();
+    const overdue = filtered.filter(
+      (p: any) => p.end_date && new Date(p.end_date) < today && p.status !== "Completed",
+    ).length;
+    const ragScore = filtered.length
+      ? Math.round(
+          (filtered.filter((p: any) => p.rag === "Green").length / filtered.length) * 100,
+        )
+      : 0;
 
-  const buildSpark = (
-    key: "capex_planned" | "capex_actual" | "capex_forecast" | "benefits_actual" | null,
-    color: string,
-  ) => {
-    const rows = monthly.filter((m: any) => filteredIds.has(m.project_id));
-    const buckets = new Map<string, number>();
-    if (key && rows.length) {
-      rows.forEach((r: any) => {
-        const k = String(r.period_month || "").slice(0, 7);
-        if (!k) return;
-        buckets.set(k, (buckets.get(k) || 0) + Number(r[key] || 0));
-      });
-    }
-    let series = Array.from(buckets.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-12)
-      .map(([_m, v], i) => ({ i, v }));
-    // Do not invent synthetic sparklines for financial KPIs when monthly data is thin.
-    if (series.length < 6) {
-      series = Array.from({ length: 12 }, (_, i) => ({ i, v: 0 }));
-    }
-    return { data: series, color };
-  };
+    const buildSpark = (
+      key: "capex_planned" | "capex_actual" | "capex_forecast" | "benefits_actual" | null,
+      color: string,
+    ) => {
+      const rows = monthly.filter((m: any) => filteredIds.has(m.project_id));
+      const buckets = new Map<string, number>();
+      if (key && rows.length) {
+        rows.forEach((r: any) => {
+          const k = String(r.period_month || "").slice(0, 7);
+          if (!k) return;
+          buckets.set(k, (buckets.get(k) || 0) + Number(r[key] || 0));
+        });
+      }
+      let series = Array.from(buckets.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .slice(-12)
+        .map(([_m, v], i) => ({ i, v }));
+      if (series.length < 6) {
+        series = Array.from({ length: 12 }, (_, i) => ({ i, v: 0 }));
+      }
+      return { data: series, color };
+    };
 
-  const kpis = [
-    { label: "Approved Funding", value: money(approvedFunding), spark: buildSpark("capex_planned", "#1d4ed8") },
-    { label: "Incurred", value: money(totalIncurred), spark: buildSpark("capex_actual", "#15803d") },
-    { label: "Forecast", value: money(totalForecast), spark: buildSpark("capex_forecast", "#f59e0b") },
-    { label: "Remaining", value: money(remaining), spark: buildSpark(null, "#8b5cf6") },
-    { label: "Active", value: active, spark: buildSpark(null, "#06b6d4") },
-    { label: "Completed", value: completed, spark: buildSpark(null, "#15803d") },
-    { label: "Overdue", value: overdue, spark: buildSpark(null, "#dc2626") },
-    { label: "RAG Score", value: `${ragScore}%`, spark: buildSpark(null, "#8b5cf6") },
-  ];
-
-  // ── Charts data ──────────────────────────────────────────────
-  // Portfolio Health (donut RAG)
-  const ragData = ["Green", "Amber", "Red"].map((r) => ({
-    name: r, value: filtered.filter((p: any) => p.rag === r).length,
-  })).filter((d) => d.value > 0);
-
-  // Funding vs Actual (4 bars)
-  const capexBars = [
-    { name: "Approved", value: approvedFunding },
-    { name: "Incurred", value: totalIncurred },
-    { name: "Forecast", value: totalForecast },
-    { name: "Remaining", value: remaining },
-  ];
+    return {
+      approvedFunding,
+      totalIncurred,
+      totalForecast,
+      remaining,
+      kpis: [
+        {
+          label: "Approved Funding",
+          value: money(approvedFunding),
+          spark: buildSpark("capex_planned", "#1d4ed8"),
+        },
+        {
+          label: "Incurred",
+          value: money(totalIncurred),
+          spark: buildSpark("capex_actual", "#15803d"),
+        },
+        {
+          label: "Forecast",
+          value: money(totalForecast),
+          spark: buildSpark("capex_forecast", "#f59e0b"),
+        },
+        { label: "Remaining", value: money(remaining), spark: buildSpark(null, "#8b5cf6") },
+        { label: "Active", value: active, spark: buildSpark(null, "#06b6d4") },
+        { label: "Completed", value: completed, spark: buildSpark(null, "#15803d") },
+        { label: "Overdue", value: overdue, spark: buildSpark(null, "#dc2626") },
+        { label: "RAG Score", value: `${ragScore}%`, spark: buildSpark(null, "#8b5cf6") },
+      ],
+      ragData: ["Green", "Amber", "Red"]
+        .map((r) => ({
+          name: r,
+          value: filtered.filter((p: any) => p.rag === r).length,
+        }))
+        .filter((d) => d.value > 0),
+      capexBars: [
+        { name: "Approved", value: approvedFunding },
+        { name: "Incurred", value: totalIncurred },
+        { name: "Forecast", value: totalForecast },
+        { name: "Remaining", value: remaining },
+      ],
+    };
+  }, [filtered, filteredIds, monthly]);
 
   // Monthly Spend ($M) — Actual vs Forecast, bucketed by year-month (last 12)
   const monthlySpend = useMemo(() => {

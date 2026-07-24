@@ -134,102 +134,152 @@ function ExecutiveCockpit() {
     return m;
   }, [gates]);
 
-  // ---------- KPIs ----------
-  const totalValue = projects.reduce((s: number, p: any) => s + num(p.budget), 0);
-  const capexApproved = projects.reduce((s: number, p: any) => s + num(p.capex_approved), 0);
-  const opexApproved = projects.reduce((s: number, p: any) => s + num(p.opex_approved), 0);
-  const approvedFunding = projects.reduce(
-    (s: number, p: any) => s + projectApprovedFunding(p),
-    0,
-  );
-  const actualSpend = projects.reduce((s: number, p: any) => s + projectIncurred(p), 0);
-  const remaining = Math.max(0, approvedFunding - actualSpend);
-  const fac = projects.reduce((s: number, p: any) => s + projectForecast(p), 0);
+  // ---------- KPIs + segmentation (single memo; index benefits once) ----------
+  const {
+    totalValue,
+    capexApproved,
+    opexApproved,
+    approvedFunding,
+    actualSpend,
+    remaining,
+    fac,
+    total,
+    onTrack,
+    atRisk,
+    delayed,
+    strategicPrograms,
+    capexPrograms,
+    unfundedInitiatives,
+    benefitsForecast,
+    benefitsRealised,
+    decisionsPending,
+    overdueActions,
+    upcomingGates,
+    segRows,
+    segTotals,
+  } = useMemo(() => {
+    const benefitsByProject = new Map<string, any[]>();
+    (benefits as any[]).forEach((b) => {
+      if (!b.project_id) return;
+      const list = benefitsByProject.get(b.project_id) || [];
+      list.push(b);
+      benefitsByProject.set(b.project_id, list);
+    });
+    const benefitTargetFor = (p: any) =>
+      sumBenefitsTarget(benefitsByProject.get(p.id) || [], p, p.id);
 
-  const total = projects.length || 1;
-  const onTrack = projects.filter((p: any) => (p.rag || "").toLowerCase() === "green").length;
-  const atRisk = projects.filter((p: any) => (p.rag || "").toLowerCase() === "amber").length;
-  const delayed = projects.filter((p: any) => (p.rag || "").toLowerCase() === "red").length;
-  const strategicPrograms = new Set(
-    projects
-      .filter((p: any) => {
-        const cat = projectPortfolio(p);
-        return cat === "Business Strategic" || cat === "IT Strategic";
-      })
-      .map((p: any) => p.program)
-      .filter(Boolean),
-  ).size;
-  const capexPrograms = new Set(
-    projects
-      .filter((p: any) => projectPortfolio(p) === "CAPEX")
-      .map((p: any) => p.program)
-      .filter(Boolean),
-  ).size;
-  // Only count explicit Unfunded labels — missing category ≠ unfunded.
-  const unfundedInitiatives = projects.filter(
-    (p: any) => projectPortfolio(p).toLowerCase() === "unfunded",
-  ).length;
-
-  const benefitsForecast = benefits.reduce((s: number, b: any) => s + num(b.target_value), 0);
-  const benefitsRealised = benefits.reduce((s: number, b: any) => s + num(b.realised_value), 0);
-
-  const decisionsPending = decisions.filter((d: any) => {
-    const s = String(d.outcome || d.status || "").toLowerCase().trim();
-    return !s || s === "pending" || s === "in review" || s === "open";
-  }).length
-  const today = new Date();
-  const overdueActions = actions.filter((a: any) => {
-    const s = String(a.status || "").toLowerCase();
-    if (s === "closed" || s === "done" || s === "completed") return false;
-    if (!a.due_date) return false;
-    return new Date(a.due_date) < today;
-  }).length;
-  const upcomingGates = gates.filter((g: any) => {
-    if (!g.planned_date) return false;
-    const d = new Date(g.planned_date);
-    const diff = (d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
-    return diff >= 0 && diff <= 30;
-  }).length;
-
-  // ---------- Portfolio segmentation (canonical projects.portfolio) ----------
-  const segLabels = portfolioSegmentLabels(projects as any[]);
-  const segRows = segLabels.map((cat) => {
-    const rows = projects.filter((p: any) => projectPortfolio(p) === cat);
-    const approved = rows.reduce((s: number, p: any) => s + projectApprovedFunding(p), 0);
-    const actual = rows.reduce((s: number, p: any) => s + projectIncurred(p), 0);
-    // Prefer benefits register lines; fall back to project.benefits_target rollup.
-    const bf = rows.reduce(
-      (s: number, p: any) => s + sumBenefitsTarget(benefits as any[], p, p.id),
+    const totalValue = projects.reduce((s: number, p: any) => s + num(p.budget), 0);
+    const capexApproved = projects.reduce((s: number, p: any) => s + num(p.capex_approved), 0);
+    const opexApproved = projects.reduce((s: number, p: any) => s + num(p.opex_approved), 0);
+    const approvedFunding = projects.reduce(
+      (s: number, p: any) => s + projectApprovedFunding(p),
       0,
     );
-    return {
-      name: cat,
-      initiatives: rows.length,
-      approved,
-      actual,
-      remaining: Math.max(0, approved - actual),
-      benefits: bf,
-      green: rows.filter((p: any) => (p.rag || "").toLowerCase() === "green").length,
-      amber: rows.filter((p: any) => (p.rag || "").toLowerCase() === "amber").length,
-      red: rows.filter((p: any) => (p.rag || "").toLowerCase() === "red").length,
+    const actualSpend = projects.reduce((s: number, p: any) => s + projectIncurred(p), 0);
+    const remaining = Math.max(0, approvedFunding - actualSpend);
+    const fac = projects.reduce((s: number, p: any) => s + projectForecast(p), 0);
+
+    const total = projects.length || 1;
+    const onTrack = projects.filter((p: any) => (p.rag || "").toLowerCase() === "green").length;
+    const atRisk = projects.filter((p: any) => (p.rag || "").toLowerCase() === "amber").length;
+    const delayed = projects.filter((p: any) => (p.rag || "").toLowerCase() === "red").length;
+    const strategicPrograms = new Set(
+      projects
+        .filter((p: any) => {
+          const cat = projectPortfolio(p);
+          return cat === "Business Strategic" || cat === "IT Strategic";
+        })
+        .map((p: any) => p.program)
+        .filter(Boolean),
+    ).size;
+    const capexPrograms = new Set(
+      projects
+        .filter((p: any) => projectPortfolio(p) === "CAPEX")
+        .map((p: any) => p.program)
+        .filter(Boolean),
+    ).size;
+    const unfundedInitiatives = projects.filter(
+      (p: any) => projectPortfolio(p).toLowerCase() === "unfunded",
+    ).length;
+
+    const benefitsForecast = benefits.reduce((s: number, b: any) => s + num(b.target_value), 0);
+    const benefitsRealised = benefits.reduce((s: number, b: any) => s + num(b.realised_value), 0);
+
+    const decisionsPending = decisions.filter((d: any) => {
+      const s = String(d.outcome || d.status || "")
+        .toLowerCase()
+        .trim();
+      return !s || s === "pending" || s === "in review" || s === "open";
+    }).length;
+    const today = new Date();
+    const overdueActions = actions.filter((a: any) => {
+      const s = String(a.status || "").toLowerCase();
+      if (s === "closed" || s === "done" || s === "completed") return false;
+      if (!a.due_date) return false;
+      return new Date(a.due_date) < today;
+    }).length;
+    const upcomingGates = gates.filter((g: any) => {
+      if (!g.planned_date) return false;
+      const d = new Date(g.planned_date);
+      const diff = (d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
+      return diff >= 0 && diff <= 30;
+    }).length;
+
+    const segLabels = portfolioSegmentLabels(projects as any[]);
+    const segRows = segLabels.map((cat) => {
+      const rows = projects.filter((p: any) => projectPortfolio(p) === cat);
+      const approved = rows.reduce((s: number, p: any) => s + projectApprovedFunding(p), 0);
+      const actual = rows.reduce((s: number, p: any) => s + projectIncurred(p), 0);
+      const bf = rows.reduce((s: number, p: any) => s + benefitTargetFor(p), 0);
+      return {
+        name: cat,
+        initiatives: rows.length,
+        approved,
+        actual,
+        remaining: Math.max(0, approved - actual),
+        benefits: bf,
+        green: rows.filter((p: any) => (p.rag || "").toLowerCase() === "green").length,
+        amber: rows.filter((p: any) => (p.rag || "").toLowerCase() === "amber").length,
+        red: rows.filter((p: any) => (p.rag || "").toLowerCase() === "red").length,
+      };
+    });
+    const segApproved = approvedFunding;
+    const segActual = actualSpend;
+    const segTotals = {
+      initiatives: projects.length,
+      approved: segApproved,
+      actual: segActual,
+      remaining: Math.max(0, segApproved - segActual),
+      benefits: projects.reduce((s: number, p: any) => s + benefitTargetFor(p), 0),
+      green: onTrack,
+      amber: atRisk,
+      red: delayed,
     };
-  });
-  // "All Portfolio" = every project (matches Streamlit), not only matched buckets.
-  const segApproved = projects.reduce((s: number, p: any) => s + projectApprovedFunding(p), 0);
-  const segActual = projects.reduce((s: number, p: any) => s + projectIncurred(p), 0);
-  const segTotals = {
-    initiatives: projects.length,
-    approved: segApproved,
-    actual: segActual,
-    remaining: Math.max(0, segApproved - segActual),
-    benefits: projects.reduce(
-      (s: number, p: any) => s + sumBenefitsTarget(benefits as any[], p, p.id),
-      0,
-    ),
-    green: projects.filter((p: any) => (p.rag || "").toLowerCase() === "green").length,
-    amber: projects.filter((p: any) => (p.rag || "").toLowerCase() === "amber").length,
-    red: projects.filter((p: any) => (p.rag || "").toLowerCase() === "red").length,
-  };
+
+    return {
+      totalValue,
+      capexApproved,
+      opexApproved,
+      approvedFunding,
+      actualSpend,
+      remaining,
+      fac,
+      total,
+      onTrack,
+      atRisk,
+      delayed,
+      strategicPrograms,
+      capexPrograms,
+      unfundedInitiatives,
+      benefitsForecast,
+      benefitsRealised,
+      decisionsPending,
+      overdueActions,
+      upcomingGates,
+      segRows,
+      segTotals,
+    };
+  }, [projects, benefits, decisions, actions, gates]);
 
   // ---------- Budget vs Forecast by FY ----------
   const fyData = useMemo(() => {

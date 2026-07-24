@@ -86,8 +86,7 @@ function ProjectsList() {
     // the register briefly renders as empty until refresh.
     enabled: !!orgId,
     retry: 2,
-    staleTime: 15_000,
-    refetchOnMount: "always",
+    staleTime: 60_000,
   });
 
   const programs = useMemo(
@@ -155,22 +154,29 @@ function ProjectsList() {
     }
   };
 
-  // KPIs
-  const totalBudget = filtered.reduce((s, p: any) => s + Number(p.budget || 0), 0);
-  const capexIncurred = filtered.reduce((s, p: any) => s + Number(p.capex_incurred || 0), 0);
-  const active = filtered.filter((p: any) => p.status === "In Progress").length;
-  const completed = filtered.filter((p: any) => p.status === "Completed").length;
-  const atRisk = filtered.filter((p: any) => p.rag === "Red" || p.rag === "Amber").length;
-  const utilPct = totalBudget > 0 ? Math.round((capexIncurred / totalBudget) * 100) : 0;
-
-  // Charts
-  const ragData = ["Green", "Amber", "Red"]
-    .map((r) => ({
-      name: r,
-      value: filtered.filter((p: any) => p.rag === r).length,
-      color: RAG_COLORS[r],
-    }))
-    .filter((d) => d.value > 0);
+  // KPIs + chart buckets — memoized so table filter typing stays smooth.
+  const { totalBudget, capexIncurred, active, completed, atRisk, utilPct, ragData } = useMemo(() => {
+    const totalBudget = filtered.reduce((s, p: any) => s + Number(p.budget || 0), 0);
+    const capexIncurred = filtered.reduce((s, p: any) => s + Number(p.capex_incurred || 0), 0);
+    const active = filtered.filter((p: any) => p.status === "In Progress").length;
+    const completed = filtered.filter((p: any) => p.status === "Completed").length;
+    const atRisk = filtered.filter((p: any) => p.rag === "Red" || p.rag === "Amber").length;
+    return {
+      totalBudget,
+      capexIncurred,
+      active,
+      completed,
+      atRisk,
+      utilPct: totalBudget > 0 ? Math.round((capexIncurred / totalBudget) * 100) : 0,
+      ragData: ["Green", "Amber", "Red"]
+        .map((r) => ({
+          name: r,
+          value: filtered.filter((p: any) => p.rag === r).length,
+          color: RAG_COLORS[r],
+        }))
+        .filter((d) => d.value > 0),
+    };
+  }, [filtered]);
 
   const byProgram = useMemo(() => {
     const m = new Map<string, { name: string; count: number; budget: number }>();

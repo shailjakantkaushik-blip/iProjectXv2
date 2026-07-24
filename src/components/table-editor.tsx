@@ -113,8 +113,14 @@ export function TableEditor({ def }: { def: TableDef }) {
     if (error) return toast.error(error.message);
     toast.success("Deleted — syncing across app");
     refetch();
-    await qc.invalidateQueries();
-    try { window.dispatchEvent(new CustomEvent("pmo:data-changed", { detail: { table: def.key, op: "delete", id } })); } catch {}
+    void qc.invalidateQueries({ queryKey: [def.key], refetchType: "active" });
+    try {
+      window.dispatchEvent(
+        new CustomEvent("pmo:data-changed", { detail: { table: def.key, op: "delete", id } }),
+      );
+    } catch {
+      /* ignore */
+    }
   };
 
   return (
@@ -148,8 +154,16 @@ export function TableEditor({ def }: { def: TableDef }) {
           onDone={async () => {
             setShowAdd(false);
             refetch();
-            await qc.invalidateQueries();
-            try { window.dispatchEvent(new CustomEvent("pmo:data-changed", { detail: { table: def.key, op: "insert" } })); } catch {}
+            void qc.invalidateQueries({ queryKey: [def.key], refetchType: "active" });
+            try {
+              window.dispatchEvent(
+                new CustomEvent("pmo:data-changed", {
+                  detail: { table: def.key, op: "insert" },
+                }),
+              );
+            } catch {
+              /* ignore */
+            }
           }}
         />
       )}

@@ -1,12 +1,24 @@
 import { useRef, type ReactNode } from "react";
 import { MoreHorizontal, ImageDown, FileDown, Presentation } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import html2canvas from "html2canvas";
-import { jsPDF } from "jspdf";
-import pptxgen from "pptxgenjs";
 import { toast } from "sonner";
 
+/** Lazy-load heavy export libs only when the user exports. */
+async function loadExportLibs() {
+  const [html2canvasMod, { jsPDF }, pptxgenMod] = await Promise.all([
+    import("html2canvas"),
+    import("jspdf"),
+    import("pptxgenjs"),
+  ]);
+  return {
+    html2canvas: html2canvasMod.default ?? html2canvasMod,
+    jsPDF,
+    pptxgen: pptxgenMod.default ?? pptxgenMod,
+  };
+}
+
 async function snapshot(el: HTMLElement) {
+  const { html2canvas } = await loadExportLibs();
   return html2canvas(el, {
     backgroundColor: "#ffffff",
     scale: 2,
@@ -24,9 +36,14 @@ async function exportPNG(el: HTMLElement, name: string) {
 }
 
 async function exportPDF(el: HTMLElement, name: string) {
+  const { jsPDF } = await loadExportLibs();
   const canvas = await snapshot(el);
   const img = canvas.toDataURL("image/png");
-  const pdf = new jsPDF({ orientation: canvas.width > canvas.height ? "landscape" : "portrait", unit: "pt", format: "a4" });
+  const pdf = new jsPDF({
+    orientation: canvas.width > canvas.height ? "landscape" : "portrait",
+    unit: "pt",
+    format: "a4",
+  });
   const pw = pdf.internal.pageSize.getWidth();
   const ph = pdf.internal.pageSize.getHeight();
   const ratio = Math.min(pw / canvas.width, ph / canvas.height);
@@ -37,17 +54,30 @@ async function exportPDF(el: HTMLElement, name: string) {
 }
 
 async function exportPPT(el: HTMLElement, name: string, title?: string) {
+  const { pptxgen } = await loadExportLibs();
   const canvas = await snapshot(el);
   const img = canvas.toDataURL("image/png");
   const pres = new pptxgen();
   pres.layout = "LAYOUT_WIDE";
   const slide = pres.addSlide();
-  if (title) slide.addText(title, { x: 0.4, y: 0.25, w: 12.5, h: 0.5, fontSize: 20, bold: true, color: "0B1220" });
-  const slideW = 13.333, slideH = 7.5;
+  if (title)
+    slide.addText(title, {
+      x: 0.4,
+      y: 0.25,
+      w: 12.5,
+      h: 0.5,
+      fontSize: 20,
+      bold: true,
+      color: "0B1220",
+    });
+  const slideW = 13.333,
+    slideH = 7.5;
   const topPad = title ? 0.9 : 0.4;
-  const availW = slideW - 0.8, availH = slideH - topPad - 0.4;
+  const availW = slideW - 0.8,
+    availH = slideH - topPad - 0.4;
   const ratio = Math.min(availW / canvas.width, availH / canvas.height);
-  const w = (canvas.width * ratio), h = (canvas.height * ratio);
+  const w = canvas.width * ratio,
+    h = canvas.height * ratio;
   slide.addImage({ data: img, x: (slideW - w) / 2, y: topPad, w, h });
   await pres.writeFile({ fileName: `${name}.pptx` });
 }
@@ -67,6 +97,7 @@ export function ChartExportMenu({
     const el = targetRef.current;
     if (!el) return;
     try {
+      toast.info(`Preparing ${name}…`);
       if (kind === "png") await exportPNG(el, name);
       if (kind === "pdf") await exportPDF(el, name);
       if (kind === "ppt") await exportPPT(el, name, title);
@@ -76,13 +107,22 @@ export function ChartExportMenu({
   };
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className={`inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground opacity-50 hover:opacity-100 hover:bg-accent ${className ?? ""}`} title="Export">
+      <DropdownMenuTrigger
+        className={`inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground opacity-50 hover:opacity-100 hover:bg-accent ${className ?? ""}`}
+        title="Export"
+      >
         <MoreHorizontal className="h-4 w-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="text-xs">
-        <DropdownMenuItem onClick={() => run("png")}><ImageDown className="mr-2 h-3.5 w-3.5" /> Download PNG</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => run("pdf")}><FileDown className="mr-2 h-3.5 w-3.5" /> Download PDF</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => run("ppt")}><Presentation className="mr-2 h-3.5 w-3.5" /> Download PPT</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => run("png")}>
+          <ImageDown className="mr-2 h-3.5 w-3.5" /> Download PNG
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => run("pdf")}>
+          <FileDown className="mr-2 h-3.5 w-3.5" /> Download PDF
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => run("ppt")}>
+          <Presentation className="mr-2 h-3.5 w-3.5" /> Download PPT
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
