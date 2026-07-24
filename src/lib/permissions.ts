@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth-context";
 
 export const EDITABLE_TABLES: { name: string; label: string }[] = [
   { name: "projects", label: "Projects" },
+  { name: "project_streams", label: "Project Streams" },
   { name: "milestones", label: "Milestones" },
   { name: "stage_gates", label: "Stage Gates" },
   { name: "risks", label: "Risks" },
