@@ -739,9 +739,10 @@ html[data-focus-mode="1"] .cartoon-banner,
   animation: processing-panel-in 0.25s ease-out both;
 }
 .processing-anim {
-  /* Locked centre — never translateY (avoids bounce feel). */
+  /* One compact block: mark + label stay together at the viewport centre. */
   transform: translateZ(0);
   contain: layout paint;
+  margin: 0 auto;
 }
 .processing-anim__stage {
   position: relative;

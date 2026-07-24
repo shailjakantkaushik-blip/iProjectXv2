@@ -13,8 +13,9 @@ type PageLoadingProps = {
 };
 
 /**
- * Standard loading state using the brand processing mark.
- * Full-screen mode is fixed + centred so layout/auth swaps cannot bounce it.
+ * Brand loading state — mark + label as one group, always centred.
+ * Full-screen uses a fixed viewport overlay so auth/workspace boot never
+ * leaves the spinner at the top and the text in the middle.
  */
 export function PageLoading({
   label = "Loading…",
@@ -26,21 +27,24 @@ export function PageLoading({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center gap-2 bg-background px-4",
+        "flex items-center justify-center bg-background px-4",
         fullScreen
           ? "fixed inset-0 z-[90] h-[100dvh] w-full"
-          : "min-h-[160px] w-full py-8",
+          : "w-full min-h-[min(60vh,28rem)] flex-1 py-10",
         className,
       )}
       style={style}
       aria-busy="true"
     >
-      <ProcessingAnimation label={label} size={size} />
+      {/* Single centred unit — mark and caption stay together */}
+      <div className="flex flex-col items-center justify-center">
+        <ProcessingAnimation label={label} size={size} />
+      </div>
     </div>
   );
 }
 
-/** Router default pending — used while route loaders run (in-shell, not fullscreen). */
+/** Router default pending — centred in the content pane (not stuck to the top). */
 export function RoutePending() {
   return <PageLoading label="Loading…" size="sm" fullScreen={false} />;
 }

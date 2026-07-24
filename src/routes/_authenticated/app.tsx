@@ -23,11 +23,13 @@ function AppLayout() {
     }
   }, [loading, needsOnboarding, navigate]);
 
+  // Full-screen centred — same placement as "Checking your session…"
+  // (in-shell fullScreen={false} left the spinner near the top of the page).
   if (loading || !profile) {
-    return <PageLoading label="Loading workspace…" fullScreen={false} />;
+    return <PageLoading label="Loading workspace…" />;
   }
   if (profile.org_id && !organization) {
-    return <PageLoading label="Loading workspace…" fullScreen={false} />;
+    return <PageLoading label="Loading workspace…" />;
   }
   if (needsOnboarding) return null;
 
