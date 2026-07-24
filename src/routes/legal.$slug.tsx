@@ -5,9 +5,13 @@ import {
   fetchLandingConfig,
   readCachedLandingConfigForPaint,
   DEFAULT_LANDING,
+  resolveBrandLogoUrl,
+  resolveBrandLogoDims,
+  type LandingConfig,
 } from "@/lib/landing-config";
 import { PageLoading } from "@/components/page-loading";
-import { ArrowLeft, Home } from "lucide-react";
+import { StableBrandLogo } from "@/components/stable-brand-logo";
+import { ArrowLeft } from "lucide-react";
 
 export const Route = createFileRoute("/legal/$slug")({
   loader: async ({ params }) => {
@@ -33,11 +37,14 @@ export const Route = createFileRoute("/legal/$slug")({
   }),
 });
 
+const HEADING = { fontFamily: "'Sora', system-ui, sans-serif" } as const;
+const BODY = { fontFamily: "'DM Sans', system-ui, sans-serif" } as const;
+
 function LegalPending() {
   const cached = typeof window !== "undefined" ? readCachedLandingConfigForPaint() : null;
   const p = cached?.palette ?? DEFAULT_LANDING.palette;
   const theme = cached?.theme ?? "light";
-  const bg = theme === "dark" ? p.navy : "#ffffff";
+  const bg = theme === "dark" ? p.navy : "#fafbfc";
   return (
     <PageLoading
       label="Loading…"
@@ -47,35 +54,55 @@ function LegalPending() {
   );
 }
 
+function BrandMark({ cfg }: { cfg: LandingConfig }) {
+  const logoUrl = resolveBrandLogoUrl(cfg.brand, "landing");
+  const dims = resolveBrandLogoDims(cfg.brand, "landing");
+  const p = cfg.palette;
+  if (logoUrl) {
+    return (
+      <StableBrandLogo
+        src={logoUrl}
+        alt={cfg.brand.name}
+        heightPx={Math.min(32, dims.heightPx)}
+        maxWidthPx={Math.min(160, dims.maxWidthPx)}
+      />
+    );
+  }
+  return (
+    <span className="text-lg font-bold tracking-tight" style={{ ...HEADING, color: p.textHeading }}>
+      {cfg.brand.name}
+    </span>
+  );
+}
+
+/** Strip leading H1 / Last updated so UI header is not duplicated. */
+function stripRedundantHeader(md: string): string {
+  let s = (md ?? "").trim();
+  s = s.replace(/^#\s+[^\n]+\n+/, "");
+  s = s.replace(/^\*?Last updated[^\n]*\*?\s*\n+/i, "");
+  s = s.replace(/^\*?Last updated[^\n]*\*?\s*\n+/i, "");
+  return s.trim();
+}
+
 function markdownToHtml(md: string): string {
-  // Very lightweight markdown renderer — enough for policy documents
-  // (headings, bold, italic, tables, lists, code, horizontal rules)
   let html = md
-    // Escape HTML chars
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
-  // Headings
   html = html.replace(/^######\s(.+)$/gm, "<h6>$1</h6>");
   html = html.replace(/^#####\s(.+)$/gm, "<h5>$1</h5>");
   html = html.replace(/^####\s(.+)$/gm, "<h4>$1</h4>");
   html = html.replace(/^###\s(.+)$/gm, "<h3>$1</h3>");
   html = html.replace(/^##\s(.+)$/gm, "<h2>$1</h2>");
-  html = html.replace(/^#\s(.+)$/gm, "<h1>$1</h1>");
+  html = html.replace(/^#\s(.+)$/gm, "<h2>$1</h2>"); // demote stray H1
 
-  // Horizontal rule
   html = html.replace(/^-{3,}$/gm, "<hr/>");
-
-  // Bold + italic
   html = html.replace(/\*\*\*(.+?)\*\*\*/g, "<strong><em>$1</em></strong>");
   html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
-
-  // Inline code
   html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
 
-  // Unordered list lines (collect consecutive)
   html = html.replace(/(?:^- .+$\n?)+/gm, (block) => {
     const items = block
       .trim()
@@ -85,7 +112,6 @@ function markdownToHtml(md: string): string {
     return `<ul>${items}</ul>`;
   });
 
-  // Ordered list lines
   html = html.replace(/(?:^\d+\.\s.+$\n?)+/gm, (block) => {
     const items = block
       .trim()
@@ -95,7 +121,6 @@ function markdownToHtml(md: string): string {
     return `<ol>${items}</ol>`;
   });
 
-  // Simple table detection (| col | col |)
   html = html.replace(/(?:^\|.+\|$\n?)+/gm, (block) => {
     const lines = block.trim().split("\n");
     const rows = lines.filter((l) => !l.match(/^\|[-| :]+\|$/));
@@ -113,7 +138,6 @@ function markdownToHtml(md: string): string {
     return `<table>${tableRows}</table>`;
   });
 
-  // Paragraphs — wrap non-block lines in <p>
   html = html
     .split(/\n{2,}/)
     .map((block) => {
@@ -131,9 +155,9 @@ function LegalPolicyPage() {
   const { policy, cfg } = Route.useLoaderData();
   const p = cfg.palette;
   const isDark = cfg.theme === "dark";
-  const bg = isDark ? p.navy : "#fafbfc";
+  const pageBg = isDark ? p.navy : "#fafbfc";
+  const panelBg = isDark ? p.navyLight : "#ffffff";
 
-  // Fetch all published policies for sidebar nav
   const { data: allPolicies = [] } = useQuery({
     queryKey: ["published_policies_nav"],
     queryFn: async () => {
@@ -157,35 +181,36 @@ function LegalPolicyPage() {
 
   if (!policy) {
     return (
-      <div
-        className="flex min-h-screen flex-col items-center justify-center"
-        style={{ background: bg }}
-      >
-        <h1
-          className="text-2xl font-bold"
-          style={{ color: p.textHeading, fontFamily: "'Sora', system-ui, sans-serif" }}
-        >
+      <div className="flex min-h-screen flex-col items-center justify-center px-5" style={{ ...BODY, background: pageBg }}>
+        <h1 className="text-2xl font-bold" style={{ ...HEADING, color: p.textHeading }}>
           Policy not found
         </h1>
         <p className="mt-2 text-sm" style={{ color: p.textMuted }}>
           This policy may not be published yet or the URL is incorrect.
         </p>
-        <Link
-          to="/"
-          className="mt-6 inline-flex items-center gap-2 text-sm font-semibold"
-          style={{ color: p.accent }}
-        >
-          <Home className="h-4 w-4" /> Return home
+        <Link to="/" className="mt-6 text-sm font-semibold" style={{ color: p.accent }}>
+          Return home
         </Link>
       </div>
     );
   }
 
-  const html = markdownToHtml(policy.body_markdown ?? "");
+  const html = markdownToHtml(stripRedundantHeader(policy.body_markdown ?? ""));
 
   return (
-    <div className="min-h-screen antialiased" style={{ background: bg }}>
-      {/* Top nav bar */}
+    <div className="min-h-screen antialiased" style={{ ...BODY, background: pageBg, color: p.textBody }}>
+      {/* Landing-aligned atmosphere */}
+      <div
+        className="pointer-events-none fixed inset-0 -z-10"
+        style={{
+          background: isDark
+            ? `radial-gradient(ellipse 70% 40% at 90% 0%, ${p.accent}22 0%, transparent 50%), ${p.navy}`
+            : `radial-gradient(ellipse 80% 50% at 100% -10%, ${p.accent}14 0%, transparent 45%),
+               radial-gradient(ellipse 50% 40% at 0% 100%, ${p.navy}08 0%, transparent 50%),
+               ${pageBg}`,
+        }}
+      />
+
       <nav
         className="sticky top-0 z-40 border-b backdrop-blur-xl"
         style={{
@@ -193,57 +218,73 @@ function LegalPolicyPage() {
           background: isDark ? `${p.navy}f0` : "rgba(255,255,255,0.92)",
         }}
       >
-        <div className="mx-auto flex h-14 max-w-7xl items-center gap-4 px-5 sm:px-6">
-          <Link
-            to="/"
-            className="flex items-center gap-2 text-sm font-semibold transition-opacity hover:opacity-70"
-            style={{ color: p.textMuted }}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            {cfg.brand.name}
-          </Link>
-          <span style={{ color: p.surface }}>›</span>
-          <span className="text-sm font-medium" style={{ color: p.textHeading }}>
-            {policy.title}
-          </span>
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-5 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <Link to="/" className="shrink-0">
+              <BrandMark cfg={cfg} />
+            </Link>
+            <span className="hidden text-sm sm:inline" style={{ color: p.surface }}>
+              /
+            </span>
+            <span className="hidden truncate text-sm font-medium sm:inline" style={{ color: p.textMuted }}>
+              {policy.title}
+            </span>
+          </div>
+          <div className="flex items-center gap-4">
+            <Link
+              to="/contact"
+              className="text-sm font-semibold transition-opacity hover:opacity-70"
+              style={{ color: p.textMuted }}
+            >
+              Contact
+            </Link>
+            <Link
+              to="/"
+              className="inline-flex items-center gap-1.5 text-sm font-semibold transition-opacity hover:opacity-70"
+              style={{ color: p.textMuted }}
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Home
+            </Link>
+          </div>
         </div>
       </nav>
 
-      <div className="mx-auto max-w-7xl px-5 py-10 sm:px-6 lg:flex lg:gap-10">
-        {/* Sidebar */}
+      <div className="mx-auto max-w-7xl px-5 py-10 sm:px-6 lg:flex lg:gap-12 lg:py-14">
         {allPolicies.length > 0 && (
-          <aside className="mb-8 shrink-0 lg:mb-0 lg:w-56">
+          <aside className="mb-10 shrink-0 lg:mb-0 lg:w-60">
             <div className="lg:sticky lg:top-24">
+              <p
+                className="mb-3 text-[11px] font-bold uppercase tracking-[0.18em]"
+                style={{ color: p.accent }}
+              >
+                Policies
+              </p>
               {Object.entries(byCategory).map(([cat, items]) => (
                 <div key={cat} className="mb-5">
-                  <p
-                    className="mb-1.5 text-[10px] font-bold uppercase tracking-wider"
-                    style={{ color: p.textMuted }}
-                  >
+                  <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: p.textMuted }}>
                     {cat}
                   </p>
                   <ul className="space-y-0.5">
-                    {items.map((pol) => (
-                      <li key={pol.slug}>
-                        <Link
-                          to="/legal/$slug"
-                          params={{ slug: pol.slug }}
-                          className="block rounded-md px-3 py-1.5 text-sm transition-colors"
-                          style={{
-                            color: pol.slug === slug ? p.accent : p.textMuted,
-                            background:
-                              pol.slug === slug
-                                ? isDark
-                                  ? `${p.accent}22`
-                                  : `${p.accent}12`
-                                : "transparent",
-                            fontWeight: pol.slug === slug ? 600 : 400,
-                          }}
-                        >
-                          {pol.title}
-                        </Link>
-                      </li>
-                    ))}
+                    {items.map((pol) => {
+                      const active = pol.slug === slug;
+                      return (
+                        <li key={pol.slug}>
+                          <Link
+                            to="/legal/$slug"
+                            params={{ slug: pol.slug }}
+                            className="block rounded-md px-3 py-1.5 text-sm transition-colors"
+                            style={{
+                              color: active ? p.accent : p.textMuted,
+                              background: active ? (isDark ? `${p.accent}22` : `${p.accent}12`) : "transparent",
+                              fontWeight: active ? 600 : 400,
+                            }}
+                          >
+                            {pol.title}
+                          </Link>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               ))}
@@ -251,77 +292,110 @@ function LegalPolicyPage() {
           </aside>
         )}
 
-        {/* Content */}
         <article className="min-w-0 flex-1">
           <div
-            className="mb-6 border-b pb-6"
-            style={{ borderColor: p.surface }}
+            className="overflow-hidden rounded-2xl border"
+            style={{
+              borderColor: p.surface,
+              background: panelBg,
+              boxShadow: isDark ? "none" : "0 24px 60px -28px rgba(15,27,61,0.16)",
+            }}
           >
-            <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: p.accent }}>
-              {policy.category}
-            </p>
-            <h1
-              className="mt-2 text-3xl font-bold tracking-tight"
+            <div
+              className="border-b px-6 py-8 sm:px-10"
               style={{
-                color: p.textHeading,
-                fontFamily: "'Sora', system-ui, sans-serif",
+                borderColor: p.surface,
+                background: isDark
+                  ? `linear-gradient(135deg, ${p.navyLight} 0%, ${p.navy} 100%)`
+                  : `linear-gradient(135deg, ${p.navy}08 0%, transparent 60%)`,
               }}
             >
-              {policy.title}
-            </h1>
-            <p className="mt-2 text-xs" style={{ color: p.textMuted }}>
-              Last updated{" "}
-              {new Date(policy.updated_at).toLocaleDateString("en-AU", {
-                day: "numeric",
-                month: "long",
-                year: "numeric",
-              })}
-            </p>
-          </div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: p.accent }}>
+                {policy.category}
+              </p>
+              <h1
+                className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl"
+                style={{ ...HEADING, color: p.textHeading }}
+              >
+                {policy.title}
+              </h1>
+              <p className="mt-3 text-xs" style={{ color: p.textMuted }}>
+                iProjectX · Last updated{" "}
+                {new Date(policy.updated_at).toLocaleDateString("en-AU", {
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                })}
+              </p>
+            </div>
 
-          <div
-            className="legal-prose max-w-prose"
-            style={{ color: p.textBody }}
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
+            <div
+              className="legal-prose px-6 py-8 sm:px-10 sm:py-10"
+              style={{ color: p.textBody }}
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          </div>
         </article>
       </div>
 
-      {/* Footer */}
       <footer
-        className="mt-16 border-t px-5 py-8 text-center text-xs sm:px-6"
+        className="mt-8 border-t px-5 py-8 text-center text-xs sm:px-6"
         style={{ borderColor: p.surface, color: p.textMuted }}
       >
-        {cfg.footer.text || `© ${new Date().getFullYear()} ${cfg.brand.name}`} ·{" "}
-        <Link to="/" style={{ color: p.accent }}>
-          Home
-        </Link>{" "}
-        ·{" "}
-        <Link to="/legal/privacy-policy" style={{ color: p.accent }}>
-          Privacy
-        </Link>{" "}
-        ·{" "}
-        <Link to="/legal/terms-of-service" style={{ color: p.accent }}>
-          Terms
-        </Link>
+        <div className="mx-auto flex max-w-7xl flex-col items-center gap-3 sm:flex-row sm:justify-between">
+          <span>© {new Date().getFullYear()} iProjectX</span>
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+            <Link to="/legal/privacy-policy" className="hover:opacity-70" style={{ color: p.textMuted }}>
+              Privacy
+            </Link>
+            <Link to="/legal/terms-of-service" className="hover:opacity-70" style={{ color: p.textMuted }}>
+              Terms
+            </Link>
+            <Link to="/legal/cookie-policy" className="hover:opacity-70" style={{ color: p.textMuted }}>
+              Cookies
+            </Link>
+            <Link to="/contact" className="hover:opacity-70" style={{ color: p.textMuted }}>
+              Contact
+            </Link>
+            <Link to="/" className="font-semibold hover:opacity-70" style={{ color: p.accent }}>
+              Home
+            </Link>
+          </div>
+        </div>
       </footer>
 
       <style>{`
-        .legal-prose h1 { font-size: 1.875rem; font-weight: 700; margin-top: 2rem; margin-bottom: 1rem; font-family: 'Sora', system-ui, sans-serif; }
-        .legal-prose h2 { font-size: 1.375rem; font-weight: 700; margin-top: 2rem; margin-bottom: 0.75rem; font-family: 'Sora', system-ui, sans-serif; }
-        .legal-prose h3 { font-size: 1.125rem; font-weight: 600; margin-top: 1.5rem; margin-bottom: 0.5rem; }
+        .legal-prose h2 {
+          font-size: 1.25rem;
+          font-weight: 700;
+          margin-top: 2rem;
+          margin-bottom: 0.75rem;
+          font-family: 'Sora', system-ui, sans-serif;
+          color: var(--lp-heading, inherit);
+        }
+        .legal-prose h3 { font-size: 1.05rem; font-weight: 600; margin-top: 1.5rem; margin-bottom: 0.5rem; }
         .legal-prose h4, .legal-prose h5, .legal-prose h6 { font-weight: 600; margin-top: 1rem; margin-bottom: 0.5rem; }
         .legal-prose p { margin-bottom: 1rem; line-height: 1.75; }
-        .legal-prose ul, .legal-prose ol { margin-left: 1.5rem; margin-bottom: 1rem; }
-        .legal-prose li { margin-bottom: 0.25rem; line-height: 1.7; }
+        .legal-prose ul, .legal-prose ol { margin-left: 1.35rem; margin-bottom: 1rem; }
+        .legal-prose li { margin-bottom: 0.3rem; line-height: 1.7; }
         .legal-prose ul li { list-style-type: disc; }
         .legal-prose ol li { list-style-type: decimal; }
         .legal-prose strong { font-weight: 600; }
-        .legal-prose code { font-family: monospace; font-size: 0.875em; background: rgba(0,0,0,0.06); padding: 0.1em 0.4em; border-radius: 3px; }
-        .legal-prose hr { border: none; border-top: 1px solid currentColor; opacity: 0.2; margin: 1.5rem 0; }
+        .legal-prose code {
+          font-family: ui-monospace, monospace;
+          font-size: 0.875em;
+          background: rgba(15,27,61,0.06);
+          padding: 0.1em 0.4em;
+          border-radius: 3px;
+        }
+        .legal-prose hr { border: none; border-top: 1px solid currentColor; opacity: 0.15; margin: 1.75rem 0; }
         .legal-prose table { width: 100%; border-collapse: collapse; margin-bottom: 1.25rem; font-size: 0.875rem; }
-        .legal-prose th, .legal-prose td { padding: 0.5rem 0.75rem; border: 1px solid rgba(0,0,0,0.12); text-align: left; }
-        .legal-prose th { font-weight: 600; background: rgba(0,0,0,0.04); }
+        .legal-prose th, .legal-prose td {
+          padding: 0.55rem 0.75rem;
+          border: 1px solid rgba(15,27,61,0.12);
+          text-align: left;
+        }
+        .legal-prose th { font-weight: 600; background: rgba(15,27,61,0.04); }
       `}</style>
     </div>
   );

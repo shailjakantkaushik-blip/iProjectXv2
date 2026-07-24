@@ -23,13 +23,7 @@ import {
   Flag,
   Menu,
   X,
-  Check,
-  Send,
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   DEFAULT_LANDING,
   fetchLandingConfig,
@@ -42,6 +36,7 @@ import {
   type LogoDisplaySize,
 } from "@/lib/landing-config";
 import { StableBrandLogo } from "@/components/stable-brand-logo";
+import { EoiModal } from "@/components/eoi-form";
 import { PageLoading } from "@/components/page-loading";
 
 export const Route = createFileRoute("/")({
@@ -317,7 +312,7 @@ function LandingPage() {
       >
         Skip to content
       </a>
-      <Nav cfg={cfg} signupEnabled={signupEnabled} onEoiClick={() => setEoiOpen(true)} />
+      <Nav cfg={cfg} signupEnabled={signupEnabled} />
       <main id="main">
         <Hero cfg={cfg} onEoiClick={() => setEoiOpen(true)} />
         {cfg.hero.alert && <InsightBar cfg={cfg} />}
@@ -402,7 +397,7 @@ function CtaSecondary({
   );
 }
 
-function Nav({ cfg, signupEnabled, onEoiClick }: { cfg: LandingConfig; signupEnabled: boolean; onEoiClick?: () => void }) {
+function Nav({ cfg, signupEnabled }: { cfg: LandingConfig; signupEnabled: boolean }) {
   const p = cfg.palette;
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
@@ -455,6 +450,13 @@ function Nav({ cfg, signupEnabled, onEoiClick }: { cfg: LandingConfig; signupEna
               {label}
             </a>
           ))}
+          <Link
+            to="/contact"
+            className="text-sm font-semibold tracking-tight transition-opacity hover:opacity-70"
+            style={{ color: p.textMuted }}
+          >
+            Contact us
+          </Link>
         </div>
 
         <div className="hidden items-center gap-4 md:flex">
@@ -465,14 +467,6 @@ function Nav({ cfg, signupEnabled, onEoiClick }: { cfg: LandingConfig; signupEna
           >
             Sign in
           </Link>
-          <button
-            type="button"
-            onClick={onEoiClick}
-            style={{ ...HEADING, background: p.accent, color: p.textOnAccent }}
-            className="rounded-md px-4 py-2.5 text-sm font-bold transition-opacity hover:opacity-90"
-          >
-            Express Interest
-          </button>
           {signupEnabled ? (
             <Link
               to="/auth"
@@ -516,6 +510,14 @@ function Nav({ cfg, signupEnabled, onEoiClick }: { cfg: LandingConfig; signupEna
                 {label}
               </a>
             ))}
+            <Link
+              to="/contact"
+              onClick={() => setOpen(false)}
+              className="rounded-md px-3 py-3 text-sm font-semibold"
+              style={{ color: p.textHeading }}
+            >
+              Contact us
+            </Link>
           </div>
           <div
             className="mt-4 flex flex-col gap-2 border-t pt-4"
@@ -529,14 +531,6 @@ function Nav({ cfg, signupEnabled, onEoiClick }: { cfg: LandingConfig; signupEna
             >
               Sign in
             </Link>
-            <button
-              type="button"
-              onClick={() => { setOpen(false); onEoiClick?.(); }}
-              style={{ ...HEADING, background: p.accent, color: p.textOnAccent }}
-              className="rounded-md px-3 py-3 text-center text-sm font-bold"
-            >
-              Express Interest
-            </button>
             {signupEnabled ? (
               <Link
                 to="/auth"
@@ -1727,6 +1721,7 @@ function FinalCta({ cfg, onEoiClick }: { cfg: LandingConfig; onEoiClick?: () => 
 
 function Footer({ cfg }: { cfg: LandingConfig }) {
   const p = cfg.palette;
+  const year = new Date().getFullYear();
   return (
     <footer
       className="border-t"
@@ -1735,265 +1730,67 @@ function Footer({ cfg }: { cfg: LandingConfig }) {
         background: cfg.theme === "dark" ? p.navy : "#ffffff",
       }}
     >
-      <div className="mx-auto max-w-7xl px-5 py-10 sm:px-6">
-        <div className="flex flex-col gap-8 md:flex-row md:items-start md:justify-between">
-          <div>
-            <BrandMark cfg={cfg} size="sm" />
-            <p className="mt-3 max-w-sm text-sm" style={{ color: p.textMuted }}>
+      <div className="mx-auto max-w-7xl px-5 py-14 sm:px-6">
+        <div className="grid gap-10 md:grid-cols-12 md:gap-8">
+          <div className="md:col-span-5">
+            <BrandMark cfg={cfg} size="xl" />
+            <p className="mt-4 max-w-sm text-sm leading-relaxed" style={{ color: p.textMuted }}>
               {cfg.brand.tagline || "Enterprise PMO Command Center"}
             </p>
-            <p className="mt-2 text-xs" style={{ color: p.textMuted }}>
-              {cfg.footer.text || `© ${new Date().getFullYear()} ${cfg.brand.name}`}
-            </p>
           </div>
-          <div className="flex flex-col gap-6 sm:flex-row sm:gap-12">
+          <div className="grid grid-cols-2 gap-8 sm:grid-cols-3 md:col-span-7 md:justify-items-end">
             <div>
-              <p className="mb-2 text-[11px] font-bold uppercase tracking-wider" style={{ color: p.textMuted }}>
-                Platform
+              <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: p.textMuted }}>
+                Product
               </p>
-              <div className="flex flex-col gap-1.5 text-sm font-semibold" style={{ color: p.textMuted }}>
+              <div className="flex flex-col gap-2 text-sm font-medium" style={{ color: p.textBody }}>
                 <a href="#cockpit" className="transition-opacity hover:opacity-70">Cockpit</a>
                 <a href="#timeline" className="transition-opacity hover:opacity-70">Timeline</a>
                 <a href="#raid" className="transition-opacity hover:opacity-70">Governance</a>
                 <a href="#capabilities" className="transition-opacity hover:opacity-70">Capabilities</a>
-                <Link to="/auth" className="transition-opacity hover:opacity-70">Sign in</Link>
               </div>
             </div>
             <div>
-              <p className="mb-2 text-[11px] font-bold uppercase tracking-wider" style={{ color: p.textMuted }}>
-                Legal
+              <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: p.textMuted }}>
+                Company
               </p>
-              <div className="flex flex-col gap-1.5 text-sm font-semibold" style={{ color: p.textMuted }}>
-                <Link to="/legal/privacy-policy" className="transition-opacity hover:opacity-70">Privacy Policy</Link>
-                <Link to="/legal/terms-of-service" className="transition-opacity hover:opacity-70">Terms of Service</Link>
-                <Link to="/legal/cookie-policy" className="transition-opacity hover:opacity-70">Cookie Policy</Link>
-                <Link to="/legal/acceptable-use" className="transition-opacity hover:opacity-70">Acceptable Use</Link>
+              <div className="flex flex-col gap-2 text-sm font-medium" style={{ color: p.textBody }}>
+                <Link to="/contact" className="transition-opacity hover:opacity-70">Contact us</Link>
+                <Link to="/legal/about" className="transition-opacity hover:opacity-70">About</Link>
+                <Link to="/legal/support-help" className="transition-opacity hover:opacity-70">Support</Link>
+                <Link to="/auth" className="transition-opacity hover:opacity-70">Sign in</Link>
+              </div>
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: p.textMuted }}>
+                Resources
+              </p>
+              <div className="flex flex-col gap-2 text-sm font-medium" style={{ color: p.textBody }}>
+                <Link to="/legal/pricing-plans" className="transition-opacity hover:opacity-70">Pricing</Link>
+                <Link to="/legal/sla" className="transition-opacity hover:opacity-70">SLA</Link>
+                <Link to="/legal/system-status" className="transition-opacity hover:opacity-70">Status</Link>
+                <Link to="/legal/information-security" className="transition-opacity hover:opacity-70">Security</Link>
               </div>
             </div>
           </div>
         </div>
+
+        <div
+          className="mt-12 flex flex-col gap-4 border-t pt-6 sm:flex-row sm:items-center sm:justify-between"
+          style={{ borderColor: p.surface }}
+        >
+          <p className="text-xs" style={{ color: p.textMuted }}>
+            {cfg.footer.text || `© ${year} iProjectX. All rights reserved.`}
+          </p>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-medium" style={{ color: p.textMuted }}>
+            <Link to="/legal/privacy-policy" className="transition-opacity hover:opacity-70">Privacy</Link>
+            <Link to="/legal/terms-of-service" className="transition-opacity hover:opacity-70">Terms</Link>
+            <Link to="/legal/cookie-policy" className="transition-opacity hover:opacity-70">Cookies</Link>
+            <Link to="/legal/acceptable-use" className="transition-opacity hover:opacity-70">Acceptable use</Link>
+            <Link to="/contact" className="transition-opacity hover:opacity-70">Contact</Link>
+          </div>
+        </div>
       </div>
     </footer>
-  );
-}
-
-/* ── EOI Modal ───────────────────────────────────────────── */
-
-function EoiModal({ cfg, onClose }: { cfg: LandingConfig; onClose: () => void }) {
-  const p = cfg.palette;
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [form, setForm] = useState({
-    full_name: "",
-    email: "",
-    organization_name: "",
-    phone: "",
-    job_title: "",
-    company_size: "",
-    interest_areas: "",
-    message: "",
-  });
-
-  const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
-    setForm((f) => ({ ...f, [field]: e.target.value }));
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!form.full_name || !form.email) return;
-    setSubmitting(true);
-    try {
-      const { error } = await (supabase as any)
-        .from("eoi_requests")
-        .insert({ ...form, source: "landing" });
-      if (error) throw error;
-      setSubmitted(true);
-    } catch (err: any) {
-      alert(err?.message ?? "Submission failed. Please try again.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  // close on backdrop click
-  function handleBackdrop(e: React.MouseEvent<HTMLDivElement>) {
-    if (e.target === e.currentTarget) onClose();
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-[200] flex items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
-      onClick={handleBackdrop}
-    >
-      <div
-        className="relative w-full max-w-lg overflow-hidden rounded-xl shadow-2xl"
-        style={{ background: cfg.theme === "dark" ? p.navyLight : "#ffffff" }}
-      >
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-md transition-opacity hover:opacity-60"
-          style={{ color: p.textMuted }}
-          aria-label="Close"
-        >
-          <X className="h-5 w-5" />
-        </button>
-
-        {submitted ? (
-          <div className="flex flex-col items-center gap-4 px-8 py-12 text-center">
-            <div
-              className="flex h-14 w-14 items-center justify-center rounded-full"
-              style={{ background: `${p.success}18`, color: p.success }}
-            >
-              <Check className="h-7 w-7" />
-            </div>
-            <h2 className="text-xl font-bold" style={{ ...HEADING, color: p.textHeading }}>
-              Thank you for your interest!
-            </h2>
-            <p className="text-sm leading-relaxed" style={{ color: p.textMuted }}>
-              We have received your expression of interest and will be in touch shortly.
-            </p>
-            <button
-              type="button"
-              onClick={onClose}
-              className="mt-2 rounded-md px-6 py-2.5 text-sm font-bold"
-              style={{ background: p.accent, color: p.textOnAccent }}
-            >
-              Close
-            </button>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit}>
-            <div className="px-8 pb-8 pt-7">
-              <h2 className="text-xl font-bold" style={{ ...HEADING, color: p.textHeading }}>
-                Expression of Interest
-              </h2>
-              <p className="mt-1 text-sm" style={{ color: p.textMuted }}>
-                Tell us about yourself and we will be in touch to discuss how iProjectX can help your PMO.
-              </p>
-
-              <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <Label htmlFor="eoi-name" style={{ color: p.textBody }}>
-                    Full name <span style={{ color: p.danger }}>*</span>
-                  </Label>
-                  <Input
-                    id="eoi-name"
-                    required
-                    value={form.full_name}
-                    onChange={set("full_name")}
-                    placeholder="Jane Smith"
-                    className="mt-1"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <Label htmlFor="eoi-email" style={{ color: p.textBody }}>
-                    Work email <span style={{ color: p.danger }}>*</span>
-                  </Label>
-                  <Input
-                    id="eoi-email"
-                    type="email"
-                    required
-                    value={form.email}
-                    onChange={set("email")}
-                    placeholder="jane@company.com"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="eoi-org" style={{ color: p.textBody }}>Organization</Label>
-                  <Input
-                    id="eoi-org"
-                    value={form.organization_name}
-                    onChange={set("organization_name")}
-                    placeholder="Acme Corp"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="eoi-title" style={{ color: p.textBody }}>Job title</Label>
-                  <Input
-                    id="eoi-title"
-                    value={form.job_title}
-                    onChange={set("job_title")}
-                    placeholder="PMO Director"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="eoi-phone" style={{ color: p.textBody }}>Phone</Label>
-                  <Input
-                    id="eoi-phone"
-                    type="tel"
-                    value={form.phone}
-                    onChange={set("phone")}
-                    placeholder="+1 555 000 0000"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="eoi-size" style={{ color: p.textBody }}>Company size</Label>
-                  <select
-                    id="eoi-size"
-                    value={form.company_size}
-                    onChange={set("company_size")}
-                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    <option value="">Select…</option>
-                    <option value="1-50">1–50</option>
-                    <option value="51-200">51–200</option>
-                    <option value="201-1000">201–1,000</option>
-                    <option value="1001-5000">1,001–5,000</option>
-                    <option value="5000+">5,000+</option>
-                  </select>
-                </div>
-                <div className="sm:col-span-2">
-                  <Label htmlFor="eoi-interest" style={{ color: p.textBody }}>Areas of interest</Label>
-                  <Input
-                    id="eoi-interest"
-                    value={form.interest_areas}
-                    onChange={set("interest_areas")}
-                    placeholder="e.g. Executive dashboards, RAID governance, Financials"
-                    className="mt-1"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <Label htmlFor="eoi-message" style={{ color: p.textBody }}>Message</Label>
-                  <Textarea
-                    id="eoi-message"
-                    value={form.message}
-                    onChange={set("message")}
-                    placeholder="Tell us about your portfolio challenges and what you're looking for…"
-                    rows={3}
-                    className="mt-1"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-6 flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="rounded-md px-5 py-2.5 text-sm font-semibold transition-opacity hover:opacity-70"
-                  style={{ color: p.textMuted }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="inline-flex items-center gap-2 rounded-md px-6 py-2.5 text-sm font-bold disabled:opacity-60"
-                  style={{ background: p.accent, color: p.textOnAccent }}
-                >
-                  {submitting ? "Submitting…" : (
-                    <><Send className="h-4 w-4" /> Submit</>
-                  )}
-                </button>
-              </div>
-            </div>
-          </form>
-        )}
-      </div>
-    </div>
   );
 }
