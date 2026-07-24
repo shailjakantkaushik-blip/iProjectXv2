@@ -134,6 +134,20 @@ export function groupGatesByProject<T extends StageGateLike & { project_id: stri
   return m;
 }
 
+/** Group gates by stream_id when present, else project_id (timeline lane key). */
+export function groupGatesByLane<
+  T extends StageGateLike & { project_id: string; stream_id?: string | null },
+>(gates: T[]): Map<string, T[]> {
+  const m = new Map<string, T[]>();
+  for (const g of gates) {
+    const key = g.stream_id || g.project_id;
+    const list = m.get(key) || [];
+    list.push(g);
+    m.set(key, list);
+  }
+  return m;
+}
+
 /**
  * Persist resolved stage onto projects.current_phase so filters / data editor
  * stay aligned when stage gates are the source of truth.

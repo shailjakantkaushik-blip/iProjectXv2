@@ -32,7 +32,8 @@ import { Button } from "@/components/ui/button";
 import { downloadProjectBriefPPT } from "@/lib/project-brief-ppt";
 import { toPng } from "html-to-image";
 import { ExpandableChart } from "@/components/expandable-chart";
-import { isDoneGateStatus } from "@/lib/project-phase";
+import { isDoneGateStatus, resolveCurrentStage } from "@/lib/project-phase";
+import { expandProjectsToTimelineLanes, fetchProjectStreams } from "@/lib/project-streams";
 
 export const Route = createFileRoute("/_authenticated/app/project-infographic")({
   validateSearch: (s: Record<string, unknown>) => ({ pid: (s.pid as string) || "" }),
@@ -297,6 +298,36 @@ function InfographicPage() {
       ).data ?? [],
     enabled: !!project,
   });
+
+  const { data: projectStreams = [] } = useQuery({
+    queryKey: ["project_streams", project?.id],
+    queryFn: () => fetchProjectStreams(project.id),
+    enabled: !!project?.id && !!project?.streams_enabled,
+  });
+
+  const timelineLanes = useMemo(() => {
+    if (!project) return [];
+    if (!project.streams_enabled || projectStreams.length === 0) {
+      return [
+        {
+          ...project,
+          start_date: project.planned_start_date || project.actual_start_date || project.start_date,
+          end_date: project.actual_end_date || project.planned_end_date || project.end_date,
+          project_id: project.id,
+        },
+      ].filter((p: any) => p.start_date && p.end_date);
+    }
+    return expandProjectsToTimelineLanes([project], projectStreams as any[], {
+      gates: gates as any[],
+      resolvePhase: (p, streamGates) => resolveCurrentStage(p, streamGates, []),
+    })
+      .map((lane: any) => ({
+        ...lane,
+        start_date: lane.planned_start_date || lane.actual_start_date || lane.start_date,
+        end_date: lane.actual_end_date || lane.planned_end_date || lane.end_date,
+      }))
+      .filter((p: any) => p.start_date && p.end_date);
+  }, [project, projectStreams, gates]);
   const { data: monthly = [] } = useQuery({
     queryKey: ["financials_monthly", project?.id],
     queryFn: async () =>
@@ -753,9 +784,13 @@ function InfographicPage() {
           </label>
         </div>
         <PortfolioTimeline
-          projects={[project]}
+          projects={timelineLanes}
           gates={gates}
-          title={project.name || "Project Timeline"}
+          title={
+            project.streams_enabled
+              ? `${project.name || "Project"} · Streams (planned vs actual)`
+              : project.name || "Project Timeline"
+          }
           showPlannedVsActual={showPvA}
           captureId="project-timeline-capture"
         />

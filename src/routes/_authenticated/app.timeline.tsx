@@ -11,6 +11,10 @@ import {
   groupGatesByProject,
   resolveCurrentStage,
 } from "@/lib/project-phase";
+import {
+  expandProjectsToTimelineLanes,
+  fetchOrgStreams,
+} from "@/lib/project-streams";
 
 export const Route = createFileRoute("/_authenticated/app/timeline")({
   component: TimelinePage,
@@ -54,6 +58,12 @@ function TimelinePage() {
     queryKey: ["stage_gates", organization?.id],
     queryFn: async () => (await supabase.from("stage_gates").select("*")).data ?? [],
     enabled: !!organization,
+  });
+
+  const { data: streams = [] } = useQuery({
+    queryKey: ["project_streams", organization?.id],
+    queryFn: () => fetchOrgStreams(organization!.id),
+    enabled: !!organization?.id,
   });
 
   const { data: gateDefs = [] } = useQuery({
@@ -147,40 +157,93 @@ function TimelinePage() {
     setFPids([]); setPidsSearch("");
   };
 
-  // ---------- Combined planned + actual dataset ----------
-  const combinedProjects = useMemo(() => filtered.map((p: any) => ({
-    ...p,
-    start_date: p.planned_start_date || p.actual_start_date || p.start_date,
-    end_date:   p.actual_end_date || p.planned_end_date || p.end_date,
-  })).filter((p: any) => p.start_date && p.end_date), [filtered]);
+  // ---------- Combined planned + actual dataset (stream lanes when enabled) ----------
+  const combinedProjects = useMemo(() => {
+    const base = filtered.map((p: any) => ({
+      ...p,
+      start_date: p.planned_start_date || p.actual_start_date || p.start_date,
+      end_date: p.actual_end_date || p.planned_end_date || p.end_date,
+    }));
+    const lanes = expandProjectsToTimelineLanes(base, streams as any[], {
+      gates: gates as any[],
+      resolvePhase: (p, streamGates) => resolveCurrentStage(p, streamGates, orgPhases),
+    }).map((lane: any) => ({
+      ...lane,
+      start_date: lane.planned_start_date || lane.actual_start_date || lane.start_date,
+      end_date: lane.actual_end_date || lane.planned_end_date || lane.end_date,
+    }));
+    return lanes.filter((p: any) => p.start_date && p.end_date);
+  }, [filtered, streams, gates, orgPhases]);
 
   // ---------- Quick shift ----------
   const [shiftPid, setShiftPid] = useState<string>("");
+  const [shiftStreamId, setShiftStreamId] = useState<string>("");
   const [shiftDays, setShiftDays] = useState<number>(7);
   const [shiftApply, setShiftApply] = useState<ApplyTo>("both");
   const [shifting, setShifting] = useState(false);
+
+  const shiftProject = useMemo(
+    () => projects.find((p: any) => p.id === shiftPid) as any,
+    [projects, shiftPid],
+  );
+  const shiftProjectStreams = useMemo(
+    () => (streams as any[]).filter((s) => s.project_id === shiftPid),
+    [streams, shiftPid],
+  );
 
   const applyShift = async () => {
     if (!shiftPid) { toast.error("Pick a project"); return; }
     const proj = projects.find((p: any) => p.id === shiftPid);
     if (!proj) return;
-    const patch: Record<string, any> = {};
-    if (shiftApply === "planned" || shiftApply === "both") {
-      patch.planned_start_date = shiftISO(proj.planned_start_date || proj.start_date, shiftDays);
-      patch.planned_end_date   = shiftISO(proj.planned_end_date || proj.end_date, shiftDays);
-    }
-    if (shiftApply === "actual" || shiftApply === "both") {
-      patch.actual_start_date  = shiftISO(proj.actual_start_date || proj.start_date, shiftDays);
-      patch.actual_end_date    = shiftISO(proj.actual_end_date || proj.end_date, shiftDays);
-      patch.start_date = patch.actual_start_date;
-      patch.end_date   = patch.actual_end_date;
-    }
+
+    const buildPatch = (row: any) => {
+      const patch: Record<string, any> = {};
+      if (shiftApply === "planned" || shiftApply === "both") {
+        patch.planned_start_date = shiftISO(row.planned_start_date || row.start_date, shiftDays);
+        patch.planned_end_date = shiftISO(row.planned_end_date || row.end_date, shiftDays);
+      }
+      if (shiftApply === "actual" || shiftApply === "both") {
+        patch.actual_start_date = shiftISO(row.actual_start_date || row.start_date, shiftDays);
+        patch.actual_end_date = shiftISO(row.actual_end_date || row.end_date, shiftDays);
+      }
+      return patch;
+    };
+
     setShifting(true);
-    const { error } = await supabase.from("projects").update(patch as any).eq("id", shiftPid);
-    setShifting(false);
-    if (error) { toast.error(error.message); return; }
-    toast.success(`Shifted ${proj.project_code || proj.name} by ${shiftDays > 0 ? "+" : ""}${shiftDays} day(s)`);
-    qc.invalidateQueries({ queryKey: ["projects"] });
+    try {
+      if (proj.streams_enabled && shiftProjectStreams.length > 0) {
+        const targets = shiftStreamId
+          ? shiftProjectStreams.filter((s) => s.id === shiftStreamId)
+          : shiftProjectStreams;
+        if (targets.length === 0) {
+          toast.error("Pick a stream");
+          return;
+        }
+        for (const s of targets) {
+          const { error } = await supabase.from("project_streams").update(buildPatch(s) as any).eq("id", s.id);
+          if (error) throw error;
+        }
+        toast.success(
+          `Shifted ${targets.length} stream${targets.length > 1 ? "s" : ""} on ${proj.project_code || proj.name} by ${shiftDays > 0 ? "+" : ""}${shiftDays} day(s)`,
+        );
+        qc.invalidateQueries({ queryKey: ["project_streams"] });
+        qc.invalidateQueries({ queryKey: ["projects"] });
+      } else {
+        const patch = buildPatch(proj);
+        if (shiftApply === "actual" || shiftApply === "both") {
+          patch.start_date = patch.actual_start_date;
+          patch.end_date = patch.actual_end_date;
+        }
+        const { error } = await supabase.from("projects").update(patch as any).eq("id", shiftPid);
+        if (error) throw error;
+        toast.success(`Shifted ${proj.project_code || proj.name} by ${shiftDays > 0 ? "+" : ""}${shiftDays} day(s)`);
+        qc.invalidateQueries({ queryKey: ["projects"] });
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Shift failed");
+    } finally {
+      setShifting(false);
+    }
   };
 
   // ---------- Render ----------
@@ -211,7 +274,8 @@ function TimelinePage() {
     <div>
       <PageHeading icon="🗓️">Portfolio Timeline</PageHeading>
       <div className="text-sm text-muted-foreground mb-4">
-        Planned vs actual side-by-side per project, financial context, stage-gate diamonds, and quick date-shift.
+        Planned vs actual side-by-side per project (or per stream when streams are enabled), financial context,
+        stage-gate diamonds, and quick date-shift.
       </div>
 
       {/* Filters bar */}
@@ -281,7 +345,11 @@ function TimelinePage() {
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-          <span>Showing <span className="font-semibold text-foreground">{filtered.length}</span> of {projects.length} projects</span>
+          <span>
+            Showing <span className="font-semibold text-foreground">{filtered.length}</span> of {projects.length} projects
+            {" · "}
+            <span className="font-semibold text-foreground">{combinedProjects.length}</span> timeline lanes
+          </span>
           <span className="inline-flex items-center gap-1"><span className="inline-block h-2.5 w-4 rounded-sm bg-sky-500" /> Planned</span>
           <span className="inline-flex items-center gap-1"><span className="inline-block h-2.5 w-4 rounded-sm bg-emerald-500" /> Actual (RAG-coloured)</span>
           <label className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1 text-foreground hover:bg-muted">
@@ -313,16 +381,38 @@ function TimelinePage() {
       <SectionFrame>
         <div className="mb-3 flex items-center gap-2">
           <Zap className="h-4 w-4 text-amber-500" />
-          <SectionTitle>Quick shift project dates</SectionTitle>
+          <SectionTitle>Quick shift project / stream dates</SectionTitle>
         </div>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
           <label className="flex flex-col gap-1">
             <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Project</span>
-            <select value={shiftPid} onChange={(e) => setShiftPid(e.target.value)}
-              className="rounded-md border border-input bg-background px-2 py-2 text-sm">
+            <select
+              value={shiftPid}
+              onChange={(e) => {
+                setShiftPid(e.target.value);
+                setShiftStreamId("");
+              }}
+              className="rounded-md border border-input bg-background px-2 py-2 text-sm"
+            >
               <option value="">Select project…</option>
               {projects.map((p: any) => (
                 <option key={p.id} value={p.id}>{p.project_code ? `${p.project_code} · ` : ""}{p.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Stream</span>
+            <select
+              value={shiftStreamId}
+              onChange={(e) => setShiftStreamId(e.target.value)}
+              disabled={!shiftProject?.streams_enabled || shiftProjectStreams.length === 0}
+              className="rounded-md border border-input bg-background px-2 py-2 text-sm disabled:opacity-50"
+            >
+              <option value="">
+                {shiftProject?.streams_enabled ? "All streams" : "N/A (streams off)"}
+              </option>
+              {shiftProjectStreams.map((s: any) => (
+                <option key={s.id} value={s.id}>{s.code ? `${s.code} · ` : ""}{s.name}</option>
               ))}
             </select>
           </label>
@@ -358,6 +448,7 @@ function TimelinePage() {
         </div>
         <div className="mt-2 text-xs text-muted-foreground">
           Positive days push dates forward (slippage); negative days pull them earlier.
+          When streams are enabled, shifts apply to stream dates (project rollup updates automatically).
         </div>
       </SectionFrame>
     </div>

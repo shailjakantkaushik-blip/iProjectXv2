@@ -8,6 +8,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, Legend } fro
 import { GATE_STATUS_COLORS as STATUS_COLORS, CHART_SERIES } from "@/lib/chart-theme";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { resolveCurrentAndNextGate, resolveCurrentStage } from "@/lib/project-phase";
+import { fetchOrgStreams } from "@/lib/project-streams";
 
 export const Route = createFileRoute("/_authenticated/app/stage-gates")({
   component: StageGatesPage,
@@ -43,6 +44,12 @@ function StageGatesPage() {
           .order("sort_order")
       ).data ?? [],
     enabled: !!organization,
+  });
+
+  const { data: streams = [] } = useQuery({
+    queryKey: ["project_streams", organization?.id],
+    queryFn: () => fetchOrgStreams(organization!.id),
+    enabled: !!organization?.id,
   });
 
   // Gate distribution: rows = gate_name from configured definitions, stacked by status.
@@ -106,13 +113,61 @@ function StageGatesPage() {
   );
 
   const register = useMemo(() => {
-    return projects.map((p: any) => {
-      const gs = gatesByProject.get(p.id) || [];
-      const { current, next } = resolveCurrentAndNextGate(gs, orgPhases);
-      const phase = resolveCurrentStage(p, gs, orgPhases);
-      return { project: p, current, next, phase };
+    const streamsByProject = new Map<string, any[]>();
+    (streams as any[]).forEach((s) => {
+      const list = streamsByProject.get(s.project_id) || [];
+      list.push(s);
+      streamsByProject.set(s.project_id, list);
     });
-  }, [projects, gatesByProject, orgPhases]);
+
+    const rows: {
+      key: string;
+      project: any;
+      streamName: string | null;
+      current: any;
+      next: any;
+      phase: string | null;
+      rag: string | null;
+    }[] = [];
+
+    for (const p of projects as any[]) {
+      const projectStreams = (streamsByProject.get(p.id) || []).sort(
+        (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
+      );
+      if (p.streams_enabled && projectStreams.length > 0) {
+        for (const s of projectStreams) {
+          const gs = (gates as any[]).filter(
+            (g) => g.stream_id === s.id || (!g.stream_id && g.project_id === p.id && s.is_default),
+          );
+          const { current, next } = resolveCurrentAndNextGate(gs, orgPhases);
+          const phase = resolveCurrentStage(p, gs, orgPhases);
+          rows.push({
+            key: `${p.id}:${s.id}`,
+            project: p,
+            streamName: s.name,
+            current,
+            next,
+            phase,
+            rag: s.rag || p.rag,
+          });
+        }
+      } else {
+        const gs = gatesByProject.get(p.id) || [];
+        const { current, next } = resolveCurrentAndNextGate(gs, orgPhases);
+        const phase = resolveCurrentStage(p, gs, orgPhases);
+        rows.push({
+          key: p.id,
+          project: p,
+          streamName: null,
+          current,
+          next,
+          phase,
+          rag: p.rag,
+        });
+      }
+    }
+    return rows;
+  }, [projects, gatesByProject, orgPhases, streams, gates]);
 
   return (
     <div>
@@ -172,6 +227,7 @@ function StageGatesPage() {
             <thead>
               <tr>
                 <th>Project</th>
+                <th>Stream</th>
                 <th>Program</th>
                 <th>Sponsor</th>
                 <th>RAG</th>
@@ -184,13 +240,14 @@ function StageGatesPage() {
               </tr>
             </thead>
             <tbody>
-              {register.map(({ project, current, next, phase }) => (
-                <tr key={project.id}>
+              {register.map(({ key, project, streamName, current, next, phase, rag }) => (
+                <tr key={key}>
                   <td className="font-medium">{project.name}</td>
+                  <td>{streamName || "—"}</td>
                   <td>{project.program || "—"}</td>
                   <td>{project.sponsor || "—"}</td>
                   <td>
-                    <RagChip rag={project.rag} />
+                    <RagChip rag={rag} />
                   </td>
                   <td className="font-medium">{phase || "—"}</td>
                   <td>{current?.gate_name || "—"}</td>

@@ -226,7 +226,9 @@ export function GanttGroup({
               const pct = budget > 0 ? Math.min(100, Math.round((incurred / budget) * 100)) : 0;
               const overBudget = incurred > budget && budget > 0;
               const slipDays = Math.round((aE - pE) / 86400000);
-              const rawGates = (gatesByProject.get(p.id) || [])
+              // Lane key: stream id for stream lanes, else project id
+              const laneKey = p.stream_id || p.id;
+              const rawGates = (gatesByProject.get(laneKey) || gatesByProject.get(p.project_id) || [])
                 .filter((g: any) => g.planned_date || g.actual_date);
               const projGates = rawGates
                 .slice()
@@ -238,11 +240,34 @@ export function GanttGroup({
               return (
                 <div key={p.id} className="flex items-center border-b border-border/40 py-2 hover:bg-muted/30">
                   <div style={{ width: COL_PROJECT }} className="shrink-0 pl-1 pr-2">
-                    <Link to="/app/project-infographic" search={{ pid: p.id }} className="block truncate text-[12px] font-medium text-foreground hover:text-primary hover:underline" title={p.name}>{p.name}</Link>
+                    <Link
+                      to="/app/project-infographic"
+                      search={{ pid: p.project_id || p.id }}
+                      className="block truncate text-[12px] font-medium text-foreground hover:text-primary hover:underline"
+                      title={p.name}
+                    >
+                      {p.is_stream_lane && p.stream_name ? (
+                        <>
+                          <span className="text-muted-foreground">{p.project_name || "Project"}</span>
+                          <span className="text-muted-foreground"> · </span>
+                          <span>{p.stream_name}</span>
+                        </>
+                      ) : (
+                        p.name
+                      )}
+                    </Link>
                     <div className="truncate text-[10px] text-muted-foreground">
                       {p.project_code ? (
-                        <Link to="/app/project-infographic" search={{ pid: p.id }} className="text-primary hover:underline">{p.project_code}</Link>
-                      ) : "—"} · {p.program || "Unassigned"}
+                        <Link
+                          to="/app/project-infographic"
+                          search={{ pid: p.project_id || p.id }}
+                          className="text-primary hover:underline"
+                        >
+                          {p.project_code}
+                        </Link>
+                      ) : "—"}{" "}
+                      · {p.is_stream_lane ? "Stream" : p.program || "Unassigned"}
+                      {p.is_stream_lane && p.program ? ` · ${p.program}` : ""}
                     </div>
                   </div>
                   <div style={{ width: COL_SPONSOR }} className="shrink-0 pr-2">
@@ -456,11 +481,19 @@ export function PortfolioTimeline({
   const { organization } = useAuth();
   const fyStartMonth = organization?.fy_start_month || 4;
   const bounds = useMemo(() => computeTimelineBounds(projects, fy, fyStartMonth), [projects, fy, fyStartMonth]);
+  // Key gates by stream when present so stream lanes get their own markers;
+  // also keep project_id buckets for non-stream projects / fallback.
   const gatesByProject = useMemo(() => {
     const m = new Map<string, any[]>();
     gates.forEach((g: any) => {
-      if (!m.has(g.project_id)) m.set(g.project_id, []);
-      m.get(g.project_id)!.push(g);
+      const laneKey = g.stream_id || g.project_id;
+      if (!m.has(laneKey)) m.set(laneKey, []);
+      m.get(laneKey)!.push(g);
+      if (g.stream_id && g.project_id) {
+        // Do not double-add to project bucket — stream lanes own their gates.
+      } else if (!g.stream_id) {
+        // already keyed by project_id
+      }
     });
     return m;
   }, [gates]);

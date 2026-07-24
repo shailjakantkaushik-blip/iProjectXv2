@@ -99,6 +99,37 @@ export const TABLES: TableDef[] = [
       { key: "baseline_date", label: "Baseline Date", type: "date" },
       { key: "baseline_label", label: "Baseline Label", type: "text" },
       { key: "description", label: "Description", type: "textarea" },
+      { key: "streams_enabled", label: "Streams Enabled", type: "select", options: ["true", "false"] },
+    ],
+  },
+  {
+    key: "project_streams",
+    label: "Project Streams",
+    matchOn: ["project_code", "name"],
+    orderBy: "sort_order",
+    description:
+      "Optional delivery lanes under a project. When streams are enabled, each stream owns planned/actual dates, " +
+      "gates, finance, and allocations; the project row is the rollup.",
+    fields: [
+      { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "name", label: "Stream Name", type: "text", required: true },
+      { key: "code", label: "Stream Code", type: "text" },
+      { key: "owner", label: "Owner", type: "text" },
+      { key: "status", label: "Status", type: "select", options: STATUS },
+      { key: "rag", label: "RAG", type: "select", options: RAG },
+      { key: "is_default", label: "Default", type: "select", options: ["true", "false"] },
+      { key: "sort_order", label: "Order", type: "number" },
+      { key: "planned_start_date", label: "Planned Start", type: "date" },
+      { key: "planned_end_date", label: "Planned End", type: "date" },
+      { key: "actual_start_date", label: "Actual Start", type: "date" },
+      { key: "actual_end_date", label: "Actual End", type: "date" },
+      { key: "budget", label: "Budget", type: "number" },
+      { key: "capex_approved", label: "CAPEX Approved", type: "number" },
+      { key: "capex_incurred", label: "CAPEX Incurred", type: "number" },
+      { key: "opex_approved", label: "OPEX Approved", type: "number" },
+      { key: "opex_incurred", label: "OPEX Incurred", type: "number" },
+      { key: "forecast_at_completion", label: "FAC", type: "number" },
+      { key: "description", label: "Description", type: "textarea" },
     ],
   },
   {
@@ -130,6 +161,7 @@ export const TABLES: TableDef[] = [
     orderBy: "planned_date",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "stream_id", label: "Stream ID", type: "text" },
       { key: "gate_name", label: "Gate Name", type: "text", required: true },
       { key: "planned_date", label: "Planned Date", type: "date" },
       { key: "actual_date", label: "Actual Date", type: "date" },
@@ -148,6 +180,7 @@ export const TABLES: TableDef[] = [
     orderBy: "planned_date",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "stream_id", label: "Stream ID", type: "text" },
       { key: "name", label: "Milestone", type: "text", required: true },
       { key: "planned_date", label: "Planned", type: "date" },
       { key: "actual_date", label: "Actual", type: "date" },
@@ -274,6 +307,7 @@ export const TABLES: TableDef[] = [
       "Use Financials → Sync incurred from actuals to roll CapEx/OpEx actuals up to the project register.",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "stream_id", label: "Stream ID", type: "text" },
       { key: "period_month", label: "Month (YYYY-MM-01)", type: "date", required: true },
       { key: "capex_planned", label: "CAPEX Plan", type: "number" },
       { key: "capex_actual", label: "CAPEX Actual", type: "number" },
@@ -295,6 +329,7 @@ export const TABLES: TableDef[] = [
       "`budget` / `forecast` drive portfolio charts; CapEx/OpEx/Benefits are the detail split of budget.",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "stream_id", label: "Stream ID", type: "text" },
       { key: "fy", label: "FY", type: "text", required: true },
       { key: "budget", label: "Budget $", type: "number" },
       { key: "forecast", label: "Forecast $", type: "number" },
@@ -401,6 +436,7 @@ export const TABLES: TableDef[] = [
     orderBy: "period_month",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "stream_id", label: "Stream ID", type: "text" },
       { key: "resource_id", label: "Resource", type: "text", required: true },
       { key: "period_month", label: "Month", type: "date", required: true },
       { key: "allocation_percent", label: "Allocation %", type: "number" },

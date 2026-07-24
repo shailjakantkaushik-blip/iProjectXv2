@@ -662,6 +662,7 @@ export type Database = {
           org_id: string
           period_month: string
           project_id: string
+          stream_id: string | null
           updated_at: string
         }
         Insert: {
@@ -678,6 +679,7 @@ export type Database = {
           org_id: string
           period_month: string
           project_id: string
+          stream_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -694,9 +696,17 @@ export type Database = {
           org_id?: string
           period_month?: string
           project_id?: string
+          stream_id?: string | null
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "financials_monthly_stream_id_fkey"
+            columns: ["stream_id"]
+            isOneToOne: false
+            referencedRelation: "project_streams"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "financials_monthly_org_id_fkey"
             columns: ["org_id"]
@@ -725,6 +735,7 @@ export type Database = {
           opex: number | null
           org_id: string
           project_id: string
+          stream_id: string | null
           updated_at: string
         }
         Insert: {
@@ -738,6 +749,7 @@ export type Database = {
           opex?: number | null
           org_id: string
           project_id: string
+          stream_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -751,9 +763,17 @@ export type Database = {
           opex?: number | null
           org_id?: string
           project_id?: string
+          stream_id?: string | null
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "fy_allocations_stream_id_fkey"
+            columns: ["stream_id"]
+            isOneToOne: false
+            referencedRelation: "project_streams"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "fy_allocations_org_id_fkey"
             columns: ["org_id"]
@@ -1127,6 +1147,7 @@ export type Database = {
           owner: string | null
           planned_date: string | null
           project_id: string
+          stream_id: string | null
           stage_gate_id: string | null
           status: string | null
           updated_at: string
@@ -1141,6 +1162,7 @@ export type Database = {
           owner?: string | null
           planned_date?: string | null
           project_id: string
+          stream_id?: string | null
           stage_gate_id?: string | null
           status?: string | null
           updated_at?: string
@@ -1155,11 +1177,19 @@ export type Database = {
           owner?: string | null
           planned_date?: string | null
           project_id?: string
+          stream_id?: string | null
           stage_gate_id?: string | null
           status?: string | null
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "milestones_stream_id_fkey"
+            columns: ["stream_id"]
+            isOneToOne: false
+            referencedRelation: "project_streams"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "milestones_org_id_fkey"
             columns: ["org_id"]
@@ -1414,6 +1444,103 @@ export type Database = {
           },
         ]
       }
+
+      project_streams: {
+        Row: {
+          actual_end_date: string | null
+          actual_start_date: string | null
+          budget: number | null
+          capex_approved: number | null
+          capex_incurred: number | null
+          code: string | null
+          created_at: string
+          description: string | null
+          forecast_at_completion: number | null
+          id: string
+          is_default: boolean
+          name: string
+          notes: string | null
+          opex_approved: number | null
+          opex_incurred: number | null
+          org_id: string
+          owner: string | null
+          planned_end_date: string | null
+          planned_start_date: string | null
+          project_id: string
+          rag: string | null
+          sort_order: number
+          status: string | null
+          updated_at: string
+        }
+        Insert: {
+          actual_end_date?: string | null
+          actual_start_date?: string | null
+          budget?: number | null
+          capex_approved?: number | null
+          capex_incurred?: number | null
+          code?: string | null
+          created_at?: string
+          description?: string | null
+          forecast_at_completion?: number | null
+          id?: string
+          is_default?: boolean
+          name: string
+          notes?: string | null
+          opex_approved?: number | null
+          opex_incurred?: number | null
+          org_id: string
+          owner?: string | null
+          planned_end_date?: string | null
+          planned_start_date?: string | null
+          project_id: string
+          rag?: string | null
+          sort_order?: number
+          status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          actual_end_date?: string | null
+          actual_start_date?: string | null
+          budget?: number | null
+          capex_approved?: number | null
+          capex_incurred?: number | null
+          code?: string | null
+          created_at?: string
+          description?: string | null
+          forecast_at_completion?: number | null
+          id?: string
+          is_default?: boolean
+          name?: string
+          notes?: string | null
+          opex_approved?: number | null
+          opex_incurred?: number | null
+          org_id?: string
+          owner?: string | null
+          planned_end_date?: string | null
+          planned_start_date?: string | null
+          project_id?: string
+          rag?: string | null
+          sort_order?: number
+          status?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_streams_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_streams_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           actual_end_date: string | null
@@ -1453,6 +1580,7 @@ export type Database = {
           sponsor: string | null
           start_date: string | null
           status: Database["public"]["Enums"]["project_status"] | null
+          streams_enabled: boolean
           target_go_live: string | null
           updated_at: string
         }
@@ -1496,6 +1624,7 @@ export type Database = {
           sponsor?: string | null
           start_date?: string | null
           status?: Database["public"]["Enums"]["project_status"] | null
+          streams_enabled?: boolean
           target_go_live?: string | null
           updated_at?: string
         }
@@ -1539,6 +1668,7 @@ export type Database = {
           sponsor?: string | null
           start_date?: string | null
           status?: Database["public"]["Enums"]["project_status"] | null
+          streams_enabled?: boolean
           target_go_live?: string | null
           updated_at?: string
         }
@@ -1568,6 +1698,7 @@ export type Database = {
           org_id: string
           period_month: string
           project_id: string
+          stream_id: string | null
           resource_id: string
           role_on_project: string | null
           updated_at: string
@@ -1580,6 +1711,7 @@ export type Database = {
           org_id: string
           period_month: string
           project_id: string
+          stream_id?: string | null
           resource_id: string
           role_on_project?: string | null
           updated_at?: string
@@ -1592,11 +1724,19 @@ export type Database = {
           org_id?: string
           period_month?: string
           project_id?: string
+          stream_id?: string | null
           resource_id?: string
           role_on_project?: string | null
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "resource_allocations_stream_id_fkey"
+            columns: ["stream_id"]
+            isOneToOne: false
+            referencedRelation: "project_streams"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "resource_allocations_org_id_fkey"
             columns: ["org_id"]
@@ -1978,6 +2118,7 @@ export type Database = {
           org_id: string
           planned_date: string | null
           project_id: string
+          stream_id: string | null
           status: string | null
           updated_at: string
         }
@@ -1991,6 +2132,7 @@ export type Database = {
           org_id: string
           planned_date?: string | null
           project_id: string
+          stream_id?: string | null
           status?: string | null
           updated_at?: string
         }
@@ -2004,10 +2146,18 @@ export type Database = {
           org_id?: string
           planned_date?: string | null
           project_id?: string
+          stream_id?: string | null
           status?: string | null
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "stage_gates_stream_id_fkey"
+            columns: ["stream_id"]
+            isOneToOne: false
+            referencedRelation: "project_streams"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "stage_gates_org_id_fkey"
             columns: ["org_id"]
@@ -2257,6 +2407,14 @@ export type Database = {
       can_edit_project: {
         Args: { _project_id: string; _user_id: string }
         Returns: boolean
+      }
+      enable_project_streams: {
+        Args: { p_project_id: string }
+        Returns: string
+      }
+      rollup_project_from_streams: {
+        Args: { p_project_id: string }
+        Returns: undefined
       }
       create_org_and_join: {
         Args: { _name: string; _slug: string }

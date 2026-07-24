@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 // Tables that dashboards/pages read from — any change here rebroadcasts
 // so every open page recomputes automatically.
 const TABLES = [
-  "projects", "milestones", "stage_gates", "stage_gate_definitions",
+  "projects", "project_streams", "milestones", "stage_gates", "stage_gate_definitions",
   "risks", "issues", "actions", "decisions", "dependencies",
   "financials_monthly", "fy_allocations", "benefits",
   "resources", "resource_allocations", "sprints",

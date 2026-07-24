@@ -11,13 +11,14 @@ import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PageLoading } from "@/components/page-loading";
+import { ProjectStreamsPanel } from "@/components/project-streams-panel";
 
-type ProjectTab = "overview" | "decisions" | "work" | "governance" | "finance";
+type ProjectTab = "overview" | "decisions" | "work" | "governance" | "finance" | "streams";
 
 export const Route = createFileRoute("/_authenticated/app/projects/$id")({
   validateSearch: (s: Record<string, unknown>): { tab?: ProjectTab } => {
     const raw = String(s.tab || "");
-    if (["overview", "decisions", "work", "governance", "finance"].includes(raw)) {
+    if (["overview", "decisions", "work", "governance", "finance", "streams"].includes(raw)) {
       return { tab: raw as ProjectTab };
     }
     return {};
@@ -27,6 +28,7 @@ export const Route = createFileRoute("/_authenticated/app/projects/$id")({
 
 const TABS = [
   { id: "overview", label: "Overview" },
+  { id: "streams", label: "Streams" },
   { id: "decisions", label: "Key Decisions" },
   { id: "work", label: "Work" },
   { id: "governance", label: "RAID" },
@@ -201,6 +203,20 @@ function ProjectDetail() {
               <KpiCard label="Benefits target" value={money(Number(project.benefits_target || 0))} />
               <KpiCard label="ROI %" value={Number(project.roi_percent || 0)} />
             </div>
+            {project.streams_enabled ? (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Streams are enabled — schedule and funding figures on this project are rollups from the{" "}
+                <Link
+                  to="/app/projects/$id"
+                  params={{ id }}
+                  search={{ tab: "streams" }}
+                  className="font-medium text-primary hover:underline"
+                >
+                  Streams
+                </Link>{" "}
+                tab. Prefer editing dates, gates, and budgets there.
+              </p>
+            ) : null}
           </SectionFrame>
           <ProjectForm
             defaultValues={project as unknown as Partial<ProjectFormValues>}
@@ -209,6 +225,21 @@ function ProjectDetail() {
             submitLabel="Save changes"
           />
         </div>
+      )}
+
+      {tab === "streams" && organization?.id && (
+        <ProjectStreamsPanel
+          projectId={id}
+          orgId={organization.id}
+          streamsEnabled={!!project.streams_enabled}
+          projectRollup={{
+            budget: project.budget,
+            planned_start_date: project.planned_start_date,
+            planned_end_date: project.planned_end_date,
+            actual_start_date: project.actual_start_date,
+            actual_end_date: project.actual_end_date,
+          }}
+        />
       )}
 
       {tab === "decisions" && (
