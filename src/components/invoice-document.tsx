@@ -1,6 +1,4 @@
 import { forwardRef } from "react";
-import html2canvas from "html2canvas";
-import { jsPDF } from "jspdf";
 import {
   calcInvoiceGst,
   fmtInvoiceMoney,
@@ -480,6 +478,10 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export async function downloadInvoicePdf(el: HTMLElement, invoiceNumber: string) {
+  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+    import("html2canvas"),
+    import("jspdf"),
+  ]);
   const canvas = await html2canvas(el, {
     scale: 2,
     backgroundColor: "#ffffff",

@@ -1,11 +1,21 @@
-import { useRef, type ReactNode } from "react";
+import { lazy, Suspense, useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { DownloadMenu } from "@/components/page-export";
+
+/** Lazy so PPT/PDF/Excel export code is never on the cold-reload critical path. */
+const DownloadMenu = lazy(async () => {
+  const mod = await import("@/components/page-export");
+  return { default: mod.DownloadMenu };
+});
 
 /* Streamlit visual primitives — thin wrappers over CSS classes in styles.css */
 
 export function SectionFrame({
-  children, className, id, exportName, exportTitle, exportable = true,
+  children,
+  className,
+  id,
+  exportName,
+  exportTitle,
+  exportable = true,
 }: {
   children: ReactNode;
   className?: string;
@@ -20,14 +30,15 @@ export function SectionFrame({
     <div id={id} ref={ref} className={cn("section-frame relative group", className)}>
       {exportable && (
         <div className="absolute right-2 top-2 z-10 opacity-100 transition-opacity print:hidden md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
-          <DownloadMenu targetRef={ref} name={name} title={exportTitle} label="" variant="ghost" />
+          <Suspense fallback={null}>
+            <DownloadMenu targetRef={ref} name={name} title={exportTitle} label="" variant="ghost" />
+          </Suspense>
         </div>
       )}
       {children}
     </div>
   );
 }
-
 
 export function SectionTitle({ children }: { children: ReactNode }) {
   return <div className="section-title">{children}</div>;
@@ -76,17 +87,23 @@ export function KpiCard({
   accent?: string;
 }) {
   return (
-    <div className="kpi-card min-w-0" style={accent ? { borderTopColor: accent, borderTopWidth: 3 } : undefined}>
+    <div
+      className="kpi-card min-w-0"
+      style={accent ? { borderTopColor: accent, borderTopWidth: 3 } : undefined}
+    >
       <div className="kpi-label truncate">{label}</div>
-      <div className="kpi-value break-words" style={accent ? { color: accent } : undefined}>{value}</div>
-      {sub && <div className="mt-1 text-[11px] text-muted-foreground truncate">{sub}</div>}
+      <div className="kpi-value break-words" style={accent ? { color: accent } : undefined}>
+        {value}
+      </div>
+      {sub && <div className="mt-1 truncate text-[11px] text-muted-foreground">{sub}</div>}
     </div>
   );
 }
 
 export function RagChip({ rag, label }: { rag?: string | null; label?: ReactNode }) {
   const v = (rag || "").toLowerCase();
-  const cls = v === "green" ? "rag-green" : v === "amber" ? "rag-amber" : v === "red" ? "rag-red" : "";
+  const cls =
+    v === "green" ? "rag-green" : v === "amber" ? "rag-amber" : v === "red" ? "rag-red" : "";
   if (!cls) return <span className="text-xs text-muted-foreground">—</span>;
   return <span className={`rag-chip ${cls}`}>{label ?? rag}</span>;
 }
@@ -95,13 +112,14 @@ export function ComingSoon({ page, notes }: { page: string; notes?: string }) {
   return (
     <div>
       <PageHeading>{page}</PageHeading>
-      <div className="text-sm text-muted-foreground mb-4">
+      <div className="mb-4 text-sm text-muted-foreground">
         Mirrors the Streamlit page. Being ported in the next phase.
       </div>
       <SectionFrame>
         <SectionTitle>Preview</SectionTitle>
         <div className="py-12 text-center text-sm text-muted-foreground">
-          {notes ?? "This page is scheduled in the port. The Streamlit equivalent's logic and visuals will be reproduced here."}
+          {notes ??
+            "This page is scheduled in the port. The Streamlit equivalent's logic and visuals will be reproduced here."}
         </div>
       </SectionFrame>
     </div>

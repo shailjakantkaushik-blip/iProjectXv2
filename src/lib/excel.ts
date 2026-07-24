@@ -1,8 +1,15 @@
-import * as XLSX from "xlsx";
 import { TABLES, type TableDef, type FieldDef } from "@/lib/data-tables";
 import { supabase } from "@/integrations/supabase/client";
 import { syncScheduleDates } from "@/lib/project-dates";
 import { persistCurrentPhaseFromGates } from "@/lib/project-phase";
+
+/** Lazy-load SheetJS — static import pulled ~700KB+ into cold reload. */
+type XLSXModule = typeof import("xlsx");
+let xlsxPromise: Promise<XLSXModule> | null = null;
+function loadXlsx(): Promise<XLSXModule> {
+  if (!xlsxPromise) xlsxPromise = import("xlsx");
+  return xlsxPromise;
+}
 
 // ---------- Legacy exports (kept for compatibility) ----------
 export interface ProjectRow {
@@ -102,6 +109,7 @@ function toExportRow(
 
 // ---------- Full org export ----------
 export async function exportOrganizationWorkbook(orgId: string, orgName: string) {
+  const XLSX = await loadXlsx();
   // Preload lookup maps for FK resolution.
   const [{ data: projects }, { data: bus }, { data: resources }, { data: streams }] = await Promise.all([
     supabase.from("projects").select("id,project_code,name").eq("org_id", orgId),
@@ -184,6 +192,7 @@ export interface ImportReport {
 }
 
 export async function importOrganizationWorkbook(orgId: string, file: File): Promise<ImportReport[]> {
+  const XLSX = await loadXlsx();
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array", cellDates: true });
 
@@ -400,7 +409,8 @@ function buildMatchKeyFromPayload(t: TableDef, payload: any, raw: Dict): string 
 }
 
 // ---------- Blank multi-sheet customer template ----------
-export function downloadTemplate() {
+export async function downloadTemplate() {
+  const XLSX = await loadXlsx();
   const wb = XLSX.utils.book_new();
   const readme = [
     { A: "iProjectX — Blank Data Template", B: "" },
@@ -547,6 +557,7 @@ function sampleRowForTemplate(t: TableDef, headers: string[]): Dict {
 }
 
 export async function parseWorkbook(file: File): Promise<ProjectRow[]> {
+  const XLSX = await loadXlsx();
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array", cellDates: true });
   const sheetName = wb.SheetNames.find((n) => n.toLowerCase() === "projects") || wb.SheetNames[0];
@@ -578,7 +589,8 @@ export async function parseWorkbook(file: File): Promise<ProjectRow[]> {
   return out;
 }
 
-export function exportProjects(projects: Record<string, unknown>[]) {
+export async function exportProjects(projects: Record<string, unknown>[]) {
+  const XLSX = await loadXlsx();
   const dateCols = new Set(
     (TABLES.find((t) => t.key === "projects")?.fields ?? [])
       .filter((f) => f.type === "date")

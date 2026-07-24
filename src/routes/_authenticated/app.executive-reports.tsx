@@ -368,7 +368,7 @@ function ExecutiveReportsPage() {
   // Cold load only — keep prior report visible while queries refresh quietly.
   const showColdLoad = projectsQ.isLoading && projectsQ.data === undefined;
 
-  const handleExport = () => exportProjects(projects as any[]);
+  const handleExport = () => void exportProjects(projects as any[]);
   const printReport = () => window.print();
 
   const ragColumns: ColumnarColumn<any>[] = useMemo(

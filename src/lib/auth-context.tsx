@@ -94,36 +94,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   /** Last user we finished loading a profile for — used to ignore tab-focus recoveries. */
   const loadedUserIdRef = useRef<string | null>(null);
 
+  /** Dedupes getSession + onAuthStateChange both kicking off the same boot load. */
+  const inflightProfileRef = useRef<{ userId: string; promise: Promise<void> } | null>(null);
+
   const loadProfile = async (userId: string) => {
-    // Parallelize profile + roles (was sequential waterfall).
-    const [{ data: p }, { data: allRoles }] = await Promise.all([
-      supabase
+    if (inflightProfileRef.current?.userId === userId) {
+      return inflightProfileRef.current.promise;
+    }
+
+    const promise = (async () => {
+      // Profile first (need org_id), then roles + org in parallel.
+      const { data: p } = await supabase
         .from("profiles")
         .select("id,email,full_name,org_id,must_change_password,is_active")
         .eq("id", userId)
-        .maybeSingle(),
-      supabase.from("user_roles").select("role,org_id").eq("user_id", userId),
-    ]);
-    const roleList = (allRoles ?? []).map((r) => r.role as AppRole);
-
-    // Resolve org before publishing profile — otherwise /app briefly sees
-    // profile without organization and redirects to the create-org screen.
-    let org: Organization | null = null;
-    if (p?.org_id) {
-      const { data: orgRow } = await supabase
-        .from("organizations")
-        .select(
-          "id,name,slug,plan,brand_name,logo_url,primary_color,accent_color,fy_start_month,ui_config",
-        )
-        .eq("id", p.org_id)
         .maybeSingle();
-      org = (orgRow as Organization) ?? null;
-    }
 
-    setProfile((p as Profile) ?? null);
-    setRoles(roleList);
-    setOrganization(org);
-    loadedUserIdRef.current = userId;
+      const rolesPromise = supabase
+        .from("user_roles")
+        .select("role,org_id")
+        .eq("user_id", userId);
+
+      const orgPromise = p?.org_id
+        ? supabase
+            .from("organizations")
+            .select(
+              "id,name,slug,plan,brand_name,logo_url,primary_color,accent_color,fy_start_month,ui_config",
+            )
+            .eq("id", p.org_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null as Organization | null });
+
+      const [{ data: allRoles }, { data: orgRow }] = await Promise.all([
+        rolesPromise,
+        orgPromise,
+      ]);
+
+      // Publish together so /app never sees profile without organization.
+      setProfile((p as Profile) ?? null);
+      setRoles((allRoles ?? []).map((r) => r.role as AppRole));
+      setOrganization((orgRow as Organization) ?? null);
+      loadedUserIdRef.current = userId;
+    })();
+
+    inflightProfileRef.current = { userId, promise };
+    try {
+      await promise;
+    } finally {
+      if (inflightProfileRef.current?.promise === promise) {
+        inflightProfileRef.current = null;
+      }
+    }
   };
 
   const refresh = async () => {
@@ -142,7 +163,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (evt === "TOKEN_REFRESHED") {
           return;
         }
-        if (sameUser && (evt === "SIGNED_IN" || evt === "INITIAL_SESSION")) {
+        // Cold boot is owned by getSession() below — skip INITIAL_SESSION so we
+        // don't double-fetch profile/org and extend the loading screen.
+        if (evt === "INITIAL_SESSION") {
+          return;
+        }
+        if (sameUser && evt === "SIGNED_IN") {
           return;
         }
 

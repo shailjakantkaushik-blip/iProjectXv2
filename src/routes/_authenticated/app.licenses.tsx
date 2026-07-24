@@ -8,8 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useRef } from "react";
 import { Download, Award, Shield } from "lucide-react";
-import { jsPDF } from "jspdf";
-import { toPng } from "html-to-image";
 
 export const Route = createFileRoute("/_authenticated/app/licenses")({
   component: LicensesPage,
@@ -83,6 +81,10 @@ function CertificateCard({ cert, orgName }: { cert: any; orgName: string }) {
   async function downloadPdf() {
     if (!certRef.current) return;
     try {
+      const [{ toPng }, { jsPDF }] = await Promise.all([
+        import("html-to-image"),
+        import("jspdf"),
+      ]);
       const dataUrl = await toPng(certRef.current, {
         backgroundColor: "#ffffff",
         pixelRatio: 2,

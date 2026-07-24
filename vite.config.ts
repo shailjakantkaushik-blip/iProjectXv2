@@ -15,18 +15,11 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes("node_modules")) return;
-          if (id.includes("recharts") || id.includes("/d3-")) return "charts";
-          if (
-            id.includes("jspdf") ||
-            id.includes("pptxgenjs") ||
-            id.includes("html-to-image") ||
-            id.includes("html2canvas") ||
-            id.includes("xlsx")
-          ) {
-            return "export-libs";
-          }
-          if (id.includes("@supabase")) return "supabase";
-          if (id.includes("@tanstack")) return "tanstack";
+          // Only isolate supabase / tanstack. Do NOT force recharts/xlsx/pptx
+          // into shared chunks — that made them modulepreload on every reload
+          // (~1.4MB export-libs + ~427KB charts before first paint).
+          if (id.includes("node_modules/@supabase")) return "supabase";
+          if (id.includes("node_modules/@tanstack")) return "tanstack";
         },
       },
     },
