@@ -196,6 +196,10 @@ CREATE POLICY "support_comments_org_select"
       WHERE t.id = ticket_id
         AND t.org_id = public.get_user_org(auth.uid())
         AND public.can_use_org_support(auth.uid(), t.org_id)
+        AND (
+          t.created_by = auth.uid()
+          OR public.has_any_admin(auth.uid())
+        )
     )
   );
 
@@ -211,6 +215,10 @@ CREATE POLICY "support_comments_org_insert"
         AND t.org_id = public.get_user_org(auth.uid())
         AND public.can_use_org_support(auth.uid(), t.org_id)
         AND t.status NOT IN ('Closed')
+        AND (
+          t.created_by = auth.uid()
+          OR public.has_any_admin(auth.uid())
+        )
     )
   );
 
