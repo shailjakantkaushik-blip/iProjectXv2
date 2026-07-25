@@ -95,13 +95,13 @@ bridge script locally: `node scripts/env-bridge.mjs`).
 - Turnstile: rotate from the Turnstile dashboard, update the two Vercel
   env vars, redeploy.
 
-## 7. Optional — approved In-house AI model (per organisation)
+## 7. Optional — Approved Open AI model (per organisation)
 
-In-house AI works **without** a model (local portfolio engine). Customer
-portfolio context stays in-session by default.
+**In-house AI** (local portfolio engine) is the default. Customer portfolio
+context stays in-session; no model egress.
 
-To offer an **approved** OpenAI-compatible endpoint (Azure OpenAI, private
-Ollama/vLLM, or your gateway) **only for orgs you opt in**:
+To offer an **Approved Open AI model** (OpenAI-compatible endpoint: Azure
+OpenAI, private Ollama/vLLM, or your gateway) **only for orgs that request it**:
 
 1. Set server env (Vercel — never `VITE_*`):
 
@@ -112,14 +112,42 @@ Ollama/vLLM, or your gateway) **only for orgs you opt in**:
 | `INHOUSE_AI_API_VERSION` | Server | Azure: e.g. `2024-06-01` |
 | `INHOUSE_AI_MODEL` | Server | Deployment / model name |
 | `INHOUSE_AI_API_KEY` | Server | Bearer / Azure `api-key` (omit for open local Ollama) |
-| `INHOUSE_AI_LABEL` | Server | UI label, default `Approved in-house model` |
+| `INHOUSE_AI_LABEL` | Server | UI label, default `Approved Open AI model` |
 
 2. Apply SQL migration `20260725190000_org_inhouse_ai_model_enabled.sql`
    (adds `organizations.inhouse_ai_model_enabled`, default **false**).
 
-3. In the app: **Platform → In-house AI model** — toggle per organisation.
+3. In the app: **Platform → In-house AI** — toggle per organisation.
+   Off = **In-house AI**; On = **Approved Open AI model**.
    Only `platform_admin` can change the flag (DB trigger + server fn).
 
 Model calls run only when **both** the platform endpoint is configured **and**
-that org’s toggle is on. Otherwise the local engine answers and no context
-is sent out.
+that org’s toggle is on. Otherwise In-house AI answers and no context is sent out.
+
+## 8. Optional — Enterprise SSO per organisation (SAML)
+
+SSO is configured **per organisation** from **Platform → White Label & Branding**.
+The IdP itself is registered in Supabase; the app stores the org ↔ provider
+mapping and shows the SSO button on white-label login (`/auth?org=<slug>` or
+`/o/<slug>/login`).
+
+1. Apply SQL migration `20260725193000_org_sso_config.sql`
+   (`sso_enabled`, `sso_provider_id`, `sso_domains`, `sso_button_label`;
+   only `platform_admin` can change these fields).
+
+2. In Supabase, register the customer IdP (Team/Enterprise plan required for
+   SAML SSO):
+   - Dashboard → **Authentication → SSO**, or CLI:
+     `supabase sso add --type saml --metadata-url <idp-metadata-url> …`
+   - Copy the resulting **provider UUID**.
+
+3. Ensure **Redirect URLs** include your app origin (same as §1).
+
+4. In the app: **Platform → White Label & Branding** → select the org →
+   enable **Enterprise SSO**, paste provider ID and/or email domains, set
+   button label, **Save branding**.
+
+5. Share the org white-label login link. Members see **Sign in with SSO**
+   (plus email/password). After IdP redirect, the org-membership gate still
+   applies: non-members and unprovisioned SSO users are signed out, and
+   white-label entry cannot create a new organisation via onboarding.

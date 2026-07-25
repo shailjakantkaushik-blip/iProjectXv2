@@ -1274,6 +1274,10 @@ export type Database = {
           plan: string
           primary_color: string | null
           slug: string
+          sso_button_label: string | null
+          sso_domains: string[]
+          sso_enabled: boolean
+          sso_provider_id: string | null
           ui_config: Json
           updated_at: string
         }
@@ -1293,6 +1297,10 @@ export type Database = {
           plan?: string
           primary_color?: string | null
           slug: string
+          sso_button_label?: string | null
+          sso_domains?: string[]
+          sso_enabled?: boolean
+          sso_provider_id?: string | null
           ui_config?: Json
           updated_at?: string
         }
@@ -1312,6 +1320,10 @@ export type Database = {
           plan?: string
           primary_color?: string | null
           slug?: string
+          sso_button_label?: string | null
+          sso_domains?: string[]
+          sso_enabled?: boolean
+          sso_provider_id?: string | null
           ui_config?: Json
           updated_at?: string
         }

@@ -149,14 +149,17 @@ export const askInhouseAi = createServerFn({ method: "POST" })
         label: cfg.label,
       };
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Approved model unavailable";
+      // Generic client message only — never forward upstream provider payloads.
+      if (err instanceof Error) {
+        console.warn(`[inhouse-ai] model call failed for user ${context.userId}: ${err.message}`);
+      }
       return {
         ok: false as const,
         mode: "local" as const,
         reason: "model_error" as const,
         answer: null,
         label: cfg.label,
-        error: message.slice(0, 200),
+        error: "Approved Open AI model temporarily unavailable",
       };
     }
   });

@@ -36,6 +36,7 @@ import {
   saveLandingConfig,
   type LandingConfig,
 } from "@/lib/landing-config";
+import { Switch } from "@/components/ui/switch";
 
 export const Route = createFileRoute("/_authenticated/platform/branding")({
   beforeLoad: () => {
@@ -71,6 +72,10 @@ type Org = {
   logo_url: string | null;
   palette: unknown;
   ui_config: OrgUiConfig | null;
+  sso_enabled: boolean | null;
+  sso_provider_id: string | null;
+  sso_domains: string[] | null;
+  sso_button_label: string | null;
 };
 
 function PlatformBrandingPage() {
@@ -84,7 +89,9 @@ function PlatformBrandingPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("organizations")
-        .select("id,name,slug,plan,brand_name,primary_color,accent_color,logo_url,palette,ui_config")
+        .select(
+          "id,name,slug,plan,brand_name,primary_color,accent_color,logo_url,palette,ui_config,sso_enabled,sso_provider_id,sso_domains,sso_button_label",
+        )
         .order("name");
       if (error) throw error;
       return (data ?? []) as Org[];
@@ -123,9 +130,9 @@ function PlatformBrandingPage() {
           <Palette className="h-7 w-7" /> White Label & Branding
         </h1>
         <p className="text-sm text-muted-foreground">
-          Manage display name, logo, colour palette, and style themes for each organisation
-          (platform admin only). Style themes change UI chrome — sections, buttons, navigation
-          shape, and motion — without changing colour palettes.
+          Manage display name, logo, colour palette, style themes, and per-org SSO for each
+          organisation (platform admin only). Style themes change UI chrome — sections, buttons,
+          navigation shape, and motion — without changing colour palettes.
         </p>
       </div>
 
@@ -239,6 +246,14 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
   const [styleTheme, setStyleTheme] = useState<OrgStyleThemeConfig>(() =>
     normalizeOrgStyleTheme(existingUi.style_theme),
   );
+  const [ssoEnabled, setSsoEnabled] = useState(Boolean(org.sso_enabled));
+  const [ssoProviderId, setSsoProviderId] = useState(org.sso_provider_id ?? "");
+  const [ssoDomains, setSsoDomains] = useState(
+    Array.isArray(org.sso_domains) ? org.sso_domains.join(", ") : "",
+  );
+  const [ssoButtonLabel, setSsoButtonLabel] = useState(
+    org.sso_button_label ?? "Sign in with SSO",
+  );
 
   const handleLogoPick = (file: File) => {
     if (file.size > MAX_LOGO_BYTES) {
@@ -276,6 +291,10 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
         color_theme: nextTheme,
         style_theme: nextStyle,
       };
+      const domains = ssoDomains
+        .split(/[,;\s]+/)
+        .map((d) => d.trim().toLowerCase())
+        .filter(Boolean);
       const { error } = await supabase
         .from("organizations")
         .update({
@@ -284,6 +303,10 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
           accent_color: nextTheme.palette.navyLight,
           logo_url: logoUrl,
           ui_config: nextUi as any,
+          sso_enabled: ssoEnabled,
+          sso_provider_id: ssoProviderId.trim() || null,
+          sso_domains: domains,
+          sso_button_label: ssoButtonLabel.trim() || null,
         })
         .eq("id", org.id);
       if (error) throw error;
@@ -460,6 +483,56 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
             their selection takes precedence while Active.
           </p>
           <OrgStyleThemeEditor value={styleTheme} onChange={setStyleTheme} />
+        </div>
+
+        <div className="space-y-3 rounded-lg border p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <Label>Enterprise SSO (SAML)</Label>
+              <p className="mt-1 text-xs text-muted-foreground">
+                When enabled, the white-label login page shows an SSO button. Register the IdP in
+                Supabase Auth first (<code className="text-[11px]">supabase sso add</code> or
+                Dashboard → Authentication → SSO), then paste the provider UUID and/or email
+                domains here.
+              </p>
+            </div>
+            <Switch checked={ssoEnabled} onCheckedChange={setSsoEnabled} />
+          </div>
+          {ssoEnabled && (
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1.5 md:col-span-2">
+                <Label htmlFor={`sso-provider-${org.id}`}>Supabase SSO provider ID</Label>
+                <Input
+                  id={`sso-provider-${org.id}`}
+                  value={ssoProviderId}
+                  onChange={(e) => setSsoProviderId(e.target.value)}
+                  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                  className="font-mono text-xs"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor={`sso-domains-${org.id}`}>Email domains</Label>
+                <Input
+                  id={`sso-domains-${org.id}`}
+                  value={ssoDomains}
+                  onChange={(e) => setSsoDomains(e.target.value)}
+                  placeholder="acme.com, acme.co.uk"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Optional if provider ID is set. Used for domain-based SP-initiated SSO.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor={`sso-label-${org.id}`}>Button label</Label>
+                <Input
+                  id={`sso-label-${org.id}`}
+                  value={ssoButtonLabel}
+                  onChange={(e) => setSsoButtonLabel(e.target.value)}
+                  placeholder="Sign in with SSO"
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="rounded-lg border bg-muted/30 p-4">

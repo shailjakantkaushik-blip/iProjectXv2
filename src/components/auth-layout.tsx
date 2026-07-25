@@ -24,6 +24,12 @@ export type AuthOrgBrand = {
   slug?: string;
   logo_size_auth?: LogoDisplaySize;
   logo_custom_auth?: LogoCustomDims;
+  sso?: {
+    enabled: boolean;
+    provider_id: string | null;
+    domains: string[];
+    button_label: string;
+  };
 } | null;
 
 type AuthLayoutProps = {

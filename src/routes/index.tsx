@@ -59,13 +59,13 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "iProjectX — enterprise PMO command center with MFA, multi-tenant security, and In-house AI that protects portfolio data while still delivering intelligence.",
+          "iProjectX — enterprise PMO command center with MFA, multi-tenant security, and In-house AI by default — approved external AI only if your organisation requests it.",
       },
       { property: "og:title", content: "iProjectX — Enterprise PMO command center" },
       {
         property: "og:description",
         content:
-          "Live cockpit, RAID, financials, MFA, and In-house AI — portfolio intelligence without sending data to external AI.",
+          "Live cockpit, RAID, financials, MFA, and In-house AI by default — portfolio intelligence without sending data out unless your organisation opts in.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -109,6 +109,7 @@ const WIN_ICONS: Record<string, any> = {
   "Benefits realisation": LineChart,
   "Hardened tenant security": Shield,
   "In-house AI, data stays yours": Sparkles,
+  "In-house AI by default": Sparkles,
 };
 const CAP_ICONS: Record<string, any> = {
   "Executive Cockpit": Activity,

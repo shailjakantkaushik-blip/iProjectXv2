@@ -28,8 +28,8 @@
 | Control | Status | Evidence |
 |---------|--------|----------|
 | Default local engine (no model) | **PASS** | `local-portfolio-assist.ts` pure client logic when `INHOUSE_AI_*` unset |
-| Optional approved model | **PASS** | OpenAI-compatible chat via server fn only (`inhouse-ai.functions.ts`); browser never holds API key; CSP unchanged (server egress only) |
-| Per-org opt-in (default off) | **PASS** | `organizations.inhouse_ai_model_enabled` default false; platform_admin toggle only (`platform/inhouse-ai` + DB trigger); no model egress unless org enabled |
+| Optional Approved Open AI model | **PASS** | OpenAI-compatible chat via server fn only (`inhouse-ai.functions.ts`); browser never holds API key; CSP unchanged (server egress only) |
+| Per-org opt-in (default off) | **PASS** | `organizations.inhouse_ai_model_enabled` default false; platform_admin toggle only (`platform/inhouse-ai` + DB trigger); UI label Off=In-house AI / On=Approved Open AI model; no model egress unless org enabled |
 | Model grounding | **PASS** | Server reloads RLS-scoped rows with user JWT + page ACL domains; compact context pack; system prompt forbids invention |
 | Tenant + project visibility | **PASS** | Reads via Supabase client under RLS (`user_can_view_project`); child rows intersected to visible project ids (`assist-access.ts`) |
 | Org isolation (defense-in-depth) | **PASS** | Bundle scoped with `org_id` match when present on project rows |
@@ -41,6 +41,17 @@
 | Rate limit | **PASS** | `askInhouseAi` limited per user (40 / 15 min) |
 | Logging of prompts / answers | **PASS** | No server logging of Q&A text |
 | Residual risk | **Accepted** | Page ACL default-allow when unconfigured; ops must point `INHOUSE_AI_BASE_URL` only at an approved endpoint (Azure OpenAI / private Ollama / gateway) with no-train / DPA terms |
+
+### Per-org SSO (SAML) via white-label branding (2026-07-25)
+
+| Control | Status | Evidence |
+|---------|--------|----------|
+| Default off | **PASS** | `organizations.sso_enabled` default false |
+| Platform-admin only | **PASS** | DB trigger `tg_organizations_lock_sso_fields` + branding UI gated to platform admin |
+| IdP registration | **Ops** | Supabase Auth SSO / `supabase sso add`; app stores provider id + domains only |
+| Org membership after SSO | **PASS** | White-label `/auth?org=` runs `assertUserBelongsToOrgSlug`; unprovisioned users (no `profile.org_id`) are signed out so they cannot keep a session |
+| No self-serve org via SSO entry | **PASS** | Onboarding blocks `create_org_and_join` when org white-label entry cookie is set |
+| Model upstream errors | **PASS** | Client gets generic `model_error` only; upstream HTTP body logged server-side, not returned |
 
 ---
 

@@ -78,7 +78,16 @@ async function loadAuthPublicConfig(orgSlug?: string): Promise<AuthLoaderData> {
     let orgBrand: AuthOrgBrand = null;
     if (slug) {
       const brand = await getOrgBranding({ data: { slug } });
-      if (brand) orgBrand = brand;
+      if (brand) {
+        orgBrand = {
+          name: brand.name,
+          slug: brand.slug,
+          logo_url: brand.logo_url,
+          logo_size_auth: brand.logo_size_auth,
+          logo_custom_auth: brand.logo_custom_auth,
+          sso: brand.sso,
+        };
+      }
     }
     return {
       platformBrand: toAuthPlatformBrand(cfg.brand),
@@ -186,29 +195,53 @@ function AuthPage() {
 
   /**
    * Verify the current session may use this org white-label link.
-   * @param signOutOnFail — true after a fresh password sign-in (clear the
+   * @param signOutOnFail — true after a fresh password/SSO sign-in (clear the
    *   rejected session). false when an existing session opened the wrong
-   *   org link — keep that session so other tabs are not wiped.
+   *   org link — keep that session so other tabs are not wiped, unless the
+   *   user is unprovisioned (no profile.org_id), in which case we always
+   *   sign out so SSO JIT users cannot fall through to self-serve onboarding.
    */
   const rejectWrongOrgSession = useCallback(
     async (slug: string, signOutOnFail: boolean): Promise<boolean> => {
+      const shouldClearSession = async (): Promise<boolean> => {
+        if (signOutOnFail) return true;
+        // Soft path: preserve sessions that already belong to another org.
+        // Unprovisioned users (typical SSO JIT) must not keep a session.
+        try {
+          const uid = session?.user?.id;
+          if (!uid) return true;
+          if (profile && profile.org_id == null) return true;
+          if (profile?.org_id) return false;
+          const { data: row } = await supabase
+            .from("profiles")
+            .select("org_id")
+            .eq("id", uid)
+            .maybeSingle();
+          return !row?.org_id;
+        } catch {
+          return true;
+        }
+      };
+
       try {
         const result = await assertOrgMembership({ data: { slug } });
         if (result.allowed) {
           rememberOrgAuthEntry(result.orgSlug);
           return true;
         }
-        if (signOutOnFail) {
+        const clear = await shouldClearSession();
+        if (clear) {
           await supabase.auth.signOut({ scope: "local" });
         }
         showOrgAccessAlert({
           title: "Not an organisation user",
           message: `You are not a member of ${orgLabel}. Contact your administrator for access, then try again.`,
-          sessionPreserved: !signOutOnFail,
+          sessionPreserved: !clear,
         });
         return false;
       } catch (e) {
-        if (signOutOnFail) {
+        const clear = await shouldClearSession();
+        if (clear) {
           await supabase.auth.signOut({ scope: "local" });
         }
         showOrgAccessAlert({
@@ -217,12 +250,12 @@ function AuthPage() {
             e instanceof Error
               ? e.message
               : `You are not a member of ${orgLabel}. Contact your administrator for access, then try again.`,
-          sessionPreserved: !signOutOnFail,
+          sessionPreserved: !clear,
         });
         return false;
       }
     },
-    [assertOrgMembership, showOrgAccessAlert, orgLabel],
+    [assertOrgMembership, showOrgAccessAlert, orgLabel, session?.user?.id, profile],
   );
 
   // Existing session on /auth: do NOT auto-redirect into the app. That made
@@ -336,6 +369,44 @@ function AuthPage() {
     if (error) return toast.error(error.message);
     toast.success("Password reset link sent. Check your email.");
     setMode("auth");
+  };
+
+  const onSsoSignIn = async () => {
+    const sso = orgBrand?.sso;
+    if (!sso?.enabled) return;
+    setBusy(true);
+    setOrgAlert(null);
+    try {
+      const redirectTo = `${window.location.origin}/auth${
+        targetOrgSlug ? `?org=${encodeURIComponent(targetOrgSlug)}` : ""
+      }`;
+      const opts =
+        sso.provider_id
+          ? { providerId: sso.provider_id, options: { redirectTo } }
+          : sso.domains[0]
+            ? { domain: sso.domains[0], options: { redirectTo } }
+            : null;
+      if (!opts) {
+        toast.error("SSO is not fully configured for this organisation.");
+        setBusy(false);
+        return;
+      }
+      const { data, error } = await supabase.auth.signInWithSSO(opts);
+      if (error) {
+        toast.error(error.message);
+        setBusy(false);
+        return;
+      }
+      if (data?.url) {
+        window.location.assign(data.url);
+        return;
+      }
+      toast.error("SSO provider did not return a sign-in URL.");
+      setBusy(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "SSO sign-in failed");
+      setBusy(false);
+    }
   };
 
   const onSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -663,6 +734,8 @@ function AuthPage() {
               onExpire={handleExpire}
               submitDisabled={submitDisabled}
               busy={busy}
+              sso={orgBrand?.sso ?? null}
+              onSso={onSsoSignIn}
             />
           </TabsContent>
           <TabsContent value="signup" className="mt-0">
@@ -717,6 +790,8 @@ function AuthPage() {
           onExpire={handleExpire}
           submitDisabled={submitDisabled}
           busy={busy}
+          sso={orgBrand?.sso ?? null}
+          onSso={onSsoSignIn}
         />
       )}
     </AuthLayout>
@@ -732,6 +807,8 @@ function SignInForm({
   onExpire,
   submitDisabled,
   busy,
+  sso,
+  onSso,
 }: {
   onSignIn: (e: React.FormEvent<HTMLFormElement>) => void;
   onForgot: () => void;
@@ -740,6 +817,8 @@ function SignInForm({
   onExpire: () => void;
   submitDisabled: boolean;
   busy: boolean;
+  sso: NonNullable<AuthOrgBrand>["sso"] | null | undefined;
+  onSso: () => void;
 }) {
   const emailDraftKey = "iprojectx.auth.email-draft";
   const [email, setEmail] = useState(() => {
@@ -751,8 +830,32 @@ function SignInForm({
     }
   });
 
+  const ssoReady =
+    !!sso?.enabled && (!!sso.provider_id || (sso.domains?.length ?? 0) > 0);
+
   return (
     <form onSubmit={onSignIn} className="space-y-4 pt-4">
+      {ssoReady && (
+        <div className="space-y-3">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10 w-full"
+            disabled={busy || submitDisabled}
+            onClick={() => void onSso()}
+          >
+            {busy ? "Redirecting…" : sso.button_label || "Sign in with SSO"}
+          </Button>
+          <div className="relative py-1">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-border" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase tracking-wide">
+              <span className="bg-card px-2 text-muted-foreground">or email</span>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="space-y-1.5">
         <Label htmlFor="email">Email</Label>
         <Input
