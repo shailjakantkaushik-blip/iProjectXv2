@@ -1,5 +1,5 @@
 /**
- * Local portfolio Q&A — no external LLM.
+ * In-house AI — local portfolio Q&A with no external LLM.
  * Interprets the user's wording, aggregates RLS-scoped rows already loaded
  * in the browser, and returns a plain-language answer. Org data never leaves
  * the session for model inference.
@@ -212,7 +212,7 @@ export function answerPortfolioQuestion(raw: string, data: AssistBundle): string
         `Live snapshot — Projects: ${projects.length} · Red: ${red.length} · Amber: ${amber.length}`,
         `· Open risks: ${openRisks.length} · Decisions awaiting outcome: ${pending.length}.`,
         `Ask about risks, approvals, budget, health, actions, or a project name.`,
-        `(Local assist — your data stays in this browser session under RLS.)`,
+        `(In-house AI — your data stays in this browser session under RLS.)`,
       ].join(" ");
   }
 }
