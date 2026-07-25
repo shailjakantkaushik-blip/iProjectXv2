@@ -624,6 +624,10 @@ export const DEFAULT_LANDING: LandingConfig = {
         title: "Weak access control",
         desc: "Shared logins, no MFA, and flat permissions that blur tenant boundaries.",
       },
+      {
+        title: "AI that leaks portfolio data",
+        desc: "Chatbots and copilots that ship sensitive PMO detail to third-party models.",
+      },
     ],
     wins: [
       {
@@ -653,6 +657,10 @@ export const DEFAULT_LANDING: LandingConfig = {
       {
         title: "Hardened tenant security",
         desc: "MFA for every user, row-level isolation, and admin-only audit evidence packs.",
+      },
+      {
+        title: "In-house AI, data stays yours",
+        desc: "Portfolio intelligence inside your org session — no external model, no inference leak.",
       },
     ],
   },
@@ -690,11 +698,13 @@ export const DEFAULT_LANDING: LandingConfig = {
   },
   security: {
     eyebrow: "Trust & security",
-    title: "Enterprise controls built into the product — not bolted on later.",
-    body: "iProjectX is multi-tenant by design: MFA for every user, row-level tenant isolation, hardened sessions, and admin audit trails with one-click evidence export. Built for SOC 2 and ISO 27001 readiness — without overstating certification status.",
+    title: "Protect the portfolio. Still deliver the intelligence.",
+    body: "iProjectX is multi-tenant by design: MFA, row-level isolation, hardened sessions, and admin audit trails — plus In-house AI that answers from your live PMO data inside your organisation session. Intelligence without shipping sensitive detail to an external model. Built for SOC 2 and ISO 27001 readiness — without overstating certification status.",
     bullets: [
       "MFA (authenticator) required for all users",
       "Row-level security isolating every organisation’s data",
+      "In-house AI: ask in plain language; answers stay in your org session",
+      "No portfolio data sent to ChatGPT or other external model providers",
       "Admin audit log + platform security events (login, logout, failures)",
       "One-click Excel evidence packs for auditors",
       "CSP, HSTS, and session storage with PKCE — not JWTs in localStorage",
@@ -705,16 +715,16 @@ export const DEFAULT_LANDING: LandingConfig = {
     items: [
       "MFA for every user",
       "Multi-tenant RLS",
+      "In-house AI",
       "Admin audit trails",
       "Evidence export",
-      "Agile + Waterfall",
       "White-label ready",
     ],
   },
   capabilities: {
     heading: "Everything a modern PMO actually needs.",
     subtitle:
-      "Tightly-integrated modules that share the same data model — governance, finance, delivery, and security — with no sync jobs and no drift.",
+      "Tightly-integrated modules that share the same data model — governance, finance, delivery, security, and private intelligence — with no sync jobs and no drift.",
     items: [
       {
         title: "Executive Cockpit",
@@ -755,6 +765,10 @@ export const DEFAULT_LANDING: LandingConfig = {
       {
         title: "Enterprise Security",
         desc: "MFA for all users, multi-tenant RLS, CSP/HSTS, and hardened browser sessions.",
+      },
+      {
+        title: "In-house AI",
+        desc: "Private portfolio Q&A on live org data — intelligence without sending data to external AI.",
       },
       {
         title: "Audit & Evidence",
@@ -804,7 +818,7 @@ export const DEFAULT_LANDING: LandingConfig = {
   },
   final_cta: {
     title: "Secure the portfolio outcome.",
-    body: "Deploy iProjectX in weeks, not months. White-label ready, multi-tenant by design, MFA-enforced, with admin audit trails and evidence export for enterprise procurement — Agile, Waterfall, and everything in between.",
+    body: "Deploy iProjectX in weeks, not months. White-label ready, multi-tenant by design, MFA-enforced — with In-house AI that protects your data while still delivering portfolio intelligence. Admin audit trails and evidence export for enterprise procurement.",
     primary: "Expression of Interest",
     secondary: "Sign in",
   },
@@ -1018,6 +1032,17 @@ export function mergeConfig(partial: any): LandingConfig {
   };
   if (!Array.isArray(merged.security.bullets) || merged.security.bullets.length === 0) {
     merged.security.bullets = [...DEFAULT_LANDING.security.bullets];
+  } else {
+    const haveBullet = (
+      merged.security.bullets as string[]
+    ).map((b) => String(b).toLowerCase());
+    for (const b of DEFAULT_LANDING.security.bullets) {
+      const already = haveBullet.some((h) => /in-house ai|external model/i.test(h));
+      if (/in-house ai|external model/i.test(b) && !already) {
+        merged.security.bullets.push(b);
+        haveBullet.push(b.toLowerCase());
+      }
+    }
   }
   merged.trust_strip = {
     ...DEFAULT_LANDING.trust_strip,
@@ -1025,6 +1050,8 @@ export function mergeConfig(partial: any): LandingConfig {
   };
   if (!Array.isArray(merged.trust_strip.items) || merged.trust_strip.items.length === 0) {
     merged.trust_strip.items = [...DEFAULT_LANDING.trust_strip.items];
+  } else if (!merged.trust_strip.items.some((i: string) => /in-house ai/i.test(i))) {
+    merged.trust_strip.items = ["In-house AI", ...merged.trust_strip.items].slice(0, 6);
   }
   merged.capabilities = {
     ...DEFAULT_LANDING.capabilities,
@@ -1038,7 +1065,9 @@ export function mergeConfig(partial: any): LandingConfig {
     const have = new Set(merged.capabilities.items.map((i: LandingCap) => i.title));
     for (const cap of DEFAULT_LANDING.capabilities.items) {
       if (
-        (cap.title === "Enterprise Security" || cap.title === "Audit & Evidence") &&
+        (cap.title === "Enterprise Security" ||
+          cap.title === "Audit & Evidence" ||
+          cap.title === "In-house AI") &&
         !have.has(cap.title)
       ) {
         merged.capabilities.items.push(cap);
