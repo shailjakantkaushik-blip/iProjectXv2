@@ -586,7 +586,7 @@ export const DEFAULT_LANDING: LandingConfig = {
     title_accent: "Portfolio",
     subtitle:
       "Stop flying blind. iProjectX is the single, immutable source of truth for enterprise PMOs — from executive cockpit KPIs to granular stage-gate governance across Agile and Waterfall.",
-    primary_cta: "Express Interest",
+    primary_cta: "Expression of Interest",
     secondary_cta: "See use cases",
     alert:
       "70% of transformation programs fail to deliver expected value without integrated portfolio governance.",
@@ -805,11 +805,29 @@ export const DEFAULT_LANDING: LandingConfig = {
   final_cta: {
     title: "Secure the portfolio outcome.",
     body: "Deploy iProjectX in weeks, not months. White-label ready, multi-tenant by design, MFA-enforced, with admin audit trails and evidence export for enterprise procurement — Agile, Waterfall, and everything in between.",
-    primary: "Express Interest",
+    primary: "Expression of Interest",
     secondary: "Sign in",
   },
   footer: { text: "" },
 };
+
+/** Normalize legacy marketing CTA labels to Expression of Interest. */
+function normalizeEoiCtaLabel(label: unknown, fallback: string): string {
+  if (typeof label !== "string" || !label.trim()) return fallback;
+  const t = label.trim();
+  const lower = t.toLowerCase();
+  if (
+    lower.includes("demo") ||
+    lower === "express interest" ||
+    lower === "request a demo" ||
+    lower === "request demo" ||
+    lower === "book a demo" ||
+    lower === "book demo"
+  ) {
+    return "Expression of Interest";
+  }
+  return t;
+}
 
 /** Brand / status color keys shown in the surface swatch editor. */
 export const SURFACE_PALETTE_KEYS = [
@@ -1028,6 +1046,21 @@ export function mergeConfig(partial: any): LandingConfig {
       }
     }
   }
+
+  merged.hero = {
+    ...merged.hero,
+    primary_cta: normalizeEoiCtaLabel(
+      merged.hero?.primary_cta,
+      DEFAULT_LANDING.hero.primary_cta,
+    ),
+  };
+  merged.final_cta = {
+    ...merged.final_cta,
+    primary: normalizeEoiCtaLabel(
+      merged.final_cta?.primary,
+      DEFAULT_LANDING.final_cta.primary,
+    ),
+  };
 
   return merged as LandingConfig;
 }
