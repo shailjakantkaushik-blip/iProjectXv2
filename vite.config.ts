@@ -15,9 +15,8 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes("node_modules")) return;
-          // Only isolate supabase / tanstack. Do NOT force recharts/xlsx/pptx
-          // into shared chunks — that made them modulepreload on every reload
-          // (~1.4MB export-libs + ~427KB charts before first paint).
+          // Only isolate supabase / tanstack. Do NOT force recharts/pptx/excel
+          // into shared chunks — that made them modulepreload on every reload.
           if (id.includes("node_modules/@supabase")) return "supabase";
           if (id.includes("node_modules/@tanstack")) return "tanstack";
         },
