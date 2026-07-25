@@ -35,7 +35,7 @@ export function getInhouseAiConfig(): InhouseAiConfig {
   const baseUrl = (process.env.INHOUSE_AI_BASE_URL || "").trim().replace(/\/$/, "") || null;
   const model = (process.env.INHOUSE_AI_MODEL || "").trim() || null;
   const apiKey = (process.env.INHOUSE_AI_API_KEY || "").trim();
-  const label = (process.env.INHOUSE_AI_LABEL || "Approved in-house model").trim();
+  const label = (process.env.INHOUSE_AI_LABEL || "Approved Open AI model").trim();
   // Enabled when explicitly on, or when base+model are set (ops convenience).
   const explicit = process.env.INHOUSE_AI_ENABLED;
   const enabled =
@@ -70,7 +70,7 @@ export async function callApprovedModel(opts: {
 }): Promise<string> {
   const cfg = getInhouseAiConfig();
   if (!cfg.configured || !cfg.baseUrl || !cfg.model) {
-    throw new Error("Approved in-house model is not configured");
+    throw new Error("Approved Open AI model is not configured");
   }
 
   const apiKey = (process.env.INHOUSE_AI_API_KEY || "").trim();

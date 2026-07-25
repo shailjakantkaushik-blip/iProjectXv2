@@ -35,6 +35,9 @@ const PROMPTS = [
   "What’s overdue and who owns it?",
 ];
 
+const LOCAL_TITLE = "In-house AI";
+const APPROVED_TITLE = "Approved Open AI model";
+
 function AiAssistPage() {
   const { organization } = useAuth();
   const orgId = organization?.id;
@@ -43,47 +46,45 @@ function AiAssistPage() {
   const statusFn = useServerFn(getInhouseAiStatus);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [modelLabel, setModelLabel] = useState<string | null>(null);
   const [modelConfigured, setModelConfigured] = useState(false);
+  const [modelDetail, setModelDetail] = useState<string | null>(null);
   const [messages, setMessages] = useState<Msg[]>([
     {
       role: "assistant",
-      text: "I’m iProjectX In-house AI. Ask in plain English about portfolio health, risks, approvals, spend, or a project name. I only use data your role can see (RLS + page permissions).",
+      text: "I’m In-house AI. Ask in plain English about portfolio health, risks, approvals, spend, or a project name. I only use data your role can see (RLS + page permissions). Your organisation’s data stays local unless a platform admin enables an approved model for this org.",
     },
   ]);
+
+  const productTitle = modelConfigured ? APPROVED_TITLE : LOCAL_TITLE;
 
   useEffect(() => {
     let cancelled = false;
     void statusFn()
       .then((s) => {
         if (cancelled) return;
-        // configured = platform endpoint AND this organisation opted in
-        setModelConfigured(Boolean(s.configured));
-        setModelLabel(s.label || "Approved in-house model");
-        if (s.configured) {
-          setMessages((m) => {
-            if (m.length !== 1 || m[0]?.role !== "assistant") return m;
+        const on = Boolean(s.configured);
+        setModelConfigured(on);
+        setModelDetail(on && s.model ? String(s.model) : null);
+        setMessages((m) => {
+          if (m.length !== 1 || m[0]?.role !== "assistant") return m;
+          if (on) {
             return [
               {
                 role: "assistant",
-                text: `I’m iProjectX In-house AI, backed by your organisation’s approved model (${s.label}${s.model ? ` · ${s.model}` : ""}). Ask in plain English — answers are grounded in live org data under your RLS and page permissions. Context is sent only to that approved endpoint (enabled for this org by platform admin). If the model is unavailable, I fall back to the local engine.`,
+                text: `I’m ${APPROVED_TITLE}${s.model ? ` (${s.model})` : ""}. Ask in plain English — answers are grounded in live org data under your RLS and page permissions. A capped context pack is sent only to your organisation’s approved endpoint (enabled by platform admin). If the model is unavailable, I fall back to In-house AI (local).`,
               },
             ];
-          });
-        } else {
-          setMessages((m) => {
-            if (m.length !== 1 || m[0]?.role !== "assistant") return m;
-            return [
-              {
-                role: "assistant",
-                text: "I’m iProjectX In-house AI on the local engine. Ask in plain English about portfolio health, risks, approvals, spend, or a project name. I only use data your role can see (RLS + page permissions). Your organisation’s data is not sent to any external model unless a platform admin enables the approved model for this org.",
-              },
-            ];
-          });
-        }
+          }
+          return [
+            {
+              role: "assistant",
+              text: `I’m ${LOCAL_TITLE}. Ask in plain English about portfolio health, risks, approvals, spend, or a project name. I only use data your role can see (RLS + page permissions). No data is sent to an external model for this organisation.`,
+            },
+          ];
+        });
       })
       .catch(() => {
-        /* status is optional — local engine still works */
+        /* local engine still works */
       });
     return () => {
       cancelled = true;
@@ -159,7 +160,6 @@ function AiAssistPage() {
     });
 
   const answer = async (q: string): Promise<string> => {
-    // Always keep a local answer ready (permissions-aware).
     const fallback = localReply(q);
     if (!modelConfigured) return fallback;
 
@@ -169,13 +169,12 @@ function AiAssistPage() {
         const note = accessNote ? `\n\n${accessNote}` : "";
         return `${res.answer}${note}`;
       }
-      // Model unavailable — local engine; keep it quiet unless useful.
       if (res.reason === "model_error") {
-        return `${fallback}\n\n(Approved model temporarily unavailable — answered with the local engine.)`;
+        return `${fallback}\n\n(${APPROVED_TITLE} temporarily unavailable — answered with ${LOCAL_TITLE}.)`;
       }
       return fallback;
     } catch {
-      return `${fallback}\n\n(Approved model unavailable — answered with the local engine.)`;
+      return `${fallback}\n\n(${APPROVED_TITLE} unavailable — answered with ${LOCAL_TITLE}.)`;
     }
   };
 
@@ -218,8 +217,12 @@ function AiAssistPage() {
   return (
     <div>
       <PageHeading
-        title="In-house AI"
-        subtitle="Plain-English answers from data your role can see — grounded under RLS"
+        title={productTitle}
+        subtitle={
+          modelConfigured
+            ? "Approved model for this organisation — grounded under RLS & page permissions"
+            : "Private local answers from data your role can see — never leaves your org"
+        }
       />
 
       <SectionFrame>
@@ -228,8 +231,8 @@ function AiAssistPage() {
           <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
             <Lock className="h-3 w-3" />
             {modelConfigured
-              ? `${modelLabel || "Approved model"} · RLS · page ACL`
-              : "Local engine · RLS · page ACL"}
+              ? `${APPROVED_TITLE}${modelDetail ? ` · ${modelDetail}` : ""}`
+              : `${LOCAL_TITLE} · local · no model egress`}
           </span>
         </div>
 
@@ -269,7 +272,7 @@ function AiAssistPage() {
                 >
                   {m.role === "assistant" && (
                     <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      <Sparkles className="h-3 w-3" /> In-house AI
+                      <Sparkles className="h-3 w-3" /> {productTitle}
                     </div>
                   )}
                   {m.text}
@@ -309,8 +312,8 @@ function AiAssistPage() {
             <p className="mt-2 text-[11px] text-muted-foreground">
               Enter to send · Shift+Enter for a new line.
               {modelConfigured
-                ? " Grounded context is sent only to your org’s approved model endpoint (server-side; platform-admin opt-in). Public consumer AI is not used."
-                : " Local engine only for this organisation — no model egress. Platform admins can enable an approved model per org when needed."}
+                ? ` Using ${APPROVED_TITLE} for this organisation (platform opt-in). Context stays on your approved endpoint — not public ChatGPT.`
+                : ` Using ${LOCAL_TITLE}. No model egress for this organisation.`}
             </p>
           </div>
         </div>

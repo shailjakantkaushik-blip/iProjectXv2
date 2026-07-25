@@ -659,8 +659,8 @@ export const DEFAULT_LANDING: LandingConfig = {
         desc: "MFA for every user, row-level isolation, and admin-only audit evidence packs.",
       },
       {
-        title: "In-house AI, data stays yours",
-        desc: "Portfolio intelligence inside your org session — no external model, no inference leak.",
+        title: "In-house AI by default",
+        desc: "Portfolio Q&A stays inside your org session. An approved external model is available only if your organisation requests it and platform admin enables it.",
       },
     ],
   },
@@ -699,12 +699,13 @@ export const DEFAULT_LANDING: LandingConfig = {
   security: {
     eyebrow: "Trust & security",
     title: "Protect the portfolio. Still deliver the intelligence.",
-    body: "iProjectX is multi-tenant by design: MFA, row-level isolation, hardened sessions, and admin audit trails — plus In-house AI that answers from your live PMO data inside your organisation session. Intelligence without shipping sensitive detail to an external model. Built for SOC 2 and ISO 27001 readiness — without overstating certification status.",
+    body: "iProjectX is multi-tenant by design: MFA, row-level isolation, hardened sessions, and admin audit trails — plus In-house AI that answers from your live PMO data inside your organisation session by default. An approved external model is opt-in only when an organisation requests it and a platform admin enables it. Built for SOC 2 and ISO 27001 readiness — without overstating certification status.",
     bullets: [
       "MFA (authenticator) required for all users",
       "Row-level security isolating every organisation’s data",
-      "In-house AI: ask in plain language; answers stay in your org session",
-      "No portfolio data sent to ChatGPT or other external model providers",
+      "In-house AI by default — answers stay in your org session",
+      "Approved external AI only if the organisation requests it (platform opt-in)",
+      "No portfolio data sent to public ChatGPT unless that org is explicitly enabled",
       "Admin audit log + platform security events (login, logout, failures)",
       "One-click Excel evidence packs for auditors",
       "CSP, HSTS, and session storage with PKCE — not JWTs in localStorage",
@@ -768,7 +769,7 @@ export const DEFAULT_LANDING: LandingConfig = {
       },
       {
         title: "In-house AI",
-        desc: "Private portfolio Q&A on live org data — intelligence without sending data to external AI.",
+        desc: "Private portfolio Q&A on live org data by default. Approved Open AI model available only when your organisation requests it.",
       },
       {
         title: "Audit & Evidence",
@@ -818,7 +819,7 @@ export const DEFAULT_LANDING: LandingConfig = {
   },
   final_cta: {
     title: "Secure the portfolio outcome.",
-    body: "Deploy iProjectX in weeks, not months. White-label ready, multi-tenant by design, MFA-enforced — with In-house AI that protects your data while still delivering portfolio intelligence. Admin audit trails and evidence export for enterprise procurement.",
+    body: "Deploy iProjectX in weeks, not months. White-label ready, multi-tenant by design, MFA-enforced — with In-house AI by default, and an approved external model only if your organisation requests it. Admin audit trails and evidence export for enterprise procurement.",
     primary: "Expression of Interest",
     secondary: "Sign in",
   },
@@ -1037,8 +1038,13 @@ export function mergeConfig(partial: any): LandingConfig {
       merged.security.bullets as string[]
     ).map((b) => String(b).toLowerCase());
     for (const b of DEFAULT_LANDING.security.bullets) {
-      const already = haveBullet.some((h) => /in-house ai|external model/i.test(h));
-      if (/in-house ai|external model/i.test(b) && !already) {
+      const already = haveBullet.some((h) =>
+        /in-house ai|external (model|ai)|approved (external )?ai|chatgpt/i.test(h),
+      );
+      if (
+        /in-house ai|external (model|ai)|approved (external )?ai|chatgpt/i.test(b) &&
+        !already
+      ) {
         merged.security.bullets.push(b);
         haveBullet.push(b.toLowerCase());
       }

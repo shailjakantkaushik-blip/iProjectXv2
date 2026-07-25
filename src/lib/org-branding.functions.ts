@@ -8,6 +8,13 @@ import {
   type LogoDisplaySize,
 } from "@/lib/landing-config";
 
+export type OrgSsoPublicConfig = {
+  enabled: boolean;
+  provider_id: string | null;
+  domains: string[];
+  button_label: string;
+};
+
 export type OrgWhiteLabelBranding = {
   name: string;
   slug: string;
@@ -16,6 +23,7 @@ export type OrgWhiteLabelBranding = {
   logo_custom_auth: LogoCustomDims;
   logo_size_app: LogoDisplaySize;
   logo_custom_app: LogoCustomDims;
+  sso: OrgSsoPublicConfig;
 };
 
 function readOrgLogoSizing(uiConfig: unknown): Pick<
@@ -40,13 +48,32 @@ function readOrgLogoSizing(uiConfig: unknown): Pick<
   };
 }
 
+function readOrgSso(row: {
+  sso_enabled?: boolean | null;
+  sso_provider_id?: string | null;
+  sso_domains?: string[] | null;
+  sso_button_label?: string | null;
+}): OrgSsoPublicConfig {
+  const domains = Array.isArray(row.sso_domains)
+    ? row.sso_domains.map((d) => String(d).trim().toLowerCase()).filter(Boolean)
+    : [];
+  return {
+    enabled: Boolean(row.sso_enabled),
+    provider_id: row.sso_provider_id?.trim() || null,
+    domains,
+    button_label: row.sso_button_label?.trim() || "Sign in with SSO",
+  };
+}
+
 export const getOrgBranding = createServerFn({ method: "GET" })
   .inputValidator((data) => z.object({ slug: z.string().min(1).max(120) }).parse(data))
   .handler(async ({ data }): Promise<OrgWhiteLabelBranding | null> => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: row, error } = await supabaseAdmin
       .from("organizations")
-      .select("name, slug, brand_name, logo_url, ui_config")
+      .select(
+        "name, slug, brand_name, logo_url, ui_config, sso_enabled, sso_provider_id, sso_domains, sso_button_label",
+      )
       .eq("slug", data.slug)
       .maybeSingle();
     if (error) return null;
@@ -57,6 +84,7 @@ export const getOrgBranding = createServerFn({ method: "GET" })
       slug: row.slug as string,
       logo_url: (row.logo_url || "") as string,
       ...sizing,
+      sso: readOrgSso(row as any),
     };
   });
 

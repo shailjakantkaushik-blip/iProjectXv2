@@ -34,8 +34,8 @@ function PlatformInhouseAiPage() {
     onSuccess: (_res, vars) => {
       toast.success(
         vars.enabled
-          ? "Approved model enabled for this organisation"
-          : "Approved model disabled — local engine only",
+          ? "Approved Open AI model enabled for this organisation"
+          : "Switched to In-house AI (local) for this organisation",
       );
       qc.invalidateQueries({ queryKey: ["platform_inhouse_ai_settings"] });
     },
@@ -59,12 +59,15 @@ function PlatformInhouseAiPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">In-house AI · approved model</h1>
+        <h1 className="text-3xl font-bold tracking-tight">
+          In-house AI · Approved Open AI model
+        </h1>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-          By default every organisation stays on the <strong>local engine</strong> — portfolio
-          data never leaves the app for model inference. Enable the approved model only for
-          organisations that explicitly need it. Requires server{" "}
-          <code className="text-xs">INHOUSE_AI_*</code> configuration.
+          By default every organisation stays on <strong>In-house AI</strong> (local) — portfolio
+          data never leaves the app for model inference. Turn on{" "}
+          <strong>Approved Open AI model</strong> only when an organisation requests external AI.
+          Requires server <code className="text-xs">INHOUSE_AI_*</code> configuration pointing at
+          your approved endpoint.
         </p>
       </div>
 
@@ -112,9 +115,9 @@ function PlatformInhouseAiPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Default</CardTitle>
           </CardHeader>
           <CardContent>
-            <Badge variant="secondary">Off · local engine</Badge>
+            <Badge variant="secondary">Off · In-house AI</Badge>
             <p className="mt-2 text-xs text-muted-foreground">
-              New organisations never send context to a model until you enable them here.
+              New organisations stay on In-house AI until you enable Approved Open AI model here.
             </p>
           </CardContent>
         </Card>
@@ -147,9 +150,9 @@ function PlatformInhouseAiPage() {
                     <div className="text-xs text-muted-foreground">
                       {org.slug} · {org.plan}
                       {org.enabled ? (
-                        <span className="text-emerald-700"> · approved model on</span>
+                        <span className="text-emerald-700"> · Approved Open AI model</span>
                       ) : (
-                        <span> · local only</span>
+                        <span> · In-house AI</span>
                       )}
                     </div>
                   </div>
@@ -161,7 +164,9 @@ function PlatformInhouseAiPage() {
                         save.mutate({ orgId: org.id, enabled: next })
                       }
                     />
-                    <span className="text-sm">{org.enabled ? "Enabled" : "Disabled"}</span>
+                    <span className="text-sm">
+                      {org.enabled ? "Approved Open AI model" : "In-house AI"}
+                    </span>
                   </div>
                 </div>
               ))}
