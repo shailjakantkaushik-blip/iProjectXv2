@@ -4,12 +4,17 @@ import { useQuery } from "@tanstack/react-query";
 import { Lock, Send, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  PROJECT_PORTFOLIO_SELECT,
-  RISKS_SELECT,
-  DECISIONS_SELECT,
-  ACTIONS_SELECT,
-} from "@/lib/query-selects";
+  ACTIONS_ASSIST_SELECT,
+  DECISIONS_ASSIST_SELECT,
+  PROJECT_ASSIST_SELECT,
+  RISKS_ASSIST_SELECT,
+  allowedAssistDomains,
+  deniedDomainMessage,
+  domainAllowed,
+  scopeAssistBundle,
+} from "@/lib/assist-access";
 import { answerPortfolioQuestion } from "@/lib/local-portfolio-assist";
+import { useAllowedPages } from "@/lib/permissions";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
 
@@ -31,48 +36,83 @@ const PROMPTS = [
 function AiAssistPage() {
   const { organization } = useAuth();
   const orgId = organization?.id;
+  const { canView, isReady } = useAllowedPages();
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Msg[]>([
     {
       role: "assistant",
-      text: "I’m iProjectX In-house AI. Ask in plain English — for example which projects are off track, who owns critical risks, how spend compares to budget, or “tell me about <project name>”. I answer from your live org data in this browser session (RLS). Nothing is sent to ChatGPT or any external model.",
+      text: "I’m iProjectX In-house AI. Ask in plain English — for example which projects are off track, who owns critical risks, how spend compares to budget, or “tell me about <project name>”. I answer only from data your role can already see under RLS and page permissions. Nothing is sent to ChatGPT or any external model.",
     },
   ]);
 
+  const domains = useMemo(() => allowedAssistDomains(canView), [canView, isReady]);
+  const accessNote = useMemo(() => deniedDomainMessage(domains), [domains]);
+
+  const allowProjects = domainAllowed("projects", canView);
+  const allowRisks = domainAllowed("risks", canView);
+  const allowDecisions = domainAllowed("decisions", canView);
+  const allowActions = domainAllowed("actions", canView);
+  const allowBudget = domains.has("budget");
+  const allowBenefits = domains.has("benefits");
+  // Load RLS project rows whenever any AI domain needs attribution or finance fields.
+  const needProjects =
+    allowProjects || allowRisks || allowDecisions || allowActions || allowBudget || allowBenefits;
+
   const { data: projects = [] } = useQuery({
-    queryKey: ["projects", orgId, "ai-assist"],
+    queryKey: ["projects", orgId, "ai-assist", PROJECT_ASSIST_SELECT],
     queryFn: async () =>
-      (await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*")).data ?? [],
-    enabled: !!orgId,
+      (await supabase.from("projects").select(PROJECT_ASSIST_SELECT)).data ?? [],
+    enabled: !!orgId && needProjects,
   });
   const { data: risks = [] } = useQuery({
-    queryKey: ["risks", orgId],
-    queryFn: async () => (await supabase.from("risks").select(RISKS_SELECT as "*")).data ?? [],
-    enabled: !!orgId,
+    queryKey: ["risks", orgId, "ai-assist", RISKS_ASSIST_SELECT],
+    queryFn: async () =>
+      (await supabase.from("risks").select(RISKS_ASSIST_SELECT)).data ?? [],
+    enabled: !!orgId && allowRisks,
   });
   const { data: decisions = [] } = useQuery({
-    queryKey: ["decisions", orgId],
+    queryKey: ["decisions", orgId, "ai-assist", DECISIONS_ASSIST_SELECT],
     queryFn: async () =>
-      (await supabase.from("decisions").select(DECISIONS_SELECT as "*")).data ?? [],
-    enabled: !!orgId,
+      (await supabase.from("decisions").select(DECISIONS_ASSIST_SELECT)).data ?? [],
+    enabled: !!orgId && allowDecisions,
   });
   const { data: actions = [] } = useQuery({
-    queryKey: ["actions", orgId],
-    queryFn: async () => (await supabase.from("actions").select(ACTIONS_SELECT as "*")).data ?? [],
-    enabled: !!orgId,
+    queryKey: ["actions", orgId, "ai-assist", ACTIONS_ASSIST_SELECT],
+    queryFn: async () =>
+      (await supabase.from("actions").select(ACTIONS_ASSIST_SELECT)).data ?? [],
+    enabled: !!orgId && allowActions,
   });
 
-  const bundle = useMemo(
-    () => ({
-      projects: projects as any[],
-      risks: risks as any[],
-      decisions: decisions as any[],
-      actions: actions as any[],
-    }),
-    [projects, risks, decisions, actions],
-  );
+  const bundle = useMemo(() => {
+    if (!orgId) {
+      return { projects: [], risks: [], decisions: [], actions: [] };
+    }
+    return scopeAssistBundle(
+      {
+        projects: projects as any[],
+        risks: (allowRisks ? risks : []) as any[],
+        decisions: (allowDecisions ? decisions : []) as any[],
+        actions: (allowActions ? actions : []) as any[],
+      },
+      { orgId, domains },
+    );
+  }, [
+    orgId,
+    projects,
+    risks,
+    decisions,
+    actions,
+    domains,
+    allowRisks,
+    allowDecisions,
+    allowActions,
+  ]);
 
-  const reply = (q: string) => answerPortfolioQuestion(q, bundle);
+  const reply = (q: string) =>
+    answerPortfolioQuestion(q, bundle, {
+      allowedDomains: domains,
+      accessNote,
+    });
 
   const send = () => {
     const q = input.trim();
@@ -90,11 +130,20 @@ function AiAssistPage() {
     ]);
   };
 
+  const visiblePrompts = PROMPTS.filter((p) => {
+    const lower = p.toLowerCase();
+    if (lower.includes("risk") && !allowRisks) return false;
+    if (lower.includes("budget") && !domains.has("budget")) return false;
+    if (lower.includes("decision") && !allowDecisions) return false;
+    if (lower.includes("overdue") && !allowActions) return false;
+    return true;
+  });
+
   return (
     <div>
       <PageHeading
         title="In-house AI"
-        subtitle="Plain-English answers from your live PMO data — never leaves your org"
+        subtitle="Plain-English answers from data your role can see — never leaves your org"
       />
 
       <SectionFrame>
@@ -102,12 +151,18 @@ function AiAssistPage() {
           <SectionTitle>Chat</SectionTitle>
           <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
             <Lock className="h-3 w-3" />
-            In-house · no external AI
+            In-house · RLS · page ACL
           </span>
         </div>
 
+        {accessNote ? (
+          <p className="mb-3 rounded-md border border-border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
+            {accessNote}
+          </p>
+        ) : null}
+
         <div className="mb-3 flex flex-wrap gap-2">
-          {PROMPTS.map((prompt) => (
+          {visiblePrompts.map((prompt) => (
             <button
               key={prompt}
               type="button"
@@ -170,8 +225,9 @@ function AiAssistPage() {
               </button>
             </div>
             <p className="mt-2 text-[11px] text-muted-foreground">
-              Enter to send · Shift+Enter for a new line. Answers use your live org data in this
-              session — nothing is sent to ChatGPT or any external model.
+              Enter to send · Shift+Enter for a new line. Answers use only projects and registers
+              your role can view (RLS + page permissions). Nothing is sent to an external model —
+              no extra AI egress.
             </p>
           </div>
         </div>

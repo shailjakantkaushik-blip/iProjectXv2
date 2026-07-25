@@ -22,6 +22,7 @@ import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/s
 import { CartoonWelcomeBanner } from "@/components/cartoon-mascots";
 import { useAuth, type AppRole } from "@/lib/auth-context";
 import { canActOnDecision } from "@/lib/decision-approval";
+import { useAllowedPages } from "@/lib/permissions";
 import { PROJECT_HOME_SELECT, projectHomeQueryKey } from "@/lib/project-selects";
 
 export const Route = createFileRoute("/_authenticated/app/")({
@@ -171,9 +172,13 @@ function roleHomeLabel(roles: AppRole[]) {
 
 function Home() {
   const { organization, profile, session, roles } = useAuth();
+  const { canView } = useAllowedPages();
   const firstName = profile?.full_name?.split(" ")[0];
   const userId = session?.user?.id;
-  const shortcuts = useMemo(() => shortcutsForRoles(roles), [roles]);
+  const shortcuts = useMemo(
+    () => shortcutsForRoles(roles).filter((s) => canView(s.to)),
+    [roles, canView],
+  );
 
   const { data: projects = [], isLoading } = useQuery({
     queryKey: projectHomeQueryKey(organization?.id),

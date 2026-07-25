@@ -23,6 +23,21 @@
 
 **Go-live security gate: CLOSED.** Not “fully certified”: SOC 2 Type II / ISO 27001 still need operating evidence + auditor. Technical + production baseline is enterprise-ready.
 
+### In-house AI — permission, safety & egress validation (2026-07-25)
+
+| Control | Status | Evidence |
+|---------|--------|----------|
+| No external LLM / no AI vendor egress | **PASS** | `local-portfolio-assist.ts` is pure client logic; CSP `connect-src` has no LLM hosts |
+| Tenant + project visibility | **PASS** | Reads via Supabase client under RLS (`user_can_view_project`); child rows intersected to visible project ids (`assist-access.ts`) |
+| Org isolation (defense-in-depth) | **PASS** | Bundle scoped with `org_id` match when present on project rows |
+| Page ACL on AI topics | **PASS** | Risks/decisions/actions/budget/benefits only loaded & answered if sibling pages allowed (`assist-access.ts` + `answerPortfolioQuestion` options) |
+| Route page ACL (direct URL) | **PASS** | `usePageAccessGuard` in `app.tsx` redirects denied `PAGES` / admin-only paths |
+| Home shortcuts honour page ACL | **PASS** | `app.index.tsx` filters shortcuts with `canView` |
+| Query-cache isolation | **PASS** | AI uses dedicated React Query keys (`…, "ai-assist", select`) so narrow selects elsewhere cannot starve or widen AI cache |
+| Egress volume | **PASS (reduced)** | Lean `PROJECT_ASSIST_SELECT` / domain-gated fetches — no `select("*")`; no extra realtime or model traffic |
+| Logging of prompts / answers | **PASS** | No server logging of Q&A text |
+| Residual risk | **Accepted** | Page ACL default-allow when unconfigured (org-wide pattern); generative open-domain chat not in scope |
+
 ---
 
 ## 0. Architecture correction (important)
@@ -62,7 +77,7 @@ Legacy `NEXT_PUBLIC_*` env names are bridged to `VITE_*` via `scripts/env-bridge
 |------|--------|----------|
 | RBAC roles | **Present** | `app_role` + `user_roles` + helpers |
 | RLS as primary data control | **Present** | Migrations enable RLS on created tables |
-| UI page permissions | **Partial** | `role_table_permissions` UI-only; default-allow when empty (`permissions.ts`) |
+| UI page permissions | **Hardened** | Nav filter + `usePageAccessGuard` on `/app/*` ACL paths; In-house AI topics respect sibling page denies. Default-allow when matrix unconfigured remains (`permissions.ts`) |
 | Platform routes client-only gate | **Medium** | `platform.tsx` `beforeLoad`; real protection = server asserts + RLS |
 | Account takeover via user provision | **Critical → Fixed** | `provisionUser` reset password on existing email |
 | Profile `org_id` self-reassign | **High → Fixed (migration)** | Trigger `tg_profiles_lock_org_id` |
