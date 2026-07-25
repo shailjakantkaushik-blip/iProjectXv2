@@ -273,6 +273,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = async () => {
+    try {
+      const { recordAuthSecurityEvent } = await import("@/lib/auth-events.functions");
+      await recordAuthSecurityEvent({
+        data: { eventType: "logout", summary: "User signed out" },
+      });
+    } catch {
+      /* non-blocking — still sign out locally */
+    }
     clearCachedOrgNavigation();
     clearCachedAuthChrome();
     await supabase.auth.signOut();

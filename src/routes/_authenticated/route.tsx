@@ -2,6 +2,7 @@ import { createFileRoute, Outlet, useNavigate, useRouterState } from "@tanstack/
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { readOrgAuthEntrySlug } from "@/lib/org-auth-entry";
+import { getMfaStatus } from "@/lib/mfa";
 import { toast } from "sonner";
 import { PageLoading, SessionPending } from "@/components/page-loading";
 import { AppShell } from "@/components/app-shell";
@@ -34,9 +35,40 @@ function Gate() {
       void signOut();
       return;
     }
-    if (profile?.must_change_password && pathname !== "/force-password-change") {
+    if (profile?.must_change_password) {
       navigate({ to: "/force-password-change", replace: true });
+      return;
     }
+
+    // MFA required for every user: challenge if enrolled, otherwise force enroll.
+    let cancelled = false;
+    void (async () => {
+      try {
+        const mfa = await getMfaStatus();
+        if (cancelled) return;
+        if (mfa.needsChallenge) {
+          navigate({
+            to: "/mfa",
+            search: { mode: "challenge", next: pathname || "/app" },
+            replace: true,
+          });
+          return;
+        }
+        if (!mfa.hasVerifiedFactor) {
+          navigate({
+            to: "/mfa",
+            search: { mode: "enroll", next: pathname || "/app" },
+            replace: true,
+          });
+        }
+      } catch {
+        /* MFA not enabled in Supabase project — skip until dashboard toggle is on */
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [session, profile, loading, sessionChecked, navigate, pathname, signOut]);
 
   // Instant chrome: cached profile lets the shell paint before network hydrate.
