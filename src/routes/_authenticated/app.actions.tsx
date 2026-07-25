@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { ACTIONS_SELECT } from "@/lib/query-selects";
 import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
@@ -38,7 +39,7 @@ function ActionsPage() {
   });
   const { data: actions = [] } = useQuery({
     queryKey: ["actions", orgId],
-    queryFn: async () => (await supabase.from("actions").select("*").order("due_date")).data ?? [],
+    queryFn: async () => (await supabase.from("actions").select(ACTIONS_SELECT as "*").order("due_date")).data ?? [],
     enabled: !!orgId,
   });
   const projectById = useMemo(

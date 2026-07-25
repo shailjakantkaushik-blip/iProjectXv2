@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { PROJECT_HOME_SELECT, RISKS_SELECT, DECISIONS_SELECT } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
 
@@ -24,18 +25,18 @@ function AiAssistPage() {
   ]);
 
   const { data: projects = [] } = useQuery({
-    queryKey: ["projects", orgId],
-    queryFn: async () => (await supabase.from("projects").select("*")).data ?? [],
+    queryKey: ["projects", orgId, "home"],
+    queryFn: async () => (await supabase.from("projects").select(PROJECT_HOME_SELECT)).data ?? [],
     enabled: !!orgId,
   });
   const { data: risks = [] } = useQuery({
     queryKey: ["risks", orgId],
-    queryFn: async () => (await supabase.from("risks").select("*")).data ?? [],
+    queryFn: async () => (await supabase.from("risks").select(RISKS_SELECT as "*")).data ?? [],
     enabled: !!orgId,
   });
   const { data: decisions = [] } = useQuery({
     queryKey: ["decisions", orgId],
-    queryFn: async () => (await supabase.from("decisions").select("*")).data ?? [],
+    queryFn: async () => (await supabase.from("decisions").select(DECISIONS_SELECT as "*")).data ?? [],
     enabled: !!orgId,
   });
 

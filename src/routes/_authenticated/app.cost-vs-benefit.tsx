@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { PROJECT_PORTFOLIO_SELECT } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -49,7 +50,7 @@ function CostVsBenefitPage() {
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
-    queryFn: async () => (await supabase.from("projects").select("*")).data ?? [],
+    queryFn: async () => (await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*")).data ?? [],
     enabled: !!organization,
   });
 

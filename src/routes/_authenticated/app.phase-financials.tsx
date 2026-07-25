@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { PROJECT_PORTFOLIO_SELECT, FINANCIALS_MONTHLY_SELECT, STAGE_GATES_SELECT, STAGE_GATE_DEFINITIONS_SELECT } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -66,7 +67,7 @@ function PhaseFinancialsPage() {
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
-    queryFn: async () => (await supabase.from("projects").select("*")).data ?? [],
+    queryFn: async () => (await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*")).data ?? [],
     enabled: !!organization,
   });
 
@@ -76,7 +77,7 @@ function PhaseFinancialsPage() {
       (
         await supabase
           .from("stage_gate_definitions")
-          .select("*")
+          .select(STAGE_GATE_DEFINITIONS_SELECT as "*")
           .eq("org_id", organization!.id)
           .eq("is_active", true)
           .order("sort_order", { ascending: true })
@@ -86,7 +87,7 @@ function PhaseFinancialsPage() {
 
   const { data: gates = [] } = useQuery({
     queryKey: ["stage_gates", organization?.id],
-    queryFn: async () => (await supabase.from("stage_gates").select("*")).data ?? [],
+    queryFn: async () => (await supabase.from("stage_gates").select(STAGE_GATES_SELECT as "*")).data ?? [],
     enabled: !!organization,
   });
 
@@ -99,7 +100,7 @@ function PhaseFinancialsPage() {
   const { data: monthly = [] } = useQuery({
     queryKey: ["financials_monthly", organization?.id],
     queryFn: async () =>
-      (await supabase.from("financials_monthly").select("*").order("period_month")).data ?? [],
+      (await supabase.from("financials_monthly").select(FINANCIALS_MONTHLY_SELECT as "*").order("period_month")).data ?? [],
     enabled: !!organization,
   });
 

@@ -2,6 +2,17 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  PROJECT_DETAIL_SELECT,
+  STAGE_GATES_SELECT,
+  RESOURCE_ALLOCATIONS_SELECT,
+  RESOURCES_SELECT,
+  FINANCIALS_MONTHLY_SELECT,
+  BENEFITS_SELECT,
+  RISKS_SELECT,
+  ISSUES_SELECT,
+  MILESTONES_SELECT,
+} from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { SectionFrame, SectionTitle, PageHeading, RagChip, KpiCard } from "@/components/streamlit";
 import {
@@ -299,8 +310,10 @@ function InfographicPage() {
   }, [search.pid]);
 
   const { data: projects = [] } = useQuery({
-    queryKey: ["projects", organization?.id],
-    queryFn: async () => (await supabase.from("projects").select("*")).data ?? [],
+    // Dedicated key — wider detail select must not overwrite portfolio cache rows.
+    queryKey: ["projects", organization?.id, "detail"],
+    queryFn: async () =>
+      (await supabase.from("projects").select(PROJECT_DETAIL_SELECT as "*")).data ?? [],
     enabled: !!organization,
   });
 
@@ -315,7 +328,7 @@ function InfographicPage() {
       (
         await supabase
           .from("stage_gates")
-          .select("*")
+          .select(STAGE_GATES_SELECT as "*")
           .eq("project_id", project.id)
           .order("planned_date")
       ).data ?? [],
@@ -335,7 +348,7 @@ function InfographicPage() {
       (
         await supabase
           .from("resource_allocations")
-          .select("*")
+          .select(RESOURCE_ALLOCATIONS_SELECT as "*")
           .eq("project_id", project.id)
           .order("period_month")
       ).data ?? [],
@@ -344,7 +357,7 @@ function InfographicPage() {
 
   const { data: allResources = [] } = useQuery({
     queryKey: ["resources", organization?.id],
-    queryFn: async () => (await supabase.from("resources").select("*")).data ?? [],
+    queryFn: async () => (await supabase.from("resources").select(RESOURCES_SELECT as "*")).data ?? [],
     enabled: !!organization?.id,
   });
 
@@ -368,7 +381,7 @@ function InfographicPage() {
       (
         await supabase
           .from("financials_monthly")
-          .select("*")
+          .select(FINANCIALS_MONTHLY_SELECT as "*")
           .eq("project_id", project.id)
           .order("period_month")
       ).data ?? [],
@@ -377,7 +390,7 @@ function InfographicPage() {
   const { data: benefits = [] } = useQuery({
     queryKey: ["benefits", project?.id],
     queryFn: async () =>
-      (await supabase.from("benefits").select("*").eq("project_id", project.id)).data ?? [],
+      (await supabase.from("benefits").select(BENEFITS_SELECT as "*").eq("project_id", project.id)).data ?? [],
     enabled: !!project,
   });
   const { data: risks = [] } = useQuery({
@@ -386,7 +399,7 @@ function InfographicPage() {
       (
         await supabase
           .from("risks")
-          .select("*")
+          .select(RISKS_SELECT as "*")
           .eq("project_id", project.id)
           .order("severity", { ascending: false })
       ).data ?? [],
@@ -395,7 +408,7 @@ function InfographicPage() {
   const { data: issues = [] } = useQuery({
     queryKey: ["issues", project?.id],
     queryFn: async () =>
-      (await supabase.from("issues").select("*").eq("project_id", project.id)).data ?? [],
+      (await supabase.from("issues").select(ISSUES_SELECT as "*").eq("project_id", project.id)).data ?? [],
     enabled: !!project,
   });
   const { data: milestones = [] } = useQuery({
@@ -404,7 +417,7 @@ function InfographicPage() {
       (
         await supabase
           .from("milestones")
-          .select("*")
+          .select(MILESTONES_SELECT as "*")
           .eq("project_id", project.id)
           .order("planned_date")
       ).data ?? [],

@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useRef, useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { PROJECT_PORTFOLIO_SELECT } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -52,7 +53,7 @@ function DependenciesPage() {
   const { data: projects = [] } = useQuery({
     queryKey: ["projects-dep", organization?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.from("projects").select("*");
+      const { data, error } = await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*");
       if (error) throw error;
       return data as Project[];
     },

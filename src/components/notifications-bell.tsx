@@ -48,7 +48,7 @@ export function NotificationsBell() {
       return (data ?? []) as NotificationRow[];
     },
     enabled: !!userId,
-    refetchInterval: 60_000,
+    // Realtime channel below keeps the bell fresh — avoid 60s polling egress.
   });
 
   const unread = useMemo(

@@ -74,13 +74,20 @@ export function TableEditor({ def }: { def: TableDef }) {
     },
   });
 
+  const editorSelect = useMemo(() => {
+    const cols = new Set<string>(["id", "org_id"]);
+    for (const f of def.fields) cols.add(f.key);
+    if (def.orderBy) cols.add(def.orderBy);
+    return [...cols].join(",");
+  }, [def]);
+
   const { data: rows = [], refetch } = useQuery({
     queryKey: [def.key, organization?.id],
     enabled: !!organization,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from(def.key)
-        .select("*")
+        .select(editorSelect)
         .eq("org_id", organization!.id)
         .order(def.orderBy ?? "created_at", { ascending: true });
       if (error) throw error;

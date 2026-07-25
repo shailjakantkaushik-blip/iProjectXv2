@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { RESOURCES_SELECT, RESOURCE_ALLOCATIONS_SELECT } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -103,13 +104,13 @@ function ResourcesPage() {
 
   const { data: resourcesAll = [] } = useQuery({
     queryKey: ["resources", organization?.id],
-    queryFn: async () => ((await supabase.from("resources").select("*")).data as Resource[]) ?? [],
+    queryFn: async () => ((await supabase.from("resources").select(RESOURCES_SELECT as "*")).data as Resource[]) ?? [],
     enabled: !!organization,
   });
   const { data: allocationsAll = [] } = useQuery({
     queryKey: ["resource_allocations", organization?.id],
     queryFn: async () =>
-      ((await supabase.from("resource_allocations").select("*")).data as Allocation[]) ?? [],
+      ((await supabase.from("resource_allocations").select(RESOURCE_ALLOCATIONS_SELECT as "*")).data as Allocation[]) ?? [],
     enabled: !!organization,
   });
   const { data: projects = [] } = useQuery({

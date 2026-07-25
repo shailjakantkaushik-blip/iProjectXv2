@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { PROJECT_PORTFOLIO_SELECT, FINANCIALS_MONTHLY_SELECT } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -63,13 +64,13 @@ function FinancialsPage() {
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
-    queryFn: async () => (await supabase.from("projects").select("*")).data ?? [],
+    queryFn: async () => (await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*")).data ?? [],
     enabled: !!organization,
   });
   const { data: monthly = [] } = useQuery({
     queryKey: ["financials_monthly", organization?.id],
     queryFn: async () =>
-      (await supabase.from("financials_monthly").select("*").order("period_month")).data ?? [],
+      (await supabase.from("financials_monthly").select(FINANCIALS_MONTHLY_SELECT as "*").order("period_month")).data ?? [],
     enabled: !!organization,
   });
 

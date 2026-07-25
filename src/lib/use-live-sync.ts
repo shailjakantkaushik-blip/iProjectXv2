@@ -40,11 +40,20 @@ const TABLE_QUERY_KEYS: Record<string, string[]> = {
   support_ticket_comments: ["support_ticket_comments", "support_tickets", "support"],
 };
 
+/** High-churn tables: debounce longer so rapid edits don't refetch full sheets. */
+const HIGH_CHURN = new Set([
+  "financials_monthly",
+  "resource_allocations",
+  "fy_allocations",
+  "status_updates",
+]);
+
 /** Realtime tables we listen to (exclude notifications — handled by the bell). */
 const TABLES = Object.keys(TABLE_QUERY_KEYS).filter((t) => t !== "notifications");
 
 const BC_NAME = "pmo-data-sync";
-const DEBOUNCE_MS = 600;
+const DEBOUNCE_MS = 800;
+const HIGH_CHURN_DEBOUNCE_MS = 2000;
 
 function queryKeysForTables(tables: Iterable<string>): string[] {
   const keys = new Set<string>();
@@ -64,10 +73,22 @@ function invalidateScoped(qc: QueryClient, tables: Iterable<string>) {
   }
 }
 
+function debounceFor(tables: Iterable<string>): number {
+  for (const t of tables) {
+    if (HIGH_CHURN.has(t)) return HIGH_CHURN_DEBOUNCE_MS;
+  }
+  return DEBOUNCE_MS;
+}
+
 /**
  * Global live-sync: edits (this tab, another tab, or another user) mark the
  * *related* React Query caches stale so open views refresh — without
  * refetching every query in the app.
+ *
+ * Egress safeguards:
+ * - scoped invalidation (active queries only)
+ * - longer debounce for high-churn finance/resource tables
+ * - pause flush while the tab is hidden (flush on focus)
  */
 export function useLiveSync(orgId: string | undefined) {
   const qc = useQueryClient();
@@ -80,6 +101,10 @@ export function useLiveSync(orgId: string | undefined) {
     const flush = () => {
       timerRef.current = null;
       if (pendingTables.current.size === 0) return;
+      // Defer network while backgrounded — same UX when user returns.
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return;
+      }
       const batch = pendingTables.current;
       pendingTables.current = new Set();
       invalidateScoped(qc, batch);
@@ -91,8 +116,16 @@ export function useLiveSync(orgId: string | undefined) {
         if (t) pendingTables.current.add(t);
       }
       if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(flush, DEBOUNCE_MS);
+      timerRef.current = setTimeout(flush, debounceFor(pendingTables.current));
     };
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && pendingTables.current.size > 0) {
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(flush, 100);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
 
     const onLocal = (ev: Event) => {
       const detail = (ev as CustomEvent).detail as { table?: string } | undefined;
@@ -139,10 +172,12 @@ export function useLiveSync(orgId: string | undefined) {
       channel.subscribe();
     };
 
-    const ric = (window as Window & {
-      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
-      cancelIdleCallback?: (id: number) => void;
-    }).requestIdleCallback;
+    const ric = (
+      window as Window & {
+        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+        cancelIdleCallback?: (id: number) => void;
+      }
+    ).requestIdleCallback;
 
     if (typeof ric === "function") {
       idleId = ric(startRealtime, { timeout: 1800 });
@@ -153,6 +188,7 @@ export function useLiveSync(orgId: string | undefined) {
     return () => {
       cancelled = true;
       window.removeEventListener("pmo:data-changed", onLocal);
+      document.removeEventListener("visibilitychange", onVisible);
       if (timerRef.current) clearTimeout(timerRef.current);
       if (timeoutId) clearTimeout(timeoutId);
       if (idleId != null) {

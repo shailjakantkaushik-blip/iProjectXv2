@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { ISSUES_SELECT } from "@/lib/query-selects";
 import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
@@ -32,7 +33,7 @@ function IssuesPage() {
   const { data: issues = [] } = useQuery({
     queryKey: ["issues", orgId],
     queryFn: async () =>
-      (await supabase.from("issues").select("*").order("raised_date", { ascending: false })).data ??
+      (await supabase.from("issues").select(ISSUES_SELECT as "*").order("raised_date", { ascending: false })).data ??
       [],
     enabled: !!orgId,
   });

@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { PROJECT_PORTFOLIO_SELECT } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -101,7 +102,7 @@ function RoadmapAnalyticsPage() {
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects-roadmap", organization?.id],
-    queryFn: async () => ((await supabase.from("projects").select("*")).data as Project[]) ?? [],
+    queryFn: async () => ((await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*")).data as Project[]) ?? [],
     enabled: !!organization,
   });
 

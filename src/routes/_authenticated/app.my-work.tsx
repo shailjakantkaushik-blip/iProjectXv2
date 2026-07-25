@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, X, ArrowRight, Inbox } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { DECISIONS_SELECT, ACTIONS_SELECT, WORK_ITEMS_SELECT, NOTIFICATIONS_SELECT } from "@/lib/query-selects";
 import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
@@ -26,7 +27,7 @@ function MyWorkPage() {
   const { data: decisions = [] } = useQuery({
     queryKey: ["decisions", orgId],
     queryFn: async () =>
-      (await supabase.from("decisions").select("*").order("decision_date", { ascending: false }))
+      (await supabase.from("decisions").select(DECISIONS_SELECT as "*").order("decision_date", { ascending: false }))
         .data ?? [],
     enabled: !!orgId,
   });
@@ -40,14 +41,14 @@ function MyWorkPage() {
   const { data: actions = [] } = useQuery({
     queryKey: ["actions", orgId],
     queryFn: async () =>
-      (await supabase.from("actions").select("*").order("due_date")).data ?? [],
+      (await supabase.from("actions").select(ACTIONS_SELECT as "*").order("due_date")).data ?? [],
     enabled: !!orgId,
   });
 
   const { data: workItems = [] } = useQuery({
     queryKey: ["work_items", orgId],
     queryFn: async () => {
-      const { data, error } = await supabase.from("work_items" as any).select("*");
+      const { data, error } = await supabase.from("work_items" as any).select(WORK_ITEMS_SELECT);
       if (error) return [];
       return (data ?? []) as any[];
     },
@@ -60,7 +61,7 @@ function MyWorkPage() {
       (
         await supabase
           .from("notifications")
-          .select("*")
+          .select(NOTIFICATIONS_SELECT)
           .eq("user_id", userId!)
           .is("read_at", null)
           .order("created_at", { ascending: false })
