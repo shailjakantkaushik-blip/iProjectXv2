@@ -116,10 +116,14 @@ export async function callApprovedModel(opts: {
     });
 
     if (!resp.ok) {
+      // Do not echo upstream body to callers — may contain provider internals.
       const body = await resp.text().catch(() => "");
-      throw new Error(
-        `Approved model HTTP ${resp.status}${body ? `: ${body.slice(0, 180)}` : ""}`,
-      );
+      if (body) {
+        console.warn(`[inhouse-ai] approved model HTTP ${resp.status}: ${body.slice(0, 300)}`);
+      } else {
+        console.warn(`[inhouse-ai] approved model HTTP ${resp.status}`);
+      }
+      throw new Error(`Approved Open AI model unavailable (HTTP ${resp.status})`);
     }
 
     const json = (await resp.json()) as {

@@ -49,7 +49,9 @@
 | Default off | **PASS** | `organizations.sso_enabled` default false |
 | Platform-admin only | **PASS** | DB trigger `tg_organizations_lock_sso_fields` + branding UI gated to platform admin |
 | IdP registration | **Ops** | Supabase Auth SSO / `supabase sso add`; app stores provider id + domains only |
-| Org membership after SSO | **PASS** | White-label `/auth?org=` still runs `assertUserBelongsToOrgSlug` |
+| Org membership after SSO | **PASS** | White-label `/auth?org=` runs `assertUserBelongsToOrgSlug`; unprovisioned users (no `profile.org_id`) are signed out so they cannot keep a session |
+| No self-serve org via SSO entry | **PASS** | Onboarding blocks `create_org_and_join` when org white-label entry cookie is set |
+| Model upstream errors | **PASS** | Client gets generic `model_error` only; upstream HTTP body logged server-side, not returned |
 
 ---
 

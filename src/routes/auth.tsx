@@ -195,29 +195,53 @@ function AuthPage() {
 
   /**
    * Verify the current session may use this org white-label link.
-   * @param signOutOnFail — true after a fresh password sign-in (clear the
+   * @param signOutOnFail — true after a fresh password/SSO sign-in (clear the
    *   rejected session). false when an existing session opened the wrong
-   *   org link — keep that session so other tabs are not wiped.
+   *   org link — keep that session so other tabs are not wiped, unless the
+   *   user is unprovisioned (no profile.org_id), in which case we always
+   *   sign out so SSO JIT users cannot fall through to self-serve onboarding.
    */
   const rejectWrongOrgSession = useCallback(
     async (slug: string, signOutOnFail: boolean): Promise<boolean> => {
+      const shouldClearSession = async (): Promise<boolean> => {
+        if (signOutOnFail) return true;
+        // Soft path: preserve sessions that already belong to another org.
+        // Unprovisioned users (typical SSO JIT) must not keep a session.
+        try {
+          const uid = session?.user?.id;
+          if (!uid) return true;
+          if (profile && profile.org_id == null) return true;
+          if (profile?.org_id) return false;
+          const { data: row } = await supabase
+            .from("profiles")
+            .select("org_id")
+            .eq("id", uid)
+            .maybeSingle();
+          return !row?.org_id;
+        } catch {
+          return true;
+        }
+      };
+
       try {
         const result = await assertOrgMembership({ data: { slug } });
         if (result.allowed) {
           rememberOrgAuthEntry(result.orgSlug);
           return true;
         }
-        if (signOutOnFail) {
+        const clear = await shouldClearSession();
+        if (clear) {
           await supabase.auth.signOut({ scope: "local" });
         }
         showOrgAccessAlert({
           title: "Not an organisation user",
           message: `You are not a member of ${orgLabel}. Contact your administrator for access, then try again.`,
-          sessionPreserved: !signOutOnFail,
+          sessionPreserved: !clear,
         });
         return false;
       } catch (e) {
-        if (signOutOnFail) {
+        const clear = await shouldClearSession();
+        if (clear) {
           await supabase.auth.signOut({ scope: "local" });
         }
         showOrgAccessAlert({
@@ -226,12 +250,12 @@ function AuthPage() {
             e instanceof Error
               ? e.message
               : `You are not a member of ${orgLabel}. Contact your administrator for access, then try again.`,
-          sessionPreserved: !signOutOnFail,
+          sessionPreserved: !clear,
         });
         return false;
       }
     },
-    [assertOrgMembership, showOrgAccessAlert, orgLabel],
+    [assertOrgMembership, showOrgAccessAlert, orgLabel, session?.user?.id, profile],
   );
 
   // Existing session on /auth: do NOT auto-redirect into the app. That made
