@@ -11,15 +11,17 @@
 | Control | Status | Notes |
 |---------|--------|-------|
 | Critical authz (provision / org lock / EOI / forced password) | **PASS** | Migrations + server fns |
-| MFA for all users | **PASS** | App enforces; enable TOTP in Supabase dashboard |
+| MFA for all users | **PASS** | App + Supabase TOTP On; smoke-tested in production |
 | Safer sessions | **PASS** | `sessionStorage` + PKCE (not localStorage JWTs) |
 | Excel CVE (`xlsx`) | **PASS** | Package removed; `read-excel-file` / `write-excel-file` |
-| Login / logout / failed-login logging | **PASS** | Persists to `security_events` (run latest SQL) |
+| Login / logout / failed-login logging | **PASS** | `security_events` SQL applied; smoke-tested |
+| Audit log admin-only | **PASS** | RLS SQL applied; smoke-tested |
 | Security headers + CSP | **PASS** | Vercel: HSTS, CSP (Turnstile, fonts, Supabase) |
 | ISMS policy pack | **PASS** | `docs/isms/` |
 | Billing cron | **N/A (manual invoicing)** | Endpoint fail-closed if secret unset; no cron required |
+| Production ops gate | **PASS** | Hardening SQL + deploy + MFA/logging/audit smoke tests confirmed |
 
-**Not “fully certified”:** SOC 2 Type II / ISO 27001 still need operational evidence + auditor. Technical baseline is enterprise-ready.
+**Go-live security gate: CLOSED.** Not “fully certified”: SOC 2 Type II / ISO 27001 still need operating evidence + auditor. Technical + production baseline is enterprise-ready.
 
 ---
 
@@ -273,10 +275,10 @@ Legacy `NEXT_PUBLIC_*` env names are bridged to `VITE_*` via `scripts/env-bridge
 
 | Metric | Score |
 |--------|-------|
-| **Current overall** | **82 / 100** |
-| **SOC 2 readiness** | **~75%** design / **~40%** Type II evidence |
+| **Current overall** | **85 / 100** (ops validated in production) |
+| **SOC 2 readiness** | **~80%** design / **~45%** Type II evidence |
 | **ISO 27001 readiness** | **~55%** |
-| **Enterprise procurement readiness** | **~75%** |
+| **Enterprise procurement readiness** | **~80%** |
 
 ---
 
