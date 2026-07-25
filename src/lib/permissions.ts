@@ -103,6 +103,7 @@ export const ADMIN_ONLY_PAGES = new Set<string>([
   "/app/project-access",
   "/app/configuration",
   "/app/navigation",
+  "/app/audit-log",
 ]);
 
 export function pageKey(path: string) {
@@ -113,7 +114,10 @@ export function useAllowedPages(): { isReady: boolean; canView: (path: string) =
   const { roles } = useAuth();
   const { data: rows = [], isSuccess } = useRolePermissions();
   const admin = roles.some((r) => r === "admin" || r === "org_admin");
+  const platform = roles.includes("platform_admin");
   const canView = (path: string) => {
+    // Org audit: org admins + platform admins (support). Never general users.
+    if (path === "/app/audit-log") return admin || platform;
     if (ADMIN_ONLY_PAGES.has(path)) return admin;
     if (admin) return true;
     const relevant = rows.filter((r) => roles.includes(r.role as any) && r.table_name === pageKey(path));

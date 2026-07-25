@@ -90,7 +90,7 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
       { to: "/app/lessons", label: "Lessons Learned", icon: "BookOpen" },
       { to: "/app/release-register", label: "Release Register", icon: "Package" },
       { to: "/app/executive-reports", label: "Executive Reports", icon: "FileBarChart" },
-      { to: "/app/audit-log", label: "Audit Log", icon: "FileText" },
+      { to: "/app/audit-log", label: "Audit Log", icon: "FileText", adminOnly: true },
       { to: "/app/data-editor", label: "Data Editor", icon: "Table2" },
     ],
   },
@@ -166,6 +166,12 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
         to: "/platform/branding",
         label: "Branding & White Label",
         icon: "Palette",
+        platformOnly: true,
+      },
+      {
+        to: "/platform/security",
+        label: "Security events",
+        icon: "ShieldCheck",
         platformOnly: true,
       },
       {

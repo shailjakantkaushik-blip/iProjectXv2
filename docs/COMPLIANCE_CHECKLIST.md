@@ -12,7 +12,9 @@ Use this after the latest security deploy. Technical controls are largely in pla
 | A2 | **Run SQL migration** `20260725160000_security_events_and_eoi_revoke.sql` | Supabase → SQL Editor → paste & Run (file in repo under `supabase/migrations/`) | ☐ |
 | A3 | **Deploy latest `main`** | Wait for Vercel production deploy after merge | ☐ |
 | A4 | **Smoke-test MFA** | Sign out → sign in → enroll/challenge authenticator → land in `/app` | ☐ |
-| A5 | **Smoke-test auth logging** | Failed login once → check `security_events` table for `login_failed`. Successful login → `login`. Sign out → `logout`. | ☐ |
+| A5 | **Smoke-test auth logging** | Failed login once → Platform → **Security events** shows `login_failed`. Successful login → `login`. Sign out → `logout`. | ☐ |
+| A5b | **Audit log access** | As a non-admin user, `/app/audit-log` should be hidden/denied. As org admin, it should load. | ☐ |
+| A5c | **Run audit RLS SQL** | Apply `20260725170000_audit_events_admin_read.sql` in Supabase SQL Editor | ☐ |
 | A6 | **Confirm sessionStorage** | DevTools → Application → Session Storage has `sb-*-auth-token`. Local Storage should **not** hold that token. | ☐ |
 | A7 | **Confirm CSP** | Production response headers include `Content-Security-Policy` with Turnstile + fonts + Supabase. Landing fonts still load. | ☐ |
 | A8 | **Manual invoicing only** | No cron needed. Use Platform → Invoices → Email → Mark paid. Optionally set `BILLING_CRON_SECRET` anyway so the unused endpoint stays locked. | ☐ |
