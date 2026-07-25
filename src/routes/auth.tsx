@@ -444,18 +444,9 @@ function AuthPage() {
       /* private mode */
     }
 
-    // MFA challenge before entering the app (AAL1 → AAL2).
-    try {
-      const mfa = await getMfaStatus();
-      if (mfa.needsChallenge) {
-        setBusy(false);
-        navigate({ to: "/mfa", search: { mode: "challenge", next: "/app" }, replace: true });
-        return;
-      }
-    } catch {
-      /* If MFA APIs unavailable (not enabled in project), continue; Gate will re-check. */
-    }
-
+    // Org white-label gate MUST run before MFA redirect. Previously MFA sent
+    // users to /mfa?next=/app and skipped membership checks, so credentials
+    // from Org A could enter the app via Org B's login link.
     if (orgRequested) {
       if (!targetOrgSlug) {
         await supabase.auth.signOut({ scope: "local" });
@@ -468,22 +459,28 @@ function AuthPage() {
         });
         return;
       }
-      // Fresh password sign-in on the wrong org link — clear that session.
       const ok = await rejectWrongOrgSession(targetOrgSlug, true);
-      setBusy(false);
-      if (!ok) return;
-      try {
-        await recordAuth({ data: { eventType: "login", summary: "Password login" } });
-      } catch {
-        /* non-blocking */
+      if (!ok) {
+        setBusy(false);
+        return;
       }
-      toast.success("Signed in");
-      navigate({ to: "/app", replace: true });
-      return;
+    } else {
+      // General /auth sign-in — do not treat membership as org-link entry.
+      clearOrgAuthEntry();
     }
 
-    // General /auth sign-in — do not treat membership as org-link entry.
-    clearOrgAuthEntry();
+    // MFA challenge before entering the app (AAL1 → AAL2).
+    try {
+      const mfa = await getMfaStatus();
+      if (mfa.needsChallenge) {
+        setBusy(false);
+        navigate({ to: "/mfa", search: { mode: "challenge", next: "/app" }, replace: true });
+        return;
+      }
+    } catch {
+      /* If MFA APIs unavailable (not enabled in project), continue; Gate will re-check. */
+    }
+
     setBusy(false);
     try {
       await recordAuth({ data: { eventType: "login", summary: "Password login" } });
@@ -497,7 +494,11 @@ function AuthPage() {
   const dismissOrgAlert = () => setOrgAlert(null);
 
   const goToWorkspaceFromAlert = () => {
+    // Leaving a wrong org white-label link for the user's real workspace —
+    // drop the branded entry so sign-out does not bounce them back here.
+    clearOrgAuthEntry();
     setOrgAlert(null);
+    setOrgGateBlocked(false);
     navigate({ to: "/app", replace: true });
   };
 
