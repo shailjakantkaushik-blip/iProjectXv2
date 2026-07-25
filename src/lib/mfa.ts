@@ -1,8 +1,10 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { AppRole } from "@/lib/auth-context";
 
-/** Privileged roles must enroll and use TOTP MFA (AAL2). */
-export const MFA_REQUIRED_ROLES: AppRole[] = ["platform_admin", "org_admin", "admin"];
+/**
+ * MFA (TOTP authenticator app) is required for every signed-in user.
+ * Free, phishing-resistant second factor — no SMS cost.
+ */
+export const MFA_REQUIRED_FOR_ALL_USERS = true;
 
 export type MfaStatus = {
   currentLevel: string | null;
@@ -14,8 +16,9 @@ export type MfaStatus = {
   hasVerifiedFactor: boolean;
 };
 
-export function roleRequiresMfa(roles: AppRole[] | string[]): boolean {
-  return roles.some((r) => MFA_REQUIRED_ROLES.includes(r as AppRole));
+/** @deprecated Always true — MFA is required for all users. Kept for call-site clarity. */
+export function userRequiresMfa(): boolean {
+  return MFA_REQUIRED_FOR_ALL_USERS;
 }
 
 export async function getMfaStatus(): Promise<MfaStatus> {

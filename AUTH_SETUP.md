@@ -12,8 +12,7 @@ the exact wiring for a Git → Vercel → Supabase deployment.
    **Email**. Turn off "Confirm email" only if you want instant login
    without confirmation (dev only).
 2. **Authentication → Multi-factor authentication**: enable **TOTP**.
-   Required for admin MFA enrollment in the app (`platform_admin`,
-   `org_admin`, `admin` are forced to enroll).
+   Required — the app forces **every user** to enroll an authenticator app.
 3. **Authentication → URL configuration**:
    - Site URL: `https://<your-vercel-domain>`
    - Redirect URLs: add both `https://<your-vercel-domain>/**` and

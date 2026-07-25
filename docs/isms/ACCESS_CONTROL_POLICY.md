@@ -5,8 +5,7 @@
 ## 1. Authentication
 - Primary IdP: **Supabase Auth** (email/password; OAuth optional)  
 - Sessions use **PKCE** and are stored in **sessionStorage** (not localStorage)  
-- **MFA (TOTP) is mandatory** for `platform_admin`, `org_admin`, and `admin`  
-- MFA is available to all other roles  
+- **MFA (TOTP authenticator app) is mandatory for every user**  
 - Minimum password length: **8** characters (forced change for provisioned accounts)
 
 ### Supabase dashboard requirement

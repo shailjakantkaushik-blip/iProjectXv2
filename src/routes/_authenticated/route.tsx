@@ -2,7 +2,7 @@ import { createFileRoute, Outlet, useNavigate, useRouterState } from "@tanstack/
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { readOrgAuthEntrySlug } from "@/lib/org-auth-entry";
-import { getMfaStatus, roleRequiresMfa } from "@/lib/mfa";
+import { getMfaStatus } from "@/lib/mfa";
 import { toast } from "sonner";
 import { PageLoading, SessionPending } from "@/components/page-loading";
 import { AppShell } from "@/components/app-shell";
@@ -14,7 +14,7 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 function Gate() {
-  const { session, profile, loading, sessionChecked, signOut, roles } = useAuth();
+  const { session, profile, loading, sessionChecked, signOut } = useAuth();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const bareShell = pathname.startsWith("/onboarding");
@@ -40,7 +40,7 @@ function Gate() {
       return;
     }
 
-    // MFA: challenge if factor enrolled; force enroll for privileged roles.
+    // MFA required for every user: challenge if enrolled, otherwise force enroll.
     let cancelled = false;
     void (async () => {
       try {
@@ -54,7 +54,7 @@ function Gate() {
           });
           return;
         }
-        if (roleRequiresMfa(roles) && !mfa.hasVerifiedFactor) {
+        if (!mfa.hasVerifiedFactor) {
           navigate({
             to: "/mfa",
             search: { mode: "enroll", next: pathname || "/app" },
@@ -69,7 +69,7 @@ function Gate() {
     return () => {
       cancelled = true;
     };
-  }, [session, profile, loading, sessionChecked, navigate, pathname, signOut, roles]);
+  }, [session, profile, loading, sessionChecked, navigate, pathname, signOut]);
 
   // Instant chrome: cached profile lets the shell paint before network hydrate.
   const profileMatchesSession =

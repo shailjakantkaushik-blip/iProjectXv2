@@ -7,7 +7,6 @@ import {
   challengeAndVerifyTotp,
   enrollTotp,
   getMfaStatus,
-  roleRequiresMfa,
   verifyTotpEnrollment,
 } from "@/lib/mfa";
 import { recordAuthSecurityEvent } from "@/lib/auth-events.functions";
@@ -48,7 +47,7 @@ function toAuthBrand(brand: typeof DEFAULT_LANDING.brand): AuthBrand {
 function MfaPage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
-  const { session, roles, loading, refresh } = useAuth();
+  const { session, loading, refresh } = useAuth();
   const recordAuth = useServerFn(recordAuthSecurityEvent);
   const [brand, setBrand] = useState<AuthBrand>(() => toAuthBrand(DEFAULT_LANDING.brand));
   const [mode, setMode] = useState<"challenge" | "enroll">(search.mode ?? "challenge");
@@ -84,9 +83,9 @@ function MfaPage() {
         if (status.needsChallenge) {
           setMode("challenge");
           setFactorId(status.verifiedFactorIds[0] ?? null);
-        } else if (roleRequiresMfa(roles) && !status.hasVerifiedFactor) {
+        } else if (!status.hasVerifiedFactor) {
           setMode("enroll");
-        } else if (status.currentLevel === "aal2" || !roleRequiresMfa(roles)) {
+        } else if (status.currentLevel === "aal2") {
           // Already satisfied
           navigate({ to: nextPath, replace: true });
           return;
@@ -103,7 +102,7 @@ function MfaPage() {
     return () => {
       cancelled = true;
     };
-  }, [session, loading, roles, navigate, nextPath, search.mode]);
+  }, [session, loading, navigate, nextPath, search.mode]);
 
   const startEnroll = async () => {
     setBusy(true);
@@ -179,7 +178,7 @@ function MfaPage() {
         title={mode === "enroll" ? "Set up two-factor authentication" : "Enter authentication code"}
         description={
           mode === "enroll"
-            ? "Admin accounts require an authenticator app (Google Authenticator, 1Password, Authy, etc.)."
+            ? "Every account requires an authenticator app (Google Authenticator, 1Password, Authy, etc.)."
             : "Enter the 6-digit code from your authenticator app to continue."
         }
         footer={
