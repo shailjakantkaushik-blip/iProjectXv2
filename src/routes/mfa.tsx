@@ -1,7 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import {
   challengeAndVerifyTotp,
@@ -47,7 +46,7 @@ function toAuthBrand(brand: typeof DEFAULT_LANDING.brand): AuthBrand {
 function MfaPage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
-  const { session, loading, refresh } = useAuth();
+  const { session, loading, refresh, signOut } = useAuth();
   const recordAuth = useServerFn(recordAuthSecurityEvent);
   const [brand, setBrand] = useState<AuthBrand>(() => toAuthBrand(DEFAULT_LANDING.brand));
   const [mode, setMode] = useState<"challenge" | "enroll">(search.mode ?? "challenge");
@@ -162,7 +161,8 @@ function MfaPage() {
   };
 
   const onSignOut = async () => {
-    await supabase.auth.signOut();
+    // Use AuthContext.signOut so logout is audited
+    await signOut();
     navigate({ to: "/auth", replace: true });
   };
 

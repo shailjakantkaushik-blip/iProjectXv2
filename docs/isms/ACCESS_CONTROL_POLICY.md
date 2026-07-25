@@ -4,9 +4,10 @@
 
 ## 1. Authentication
 - Primary IdP: **Supabase Auth** (email/password; OAuth optional)  
-- Sessions use **PKCE** and are stored in **sessionStorage** (not localStorage)  
-- **MFA (TOTP authenticator app) is mandatory for every user**  
-- Minimum password length: **8** characters (forced change for provisioned accounts)
+- Sessions use **PKCE** and are stored in **sessionStorage** (not localStorage JWTs)  
+- **MFA (TOTP authenticator app) is mandatory for every user** and cannot be disabled in-app  
+- Minimum password length: **8** characters (forced change for provisioned accounts)  
+- Auth security events are written to `security_events` (and `audit_events` when org is known)
 
 ### Supabase dashboard requirement
 Enable MFA under **Authentication → Multi-factor authentication → TOTP**. Without this, the app cannot enroll factors.
