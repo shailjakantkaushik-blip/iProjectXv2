@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   Ban,
@@ -42,11 +42,30 @@ import {
   type LogoDisplaySize,
 } from "@/lib/landing-config";
 import { StableBrandLogo } from "@/components/stable-brand-logo";
-import { EoiModal } from "@/components/eoi-form";
 import { PageLoading } from "@/components/page-loading";
 
+const EoiModal = lazy(() =>
+  import("@/components/eoi-form").then((m) => ({ default: m.EoiModal })),
+);
+
+type LandingLoaderData = {
+  cfg: LandingConfig;
+  /** True when cfg came from localStorage — revalidate live signup/branding after paint. */
+  needsRevalidate: boolean;
+};
+
 export const Route = createFileRoute("/")({
-  loader: async () => ({ cfg: await fetchLandingConfig() }),
+  loader: async (): Promise<LandingLoaderData> => {
+    // Instant paint on repeat visits: don't block the route on Supabase.
+    // Never trust cached signup_enabled (avoids Get started flash).
+    if (typeof window !== "undefined") {
+      const cached = readCachedLandingConfig();
+      if (cached) {
+        return { cfg: { ...cached, signup_enabled: false }, needsRevalidate: true };
+      }
+    }
+    return { cfg: await fetchLandingConfig(), needsRevalidate: false };
+  },
   staleTime: 60_000,
   pendingMs: 0,
   pendingComponent: LandingPending,
@@ -284,17 +303,48 @@ function BrandMark({
 }
 
 function LandingPage() {
-  // Use loader data only — never seed from localStorage (stale signup_enabled: true
-  // was painting Get started, then removing it when live config said off).
-  const { cfg } = Route.useLoaderData();
+  const { cfg: loaderCfg, needsRevalidate } = Route.useLoaderData();
+  const [cfg, setCfg] = useState(loaderCfg);
   const signupEnabled = cfg.signup_enabled === true;
   const [eoiOpen, setEoiOpen] = useState(false);
+  // Mount heavier below-fold sections after first paint so Hero can appear sooner.
+  const [belowFoldReady, setBelowFoldReady] = useState(false);
+
+  useEffect(() => {
+    setCfg(loaderCfg);
+  }, [loaderCfg]);
+
+  useEffect(() => {
+    if (!needsRevalidate) return;
+    let cancelled = false;
+    void fetchLandingConfig()
+      .then((live) => {
+        if (!cancelled) setCfg(live);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [needsRevalidate]);
 
   useEffect(() => {
     document.documentElement.style.scrollBehavior = "smooth";
     return () => {
       document.documentElement.style.scrollBehavior = "";
     };
+  }, []);
+
+  useEffect(() => {
+    const w = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (typeof w.requestIdleCallback === "function") {
+      const id = w.requestIdleCallback(() => setBelowFoldReady(true), { timeout: 400 });
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const t = window.setTimeout(() => setBelowFoldReady(true), 0);
+    return () => window.clearTimeout(t);
   }, []);
 
   // Warm the auth logo in the browser cache so Sign in paints without a swap.
@@ -328,7 +378,7 @@ function LandingPage() {
 
   return (
     <div
-      className="w-full antialiased"
+      className="w-full max-w-[100vw] overflow-x-hidden antialiased"
       data-theme={cfg.theme}
       style={{ ...cssVars, ...BODY, color: p.textBody, background: pageBg }}
     >
@@ -339,25 +389,35 @@ function LandingPage() {
         Skip to content
       </a>
       <Nav cfg={cfg} signupEnabled={signupEnabled} />
-      <main id="main">
+      <main id="main" className="min-w-0">
         <Hero cfg={cfg} onEoiClick={() => setEoiOpen(true)} />
         {cfg.hero.alert && <InsightBar cfg={cfg} />}
         <TrustStrip cfg={cfg} />
-        <TrustedBy cfg={cfg} sectionBg={sectionBg} />
-        <CeoMessage cfg={cfg} sectionBg={sectionBg} />
-        <FailureVsSuccess cfg={cfg} />
-        <ExecutiveCockpitTour cfg={cfg} sectionBg={sectionBg} />
-        <PortfolioTimelineTour cfg={cfg} />
-        <RaidTour cfg={cfg} sectionBg={sectionBg} />
-        <SecurityTour cfg={cfg} sectionBg={sectionBg} />
-        <CapabilityBento cfg={cfg} />
-        <Testimonials cfg={cfg} sectionBg={sectionBg} />
-        <BoardStatements cfg={cfg} />
-        <StatsStrip cfg={cfg} />
-        <FinalCta cfg={cfg} onEoiClick={() => setEoiOpen(true)} />
+        {belowFoldReady ? (
+          <>
+            <TrustedBy cfg={cfg} sectionBg={sectionBg} />
+            <CeoMessage cfg={cfg} sectionBg={sectionBg} />
+            <FailureVsSuccess cfg={cfg} />
+            <ExecutiveCockpitTour cfg={cfg} sectionBg={sectionBg} />
+            <PortfolioTimelineTour cfg={cfg} />
+            <RaidTour cfg={cfg} sectionBg={sectionBg} />
+            <SecurityTour cfg={cfg} sectionBg={sectionBg} />
+            <CapabilityBento cfg={cfg} />
+            <Testimonials cfg={cfg} sectionBg={sectionBg} />
+            <BoardStatements cfg={cfg} />
+            <StatsStrip cfg={cfg} />
+            <FinalCta cfg={cfg} onEoiClick={() => setEoiOpen(true)} />
+          </>
+        ) : (
+          <div className="min-h-[50vh]" aria-hidden />
+        )}
       </main>
       <Footer cfg={cfg} />
-      {eoiOpen && <EoiModal cfg={cfg} onClose={() => setEoiOpen(false)} />}
+      {eoiOpen ? (
+        <Suspense fallback={null}>
+          <EoiModal cfg={cfg} onClose={() => setEoiOpen(false)} />
+        </Suspense>
+      ) : null}
     </div>
   );
 }
@@ -612,8 +672,8 @@ function Hero({ cfg, onEoiClick }: { cfg: LandingConfig; onEoiClick?: () => void
         }}
       />
 
-      <div className="relative mx-auto grid max-w-7xl gap-12 px-5 pb-16 pt-14 sm:px-6 lg:grid-cols-12 lg:items-center lg:gap-10 lg:pb-24 lg:pt-20">
-        <div className="lg:col-span-5">
+      <div className="relative mx-auto grid max-w-7xl min-w-0 gap-10 px-4 pb-14 pt-12 sm:gap-12 sm:px-6 sm:pb-16 sm:pt-14 lg:grid-cols-12 lg:items-center lg:gap-10 lg:pb-24 lg:pt-20">
+        <div className="min-w-0 lg:col-span-5">
           <Reveal>
             <div
               className="mb-5 text-[11px] font-bold uppercase tracking-[0.22em]"
@@ -628,18 +688,18 @@ function Hero({ cfg, onEoiClick }: { cfg: LandingConfig; onEoiClick?: () => void
               {cfg.hero.eyebrow || cfg.brand.tagline}
             </p>
             <h1
-              className="text-[2.75rem] font-bold leading-[1.05] tracking-tight sm:text-5xl lg:text-[3.35rem]"
+              className="text-[2.35rem] font-bold leading-[1.05] tracking-tight sm:text-5xl lg:text-[3.35rem]"
               style={{ ...HEADING, color: p.textOnDark }}
             >
               {cfg.hero.title} <span style={{ color: p.accent }}>{cfg.hero.title_accent}</span>
             </h1>
             <p
-              className="mt-6 max-w-lg text-base leading-relaxed sm:text-lg"
+              className="mt-5 max-w-lg text-base leading-relaxed sm:mt-6 sm:text-lg"
               style={{ color: p.textOnDark, opacity: 0.82 }}
             >
               {cfg.hero.subtitle}
             </p>
-            <div className="mt-9 flex flex-wrap gap-3">
+            <div className="mt-8 flex flex-wrap gap-3 sm:mt-9">
               <CtaPrimary onClick={onEoiClick}>{cfg.hero.primary_cta}</CtaPrimary>
               <CtaSecondary dark href="#capabilities">
                 {cfg.hero.secondary_cta}
@@ -648,7 +708,7 @@ function Hero({ cfg, onEoiClick }: { cfg: LandingConfig; onEoiClick?: () => void
           </Reveal>
         </div>
 
-        <div className="lg:col-span-7">
+        <div className="min-w-0 lg:col-span-7">
           <Reveal delay={120}>
             <HeroDashboard cfg={cfg} />
           </Reveal>
@@ -702,21 +762,21 @@ function HeroDashboard({ cfg }: { cfg: LandingConfig }) {
           Portfolio timeline · Live
         </div>
       </div>
-      <div className="p-4 sm:p-5" style={{ background: `${p.navy}cc` }}>
-        <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="min-w-0 p-3 sm:p-5" style={{ background: `${p.navy}cc` }}>
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:mb-5 sm:grid-cols-4">
           <MiniKpi p={p} label="Portfolio" value="$42.4M" delta="68% used" tone="ok" />
           <MiniKpi p={p} label="Gate pass" value="92%" delta="+4 pts QoQ" tone="ok" />
           <MiniKpi p={p} label="Capacity" value="114%" delta="Q3 crunch" tone="bad" />
           <MiniKpi p={p} label="Benefits" value="$14.2M" delta="run-rate" tone="mid" />
         </div>
-        <div className="relative">
+        <div className="relative min-w-0 overflow-x-auto">
           <div
-            className="mb-3 flex border-b pb-2"
+            className="mb-3 flex min-w-[320px] border-b pb-2 sm:min-w-0"
             style={{ borderColor: "rgba(255,255,255,0.08)" }}
           >
-            <div className="w-28 shrink-0 sm:w-32" />
+            <div className="w-24 shrink-0 sm:w-28" />
             <div
-              className="flex w-full justify-between text-[10px] font-bold tracking-wider"
+              className="flex w-full justify-between text-[9px] font-bold tracking-wider sm:text-[10px]"
               style={{ color: p.textOnDark, opacity: 0.35 }}
             >
               {["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL"].map((m, i) => (
@@ -726,7 +786,7 @@ function HeroDashboard({ cfg }: { cfg: LandingConfig }) {
               ))}
             </div>
           </div>
-          <div className="space-y-3.5">
+          <div className="min-w-[320px] space-y-3.5 sm:min-w-0">
             <TimelineRow
               p={p}
               name="ERP Migration"
@@ -769,9 +829,8 @@ function HeroDashboard({ cfg }: { cfg: LandingConfig }) {
             />
           </div>
           <div
-            className="pointer-events-none absolute inset-y-0 w-px"
+            className="pointer-events-none absolute inset-y-0 w-px left-[calc(6rem+((100%-6rem)*4/6))] sm:left-[calc(7rem+((100%-7rem)*4/6))]"
             style={{
-              left: "calc(7.5rem + ((100% - 7.5rem) * 4 / 6))",
               background: p.accent,
               opacity: 0.7,
             }}
@@ -819,9 +878,9 @@ function MiniKpi({
 
 function TimelineRow({ p, name, left, width, gateAt, gateColor, status, statusColor }: any) {
   return (
-    <div className="flex items-center">
+    <div className="flex min-w-0 items-center">
       <div
-        className="w-28 truncate text-xs font-semibold sm:w-32"
+        className="w-24 shrink-0 truncate text-[11px] font-semibold sm:w-28 sm:text-xs"
         style={{ color: p.textOnDark, opacity: 0.7 }}
       >
         {name}
@@ -1495,10 +1554,14 @@ function RaidTour({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string })
     },
   ];
   return (
-    <section id="raid" className="scroll-mt-20 py-20 sm:py-28" style={{ background: sectionBg }}>
-      <div className="mx-auto max-w-7xl px-5 sm:px-6">
-        <div className="grid gap-14 lg:grid-cols-12 lg:items-center lg:gap-16">
-          <Reveal className="lg:col-span-5">
+    <section
+      id="raid"
+      className="scroll-mt-20 overflow-x-hidden py-16 sm:py-20 md:py-28"
+      style={{ background: sectionBg }}
+    >
+      <div className="mx-auto max-w-7xl px-4 sm:px-5 md:px-6">
+        <div className="grid min-w-0 gap-10 md:gap-14 lg:grid-cols-12 lg:items-center lg:gap-16">
+          <Reveal className="min-w-0 lg:col-span-5">
             <p
               className="mb-4 text-[11px] font-bold uppercase tracking-[0.2em]"
               style={{ color: p.textMuted }}
@@ -1506,15 +1569,15 @@ function RaidTour({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string })
               {cfg.raid.eyebrow}
             </p>
             <h2
-              className="text-3xl font-bold tracking-tight sm:text-4xl"
+              className="text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl"
               style={{ ...HEADING, color: p.textHeading }}
             >
               {cfg.raid.title}
             </h2>
-            <p className="mt-5 text-lg leading-relaxed" style={{ color: p.textMuted }}>
+            <p className="mt-4 text-base leading-relaxed sm:mt-5 sm:text-lg" style={{ color: p.textMuted }}>
               {cfg.raid.body}
             </p>
-            <div className="mt-8 flex flex-wrap gap-2">
+            <div className="mt-6 flex flex-wrap gap-2 sm:mt-8">
               {cfg.raid.chips.map((chip) => (
                 <span
                   key={chip}
@@ -1530,7 +1593,7 @@ function RaidTour({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string })
               ))}
             </div>
           </Reveal>
-          <Reveal className="lg:col-span-7" delay={80}>
+          <Reveal className="min-w-0 lg:col-span-7" delay={80}>
             <div
               className="overflow-hidden rounded-xl border"
               style={{
@@ -1539,7 +1602,7 @@ function RaidTour({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string })
               }}
             >
               <div
-                className="border-b px-5 py-3 text-[11px] font-bold uppercase tracking-[0.16em]"
+                className="border-b px-4 py-3 text-[11px] font-bold uppercase tracking-[0.16em] sm:px-5"
                 style={{
                   borderColor: p.surface,
                   background: cfg.theme === "dark" ? `${p.navyLight}` : p.surface,
@@ -1548,8 +1611,44 @@ function RaidTour({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string })
               >
                 RAID register
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[560px] text-sm">
+
+              {/* Phone / small tablet: stacked cards — avoids forcing page-wide horizontal scroll */}
+              <div className="divide-y md:hidden" style={{ borderColor: p.surface }}>
+                {rows.map((r) => (
+                  <div key={r.id} className="space-y-2 px-4 py-3.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="font-mono text-xs" style={{ color: p.textMuted }}>
+                          {r.id}
+                        </span>
+                        <span className="text-xs font-bold" style={{ color: p.textMuted }}>
+                          {r.type}
+                        </span>
+                      </div>
+                      <span
+                        className="inline-flex shrink-0 items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider"
+                        style={{ background: r.tone + "18", color: r.tone }}
+                      >
+                        <span
+                          className="h-1.5 w-1.5 rounded-full"
+                          style={{ background: r.tone }}
+                        />
+                        {r.status}
+                      </span>
+                    </div>
+                    <div className="text-sm font-medium leading-snug" style={{ color: p.textHeading }}>
+                      {r.title}
+                    </div>
+                    <div className="text-xs" style={{ color: p.textMuted }}>
+                      Owner · {r.owner}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* md+ : full register table */}
+              <div className="hidden min-w-0 overflow-x-auto md:block">
+                <table className="w-full min-w-[520px] text-sm">
                   <thead>
                     <tr
                       className="text-left text-[10px] font-bold uppercase tracking-widest"
@@ -1574,10 +1673,10 @@ function RaidTour({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string })
                         <td className="py-3.5 text-xs font-bold" style={{ color: p.textMuted }}>
                           {r.type}
                         </td>
-                        <td className="py-3.5 pr-3" style={{ color: p.textHeading }}>
+                        <td className="max-w-[14rem] py-3.5 pr-3 lg:max-w-none" style={{ color: p.textHeading }}>
                           {r.title}
                         </td>
-                        <td className="py-3.5 text-xs" style={{ color: p.textMuted }}>
+                        <td className="py-3.5 text-xs whitespace-nowrap" style={{ color: p.textMuted }}>
                           {r.owner}
                         </td>
                         <td className="pr-5 text-right">

@@ -1226,7 +1226,7 @@ export function writeCachedLandingConfig(config: LandingConfig) {
 /** In-flight + short memory cache — avoids duplicate Supabase hits across root/auth/shell. */
 let landingConfigInflight: Promise<LandingConfig> | null = null;
 let landingConfigMemory: { cfg: LandingConfig; at: number } | null = null;
-const LANDING_CONFIG_MEMORY_TTL_MS = 20_000;
+const LANDING_CONFIG_MEMORY_TTL_MS = 60_000;
 
 export function invalidateLandingConfigMemory() {
   landingConfigMemory = null;
