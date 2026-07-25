@@ -1,8 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth, isAdmin, isPlatformAdmin } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import { PageLoading } from "@/components/page-loading";
@@ -16,14 +16,16 @@ import {
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
+import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/_authenticated/app/audit-log")({
   component: AuditLogPage,
 });
 
 function AuditLogPage() {
-  const { organization } = useAuth();
+  const { organization, roles } = useAuth();
   const orgId = organization?.id;
+  const allowed = isAdmin(roles) || isPlatformAdmin(roles);
   const [entityType, setEntityType] = useState("All");
 
   const { data: events = [], isLoading } = useQuery({
@@ -37,7 +39,7 @@ function AuditLogPage() {
           .order("created_at", { ascending: false })
           .limit(500)
       ).data ?? [],
-    enabled: !!orgId,
+    enabled: !!orgId && allowed,
   });
 
   const types = useMemo(() => {
@@ -75,11 +77,26 @@ function AuditLogPage() {
     return Date.now() - t < 24 * 60 * 60 * 1000;
   }).length;
 
+  if (!allowed) {
+    return (
+      <div className="mx-auto max-w-lg space-y-4 py-16 text-center">
+        <h1 className="text-xl font-semibold">Audit log restricted</h1>
+        <p className="text-sm text-muted-foreground">
+          Organisation audit events are available to org admins only. Contact your administrator if
+          you need access.
+        </p>
+        <Button asChild variant="outline">
+          <Link to="/app">Back to home</Link>
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <PageExport name="Audit_Log" title="Audit Log">
       <PageHeading
         title="Audit Log"
-        subtitle="Immutable trail of governance and system actions across the organisation"
+        subtitle="Admin-only trail of governance and privileged actions in this organisation"
       />
 
       <SectionFrame>
@@ -122,8 +139,8 @@ function AuditLogPage() {
           <PageLoading label="Loading audit log…" fullScreen={false} size="sm" />
         ) : table.total === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No audit events yet. Decision outcome changes and other governed actions will appear
-            here after the advanced PMO migration is applied.
+            No audit events yet. Role changes, user admin actions, and governed updates will appear
+            here.
           </p>
         ) : table.rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">No events match filters.</p>

@@ -377,7 +377,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             return supportAllowed;
           }
           if (n.platformOnly) return platform;
-          if (n.adminOnly) return admin;
+          // Org audit is admin-only for tenants; platform admins may also open it for support.
+          if (n.adminOnly) return n.to === "/app/audit-log" ? admin || platform : admin;
           return admin || canViewPage(n.to);
         }),
       }))

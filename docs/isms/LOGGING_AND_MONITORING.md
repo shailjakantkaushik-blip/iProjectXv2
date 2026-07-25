@@ -7,8 +7,8 @@
 
 | Store | Purpose | Who can read |
 |-------|---------|--------------|
-| `security_events` | Platform security stream (org optional) | `platform_admin` + service role |
-| `audit_events` | Tenant audit UI (org required) | Org members (existing RLS); security writes when org known |
+| `security_events` | Platform security stream (org optional) | **`platform_admin` only** (UI: Platform → Security events) |
+| `audit_events` | Tenant governance audit | **`org_admin` / `admin`** of that org, or `platform_admin` (UI: Audit Log) — **not** end users |
 
 ## 2. Security events recorded
 
