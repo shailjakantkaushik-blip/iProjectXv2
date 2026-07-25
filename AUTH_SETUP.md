@@ -94,3 +94,22 @@ bridge script locally: `node scripts/env-bridge.mjs`).
   update Vercel env vars and redeploy.
 - Turnstile: rotate from the Turnstile dashboard, update the two Vercel
   env vars, redeploy.
+
+## 7. Optional — approved In-house AI model
+
+In-house AI works **without** a model (local portfolio engine). To enable
+natural-language answers from an **approved** OpenAI-compatible endpoint
+(Azure OpenAI, private Ollama/vLLM, or your gateway):
+
+| Name | Scope | Notes |
+|------|-------|-------|
+| `INHOUSE_AI_ENABLED` | Server | `true` to force on (optional if base+model set) |
+| `INHOUSE_AI_BASE_URL` | Server | Chat completions base (deployment URL or `…/v1`) |
+| `INHOUSE_AI_API_VERSION` | Server | Azure: e.g. `2024-06-01` |
+| `INHOUSE_AI_MODEL` | Server | Deployment / model name |
+| `INHOUSE_AI_API_KEY` | Server | Bearer / Azure `api-key` (omit for open local Ollama) |
+| `INHOUSE_AI_LABEL` | Server | UI label, default `Approved in-house model` |
+
+Server fns reload RLS-scoped data with the user JWT, apply page ACL, and
+send only a capped context pack to that endpoint. Browser never sees the
+API key. If the model errors, the UI falls back to the local engine.

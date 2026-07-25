@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { Lock, Send, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -13,6 +14,7 @@ import {
   domainAllowed,
   scopeAssistBundle,
 } from "@/lib/assist-access";
+import { askInhouseAi, getInhouseAiStatus } from "@/lib/inhouse-ai.functions";
 import { answerPortfolioQuestion } from "@/lib/local-portfolio-assist";
 import { useAllowedPages } from "@/lib/permissions";
 import { useAuth } from "@/lib/auth-context";
@@ -37,13 +39,45 @@ function AiAssistPage() {
   const { organization } = useAuth();
   const orgId = organization?.id;
   const { canView, isReady } = useAllowedPages();
+  const askModel = useServerFn(askInhouseAi);
+  const statusFn = useServerFn(getInhouseAiStatus);
   const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [modelLabel, setModelLabel] = useState<string | null>(null);
+  const [modelConfigured, setModelConfigured] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([
     {
       role: "assistant",
-      text: "I’m iProjectX In-house AI. Ask in plain English — for example which projects are off track, who owns critical risks, how spend compares to budget, or “tell me about <project name>”. I answer only from data your role can already see under RLS and page permissions. Nothing is sent to ChatGPT or any external model.",
+      text: "I’m iProjectX In-house AI. Ask in plain English about portfolio health, risks, approvals, spend, or a project name. I only use data your role can see (RLS + page permissions).",
     },
   ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void statusFn()
+      .then((s) => {
+        if (cancelled) return;
+        setModelConfigured(Boolean(s.configured));
+        setModelLabel(s.label || "Approved in-house model");
+        if (s.configured) {
+          setMessages((m) => {
+            if (m.length !== 1 || m[0]?.role !== "assistant") return m;
+            return [
+              {
+                role: "assistant",
+                text: `I’m iProjectX In-house AI, backed by your approved model (${s.label}${s.model ? ` · ${s.model}` : ""}). Ask in plain English — answers are grounded in live org data loaded under your RLS and page permissions. Context is sent only to that approved endpoint (not ChatGPT / public consumer AI). If the model is unavailable, I fall back to the local engine.`,
+              },
+            ];
+          });
+        }
+      })
+      .catch(() => {
+        /* status is optional — local engine still works */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [statusFn]);
 
   const domains = useMemo(() => allowedAssistDomains(canView), [canView, isReady]);
   const accessNote = useMemo(() => deniedDomainMessage(domains), [domains]);
@@ -54,7 +88,6 @@ function AiAssistPage() {
   const allowActions = domainAllowed("actions", canView);
   const allowBudget = domains.has("budget");
   const allowBenefits = domains.has("benefits");
-  // Load RLS project rows whenever any AI domain needs attribution or finance fields.
   const needProjects =
     allowProjects || allowRisks || allowDecisions || allowActions || allowBudget || allowBenefits;
 
@@ -108,26 +141,58 @@ function AiAssistPage() {
     allowActions,
   ]);
 
-  const reply = (q: string) =>
+  const localReply = (q: string) =>
     answerPortfolioQuestion(q, bundle, {
       allowedDomains: domains,
       accessNote,
     });
 
-  const send = () => {
-    const q = input.trim();
-    if (!q) return;
-    setMessages((m) => [...m, { role: "user", text: q }, { role: "assistant", text: reply(q) }]);
-    setInput("");
+  const answer = async (q: string): Promise<string> => {
+    // Always keep a local answer ready (permissions-aware).
+    const fallback = localReply(q);
+    if (!modelConfigured) return fallback;
+
+    try {
+      const res = await askModel({ data: { question: q } });
+      if (res.ok && res.answer) {
+        const note = accessNote ? `\n\n${accessNote}` : "";
+        return `${res.answer}${note}`;
+      }
+      // Model unavailable — local engine; keep it quiet unless useful.
+      if (res.reason === "model_error") {
+        return `${fallback}\n\n(Approved model temporarily unavailable — answered with the local engine.)`;
+      }
+      return fallback;
+    } catch {
+      return `${fallback}\n\n(Approved model unavailable — answered with the local engine.)`;
+    }
   };
 
-  const runPrompt = (prompt: string) => {
+  const send = async () => {
+    const q = input.trim();
+    if (!q || busy) return;
+    setBusy(true);
     setInput("");
-    setMessages((m) => [
-      ...m,
-      { role: "user", text: prompt },
-      { role: "assistant", text: reply(prompt) },
-    ]);
+    setMessages((m) => [...m, { role: "user", text: q }]);
+    try {
+      const text = await answer(q);
+      setMessages((m) => [...m, { role: "assistant", text }]);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runPrompt = async (prompt: string) => {
+    if (busy) return;
+    setBusy(true);
+    setInput("");
+    setMessages((m) => [...m, { role: "user", text: prompt }]);
+    try {
+      const text = await answer(prompt);
+      setMessages((m) => [...m, { role: "assistant", text }]);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const visiblePrompts = PROMPTS.filter((p) => {
@@ -143,7 +208,7 @@ function AiAssistPage() {
     <div>
       <PageHeading
         title="In-house AI"
-        subtitle="Plain-English answers from data your role can see — never leaves your org"
+        subtitle="Plain-English answers from data your role can see — grounded under RLS"
       />
 
       <SectionFrame>
@@ -151,7 +216,9 @@ function AiAssistPage() {
           <SectionTitle>Chat</SectionTitle>
           <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
             <Lock className="h-3 w-3" />
-            In-house · RLS · page ACL
+            {modelConfigured
+              ? `${modelLabel || "Approved model"} · RLS · page ACL`
+              : "Local engine · RLS · page ACL"}
           </span>
         </div>
 
@@ -166,8 +233,9 @@ function AiAssistPage() {
             <button
               key={prompt}
               type="button"
-              className="rounded-full border border-border bg-background px-3 py-1 text-[11px] font-medium text-foreground hover:border-primary/40"
-              onClick={() => runPrompt(prompt)}
+              disabled={busy}
+              className="rounded-full border border-border bg-background px-3 py-1 text-[11px] font-medium text-foreground hover:border-primary/40 disabled:opacity-50"
+              onClick={() => void runPrompt(prompt)}
             >
               {prompt}
             </button>
@@ -197,6 +265,9 @@ function AiAssistPage() {
                 </div>
               </div>
             ))}
+            {busy ? (
+              <div className="text-[11px] text-muted-foreground">Thinking…</div>
+            ) : null}
           </div>
 
           <div className="border-t border-border p-3">
@@ -210,24 +281,25 @@ function AiAssistPage() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    send();
+                    void send();
                   }
                 }}
               />
               <button
                 type="button"
                 className="st-btn-primary st-btn-inline shrink-0 gap-1.5 self-end"
-                onClick={send}
-                disabled={!input.trim()}
+                onClick={() => void send()}
+                disabled={!input.trim() || busy}
               >
                 <Send className="h-3.5 w-3.5" />
                 Ask
               </button>
             </div>
             <p className="mt-2 text-[11px] text-muted-foreground">
-              Enter to send · Shift+Enter for a new line. Answers use only projects and registers
-              your role can view (RLS + page permissions). Nothing is sent to an external model —
-              no extra AI egress.
+              Enter to send · Shift+Enter for a new line.
+              {modelConfigured
+                ? " Grounded context is sent only to your approved model endpoint (server-side). Public consumer AI is not used."
+                : " Running on the local engine until an approved model endpoint is configured (INHOUSE_AI_* env)."}
             </p>
           </div>
         </div>
