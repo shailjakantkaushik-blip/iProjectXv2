@@ -1265,6 +1265,7 @@ export type Database = {
           created_at: string
           fy_start_month: number
           id: string
+          inhouse_ai_model_enabled: boolean
           logo_url: string | null
           name: string
           override_max_projects: number | null
@@ -1283,6 +1284,7 @@ export type Database = {
           created_at?: string
           fy_start_month?: number
           id?: string
+          inhouse_ai_model_enabled?: boolean
           logo_url?: string | null
           name: string
           override_max_projects?: number | null
@@ -1301,6 +1303,7 @@ export type Database = {
           created_at?: string
           fy_start_month?: number
           id?: string
+          inhouse_ai_model_enabled?: boolean
           logo_url?: string | null
           name?: string
           override_max_projects?: number | null

@@ -187,6 +187,12 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
         platformOnly: true,
       },
       {
+        to: "/platform/inhouse-ai",
+        label: "In-house AI model",
+        icon: "Sparkles",
+        platformOnly: true,
+      },
+      {
         to: "/platform/licenses",
         label: "License Certificates",
         icon: "Award",
