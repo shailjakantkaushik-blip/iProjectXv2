@@ -24,6 +24,9 @@ import {
   Flag,
   Menu,
   X,
+  KeyRound,
+  ScrollText,
+  Shield,
 } from "lucide-react";
 import {
   DEFAULT_LANDING,
@@ -54,13 +57,13 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "iProjectX gives enterprise PMOs a live executive cockpit, portfolio timeline, RAID governance and financial control across Agile and Waterfall.",
+          "iProjectX — enterprise PMO command center with live cockpit, RAID governance, financial control, MFA, multi-tenant RLS, and auditor-ready evidence export.",
       },
       { property: "og:title", content: "iProjectX — Enterprise PMO command center" },
       {
         property: "og:description",
         content:
-          "Live executive cockpit, portfolio timeline, RAID, capacity heatmaps and financial control for enterprise PMOs.",
+          "Live cockpit, RAID, financials, MFA-enforced access, multi-tenant security, and audit evidence packs for enterprise PMOs.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -92,6 +95,7 @@ const FAILURE_ICONS: Record<string, any> = {
   "Resource double-booking": Users,
   "RAID rots in spreadsheets": ClipboardX,
   "Benefits never tracked": TimerReset,
+  "Weak access control": Lock,
 };
 const WIN_ICONS: Record<string, any> = {
   "Live executive cockpit": Activity,
@@ -100,6 +104,7 @@ const WIN_ICONS: Record<string, any> = {
   "Capacity heatmaps": Layers,
   "RAID tied to delivery": BadgeCheck,
   "Benefits realisation": LineChart,
+  "Hardened tenant security": Shield,
 };
 const CAP_ICONS: Record<string, any> = {
   "Executive Cockpit": Activity,
@@ -111,15 +116,28 @@ const CAP_ICONS: Record<string, any> = {
   "Agile + Waterfall": Layers,
   "Roadmap Analytics": Gauge,
   "Roles & Permissions": Lock,
+  "Enterprise Security": Shield,
+  "Audit & Evidence": ScrollText,
   "White-label & Themes": Palette,
   "Excel-Native": FileSpreadsheet,
   "Benefits Realisation": BadgeCheck,
+};
+
+const TRUST_STRIP_ICONS: Record<string, any> = {
+  "MFA for every user": KeyRound,
+  "Multi-tenant RLS": Lock,
+  "Admin audit trails": ScrollText,
+  "Evidence export": FileSpreadsheet,
+  "Excel-native": FileSpreadsheet,
+  "Agile + Waterfall": GitBranch,
+  "White-label ready": Palette,
 };
 
 const NAV_LINKS = [
   ["#cockpit", "Cockpit"],
   ["#timeline", "Timeline"],
   ["#raid", "Governance"],
+  ["#security", "Security"],
   ["#capabilities", "Capabilities"],
 ] as const;
 
@@ -317,13 +335,14 @@ function LandingPage() {
       <main id="main">
         <Hero cfg={cfg} onEoiClick={() => setEoiOpen(true)} />
         {cfg.hero.alert && <InsightBar cfg={cfg} />}
-        <TrustStrip />
+        <TrustStrip cfg={cfg} />
         <TrustedBy cfg={cfg} sectionBg={sectionBg} />
         <CeoMessage cfg={cfg} sectionBg={sectionBg} />
         <FailureVsSuccess cfg={cfg} />
         <ExecutiveCockpitTour cfg={cfg} sectionBg={sectionBg} />
         <PortfolioTimelineTour cfg={cfg} />
         <RaidTour cfg={cfg} sectionBg={sectionBg} />
+        <SecurityTour cfg={cfg} sectionBg={sectionBg} />
         <CapabilityBento cfg={cfg} />
         <Testimonials cfg={cfg} sectionBg={sectionBg} />
         <BoardStatements cfg={cfg} />
@@ -830,13 +849,11 @@ function TimelineRow({ p, name, left, width, gateAt, gateColor, status, statusCo
   );
 }
 
-function TrustStrip() {
-  const items = [
-    { icon: Lock, label: "Multi-tenant RLS" },
-    { icon: FileSpreadsheet, label: "Excel-native" },
-    { icon: GitBranch, label: "Agile + Waterfall" },
-    { icon: Palette, label: "White-label ready" },
-  ];
+function TrustStrip({ cfg }: { cfg: LandingConfig }) {
+  const labels =
+    cfg.trust_strip?.items?.length > 0
+      ? cfg.trust_strip.items
+      : DEFAULT_LANDING.trust_strip.items;
   return (
     <section
       className="border-y"
@@ -846,16 +863,19 @@ function TrustStrip() {
       }}
     >
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-8 gap-y-3 px-5 py-3.5 sm:px-6">
-        {items.map(({ icon: Icon, label }) => (
-          <span
-            key={label}
-            className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em]"
-            style={{ color: "var(--lp-textOnDark)", opacity: 0.72 }}
-          >
-            <Icon className="h-3.5 w-3.5" style={{ color: "var(--lp-accent)" }} />
-            {label}
-          </span>
-        ))}
+        {labels.map((label) => {
+          const Icon = TRUST_STRIP_ICONS[label] || ShieldCheck;
+          return (
+            <span
+              key={label}
+              className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em]"
+              style={{ color: "var(--lp-textOnDark)", opacity: 0.72 }}
+            >
+              <Icon className="h-3.5 w-3.5" style={{ color: "var(--lp-accent)" }} />
+              {label}
+            </span>
+          );
+        })}
       </div>
     </section>
   );
@@ -1569,6 +1589,111 @@ function RaidTour({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string })
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </Reveal>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SecurityTour({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string }) {
+  const p = cfg.palette;
+  const sec = cfg.security ?? DEFAULT_LANDING.security;
+  const controls = [
+    { label: "Identity", value: "MFA required" },
+    { label: "Tenancy", value: "Row-level RLS" },
+    { label: "Sessions", value: "PKCE + sessionStorage" },
+    { label: "Audit", value: "Admin evidence export" },
+    { label: "Edge", value: "CSP + HSTS" },
+    { label: "Readiness", value: "SOC 2 / ISO path" },
+  ];
+  return (
+    <section
+      id="security"
+      className="scroll-mt-20 overflow-hidden py-20 sm:py-28"
+      style={{ background: sectionBg }}
+    >
+      <div className="mx-auto max-w-7xl px-5 sm:px-6">
+        <div className="flex flex-col items-center gap-14 lg:flex-row lg:gap-16">
+          <Reveal className="lg:w-1/2">
+            <p
+              className="mb-4 text-[11px] font-bold uppercase tracking-[0.2em]"
+              style={{ color: p.accent }}
+            >
+              {sec.eyebrow}
+            </p>
+            <h2
+              className="text-3xl font-bold tracking-tight sm:text-4xl"
+              style={{ ...HEADING, color: p.textHeading }}
+            >
+              {sec.title}
+            </h2>
+            <p className="mt-5 text-lg leading-relaxed" style={{ color: p.textMuted }}>
+              {sec.body}
+            </p>
+            <ul className="mt-8 space-y-3.5">
+              {sec.bullets.map((t) => (
+                <li
+                  key={t}
+                  className="flex items-start gap-3 text-[15px] font-medium"
+                  style={{ color: p.textHeading }}
+                >
+                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" style={{ color: p.accent }} />
+                  {t}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-6 text-sm" style={{ color: p.textMuted }}>
+              Details:{" "}
+              <Link
+                to="/legal/$slug"
+                params={{ slug: "information-security" }}
+                className="font-semibold underline-offset-4 hover:underline"
+                style={{ color: p.accent }}
+              >
+                Information security
+              </Link>
+            </p>
+          </Reveal>
+          <Reveal className="w-full lg:w-1/2" delay={90}>
+            <div
+              className="overflow-hidden rounded-xl border"
+              style={{
+                borderColor: p.surface,
+                background: cfg.theme === "dark" ? p.navy : "#fff",
+              }}
+            >
+              <div
+                className="flex items-center gap-2 border-b px-5 py-3 text-[11px] font-bold uppercase tracking-[0.16em]"
+                style={{
+                  borderColor: p.surface,
+                  background: cfg.theme === "dark" ? p.navyLight : p.surface,
+                  color: p.textMuted,
+                }}
+              >
+                <Shield className="h-3.5 w-3.5" style={{ color: p.accent }} />
+                Security control plane
+              </div>
+              <div className="divide-y" style={{ borderColor: p.surface }}>
+                {controls.map((row) => (
+                  <div
+                    key={row.label}
+                    className="flex items-center justify-between gap-4 px-5 py-3.5"
+                    style={{ borderColor: p.surface }}
+                  >
+                    <span className="text-sm font-medium" style={{ color: p.textMuted }}>
+                      {row.label}
+                    </span>
+                    <span
+                      className="text-sm font-bold tracking-tight"
+                      style={{ ...HEADING, color: p.textHeading }}
+                    >
+                      {row.value}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           </Reveal>
