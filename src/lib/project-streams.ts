@@ -313,6 +313,35 @@ export function groupGatesByLane<T extends { project_id: string; stream_id?: str
   return m;
 }
 
+/**
+ * Gates for a timeline lane. Matches expandProjectsToTimelineLanes:
+ * stream-owned gates, plus project-level (null stream_id) on the default stream.
+ * Project rollup lanes intentionally show no diamonds.
+ */
+export function gatesForTimelineLane<T extends { project_id: string; stream_id?: string | null }>(
+  lane: {
+    id?: string;
+    project_id?: string | null;
+    stream_id?: string | null;
+    is_project_rollup?: boolean;
+    is_stream_lane?: boolean;
+    is_default?: boolean | null;
+  },
+  gatesByLane: Map<string, T[]>,
+): T[] {
+  if (lane.is_project_rollup) return [];
+  const projectId = lane.project_id || lane.id;
+  const streamId = lane.stream_id || (lane.is_stream_lane ? lane.id : null);
+  if (streamId) {
+    const owned = gatesByLane.get(streamId) || [];
+    if (owned.length) return owned;
+    // Legacy / cached rows may omit stream_id — show project-level gates on Core.
+    if (lane.is_default && projectId) return gatesByLane.get(projectId) || [];
+    return [];
+  }
+  return projectId ? gatesByLane.get(projectId) || [] : [];
+}
+
 export async function fetchProjectStreams(projectId: string) {
   const { data, error } = await supabase
     .from("project_streams")

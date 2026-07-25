@@ -73,7 +73,7 @@ function DecisionsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("stage_gates")
-        .select("id,project_id,gate_name,status,planned_date");
+        .select("id,project_id,stream_id,gate_name,status,planned_date");
       if (error) throw error;
       return data;
     },
