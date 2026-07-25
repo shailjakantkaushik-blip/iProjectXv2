@@ -1,8 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { FileDown, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, isAdmin, isPlatformAdmin } from "@/lib/auth-context";
+import { exportOrgAuditEvidence } from "@/lib/compliance-export";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import { PageLoading } from "@/components/page-loading";
@@ -13,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
@@ -27,6 +31,24 @@ function AuditLogPage() {
   const orgId = organization?.id;
   const allowed = isAdmin(roles) || isPlatformAdmin(roles);
   const [entityType, setEntityType] = useState("All");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [exporting, setExporting] = useState(false);
+
+  const onExportEvidence = async () => {
+    setExporting(true);
+    try {
+      await exportOrgAuditEvidence({
+        dateFrom: dateFrom || null,
+        dateTo: dateTo || null,
+        orgName: organization?.name ?? null,
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const { data: events = [], isLoading } = useQuery({
     queryKey: ["audit_events", orgId],
@@ -98,6 +120,42 @@ function AuditLogPage() {
         title="Audit Log"
         subtitle="Admin-only trail of governance and privileged actions in this organisation"
       />
+
+      <SectionFrame>
+        <SectionTitle>Auditor evidence</SectionTitle>
+        <p className="mb-3 text-sm text-muted-foreground">
+          One-click Excel pack for certification (up to 10,000 rows). Optional dates narrow the
+          period; leave blank for the latest events. Screen preview below is capped at 500.
+        </p>
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">From</label>
+            <Input
+              type="date"
+              className="w-40"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">To</label>
+            <Input
+              type="date"
+              className="w-40"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+          </div>
+          <Button type="button" onClick={onExportEvidence} disabled={exporting}>
+            {exporting ? (
+              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+            ) : (
+              <FileDown className="mr-1.5 h-4 w-4" />
+            )}
+            Export for auditors
+          </Button>
+        </div>
+      </SectionFrame>
 
       <SectionFrame>
         <SectionTitle>Activity</SectionTitle>
