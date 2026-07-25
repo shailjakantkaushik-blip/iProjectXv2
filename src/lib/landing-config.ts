@@ -660,7 +660,7 @@ export const DEFAULT_LANDING: LandingConfig = {
       },
       {
         title: "In-house AI by default",
-        desc: "Portfolio Q&A stays inside your org session. An Approved Open AI model is available only if your organisation requests it and a platform admin enables it.",
+        desc: "Portfolio Q&A stays inside your org session. An Approved Open AI model is available only if your organisation requests it.",
       },
     ],
   },
@@ -699,12 +699,12 @@ export const DEFAULT_LANDING: LandingConfig = {
   security: {
     eyebrow: "Trust & security",
     title: "Protect the portfolio. Still deliver the intelligence.",
-    body: "iProjectX is multi-tenant by design: MFA, row-level isolation, hardened sessions, and admin audit trails — plus In-house AI by default, answering from your live PMO data inside your organisation session. An Approved Open AI model is opt-in only when an organisation requests it and a platform admin enables it. Built for SOC 2 and ISO 27001 readiness — without overstating certification status.",
+    body: "iProjectX is multi-tenant by design: MFA, row-level isolation, hardened sessions, and admin audit trails — plus In-house AI by default, answering from your live PMO data inside your organisation session. An Approved Open AI model is available only if an organisation requests it. Built for SOC 2 and ISO 27001 readiness — without overstating certification status.",
     bullets: [
       "MFA (authenticator) required for all users",
       "Row-level security isolating every organisation’s data",
       "In-house AI by default — answers stay in your org session",
-      "Approved Open AI model only if the organisation requests it (platform opt-in)",
+      "Approved Open AI model only if the organisation requests it",
       "Admin audit log + platform security events (login, logout, failures)",
       "One-click Excel evidence packs for auditors",
       "CSP, HSTS, and session storage with PKCE — not JWTs in localStorage",
@@ -768,7 +768,7 @@ export const DEFAULT_LANDING: LandingConfig = {
       },
       {
         title: "In-house AI",
-        desc: "Default local portfolio Q&A on live org data. Approved Open AI model is opt-in per organisation — never on by default.",
+        desc: "Default local portfolio Q&A on live org data. Approved Open AI model only if your organisation requests it — never on by default.",
       },
       {
         title: "Audit & Evidence",
@@ -818,7 +818,7 @@ export const DEFAULT_LANDING: LandingConfig = {
   },
   final_cta: {
     title: "Secure the portfolio outcome.",
-    body: "Deploy iProjectX in weeks, not months. White-label ready, multi-tenant by design, MFA-enforced — with In-house AI by default, and an Approved Open AI model only if your organisation requests it. Admin audit trails and evidence export for enterprise procurement.",
+    body: "Deploy iProjectX in weeks, not months. White-label ready, multi-tenant by design, MFA-enforced — with In-house AI by default, and an Approved Open AI model only when your organisation requests it. Admin audit trails and evidence export for enterprise procurement.",
     primary: "Expression of Interest",
     secondary: "Sign in",
   },
@@ -1045,7 +1045,7 @@ export function mergeConfig(partial: any): LandingConfig {
     merged.security.bullets = (merged.security.bullets as string[]).map((b) => {
       const t = String(b);
       if (/no portfolio data sent to chatgpt|other external model providers/i.test(t)) {
-        return "Approved Open AI model only if the organisation requests it (platform opt-in)";
+        return "Approved Open AI model only if the organisation requests it";
       }
       if (
         /in-house ai[: ].*org session/i.test(t) &&

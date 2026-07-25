@@ -51,7 +51,7 @@ function AiAssistPage() {
   const [messages, setMessages] = useState<Msg[]>([
     {
       role: "assistant",
-      text: "I’m In-house AI. Ask in plain English about portfolio health, risks, approvals, spend, or a project name. I only use data your role can see (RLS + page permissions). Your organisation’s data stays local unless a platform admin enables an approved model for this org.",
+      text: "I’m In-house AI. Ask in plain English about portfolio health, risks, approvals, spend, or a project name. I only use data your role can see (RLS + page permissions). Your organisation’s data stays local unless an Approved Open AI model is enabled for this org.",
     },
   ]);
 
@@ -71,7 +71,7 @@ function AiAssistPage() {
             return [
               {
                 role: "assistant",
-                text: `I’m ${APPROVED_TITLE}${s.model ? ` (${s.model})` : ""}. Ask in plain English — answers are grounded in live org data under your RLS and page permissions. A capped context pack is sent only to your organisation’s approved endpoint (enabled by platform admin). If the model is unavailable, I fall back to In-house AI (local).`,
+                text: `I’m ${APPROVED_TITLE}${s.model ? ` (${s.model})` : ""}. Ask in plain English — answers are grounded in live org data under your RLS and page permissions. A capped context pack is sent only to your organisation’s approved endpoint. If the model is unavailable, I fall back to In-house AI (local).`,
               },
             ];
           }
@@ -312,7 +312,7 @@ function AiAssistPage() {
             <p className="mt-2 text-[11px] text-muted-foreground">
               Enter to send · Shift+Enter for a new line.
               {modelConfigured
-                ? ` Using ${APPROVED_TITLE} for this organisation (platform opt-in). Context stays on your approved endpoint — not public ChatGPT.`
+                ? ` Using ${APPROVED_TITLE} for this organisation. Context stays on your approved endpoint — not public ChatGPT.`
                 : ` Using ${LOCAL_TITLE}. No model egress for this organisation.`}
             </p>
           </div>
