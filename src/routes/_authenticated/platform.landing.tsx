@@ -726,7 +726,7 @@ function LandingConfigPage() {
         {/* PRODUCT SECTIONS */}
         <TabsContent value="sections">
           <div className="space-y-4">
-            {(["cockpit", "timeline", "raid"] as const).map((k) => (
+            {(["cockpit", "timeline", "raid", "security"] as const).map((k) => (
               <SectionFrame key={k}>
                 <SectionTitle>{k[0].toUpperCase() + k.slice(1)} section</SectionTitle>
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -769,6 +769,22 @@ function LandingConfigPage() {
                 </div>
               </SectionFrame>
             ))}
+            <SectionFrame>
+              <SectionTitle>Trust strip (under hero)</SectionTitle>
+              <Field label="Labels (one per line)" className="mt-4">
+                <Textarea
+                  rows={4}
+                  value={(cfg.trust_strip?.items ?? []).join("\n")}
+                  onChange={(e) => {
+                    const items = e.target.value
+                      .split("\n")
+                      .map((s) => s.trim())
+                      .filter(Boolean);
+                    patch("trust_strip", { items });
+                  }}
+                />
+              </Field>
+            </SectionFrame>
           </div>
         </TabsContent>
 

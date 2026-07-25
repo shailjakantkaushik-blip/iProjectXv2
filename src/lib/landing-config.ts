@@ -220,6 +220,10 @@ export type LandingConfig = {
   cockpit: { eyebrow: string; title: string; body: string; bullets: string[] };
   timeline: { eyebrow: string; title: string; body: string; bullets: string[] };
   raid: { eyebrow: string; title: string; body: string; chips: string[] };
+  /** Trust & security product section (enterprise procurement / compliance). */
+  security: { eyebrow: string; title: string; body: string; bullets: string[] };
+  /** Compact trust labels under the hero (not cards — strip only). */
+  trust_strip: { items: string[] };
   capabilities: { heading: string; subtitle: string; items: LandingCap[] };
   stats: LandingStat[];
   trusted: { heading: string; logos: LandingLogo[] };
@@ -616,6 +620,10 @@ export const DEFAULT_LANDING: LandingConfig = {
         title: "Benefits never tracked",
         desc: "Post go-live value promised on the business case is never measured.",
       },
+      {
+        title: "Weak access control",
+        desc: "Shared logins, no MFA, and flat permissions that blur tenant boundaries.",
+      },
     ],
     wins: [
       {
@@ -641,6 +649,10 @@ export const DEFAULT_LANDING: LandingConfig = {
       {
         title: "Benefits realisation",
         desc: "Track promised vs actual benefits from business case through steady state.",
+      },
+      {
+        title: "Hardened tenant security",
+        desc: "MFA for every user, row-level isolation, and admin-only audit evidence packs.",
       },
     ],
   },
@@ -676,10 +688,33 @@ export const DEFAULT_LANDING: LandingConfig = {
       "Auto-status feed",
     ],
   },
+  security: {
+    eyebrow: "Trust & security",
+    title: "Enterprise controls built into the product — not bolted on later.",
+    body: "iProjectX is multi-tenant by design: MFA for every user, row-level tenant isolation, hardened sessions, and admin audit trails with one-click evidence export. Built for SOC 2 and ISO 27001 readiness — without overstating certification status.",
+    bullets: [
+      "MFA (authenticator) required for all users",
+      "Row-level security isolating every organisation’s data",
+      "Admin audit log + platform security events (login, logout, failures)",
+      "One-click Excel evidence packs for auditors",
+      "CSP, HSTS, and session storage with PKCE — not JWTs in localStorage",
+      "Role-based access for org admins, PMs, and platform operators",
+    ],
+  },
+  trust_strip: {
+    items: [
+      "MFA for every user",
+      "Multi-tenant RLS",
+      "Admin audit trails",
+      "Evidence export",
+      "Agile + Waterfall",
+      "White-label ready",
+    ],
+  },
   capabilities: {
     heading: "Everything a modern PMO actually needs.",
     subtitle:
-      "Twelve tightly-integrated modules that share the same data model — no exports, no sync jobs, no drift.",
+      "Tightly-integrated modules that share the same data model — governance, finance, delivery, and security — with no sync jobs and no drift.",
     items: [
       {
         title: "Executive Cockpit",
@@ -715,7 +750,15 @@ export const DEFAULT_LANDING: LandingConfig = {
       },
       {
         title: "Roles & Permissions",
-        desc: "Row-level security, page-level access matrix, admin console per organisation.",
+        desc: "Org and platform roles, page access matrix, and project visibility controls.",
+      },
+      {
+        title: "Enterprise Security",
+        desc: "MFA for all users, multi-tenant RLS, CSP/HSTS, and hardened browser sessions.",
+      },
+      {
+        title: "Audit & Evidence",
+        desc: "Admin audit log, security events, and one-click Excel packs for auditors.",
       },
       {
         title: "White-label & Themes",
@@ -723,7 +766,7 @@ export const DEFAULT_LANDING: LandingConfig = {
       },
       {
         title: "Excel-Native",
-        desc: "Import/export a 14-sheet workbook with upsert on project code.",
+        desc: "Import/export workbooks with upsert on project code — parsers without known CVEs.",
       },
       {
         title: "Benefits Realisation",
@@ -734,7 +777,7 @@ export const DEFAULT_LANDING: LandingConfig = {
   stats: [
     { value: 16, label: "Core registers" },
     { value: 9, label: "Live dashboards" },
-    { value: 100, suffix: "%", label: "Excel-native" },
+    { value: 100, suffix: "%", label: "MFA-enforced" },
     { value: 21, label: "Editable data tables" },
   ],
   trusted: { heading: "Trusted by enterprise PMOs", logos: [] },
@@ -761,7 +804,7 @@ export const DEFAULT_LANDING: LandingConfig = {
   },
   final_cta: {
     title: "Secure the portfolio outcome.",
-    body: "Deploy iProjectX in weeks, not months. White-label ready, multi-tenant by design, and architected for the most complex enterprise PMOs — Agile, Waterfall, and everything in between.",
+    body: "Deploy iProjectX in weeks, not months. White-label ready, multi-tenant by design, MFA-enforced, with admin audit trails and evidence export for enterprise procurement — Agile, Waterfall, and everything in between.",
     primary: "Express Interest",
     secondary: "Sign in",
   },
@@ -949,6 +992,43 @@ export function mergeConfig(partial: any): LandingConfig {
   if (typeof merged.board_statements?.enabled !== "boolean") {
     merged.board_statements.enabled = false;
   }
+
+  // Security / trust defaults for older saved landing configs
+  merged.security = {
+    ...DEFAULT_LANDING.security,
+    ...(partial.security && typeof partial.security === "object" ? partial.security : {}),
+  };
+  if (!Array.isArray(merged.security.bullets) || merged.security.bullets.length === 0) {
+    merged.security.bullets = [...DEFAULT_LANDING.security.bullets];
+  }
+  merged.trust_strip = {
+    ...DEFAULT_LANDING.trust_strip,
+    ...(partial.trust_strip && typeof partial.trust_strip === "object" ? partial.trust_strip : {}),
+  };
+  if (!Array.isArray(merged.trust_strip.items) || merged.trust_strip.items.length === 0) {
+    merged.trust_strip.items = [...DEFAULT_LANDING.trust_strip.items];
+  }
+  merged.capabilities = {
+    ...DEFAULT_LANDING.capabilities,
+    ...(partial.capabilities && typeof partial.capabilities === "object"
+      ? partial.capabilities
+      : {}),
+  };
+  if (!Array.isArray(merged.capabilities.items) || merged.capabilities.items.length === 0) {
+    merged.capabilities.items = [...DEFAULT_LANDING.capabilities.items];
+  } else {
+    const have = new Set(merged.capabilities.items.map((i: LandingCap) => i.title));
+    for (const cap of DEFAULT_LANDING.capabilities.items) {
+      if (
+        (cap.title === "Enterprise Security" || cap.title === "Audit & Evidence") &&
+        !have.has(cap.title)
+      ) {
+        merged.capabilities.items.push(cap);
+        have.add(cap.title);
+      }
+    }
+  }
+
   return merged as LandingConfig;
 }
 
