@@ -76,9 +76,9 @@ import { Route as AuthenticatedAppTimelineRouteImport } from './routes/_authenti
 import { Route as AuthenticatedAppWorkItemsRouteImport } from './routes/_authenticated/app.work-items'
 import { Route as AuthenticatedPlatformBrandingRouteImport } from './routes/_authenticated/platform.branding'
 import { Route as AuthenticatedPlatformEoiRouteImport } from './routes/_authenticated/platform.eoi'
-import { Route as AuthenticatedPlatformSecurityRouteImport } from './routes/_authenticated/platform.security'
 import { Route as AuthenticatedPlatformExpensesRouteImport } from './routes/_authenticated/platform.expenses'
 import { Route as AuthenticatedPlatformFinanceRouteImport } from './routes/_authenticated/platform.finance'
+import { Route as AuthenticatedPlatformInhouseAiRouteImport } from './routes/_authenticated/platform.inhouse-ai'
 import { Route as AuthenticatedPlatformInvoiceTemplateRouteImport } from './routes/_authenticated/platform.invoice-template'
 import { Route as AuthenticatedPlatformInvoicesRouteImport } from './routes/_authenticated/platform.invoices'
 import { Route as AuthenticatedPlatformLandingRouteImport } from './routes/_authenticated/platform.landing'
@@ -88,6 +88,7 @@ import { Route as AuthenticatedPlatformOrganizationsRouteImport } from './routes
 import { Route as AuthenticatedPlatformPlansRouteImport } from './routes/_authenticated/platform.plans'
 import { Route as AuthenticatedPlatformPoliciesRouteImport } from './routes/_authenticated/platform.policies'
 import { Route as AuthenticatedPlatformProjectPurgeRouteImport } from './routes/_authenticated/platform.project-purge'
+import { Route as AuthenticatedPlatformSecurityRouteImport } from './routes/_authenticated/platform.security'
 import { Route as AuthenticatedPlatformSettingsRouteImport } from './routes/_authenticated/platform.settings'
 import { Route as AuthenticatedPlatformSubscriptionsRouteImport } from './routes/_authenticated/platform.subscriptions'
 import { Route as AuthenticatedPlatformSupportRouteImport } from './routes/_authenticated/platform.support'
@@ -476,12 +477,6 @@ const AuthenticatedPlatformEoiRoute =
     path: '/eoi',
     getParentRoute: () => AuthenticatedPlatformRoute,
   } as any)
-const AuthenticatedPlatformSecurityRoute =
-  AuthenticatedPlatformSecurityRouteImport.update({
-    id: '/security',
-    path: '/security',
-    getParentRoute: () => AuthenticatedPlatformRoute,
-  } as any)
 const AuthenticatedPlatformExpensesRoute =
   AuthenticatedPlatformExpensesRouteImport.update({
     id: '/expenses',
@@ -492,6 +487,12 @@ const AuthenticatedPlatformFinanceRoute =
   AuthenticatedPlatformFinanceRouteImport.update({
     id: '/finance',
     path: '/finance',
+    getParentRoute: () => AuthenticatedPlatformRoute,
+  } as any)
+const AuthenticatedPlatformInhouseAiRoute =
+  AuthenticatedPlatformInhouseAiRouteImport.update({
+    id: '/inhouse-ai',
+    path: '/inhouse-ai',
     getParentRoute: () => AuthenticatedPlatformRoute,
   } as any)
 const AuthenticatedPlatformInvoiceTemplateRoute =
@@ -546,6 +547,12 @@ const AuthenticatedPlatformProjectPurgeRoute =
   AuthenticatedPlatformProjectPurgeRouteImport.update({
     id: '/project-purge',
     path: '/project-purge',
+    getParentRoute: () => AuthenticatedPlatformRoute,
+  } as any)
+const AuthenticatedPlatformSecurityRoute =
+  AuthenticatedPlatformSecurityRouteImport.update({
+    id: '/security',
+    path: '/security',
     getParentRoute: () => AuthenticatedPlatformRoute,
   } as any)
 const AuthenticatedPlatformSettingsRoute =
@@ -668,9 +675,9 @@ export interface FileRoutesByFullPath {
   '/app/work-items': typeof AuthenticatedAppWorkItemsRoute
   '/platform/branding': typeof AuthenticatedPlatformBrandingRoute
   '/platform/eoi': typeof AuthenticatedPlatformEoiRoute
-  '/platform/security': typeof AuthenticatedPlatformSecurityRoute
   '/platform/expenses': typeof AuthenticatedPlatformExpensesRoute
   '/platform/finance': typeof AuthenticatedPlatformFinanceRoute
+  '/platform/inhouse-ai': typeof AuthenticatedPlatformInhouseAiRoute
   '/platform/invoice-template': typeof AuthenticatedPlatformInvoiceTemplateRoute
   '/platform/invoices': typeof AuthenticatedPlatformInvoicesRoute
   '/platform/landing': typeof AuthenticatedPlatformLandingRoute
@@ -680,6 +687,7 @@ export interface FileRoutesByFullPath {
   '/platform/plans': typeof AuthenticatedPlatformPlansRoute
   '/platform/policies': typeof AuthenticatedPlatformPoliciesRoute
   '/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
+  '/platform/security': typeof AuthenticatedPlatformSecurityRoute
   '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
   '/platform/support': typeof AuthenticatedPlatformSupportRoute
@@ -756,9 +764,9 @@ export interface FileRoutesByTo {
   '/app/work-items': typeof AuthenticatedAppWorkItemsRoute
   '/platform/branding': typeof AuthenticatedPlatformBrandingRoute
   '/platform/eoi': typeof AuthenticatedPlatformEoiRoute
-  '/platform/security': typeof AuthenticatedPlatformSecurityRoute
   '/platform/expenses': typeof AuthenticatedPlatformExpensesRoute
   '/platform/finance': typeof AuthenticatedPlatformFinanceRoute
+  '/platform/inhouse-ai': typeof AuthenticatedPlatformInhouseAiRoute
   '/platform/invoice-template': typeof AuthenticatedPlatformInvoiceTemplateRoute
   '/platform/invoices': typeof AuthenticatedPlatformInvoicesRoute
   '/platform/landing': typeof AuthenticatedPlatformLandingRoute
@@ -768,6 +776,7 @@ export interface FileRoutesByTo {
   '/platform/plans': typeof AuthenticatedPlatformPlansRoute
   '/platform/policies': typeof AuthenticatedPlatformPoliciesRoute
   '/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
+  '/platform/security': typeof AuthenticatedPlatformSecurityRoute
   '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
   '/platform/support': typeof AuthenticatedPlatformSupportRoute
@@ -847,9 +856,9 @@ export interface FileRoutesById {
   '/_authenticated/app/work-items': typeof AuthenticatedAppWorkItemsRoute
   '/_authenticated/platform/branding': typeof AuthenticatedPlatformBrandingRoute
   '/_authenticated/platform/eoi': typeof AuthenticatedPlatformEoiRoute
-  '/_authenticated/platform/security': typeof AuthenticatedPlatformSecurityRoute
   '/_authenticated/platform/expenses': typeof AuthenticatedPlatformExpensesRoute
   '/_authenticated/platform/finance': typeof AuthenticatedPlatformFinanceRoute
+  '/_authenticated/platform/inhouse-ai': typeof AuthenticatedPlatformInhouseAiRoute
   '/_authenticated/platform/invoice-template': typeof AuthenticatedPlatformInvoiceTemplateRoute
   '/_authenticated/platform/invoices': typeof AuthenticatedPlatformInvoicesRoute
   '/_authenticated/platform/landing': typeof AuthenticatedPlatformLandingRoute
@@ -859,6 +868,7 @@ export interface FileRoutesById {
   '/_authenticated/platform/plans': typeof AuthenticatedPlatformPlansRoute
   '/_authenticated/platform/policies': typeof AuthenticatedPlatformPoliciesRoute
   '/_authenticated/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
+  '/_authenticated/platform/security': typeof AuthenticatedPlatformSecurityRoute
   '/_authenticated/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/_authenticated/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
   '/_authenticated/platform/support': typeof AuthenticatedPlatformSupportRoute
@@ -938,9 +948,9 @@ export interface FileRouteTypes {
     | '/app/work-items'
     | '/platform/branding'
     | '/platform/eoi'
-    | '/platform/security'
     | '/platform/expenses'
     | '/platform/finance'
+    | '/platform/inhouse-ai'
     | '/platform/invoice-template'
     | '/platform/invoices'
     | '/platform/landing'
@@ -950,6 +960,7 @@ export interface FileRouteTypes {
     | '/platform/plans'
     | '/platform/policies'
     | '/platform/project-purge'
+    | '/platform/security'
     | '/platform/settings'
     | '/platform/subscriptions'
     | '/platform/support'
@@ -1026,9 +1037,9 @@ export interface FileRouteTypes {
     | '/app/work-items'
     | '/platform/branding'
     | '/platform/eoi'
-    | '/platform/security'
     | '/platform/expenses'
     | '/platform/finance'
+    | '/platform/inhouse-ai'
     | '/platform/invoice-template'
     | '/platform/invoices'
     | '/platform/landing'
@@ -1038,6 +1049,7 @@ export interface FileRouteTypes {
     | '/platform/plans'
     | '/platform/policies'
     | '/platform/project-purge'
+    | '/platform/security'
     | '/platform/settings'
     | '/platform/subscriptions'
     | '/platform/support'
@@ -1116,9 +1128,9 @@ export interface FileRouteTypes {
     | '/_authenticated/app/work-items'
     | '/_authenticated/platform/branding'
     | '/_authenticated/platform/eoi'
-    | '/_authenticated/platform/security'
     | '/_authenticated/platform/expenses'
     | '/_authenticated/platform/finance'
+    | '/_authenticated/platform/inhouse-ai'
     | '/_authenticated/platform/invoice-template'
     | '/_authenticated/platform/invoices'
     | '/_authenticated/platform/landing'
@@ -1128,6 +1140,7 @@ export interface FileRouteTypes {
     | '/_authenticated/platform/plans'
     | '/_authenticated/platform/policies'
     | '/_authenticated/platform/project-purge'
+    | '/_authenticated/platform/security'
     | '/_authenticated/platform/settings'
     | '/_authenticated/platform/subscriptions'
     | '/_authenticated/platform/support'
@@ -1624,13 +1637,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPlatformEoiRouteImport
       parentRoute: typeof AuthenticatedPlatformRoute
     }
-    '/_authenticated/platform/security': {
-      id: '/_authenticated/platform/security'
-      path: '/security'
-      fullPath: '/platform/security'
-      preLoaderRoute: typeof AuthenticatedPlatformSecurityRouteImport
-      parentRoute: typeof AuthenticatedPlatformRoute
-    }
     '/_authenticated/platform/expenses': {
       id: '/_authenticated/platform/expenses'
       path: '/expenses'
@@ -1643,6 +1649,13 @@ declare module '@tanstack/react-router' {
       path: '/finance'
       fullPath: '/platform/finance'
       preLoaderRoute: typeof AuthenticatedPlatformFinanceRouteImport
+      parentRoute: typeof AuthenticatedPlatformRoute
+    }
+    '/_authenticated/platform/inhouse-ai': {
+      id: '/_authenticated/platform/inhouse-ai'
+      path: '/inhouse-ai'
+      fullPath: '/platform/inhouse-ai'
+      preLoaderRoute: typeof AuthenticatedPlatformInhouseAiRouteImport
       parentRoute: typeof AuthenticatedPlatformRoute
     }
     '/_authenticated/platform/invoice-template': {
@@ -1706,6 +1719,13 @@ declare module '@tanstack/react-router' {
       path: '/project-purge'
       fullPath: '/platform/project-purge'
       preLoaderRoute: typeof AuthenticatedPlatformProjectPurgeRouteImport
+      parentRoute: typeof AuthenticatedPlatformRoute
+    }
+    '/_authenticated/platform/security': {
+      id: '/_authenticated/platform/security'
+      path: '/security'
+      fullPath: '/platform/security'
+      preLoaderRoute: typeof AuthenticatedPlatformSecurityRouteImport
       parentRoute: typeof AuthenticatedPlatformRoute
     }
     '/_authenticated/platform/settings': {
@@ -1917,9 +1937,9 @@ const AuthenticatedAppRouteWithChildren =
 interface AuthenticatedPlatformRouteChildren {
   AuthenticatedPlatformBrandingRoute: typeof AuthenticatedPlatformBrandingRoute
   AuthenticatedPlatformEoiRoute: typeof AuthenticatedPlatformEoiRoute
-  AuthenticatedPlatformSecurityRoute: typeof AuthenticatedPlatformSecurityRoute
   AuthenticatedPlatformExpensesRoute: typeof AuthenticatedPlatformExpensesRoute
   AuthenticatedPlatformFinanceRoute: typeof AuthenticatedPlatformFinanceRoute
+  AuthenticatedPlatformInhouseAiRoute: typeof AuthenticatedPlatformInhouseAiRoute
   AuthenticatedPlatformInvoiceTemplateRoute: typeof AuthenticatedPlatformInvoiceTemplateRoute
   AuthenticatedPlatformInvoicesRoute: typeof AuthenticatedPlatformInvoicesRoute
   AuthenticatedPlatformLandingRoute: typeof AuthenticatedPlatformLandingRoute
@@ -1929,6 +1949,7 @@ interface AuthenticatedPlatformRouteChildren {
   AuthenticatedPlatformPlansRoute: typeof AuthenticatedPlatformPlansRoute
   AuthenticatedPlatformPoliciesRoute: typeof AuthenticatedPlatformPoliciesRoute
   AuthenticatedPlatformProjectPurgeRoute: typeof AuthenticatedPlatformProjectPurgeRoute
+  AuthenticatedPlatformSecurityRoute: typeof AuthenticatedPlatformSecurityRoute
   AuthenticatedPlatformSettingsRoute: typeof AuthenticatedPlatformSettingsRoute
   AuthenticatedPlatformSubscriptionsRoute: typeof AuthenticatedPlatformSubscriptionsRoute
   AuthenticatedPlatformSupportRoute: typeof AuthenticatedPlatformSupportRoute
@@ -1938,9 +1959,9 @@ interface AuthenticatedPlatformRouteChildren {
 const AuthenticatedPlatformRouteChildren: AuthenticatedPlatformRouteChildren = {
   AuthenticatedPlatformBrandingRoute: AuthenticatedPlatformBrandingRoute,
   AuthenticatedPlatformEoiRoute: AuthenticatedPlatformEoiRoute,
-  AuthenticatedPlatformSecurityRoute: AuthenticatedPlatformSecurityRoute,
   AuthenticatedPlatformExpensesRoute: AuthenticatedPlatformExpensesRoute,
   AuthenticatedPlatformFinanceRoute: AuthenticatedPlatformFinanceRoute,
+  AuthenticatedPlatformInhouseAiRoute: AuthenticatedPlatformInhouseAiRoute,
   AuthenticatedPlatformInvoiceTemplateRoute:
     AuthenticatedPlatformInvoiceTemplateRoute,
   AuthenticatedPlatformInvoicesRoute: AuthenticatedPlatformInvoicesRoute,
@@ -1953,6 +1974,7 @@ const AuthenticatedPlatformRouteChildren: AuthenticatedPlatformRouteChildren = {
   AuthenticatedPlatformPoliciesRoute: AuthenticatedPlatformPoliciesRoute,
   AuthenticatedPlatformProjectPurgeRoute:
     AuthenticatedPlatformProjectPurgeRoute,
+  AuthenticatedPlatformSecurityRoute: AuthenticatedPlatformSecurityRoute,
   AuthenticatedPlatformSettingsRoute: AuthenticatedPlatformSettingsRoute,
   AuthenticatedPlatformSubscriptionsRoute:
     AuthenticatedPlatformSubscriptionsRoute,
@@ -1995,3 +2017,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

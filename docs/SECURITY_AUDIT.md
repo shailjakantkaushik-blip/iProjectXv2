@@ -29,6 +29,7 @@
 |---------|--------|----------|
 | Default local engine (no model) | **PASS** | `local-portfolio-assist.ts` pure client logic when `INHOUSE_AI_*` unset |
 | Optional approved model | **PASS** | OpenAI-compatible chat via server fn only (`inhouse-ai.functions.ts`); browser never holds API key; CSP unchanged (server egress only) |
+| Per-org opt-in (default off) | **PASS** | `organizations.inhouse_ai_model_enabled` default false; platform_admin toggle only (`platform/inhouse-ai` + DB trigger); no model egress unless org enabled |
 | Model grounding | **PASS** | Server reloads RLS-scoped rows with user JWT + page ACL domains; compact context pack; system prompt forbids invention |
 | Tenant + project visibility | **PASS** | Reads via Supabase client under RLS (`user_can_view_project`); child rows intersected to visible project ids (`assist-access.ts`) |
 | Org isolation (defense-in-depth) | **PASS** | Bundle scoped with `org_id` match when present on project rows |

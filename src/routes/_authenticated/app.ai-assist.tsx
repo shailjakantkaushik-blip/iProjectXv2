@@ -57,6 +57,7 @@ function AiAssistPage() {
     void statusFn()
       .then((s) => {
         if (cancelled) return;
+        // configured = platform endpoint AND this organisation opted in
         setModelConfigured(Boolean(s.configured));
         setModelLabel(s.label || "Approved in-house model");
         if (s.configured) {
@@ -65,7 +66,17 @@ function AiAssistPage() {
             return [
               {
                 role: "assistant",
-                text: `I’m iProjectX In-house AI, backed by your approved model (${s.label}${s.model ? ` · ${s.model}` : ""}). Ask in plain English — answers are grounded in live org data loaded under your RLS and page permissions. Context is sent only to that approved endpoint (not ChatGPT / public consumer AI). If the model is unavailable, I fall back to the local engine.`,
+                text: `I’m iProjectX In-house AI, backed by your organisation’s approved model (${s.label}${s.model ? ` · ${s.model}` : ""}). Ask in plain English — answers are grounded in live org data under your RLS and page permissions. Context is sent only to that approved endpoint (enabled for this org by platform admin). If the model is unavailable, I fall back to the local engine.`,
+              },
+            ];
+          });
+        } else {
+          setMessages((m) => {
+            if (m.length !== 1 || m[0]?.role !== "assistant") return m;
+            return [
+              {
+                role: "assistant",
+                text: "I’m iProjectX In-house AI on the local engine. Ask in plain English about portfolio health, risks, approvals, spend, or a project name. I only use data your role can see (RLS + page permissions). Your organisation’s data is not sent to any external model unless a platform admin enables the approved model for this org.",
               },
             ];
           });
@@ -298,8 +309,8 @@ function AiAssistPage() {
             <p className="mt-2 text-[11px] text-muted-foreground">
               Enter to send · Shift+Enter for a new line.
               {modelConfigured
-                ? " Grounded context is sent only to your approved model endpoint (server-side). Public consumer AI is not used."
-                : " Running on the local engine until an approved model endpoint is configured (INHOUSE_AI_* env)."}
+                ? " Grounded context is sent only to your org’s approved model endpoint (server-side; platform-admin opt-in). Public consumer AI is not used."
+                : " Local engine only for this organisation — no model egress. Platform admins can enable an approved model per org when needed."}
             </p>
           </div>
         </div>
