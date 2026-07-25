@@ -148,5 +148,6 @@ mapping and shows the SSO button on white-label login (`/auth?org=<slug>` or
    button label, **Save branding**.
 
 5. Share the org white-label login link. Members see **Sign in with SSO**
-   (plus email/password). After IdP redirect, the existing org-membership
-   gate still applies.
+   (plus email/password). After IdP redirect, the org-membership gate still
+   applies: non-members and unprovisioned SSO users are signed out, and
+   white-label entry cannot create a new organisation via onboarding.
