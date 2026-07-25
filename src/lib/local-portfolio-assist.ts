@@ -139,7 +139,7 @@ export function answerPortfolioQuestion(raw: string, data: AssistBundle): string
   switch (detectIntent(q)) {
     case "help":
       return [
-        "I answer from live data already loaded for your organisation (RLS). No external AI.",
+        "I’m In-house AI — I answer from live data already loaded for your organisation (RLS). No external AI.",
         "Try: “Summarise open risks”, “How is portfolio health?”, “Any decisions awaiting approval?”,",
         "“What’s our budget?”, “What needs attention this week?”, or name a project.",
       ].join(" ");
