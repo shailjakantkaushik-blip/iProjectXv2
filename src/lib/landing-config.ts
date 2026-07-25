@@ -1100,19 +1100,21 @@ export function mergeConfig(partial: any): LandingConfig {
         have.add(cap.title);
       }
     }
-    merged.capabilities.items = merged.capabilities.items.map((cap: LandingCap) => {
-      if (
-        cap.title === "In-house AI" &&
-        typeof cap.desc === "string" &&
-        /without sending data to external|no external/i.test(cap.desc)
-      ) {
-        return {
-          ...cap,
-          desc: DEFAULT_LANDING.capabilities.items.find((c) => c.title === "In-house AI")!.desc,
-        };
-      }
-      return cap;
-    });
+    const defaultInhouseAi = DEFAULT_LANDING.capabilities.items.find(
+      (c) => c.title === "In-house AI",
+    );
+    if (defaultInhouseAi) {
+      merged.capabilities.items = merged.capabilities.items.map((cap: LandingCap) => {
+        if (
+          cap.title === "In-house AI" &&
+          typeof cap.desc === "string" &&
+          /without sending data to external|no external/i.test(cap.desc)
+        ) {
+          return { ...cap, desc: defaultInhouseAi.desc };
+        }
+        return cap;
+      });
+    }
   }
 
   // Comparison wins + final CTA: refresh outdated absolute AI claims in saved configs.
