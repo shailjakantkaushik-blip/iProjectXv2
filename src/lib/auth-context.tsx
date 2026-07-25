@@ -134,7 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // One RTT pair: profile(+org embed) and roles in parallel — not sequential hops.
       const [profileRes, rolesRes] = await Promise.all([
         supabase.from("profiles").select(PROFILE_WITH_ORG_SELECT).eq("id", userId).maybeSingle(),
-        supabase.from("user_roles").select("role").eq("user_id", userId),
+        supabase.from("user_roles").select("role,org_id").eq("user_id", userId),
       ]);
 
       const row = (profileRes.data as ProfileRow | null) ?? null;
@@ -149,7 +149,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         : null;
       const nextOrg = orgFromEmbed(row);
-      const nextRoles = (rolesRes.data ?? []).map((r) => r.role as AppRole);
+      // Only home-org roles + global platform_admin — ignore foreign-org leftovers.
+      const nextRoles = (rolesRes.data ?? [])
+        .filter((r: { role: string; org_id: string | null }) => {
+          if (r.role === "platform_admin") return true;
+          if (!nextProfile?.org_id) return false;
+          return r.org_id === nextProfile.org_id;
+        })
+        .map((r: { role: string }) => r.role as AppRole);
 
       setProfile(nextProfile);
       setRoles(nextRoles);

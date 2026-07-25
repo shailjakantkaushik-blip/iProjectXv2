@@ -1,17 +1,63 @@
 # iProjectX Security Audit & Hardening Review
 
-**Date:** 2026-07-25 (revalidated)  
+**Date:** 2026-07-26 (post-incident re-audit)  
 **Scope:** Full repository `/workspace` (application + Supabase migrations + Vercel config)  
 **Auditor role:** Principal Security Engineer / SOC 2 / OWASP ASVS L2 / SaaS multi-tenant  
 
 **Operator checklist:** [`COMPLIANCE_CHECKLIST.md`](./COMPLIANCE_CHECKLIST.md)
 
-### Current validation status (2026-07-25)
+---
+
+## Post-incident re-audit — org white-label login (2026-07-26)
+
+### Incident
+
+**Symptom:** Users could authenticate via another organisation’s white-label login link (`/auth?org=` / `/o/<slug>/login`) with their own credentials and reach `/app`.
+
+**Root cause:** In `auth.tsx`, MFA redirect (`/mfa?next=/app`) ran **before** `assertUserBelongsToOrgSlug`. Membership rejection was skipped for MFA-enrolled users.
+
+**Cross-tenant data access?** **No evidence of foreign-org portfolio reads.** RLS binds queries to `profiles.org_id` (`get_user_org`). Victims entered **their own** home-tenant workspace after using the wrong branded link — a **trust / access-control UX breach** on the white-label gate, not an RLS tenant-escape. Still treated as **High** because the gate is a promised security control.
+
+**Fix shipped:** Org membership check runs before MFA (`3c53291` / merge to main).
+
+### Re-audit matrix (2026-07-26)
+
+| Area | Status | Finding |
+|------|--------|---------|
+| Password + org link → MFA order | **FIXED** | Membership before `/mfa` |
+| White-label home-org only | **HARDENED** | Gate requires `profiles.org_id` match (role-only allow removed) |
+| MFA `next` open redirect | **FIXED** | Allowlist `/app`, `/platform`, `/onboarding` only; reject `//` |
+| Authenticated shell before AAL2 | **FIXED** | Gate blocks AppShell until MFA satisfied |
+| `has_any_admin` / `has_role` org scope | **FIXED (apply SQL)** | Migration `20260726093000_scope_admin_roles_to_home_org.sql` |
+| `can_edit_project` bu_lead org scope | **FIXED (apply SQL)** | Same migration |
+| Client roles include foreign org | **FIXED** | `auth-context` filters roles to home org + `platform_admin` |
+| `adminRemoveUserRole` missing org assert | **FIXED** | Same check as assign |
+| SSO soft-reject on wrong org link | **Accepted** | Existing other-org session kept; “Go to my workspace” clears org entry — no foreign data |
+| Platform admin cross-org ops | **By design** | Billing, support, directory, EOI; portfolio RLS still home-scoped |
+| Invoice email / In-house AI org binding | **PASS** | Caller org checks + RLS |
+| Public org branding / SSO provider id | **Accepted** | Needed for SSO button; not portfolio data |
+
+### Residual risks (accepted / ops)
+
+1. Apply SQL migration `20260726093000_scope_admin_roles_to_home_org.sql` in Supabase before considering admin elevation closed in production.
+2. In-process rate limits remain best-effort across Vercel isolates — pair with edge/WAF.
+3. Page ACL default-allow when matrix unconfigured (pre-existing).
+4. Platform admins intentionally see cross-org operational data (invoices, support, EOI).
+
+### Honest assessment of prior audit coverage
+
+Prior audits validated RLS, MFA enrollment, AI egress, and many server-fn authz paths, but **did not explicitly test the composition** “white-label org gate × MFA redirect.” That gap allowed the incident. This re-audit adds composition tests to the checklist: **any redirect/challenge that runs after password success must re-run or precede org membership checks.**
+
+---
+
+### Current validation status (2026-07-26)
 
 | Control | Status | Notes |
 |---------|--------|-------|
 | Critical authz (provision / org lock / EOI / forced password) | **PASS** | Migrations + server fns |
-| MFA for all users | **PASS** | App + Supabase TOTP On; smoke-tested in production |
+| Org white-label login gate × MFA | **PASS (re-audited)** | Membership before MFA; home-org only; shell blocked until AAL2 |
+| Admin role helpers scoped to home org | **PASS (apply SQL)** | `has_any_admin` / `has_role` / `can_edit_project` |
+| MFA for all users | **PASS** | App + Supabase TOTP On; shell waits for MFA before data UI |
 | Safer sessions | **PASS** | `sessionStorage` + PKCE (not localStorage JWTs) |
 | Excel CVE (`xlsx`) | **PASS** | Package removed; `read-excel-file` / `write-excel-file` |
 | Login / logout / failed-login logging | **PASS** | `security_events` SQL applied; smoke-tested |

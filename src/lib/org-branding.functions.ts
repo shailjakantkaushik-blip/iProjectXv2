@@ -130,20 +130,10 @@ export const assertUserBelongsToOrgSlug = createServerFn({ method: "POST" })
       };
     }
 
+    // Home-org only. A leftover user_roles row for this slug must NOT open the
+    // white-label gate when profiles.org_id points elsewhere — RLS already binds
+    // data to the home org, so role-only allow was a confused-deputy UX hole.
     if (profile?.org_id === org.id) {
-      return { allowed: true, orgName: org.name as string, orgSlug: org.slug as string };
-    }
-
-    const { data: roleRows, error: roleErr } = await supabaseAdmin
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", context.userId)
-      .eq("org_id", org.id)
-      .limit(1);
-    if (roleErr) {
-      return { allowed: false, message: "Could not verify organisation membership. Try again." };
-    }
-    if ((roleRows ?? []).length > 0) {
       return { allowed: true, orgName: org.name as string, orgSlug: org.slug as string };
     }
 

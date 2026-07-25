@@ -1,5 +1,5 @@
 import { createFileRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { readOrgAuthEntrySlug } from "@/lib/org-auth-entry";
 import { getMfaStatus } from "@/lib/mfa";
@@ -18,10 +18,17 @@ function Gate() {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const bareShell = pathname.startsWith("/onboarding");
+  /** Do not paint AppShell/Outlet until MFA is satisfied (or unavailable in project). */
+  const [mfaReady, setMfaReady] = useState(false);
+
+  useEffect(() => {
+    setMfaReady(false);
+  }, [session?.user?.id]);
 
   useEffect(() => {
     if (!sessionChecked || loading) return;
     if (!session) {
+      setMfaReady(false);
       const slug = readOrgAuthEntrySlug();
       if (slug) {
         void navigate({ to: "/auth", search: { org: slug }, replace: true });
@@ -41,6 +48,7 @@ function Gate() {
     }
 
     // MFA required for every user: challenge if enrolled, otherwise force enroll.
+    // Block shell render until this resolves so AAL1 sessions cannot query data.
     let cancelled = false;
     void (async () => {
       try {
@@ -60,9 +68,12 @@ function Gate() {
             search: { mode: "enroll", next: pathname || "/app" },
             replace: true,
           });
+          return;
         }
+        setMfaReady(true);
       } catch {
         /* MFA not enabled in Supabase project — skip until dashboard toggle is on */
+        if (!cancelled) setMfaReady(true);
       }
     })();
 
@@ -71,16 +82,24 @@ function Gate() {
     };
   }, [session, profile, loading, sessionChecked, navigate, pathname, signOut]);
 
-  // Instant chrome: cached profile lets the shell paint before network hydrate.
+  if (!sessionChecked || loading) {
+    return <PageLoading label="Checking your session…" />;
+  }
+  if (!session) {
+    return <PageLoading label="Checking your session…" />;
+  }
+  if (profile?.is_active === false) {
+    return <PageLoading label="Account inactive…" />;
+  }
+  if (!mfaReady) {
+    return <PageLoading label="Verifying security…" />;
+  }
+
   const profileMatchesSession =
     Boolean(profile) &&
     (!session || profile!.id === session.user.id);
 
-  // Returning users: paint shell from cache even before getSession resolves.
   if (profileMatchesSession) {
-    if (profile?.is_active === false) {
-      return <PageLoading label="Account inactive…" />;
-    }
     if (bareShell) return <Outlet />;
     return (
       <AppShell>
@@ -89,15 +108,6 @@ function Gate() {
     );
   }
 
-  // Cold path — only block the whole viewport until local session is known.
-  if (!sessionChecked) {
-    return <PageLoading label="Checking your session…" />;
-  }
-  if (!session) {
-    return <PageLoading label="Checking your session…" />;
-  }
-
-  // Session is known; profile still hydrating — keep shell chrome, soft content wait.
   if (bareShell) {
     return <PageLoading label="Loading workspace…" fullScreen={false} />;
   }
