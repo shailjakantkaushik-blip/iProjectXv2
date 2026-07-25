@@ -1,9 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Sparkles } from "lucide-react";
+import { Lock, Send, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { PROJECT_HOME_SELECT, RISKS_SELECT, DECISIONS_SELECT } from "@/lib/query-selects";
+import {
+  PROJECT_HOME_SELECT,
+  RISKS_SELECT,
+  DECISIONS_SELECT,
+  ACTIONS_SELECT,
+} from "@/lib/query-selects";
+import { answerPortfolioQuestion } from "@/lib/local-portfolio-assist";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
 
@@ -13,6 +19,13 @@ export const Route = createFileRoute("/_authenticated/app/ai-assist")({
 
 type Msg = { role: "user" | "assistant"; text: string };
 
+const PROMPTS = [
+  "What needs attention this week?",
+  "How is portfolio health?",
+  "Summarise open risks",
+  "Any decisions awaiting approval?",
+];
+
 function AiAssistPage() {
   const { organization } = useAuth();
   const orgId = organization?.id;
@@ -20,7 +33,7 @@ function AiAssistPage() {
   const [messages, setMessages] = useState<Msg[]>([
     {
       role: "assistant",
-      text: "Ask about portfolio health, risks, approvals, spend, or what needs attention this week. Answers are generated from live org data (local assist — no external model call).",
+      text: "Ask in plain language about portfolio health, risks, approvals, spend, actions, or a project name. I interpret your question locally and answer from live org data already loaded for you — no external AI, so portfolio data is not sent to a model provider.",
     },
   ]);
 
@@ -36,93 +49,74 @@ function AiAssistPage() {
   });
   const { data: decisions = [] } = useQuery({
     queryKey: ["decisions", orgId],
-    queryFn: async () => (await supabase.from("decisions").select(DECISIONS_SELECT as "*")).data ?? [],
+    queryFn: async () =>
+      (await supabase.from("decisions").select(DECISIONS_SELECT as "*")).data ?? [],
+    enabled: !!orgId,
+  });
+  const { data: actions = [] } = useQuery({
+    queryKey: ["actions", orgId],
+    queryFn: async () => (await supabase.from("actions").select(ACTIONS_SELECT as "*")).data ?? [],
     enabled: !!orgId,
   });
 
-  const snapshot = useMemo(() => {
-    const red = projects.filter((p: any) => p.rag === "Red").length;
-    const amber = projects.filter((p: any) => p.rag === "Amber").length;
-    const budget = projects.reduce((s: number, p: any) => s + Number(p.budget || 0), 0);
-    const openRisks = risks.filter((r: any) => r.status === "Open" || r.status === "Mitigating").length;
-    const criticalRisks = risks.filter((r: any) => Number(r.severity || 0) >= 15).length;
-    const pendingDecisions = decisions.filter((d: any) => {
-      const o = String(d.outcome || d.status || "")
-        .trim()
-        .toLowerCase();
-      return !o || o === "pending" || o === "in review" || o === "open";
-    }).length;
-    return { red, amber, budget, openRisks, criticalRisks, pendingDecisions, total: projects.length };
-  }, [projects, risks, decisions]);
+  const bundle = useMemo(
+    () => ({
+      projects: projects as any[],
+      risks: risks as any[],
+      decisions: decisions as any[],
+      actions: actions as any[],
+    }),
+    [projects, risks, decisions, actions],
+  );
 
-  const answer = (q: string) => {
-    const query = q.toLowerCase();
-    if (query.includes("risk")) {
-      return `There are ${snapshot.openRisks} open/mitigating risks, including ${snapshot.criticalRisks} with severity ≥ 15. Focus mitigation on Red/Amber projects first.`;
-    }
-    if (query.includes("approv") || query.includes("decision")) {
-      return `${snapshot.pendingDecisions} decisions are still Pending or In Review. Use My Work → Approvals inbox to clear the queue.`;
-    }
-    if (query.includes("budget") || query.includes("spend") || query.includes("financ")) {
-      const money = new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
-        notation: "compact",
-        maximumFractionDigits: 1,
-      }).format(snapshot.budget);
-      return `Portfolio budget across ${snapshot.total} projects is about ${money}. Check Financials and FY Allocation for forecast vs actual detail.`;
-    }
-    if (query.includes("rag") || query.includes("health") || query.includes("status")) {
-      return `Portfolio health: ${snapshot.red} Red, ${snapshot.amber} Amber, of ${snapshot.total} projects. Executive Dashboard has the full cockpit.`;
-    }
-    if (query.includes("week") || query.includes("attention") || query.includes("focus")) {
-      return `This week: clear ${snapshot.pendingDecisions} pending decisions, review ${snapshot.criticalRisks} critical risks, and triage ${snapshot.red} Red projects.`;
-    }
-    return `Live snapshot — Projects: ${snapshot.total} · Red: ${snapshot.red} · Amber: ${snapshot.amber} · Open risks: ${snapshot.openRisks} · Decisions awaiting outcome: ${snapshot.pendingDecisions}. Try asking about risks, approvals, budget, or health.`;
-  };
+  const reply = (q: string) => answerPortfolioQuestion(q, bundle);
 
   const send = () => {
     const q = input.trim();
     if (!q) return;
-    setMessages((m) => [...m, { role: "user", text: q }, { role: "assistant", text: answer(q) }]);
+    setMessages((m) => [...m, { role: "user", text: q }, { role: "assistant", text: reply(q) }]);
     setInput("");
+  };
+
+  const runPrompt = (prompt: string) => {
+    setInput("");
+    setMessages((m) => [
+      ...m,
+      { role: "user", text: prompt },
+      { role: "assistant", text: reply(prompt) },
+    ]);
   };
 
   return (
     <div>
       <PageHeading
-        title="AI Assist"
-        subtitle="Portfolio Q&A grounded in your live PMO data"
+        title="Portfolio Assist"
+        subtitle="Local Q&A on your live PMO data — no external AI"
       />
 
       <SectionFrame>
-        <SectionTitle>Assistant</SectionTitle>
+        <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+          <SectionTitle>Assistant</SectionTitle>
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+            <Lock className="h-3 w-3" />
+            Stays in your org session (RLS)
+          </span>
+        </div>
+
         <div className="mb-3 flex flex-wrap gap-2">
-          {[
-            "What needs attention this week?",
-            "How is portfolio health?",
-            "Summarise open risks",
-            "Any decisions awaiting approval?",
-          ].map((prompt) => (
+          {PROMPTS.map((prompt) => (
             <button
               key={prompt}
               type="button"
               className="rounded-full border border-border bg-background px-3 py-1 text-[11px] font-medium text-foreground hover:border-primary/40"
-              onClick={() => {
-                setInput(prompt);
-                setMessages((m) => [
-                  ...m,
-                  { role: "user", text: prompt },
-                  { role: "assistant", text: answer(prompt) },
-                ]);
-              }}
+              onClick={() => runPrompt(prompt)}
             >
               {prompt}
             </button>
           ))}
         </div>
 
-        <div className="flex max-h-[28rem] flex-col overflow-hidden rounded-xl border border-border bg-background">
+        <div className="flex min-h-[22rem] max-h-[36rem] flex-col overflow-hidden rounded-xl border border-border bg-background sm:min-h-[26rem]">
           <div className="flex-1 space-y-3 overflow-y-auto p-4">
             {messages.map((m, i) => (
               <div
@@ -138,7 +132,7 @@ function AiAssistPage() {
                 >
                   {m.role === "assistant" && (
                     <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      <Sparkles className="h-3 w-3" /> Assist
+                      <Sparkles className="h-3 w-3" /> Local assist
                     </div>
                   )}
                   {m.text}
@@ -146,23 +140,38 @@ function AiAssistPage() {
               </div>
             ))}
           </div>
-          <div className="flex gap-2 border-t border-border p-3">
-            <input
-              className="st-input flex-1"
-              placeholder="Ask the portfolio…"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && send()}
-            />
-            <button type="button" className="st-btn-primary" onClick={send}>
-              Ask
-            </button>
+
+          <div className="border-t border-border p-3">
+            <div className="flex items-end gap-2">
+              <textarea
+                className="st-input min-h-[5.5rem] flex-1 resize-y py-2.5 leading-relaxed"
+                rows={3}
+                placeholder="Ask about risks, budget, health, approvals, or a project name…"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    send();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="st-btn-primary st-btn-inline shrink-0 gap-1.5 self-end"
+                onClick={send}
+                disabled={!input.trim()}
+              >
+                <Send className="h-3.5 w-3.5" />
+                Ask
+              </button>
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Enter to send · Shift+Enter for a new line. Answers are computed here from Supabase
+              rows you can already see — not uploaded to ChatGPT or any other model.
+            </p>
           </div>
         </div>
-        <p className="mt-2 text-[11px] text-muted-foreground">
-          Local assist uses live Supabase data in this browser session. External LLM providers can be
-          wired later without changing this UX.
-        </p>
       </SectionFrame>
     </div>
   );
