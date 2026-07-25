@@ -8,6 +8,7 @@
 
 export type AssistProject = {
   id: string
+  org_id?: string | null
   name?: string | null
   project_code?: string | null
   status?: string | null
@@ -1024,10 +1025,89 @@ function composeMulti(data: AssistBundle, query: ParsedAssistQuery): string {
   return unique.join("\n\n")
 }
 
-export function answerPortfolioQuestion(raw: string, data: AssistBundle): string {
+export type AnswerAssistOptions = {
+  /** When set, topics outside these domains are refused / stripped. */
+  allowedDomains?: Set<
+    "projects" | "risks" | "decisions" | "actions" | "budget" | "benefits"
+  >
+  /** Optional notice prepended when some domains are denied by page ACL. */
+  accessNote?: string | null
+}
+
+const TOPIC_TO_DOMAIN: Partial<
+  Record<AssistTopic, "projects" | "risks" | "decisions" | "actions" | "budget" | "benefits">
+> = {
+  risks: "risks",
+  decisions: "decisions",
+  actions: "actions",
+  budget: "budget",
+  benefits: "benefits",
+  health: "projects",
+  projects: "projects",
+  overview: "projects",
+  attention: "projects",
+}
+
+function applyDomainAcl(query: ParsedAssistQuery, opts?: AnswerAssistOptions): ParsedAssistQuery {
+  const domains = opts?.allowedDomains
+  if (!domains) return query
+
+  const topics = query.topics.filter((t) => {
+    if (t === "help" || t === "greeting") return true
+    const domain = TOPIC_TO_DOMAIN[t]
+    if (!domain) return true
+    return domains.has(domain)
+  })
+
+  // If the only ask was a denied domain, explain instead of falling back to overview
+  const askedDenied = query.topics.some((t) => {
+    const domain = TOPIC_TO_DOMAIN[t]
+    return domain != null && !domains.has(domain)
+  })
+
+  return {
+    ...query,
+    topics: topics.length ? topics : askedDenied ? ["help"] : ["overview"],
+    // Clear entity matches outside allowed domains
+    matchedRisk: domains.has("risks") ? query.matchedRisk : null,
+    matchedDecision: domains.has("decisions") ? query.matchedDecision : null,
+    matchedAction: domains.has("actions") ? query.matchedAction : null,
+  }
+}
+
+export function answerPortfolioQuestion(
+  raw: string,
+  data: AssistBundle,
+  opts?: AnswerAssistOptions,
+): string {
   const q = raw.trim()
   if (!q) return answerHelp()
 
-  const query = parseAssistQuery(q, data)
-  return composeMulti(data, query)
+  const query = applyDomainAcl(parseAssistQuery(q, data), opts)
+  const body = composeMulti(data, query)
+
+  // Explicit denial when user asked only about a blocked domain
+  if (
+    opts?.allowedDomains &&
+    query.topics.length === 1 &&
+    query.topics[0] === "help"
+  ) {
+    const original = parseAssistQuery(q, data)
+    const denied = original.topics.filter((t) => {
+      const domain = TOPIC_TO_DOMAIN[t]
+      return domain != null && !opts.allowedDomains!.has(domain)
+    })
+    if (denied.length) {
+      return [
+        `I can’t answer about ${denied.join(", ")} for your role — that area is blocked by your organisation’s page permissions.`,
+        opts.accessNote || "",
+        "",
+        answerHelp(),
+      ]
+        .filter(Boolean)
+        .join("\n")
+    }
+  }
+
+  return body
 }

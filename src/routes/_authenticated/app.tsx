@@ -2,6 +2,7 @@ import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useLiveSync } from "@/lib/use-live-sync";
+import { usePageAccessGuard } from "@/lib/page-access-guard";
 import { PageLoading } from "@/components/page-loading";
 
 export const Route = createFileRoute("/_authenticated/app")({
@@ -12,6 +13,8 @@ function AppLayout() {
   const { profile, organization, loading, sessionChecked } = useAuth();
   const navigate = useNavigate();
   useLiveSync(organization?.id);
+  // Enforce org page ACL on direct URLs (nav already filters links).
+  usePageAccessGuard();
 
   const needsOnboarding = Boolean(
     sessionChecked && !loading && profile && !profile.org_id && !organization,
