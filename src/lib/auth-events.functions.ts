@@ -30,16 +30,16 @@ export const recordAuthSecurityEvent = createServerFn({ method: "POST" })
       entityType: "auth",
       entityId: context.userId,
       summary: data.summary,
+      email: profile?.email ?? null,
       meta: {
         ...(data.meta ?? {}),
-        email: profile?.email ?? null,
       },
     });
 
     return { ok: true };
   });
 
-/** Failed login attempts (no session yet) — rate-limited console + optional structured log. */
+/** Failed login attempts (no session) — rate-limited, persisted to security_events. */
 export const recordFailedLogin = createServerFn({ method: "POST" })
   .inputValidator((d) =>
     z
@@ -50,21 +50,20 @@ export const recordFailedLogin = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data }) => {
-    const key = `failed-login:${data.email.toLowerCase()}`;
+    const email = data.email.toLowerCase();
+    const key = `failed-login:${email}`;
     const limited = checkRateLimit({ key, limit: 30, windowMs: 15 * 60 * 1000 });
     if (!limited.ok) {
       return { ok: false, throttled: true };
     }
 
-    console.warn(
-      "[security-event]",
-      JSON.stringify({
-        eventType: "login_failed",
-        email: data.email.toLowerCase(),
-        reason: data.reason ?? "invalid_credentials",
-        at: new Date().toISOString(),
-      }),
-    );
+    await writeSecurityEvent({
+      eventType: "login_failed",
+      entityType: "auth",
+      summary: `Failed login for ${email}`,
+      email,
+      meta: { reason: data.reason ?? "invalid_credentials" },
+    });
 
     return { ok: true, throttled: false };
   });

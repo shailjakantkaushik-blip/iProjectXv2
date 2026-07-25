@@ -279,6 +279,11 @@ function AuthPage() {
     setOrgAlert(null);
     setOrgGateBlocked(false);
     setBusy(true);
+    try {
+      await recordAuth({ data: { eventType: "logout", summary: "Switch account sign-out" } });
+    } catch {
+      /* still clear local session */
+    }
     await supabase.auth.signOut({ scope: "local" });
     clearOrgAuthEntry();
     setBusy(false);
@@ -428,6 +433,11 @@ function AuthPage() {
   const signOutFromAlert = async () => {
     setOrgAlert(null);
     setOrgGateBlocked(false);
+    try {
+      await recordAuth({ data: { eventType: "logout", summary: "Signed out from org access alert" } });
+    } catch {
+      /* still clear local session */
+    }
     await supabase.auth.signOut({ scope: "local" });
     clearOrgAuthEntry();
     toast.message("Signed out", {

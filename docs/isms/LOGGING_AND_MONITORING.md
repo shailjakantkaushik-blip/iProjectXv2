@@ -1,33 +1,40 @@
 # Logging and Monitoring Standard
 
 **Effective:** 2026-07-25  
+**Updated:** 2026-07-25 (security_events table)
 
-## 1. Security events recorded
-Stored in `audit_events` (org-scoped) and/or structured server logs:
+## 1. Where events are stored
+
+| Store | Purpose | Who can read |
+|-------|---------|--------------|
+| `security_events` | Platform security stream (org optional) | `platform_admin` + service role |
+| `audit_events` | Tenant audit UI (org required) | Org members (existing RLS); security writes when org known |
+
+## 2. Security events recorded
 
 | Event | Source |
 |-------|--------|
 | Login success | `recordAuthSecurityEvent` after password / MFA |
-| Login failure | `recordFailedLogin` (rate-limited server log) |
-| Logout | `signOut` path |
+| Login failure | `recordFailedLogin` → `security_events` (`login_failed`) |
+| Logout | `AuthContext.signOut` + auth/MFA sign-out paths |
 | User create / activate / deactivate / delete | Admin server functions |
 | Role assign / remove | Admin server functions |
 | Password change (forced) | `completeForcedPasswordChange` |
 | Org create | Platform admin |
-| Invoice email / billing run | Billing paths |
+| Invoice email | Billing paths |
 | EOI submit | Public EOI server function |
 | Project purge | Purge functions |
 
-## 2. Fields
-Where applicable: actor user id, org id, timestamp, event type, summary, IP/UA (when available), metadata JSON.
+## 3. Fields
+`actor_user_id`, `org_id` (nullable), `event_type`, `summary`, `email`, `meta` (includes IP/UA when available), `created_at`.
 
-## 3. Integrity
-End-user forgeable inserts to `audit_events` are restricted to org admins; privileged paths write via service role.
+## 4. Integrity
+- Client cannot INSERT into `security_events` (service role only).
+- `audit_events` INSERT for members restricted to org admins; privileged paths use service role.
 
-## 4. Retention
-Retain security/audit events for a minimum of **12 months** (configure Supabase backups / export for longer customer contractual needs).
+## 5. Retention
+Retain security/audit events **≥ 12 months** (Supabase backups / export for longer contracts).
 
-## 5. Monitoring
-- Review failed-login spikes weekly (Vercel/Supabase logs)  
-- Alert on repeated auth failures and unexpected billing-run 401/500 rates  
-- Future: forward logs to a SIEM for SOC 2 continuous monitoring evidence
+## 6. Monitoring checklist
+- Weekly: failed-login spikes in `security_events`
+- Alert path (future): forward to SIEM / email on threshold
