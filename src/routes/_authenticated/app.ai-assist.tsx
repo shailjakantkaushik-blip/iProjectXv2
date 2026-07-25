@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Lock, Send, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  PROJECT_HOME_SELECT,
+  PROJECT_PORTFOLIO_SELECT,
   RISKS_SELECT,
   DECISIONS_SELECT,
   ACTIONS_SELECT,
@@ -21,9 +21,11 @@ type Msg = { role: "user" | "assistant"; text: string };
 
 const PROMPTS = [
   "What needs attention this week?",
-  "How is portfolio health?",
-  "Summarise open risks",
-  "Any decisions awaiting approval?",
+  "Which projects are Red and why should I care?",
+  "List critical open risks with owners",
+  "How much have we spent versus budget?",
+  "What decisions are still awaiting approval?",
+  "What’s overdue and who owns it?",
 ];
 
 function AiAssistPage() {
@@ -33,13 +35,14 @@ function AiAssistPage() {
   const [messages, setMessages] = useState<Msg[]>([
     {
       role: "assistant",
-      text: "I’m iProjectX In-house AI. Ask in plain language about portfolio health, risks, approvals, spend, actions, or a project name. I run entirely inside your organisation session — live data under RLS, no external AI provider.",
+      text: "I’m iProjectX In-house AI. Ask in plain English — for example which projects are off track, who owns critical risks, how spend compares to budget, or “tell me about <project name>”. I answer from your live org data in this browser session (RLS). Nothing is sent to ChatGPT or any external model.",
     },
   ]);
 
   const { data: projects = [] } = useQuery({
-    queryKey: ["projects", orgId, "home"],
-    queryFn: async () => (await supabase.from("projects").select(PROJECT_HOME_SELECT)).data ?? [],
+    queryKey: ["projects", orgId, "ai-assist"],
+    queryFn: async () =>
+      (await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*")).data ?? [],
     enabled: !!orgId,
   });
   const { data: risks = [] } = useQuery({
@@ -91,7 +94,7 @@ function AiAssistPage() {
     <div>
       <PageHeading
         title="In-house AI"
-        subtitle="Private portfolio intelligence on your live PMO data — never leaves your org"
+        subtitle="Plain-English answers from your live PMO data — never leaves your org"
       />
 
       <SectionFrame>
@@ -124,7 +127,7 @@ function AiAssistPage() {
                 className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${
+                  className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
                     m.role === "user"
                       ? "bg-primary text-primary-foreground"
                       : "border border-border bg-surface text-foreground"
@@ -146,7 +149,7 @@ function AiAssistPage() {
               <textarea
                 className="st-input min-h-[5.5rem] flex-1 resize-y py-2.5 leading-relaxed"
                 rows={3}
-                placeholder="Ask about risks, budget, health, approvals, or a project name…"
+                placeholder='Try: “Which amber projects are overspending?” or “Tell me about <project name>”'
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -167,8 +170,8 @@ function AiAssistPage() {
               </button>
             </div>
             <p className="mt-2 text-[11px] text-muted-foreground">
-              Enter to send · Shift+Enter for a new line. In-house AI answers from your live org
-              data in this session — nothing is sent to ChatGPT or any external model.
+              Enter to send · Shift+Enter for a new line. Answers use your live org data in this
+              session — nothing is sent to ChatGPT or any external model.
             </p>
           </div>
         </div>
