@@ -1278,7 +1278,6 @@ function GanttGroup({
               const overBudget = incurred > budget && budget > 0;
               const schedPct = scheduleCompletionPct(s, e);
               const doneColor = darkenHex(color, 0.4);
-              const laneKey = laneKeyOf(p);
               const projGates = gatesForTimelineLane(p, gatesByLane)
                 .filter((g: any) => g.planned_date || g.actual_date)
                 .sort(
