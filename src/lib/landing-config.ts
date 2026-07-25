@@ -1033,13 +1033,14 @@ export function mergeConfig(partial: any): LandingConfig {
   if (!Array.isArray(merged.security.bullets) || merged.security.bullets.length === 0) {
     merged.security.bullets = [...DEFAULT_LANDING.security.bullets];
   } else {
-    const haveBullet = new Set(
-      merged.security.bullets.map((b: string) => String(b).toLowerCase()),
-    );
+    const haveBullet = (
+      merged.security.bullets as string[]
+    ).map((b) => String(b).toLowerCase());
     for (const b of DEFAULT_LANDING.security.bullets) {
-      if (/in-house ai|external model/i.test(b) && ![...haveBullet].some((h) => /in-house ai|external model/i.test(h))) {
+      const already = haveBullet.some((h) => /in-house ai|external model/i.test(h));
+      if (/in-house ai|external model/i.test(b) && !already) {
         merged.security.bullets.push(b);
-        haveBullet.add(b.toLowerCase());
+        haveBullet.push(b.toLowerCase());
       }
     }
   }
