@@ -110,20 +110,26 @@ export function pageKey(path: string) {
   return `page::${path}`;
 }
 
+/** Pure page ACL check — shared by UI hook and server In-house AI. */
+export function resolveCanViewPage(
+  path: string,
+  roles: string[],
+  rows: Array<{ role: string; table_name: string; can_view: boolean }>,
+): boolean {
+  const admin = roles.some((r) => r === "admin" || r === "org_admin");
+  const platform = roles.includes("platform_admin");
+  if (path === "/app/audit-log") return admin || platform;
+  if (ADMIN_ONLY_PAGES.has(path)) return admin;
+  if (admin) return true;
+  const relevant = rows.filter((r) => roles.includes(r.role) && r.table_name === pageKey(path));
+  if (relevant.length === 0) return true; // default visible when unconfigured
+  return relevant.some((r) => r.can_view);
+}
+
 export function useAllowedPages(): { isReady: boolean; canView: (path: string) => boolean } {
   const { roles } = useAuth();
   const { data: rows = [], isSuccess } = useRolePermissions();
-  const admin = roles.some((r) => r === "admin" || r === "org_admin");
-  const platform = roles.includes("platform_admin");
-  const canView = (path: string) => {
-    // Org audit: org admins + platform admins (support). Never general users.
-    if (path === "/app/audit-log") return admin || platform;
-    if (ADMIN_ONLY_PAGES.has(path)) return admin;
-    if (admin) return true;
-    const relevant = rows.filter((r) => roles.includes(r.role as any) && r.table_name === pageKey(path));
-    if (relevant.length === 0) return true; // default visible when unconfigured
-    return relevant.some((r) => r.can_view);
-  };
+  const canView = (path: string) => resolveCanViewPage(path, roles, rows);
   return { isReady: isSuccess || roles.length === 0, canView };
 }
 

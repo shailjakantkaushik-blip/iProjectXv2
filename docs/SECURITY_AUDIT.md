@@ -27,16 +27,19 @@
 
 | Control | Status | Evidence |
 |---------|--------|----------|
-| No external LLM / no AI vendor egress | **PASS** | `local-portfolio-assist.ts` is pure client logic; CSP `connect-src` has no LLM hosts |
+| Default local engine (no model) | **PASS** | `local-portfolio-assist.ts` pure client logic when `INHOUSE_AI_*` unset |
+| Optional approved model | **PASS** | OpenAI-compatible chat via server fn only (`inhouse-ai.functions.ts`); browser never holds API key; CSP unchanged (server egress only) |
+| Model grounding | **PASS** | Server reloads RLS-scoped rows with user JWT + page ACL domains; compact context pack; system prompt forbids invention |
 | Tenant + project visibility | **PASS** | Reads via Supabase client under RLS (`user_can_view_project`); child rows intersected to visible project ids (`assist-access.ts`) |
 | Org isolation (defense-in-depth) | **PASS** | Bundle scoped with `org_id` match when present on project rows |
-| Page ACL on AI topics | **PASS** | Risks/decisions/actions/budget/benefits only loaded & answered if sibling pages allowed (`assist-access.ts` + `answerPortfolioQuestion` options) |
+| Page ACL on AI topics | **PASS** | Risks/decisions/actions/budget/benefits only loaded & answered if sibling pages allowed; server also checks `/app/ai-assist` page ACL |
 | Route page ACL (direct URL) | **PASS** | `usePageAccessGuard` in `app.tsx` redirects denied `PAGES` / admin-only paths |
 | Home shortcuts honour page ACL | **PASS** | `app.index.tsx` filters shortcuts with `canView` |
 | Query-cache isolation | **PASS** | AI uses dedicated React Query keys (`…, "ai-assist", select`) so narrow selects elsewhere cannot starve or widen AI cache |
-| Egress volume | **PASS (reduced)** | Lean `PROJECT_ASSIST_SELECT` / domain-gated fetches — no `select("*")`; no extra realtime or model traffic |
+| Egress volume | **PASS (reduced)** | Lean selects / domain-gated fetches; model path sends capped context pack only to configured `INHOUSE_AI_BASE_URL` |
+| Rate limit | **PASS** | `askInhouseAi` limited per user (40 / 15 min) |
 | Logging of prompts / answers | **PASS** | No server logging of Q&A text |
-| Residual risk | **Accepted** | Page ACL default-allow when unconfigured (org-wide pattern); generative open-domain chat not in scope |
+| Residual risk | **Accepted** | Page ACL default-allow when unconfigured; ops must point `INHOUSE_AI_BASE_URL` only at an approved endpoint (Azure OpenAI / private Ollama / gateway) with no-train / DPA terms |
 
 ---
 
