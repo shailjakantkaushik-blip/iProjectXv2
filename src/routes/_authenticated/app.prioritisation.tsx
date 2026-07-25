@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { PROJECT_PORTFOLIO_SELECT } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { SectionFrame, SectionTitle, PageHeading, KpiCard, RagChip } from "@/components/streamlit";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LabelList, Cell } from "recharts";
@@ -45,7 +46,7 @@ function Prioritisation() {
   const { organization } = useAuth();
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
-    queryFn: async () => (await supabase.from("projects").select("*")).data ?? [],
+    queryFn: async () => (await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*")).data ?? [],
     enabled: !!organization,
   });
 

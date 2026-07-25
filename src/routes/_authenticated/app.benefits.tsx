@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { PROJECT_PORTFOLIO_SELECT, BENEFITS_SELECT } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -23,7 +24,7 @@ function BenefitsPage() {
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.from("projects").select("*");
+      const { data, error } = await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*");
       if (error) throw error;
       return data;
     },
@@ -32,7 +33,7 @@ function BenefitsPage() {
 
   const { data: benefits = [] } = useQuery({
     queryKey: ["benefits", organization?.id],
-    queryFn: async () => (await supabase.from("benefits").select("*")).data ?? [],
+    queryFn: async () => (await supabase.from("benefits").select(BENEFITS_SELECT as "*")).data ?? [],
     enabled: !!organization,
   });
 

@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Zap, Minus, Plus, Filter, RotateCcw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { PROJECT_PORTFOLIO_SELECT, STAGE_GATES_SELECT } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
 import { PortfolioTimeline } from "@/components/portfolio-timeline";
@@ -47,7 +48,7 @@ function TimelinePage() {
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.from("projects").select("*").order("start_date", { ascending: true });
+      const { data, error } = await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*").order("start_date", { ascending: true });
       if (error) throw error;
       return data ?? [];
     },
@@ -56,7 +57,7 @@ function TimelinePage() {
 
   const { data: gates = [] } = useQuery({
     queryKey: ["stage_gates", organization?.id],
-    queryFn: async () => (await supabase.from("stage_gates").select("*")).data ?? [],
+    queryFn: async () => (await supabase.from("stage_gates").select(STAGE_GATES_SELECT as "*")).data ?? [],
     enabled: !!organization,
   });
 

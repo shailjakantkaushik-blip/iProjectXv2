@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { PROJECT_PORTFOLIO_SELECT, RISKS_SELECT, ACTIONS_SELECT, BENEFITS_SELECT, STAGE_GATES_SELECT, MILESTONES_SELECT } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
 import { exportProjects } from "@/lib/excel";
@@ -46,7 +47,7 @@ function ExecutiveReportsPage() {
   const projectsQ = useQuery({
     queryKey: ["projects", orgId],
     queryFn: async () => {
-      const { data, error } = await supabase.from("projects").select("*");
+      const { data, error } = await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*");
       if (error) throw error;
       return data ?? [];
     },
@@ -57,34 +58,34 @@ function ExecutiveReportsPage() {
   const { data: risks = [] } = useQuery({
     queryKey: ["risks", orgId],
     queryFn: async () =>
-      (await supabase.from("risks").select("*").order("severity", { ascending: false })).data ?? [],
+      (await supabase.from("risks").select(RISKS_SELECT as "*").order("severity", { ascending: false })).data ?? [],
     enabled: !!orgId,
   });
 
   const { data: actions = [] } = useQuery({
     queryKey: ["actions", orgId],
     queryFn: async () =>
-      (await supabase.from("actions").select("*").order("due_date")).data ?? [],
+      (await supabase.from("actions").select(ACTIONS_SELECT as "*").order("due_date")).data ?? [],
     enabled: !!orgId,
   });
 
   const { data: benefits = [] } = useQuery({
     queryKey: ["benefits", orgId],
-    queryFn: async () => (await supabase.from("benefits").select("*")).data ?? [],
+    queryFn: async () => (await supabase.from("benefits").select(BENEFITS_SELECT as "*")).data ?? [],
     enabled: !!orgId,
   });
 
   const { data: gates = [] } = useQuery({
     queryKey: ["stage_gates", orgId],
     queryFn: async () =>
-      (await supabase.from("stage_gates").select("*").order("planned_date")).data ?? [],
+      (await supabase.from("stage_gates").select(STAGE_GATES_SELECT as "*").order("planned_date")).data ?? [],
     enabled: !!orgId,
   });
 
   const { data: milestones = [] } = useQuery({
     queryKey: ["milestones", orgId],
     queryFn: async () =>
-      (await supabase.from("milestones").select("*").order("planned_date")).data ?? [],
+      (await supabase.from("milestones").select(MILESTONES_SELECT as "*").order("planned_date")).data ?? [],
     enabled: !!orgId,
   });
 

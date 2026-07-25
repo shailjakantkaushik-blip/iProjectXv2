@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { PROJECT_PORTFOLIO_SELECT } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
@@ -67,7 +68,7 @@ function RoadmapGovPage() {
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.from("projects").select("*");
+      const { data, error } = await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*");
       if (error) throw error;
       return data;
     },

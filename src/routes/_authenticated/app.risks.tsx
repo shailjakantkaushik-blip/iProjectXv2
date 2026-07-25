@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { RISKS_SELECT } from "@/lib/query-selects";
 import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
@@ -43,7 +44,7 @@ function RisksPage() {
   const { data: risks = [] } = useQuery({
     queryKey: ["risks", orgId],
     queryFn: async () =>
-      (await supabase.from("risks").select("*").order("severity", { ascending: false })).data ?? [],
+      (await supabase.from("risks").select(RISKS_SELECT as "*").order("severity", { ascending: false })).data ?? [],
     enabled: !!orgId,
   });
 

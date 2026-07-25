@@ -8,8 +8,8 @@ export const getRouter = () => {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
-        // Longer stale window + scoped live-sync keeps UI snappy.
-        staleTime: 60_000,
+        // Longer stale window + scoped live-sync keeps UI snappy and cuts egress.
+        staleTime: 90_000,
         gcTime: 15 * 60_000,
         retry: 2,
         retryDelay: queryRetryDelay,

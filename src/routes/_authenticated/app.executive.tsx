@@ -43,7 +43,7 @@ import { darkenHex, scheduleCompletionPct } from "@/lib/schedule-progress";
 import { computeTimelineBounds } from "@/components/portfolio-timeline";
 import { FyPicker, ProjectPicker } from "@/components/portfolio-filters";
 import { unwrapList } from "@/lib/query";
-import { PROJECT_PORTFOLIO_SELECT } from "@/lib/project-selects";
+import { PROJECT_PORTFOLIO_SELECT, FINANCIALS_MONTHLY_SELECT, STAGE_GATE_DEFINITIONS_SELECT } from "@/lib/query-selects";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
@@ -117,7 +117,7 @@ function ExecutiveDashboard() {
       unwrapList(
         await supabase
           .from("stage_gate_definitions")
-          .select("*")
+          .select(STAGE_GATE_DEFINITIONS_SELECT as "*")
           .eq("org_id", organization!.id)
           .eq("is_active", true)
           .order("sort_order", { ascending: true }),
@@ -131,9 +131,7 @@ function ExecutiveDashboard() {
       unwrapList(
         await supabase
           .from("financials_monthly")
-          .select(
-            "id,project_id,period_month,capex_planned,capex_actual,capex_forecast,opex_planned,opex_actual,opex_forecast,benefits_actual",
-          ),
+          .select(FINANCIALS_MONTHLY_SELECT as "*"),
       ),
     enabled: !!organization,
   });
