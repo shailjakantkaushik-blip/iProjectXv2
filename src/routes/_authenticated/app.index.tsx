@@ -85,7 +85,7 @@ const ALL: Record<string, Shortcut> = {
   },
   ai: {
     to: "/app/ai-assist",
-    label: "Portfolio Assist",
+    label: "In-house AI",
     desc: "Ask the portfolio what needs attention",
     icon: Sparkles,
   },

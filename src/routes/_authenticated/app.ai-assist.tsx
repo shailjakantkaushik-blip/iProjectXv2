@@ -33,7 +33,7 @@ function AiAssistPage() {
   const [messages, setMessages] = useState<Msg[]>([
     {
       role: "assistant",
-      text: "Ask in plain language about portfolio health, risks, approvals, spend, actions, or a project name. I interpret your question locally and answer from live org data already loaded for you — no external AI, so portfolio data is not sent to a model provider.",
+      text: "I’m iProjectX In-house AI. Ask in plain language about portfolio health, risks, approvals, spend, actions, or a project name. I run entirely inside your organisation session — live data under RLS, no external AI provider.",
     },
   ]);
 
@@ -90,16 +90,16 @@ function AiAssistPage() {
   return (
     <div>
       <PageHeading
-        title="Portfolio Assist"
-        subtitle="Local Q&A on your live PMO data — no external AI"
+        title="In-house AI"
+        subtitle="Private portfolio intelligence on your live PMO data — never leaves your org"
       />
 
       <SectionFrame>
         <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-          <SectionTitle>Assistant</SectionTitle>
+          <SectionTitle>Chat</SectionTitle>
           <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
             <Lock className="h-3 w-3" />
-            Stays in your org session (RLS)
+            In-house · no external AI
           </span>
         </div>
 
@@ -132,7 +132,7 @@ function AiAssistPage() {
                 >
                   {m.role === "assistant" && (
                     <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      <Sparkles className="h-3 w-3" /> Local assist
+                      <Sparkles className="h-3 w-3" /> In-house AI
                     </div>
                   )}
                   {m.text}
@@ -167,8 +167,8 @@ function AiAssistPage() {
               </button>
             </div>
             <p className="mt-2 text-[11px] text-muted-foreground">
-              Enter to send · Shift+Enter for a new line. Answers are computed here from Supabase
-              rows you can already see — not uploaded to ChatGPT or any other model.
+              Enter to send · Shift+Enter for a new line. In-house AI answers from your live org
+              data in this session — nothing is sent to ChatGPT or any external model.
             </p>
           </div>
         </div>
