@@ -160,6 +160,7 @@ async function provisionUser(
     role: z.infer<typeof AssignableRole>;
     default_password: string;
   },
+  actorUserId?: string,
 ) {
   const { data: created, error: cErr } = await supabaseAdmin.auth.admin.createUser({
     email: data.email,
@@ -168,30 +169,50 @@ async function provisionUser(
     user_metadata: { full_name: data.full_name },
   });
   let userId = created?.user?.id as string | undefined;
+  let createdNew = Boolean(userId);
+
   if (cErr && !userId) {
     if (!/already/i.test(cErr.message)) throw new Error(cErr.message);
+
+    // Existing Auth user: NEVER reset their password (account-takeover vector).
+    // Only attach to this org when they have no org yet, or already belong here.
     const { data: list } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
     const found = list?.users?.find((u: any) => u.email?.toLowerCase() === data.email.toLowerCase());
     if (!found) throw new Error(cErr.message);
     userId = found.id;
-    await supabaseAdmin.auth.admin.updateUserById(userId, {
-      password: data.default_password,
-      ban_duration: "none",
-    });
+
+    const { data: existingProfile, error: pe } = await supabaseAdmin
+      .from("profiles")
+      .select("org_id")
+      .eq("id", userId)
+      .maybeSingle();
+    if (pe) throw new Error(pe.message);
+
+    if (existingProfile?.org_id && existingProfile.org_id !== data.org_id) {
+      throw new Error(
+        "A user with this email already belongs to another organisation. Contact a platform administrator.",
+      );
+    }
+
+    createdNew = false;
   }
   if (!userId) throw new Error("Failed to create user");
 
-  const { error: pErr } = await supabaseAdmin.from("profiles").upsert(
-    {
-      id: userId,
-      email: data.email,
-      full_name: data.full_name,
-      org_id: data.org_id,
-      must_change_password: true,
-      is_active: true,
-    },
-    { onConflict: "id" },
-  );
+  const profilePayload: Record<string, unknown> = {
+    id: userId,
+    email: data.email,
+    full_name: data.full_name,
+    org_id: data.org_id,
+    is_active: true,
+  };
+  // Only force password change for newly created accounts.
+  if (createdNew) {
+    profilePayload.must_change_password = true;
+  }
+
+  const { error: pErr } = await supabaseAdmin.from("profiles").upsert(profilePayload, {
+    onConflict: "id",
+  });
   if (pErr) throw new Error(pErr.message);
 
   const { data: existingRole, error: findErr } = await supabaseAdmin
@@ -211,7 +232,20 @@ async function provisionUser(
     if (rErr && !/duplicate|unique/i.test(rErr.message)) throw new Error(rErr.message);
   }
 
-  return { user_id: userId };
+  const { writeSecurityEvent } = await import("@/lib/security-audit");
+  await writeSecurityEvent({
+    orgId: data.org_id,
+    actorUserId: actorUserId ?? null,
+    eventType: "user_create",
+    entityType: "profiles",
+    entityId: userId,
+    summary: createdNew
+      ? `Created user ${data.email} with role ${data.role}`
+      : `Attached existing user ${data.email} with role ${data.role}`,
+    meta: { email: data.email, role: data.role, created_new: createdNew },
+  });
+
+  return { user_id: userId, created_new: createdNew };
 }
 
 /** Platform: all organisations with their users + roles */
@@ -296,6 +330,21 @@ export const adminSetUserActive = createServerFn({ method: "POST" })
     });
     if (aErr) throw new Error(aErr.message);
 
+    const { data: target } = await supabaseAdmin
+      .from("profiles")
+      .select("org_id,email")
+      .eq("id", data.user_id)
+      .maybeSingle();
+    const { writeSecurityEvent } = await import("@/lib/security-audit");
+    await writeSecurityEvent({
+      orgId: target?.org_id,
+      actorUserId: context.userId,
+      eventType: data.is_active ? "user_activate" : "user_deactivate",
+      entityType: "profiles",
+      entityId: data.user_id,
+      summary: `${data.is_active ? "Activated" : "Deactivated"} user ${target?.email ?? data.user_id}`,
+    });
+
     return { ok: true, is_active: data.is_active };
   });
 
@@ -313,8 +362,25 @@ export const adminDeleteUser = createServerFn({ method: "POST" })
       data.user_id,
     );
 
+    const { data: target } = await supabaseAdmin
+      .from("profiles")
+      .select("org_id,email")
+      .eq("id", data.user_id)
+      .maybeSingle();
+
     const { error } = await supabaseAdmin.auth.admin.deleteUser(data.user_id);
     if (error) throw new Error(error.message);
+
+    const { writeSecurityEvent } = await import("@/lib/security-audit");
+    await writeSecurityEvent({
+      orgId: target?.org_id,
+      actorUserId: context.userId,
+      eventType: "user_delete",
+      entityType: "profiles",
+      entityId: data.user_id,
+      summary: `Deleted user ${target?.email ?? data.user_id}`,
+    });
+
     return { ok: true };
   });
 
@@ -348,6 +414,18 @@ export const adminAssignUserRole = createServerFn({ method: "POST" })
       .from("user_roles")
       .insert({ user_id: data.user_id, org_id: data.org_id, role: data.role });
     if (error) throw new Error(error.message);
+
+    const { writeSecurityEvent } = await import("@/lib/security-audit");
+    await writeSecurityEvent({
+      orgId: data.org_id,
+      actorUserId: context.userId,
+      eventType: "role_assign",
+      entityType: "user_roles",
+      entityId: data.user_id,
+      summary: `Assigned role ${data.role}`,
+      meta: { role: data.role, user_id: data.user_id },
+    });
+
     return { ok: true };
   });
 
@@ -373,6 +451,18 @@ export const adminRemoveUserRole = createServerFn({ method: "POST" })
       .eq("org_id", data.org_id)
       .eq("role", data.role);
     if (error) throw new Error(error.message);
+
+    const { writeSecurityEvent } = await import("@/lib/security-audit");
+    await writeSecurityEvent({
+      orgId: data.org_id,
+      actorUserId: context.userId,
+      eventType: "role_remove",
+      entityType: "user_roles",
+      entityId: data.user_id,
+      summary: `Removed role ${data.role}`,
+      meta: { role: data.role, user_id: data.user_id },
+    });
+
     return { ok: true };
   });
 
@@ -401,13 +491,17 @@ export const orgAdminCreateUser = createServerFn({ method: "POST" })
     await assertOrgAdminForOrg(context.supabase, context.userId, profile.org_id);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    return provisionUser(supabaseAdmin, {
-      email: data.email,
-      full_name: data.full_name,
-      org_id: profile.org_id,
-      role: data.role,
-      default_password: data.default_password,
-    });
+    return provisionUser(
+      supabaseAdmin,
+      {
+        email: data.email,
+        full_name: data.full_name,
+        org_id: profile.org_id,
+        role: data.role,
+        default_password: data.default_password,
+      },
+      context.userId,
+    );
   });
 
 // Re-export helpers used by platform-admin create path

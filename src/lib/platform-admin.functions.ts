@@ -23,6 +23,18 @@ export const adminCreateOrganization = createServerFn({ method: "POST" })
       .select("id,name,slug")
       .single();
     if (error) throw new Error(error.message);
+
+    const { writeSecurityEvent } = await import("@/lib/security-audit");
+    await writeSecurityEvent({
+      orgId: org.id,
+      actorUserId: context.userId,
+      eventType: "org_create",
+      entityType: "organizations",
+      entityId: org.id,
+      summary: `Created organisation ${org.name}`,
+      meta: { slug: org.slug },
+    });
+
     return org;
   });
 
@@ -42,17 +54,52 @@ export const adminCreateUser = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertPlatformAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    return provisionUser(supabaseAdmin, data);
+    return provisionUser(supabaseAdmin, data, context.userId);
   });
 
-export const clearMustChangePassword = createServerFn({ method: "POST" })
+/**
+ * Forced password change — sets the new password server-side and clears the flag.
+ * Replaces the old clear-only endpoint (which could skip the actual password update).
+ */
+export const completeForcedPasswordChange = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .inputValidator((d) =>
+    z
+      .object({
+        password: z.string().min(8).max(128),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { error: authErr } = await supabaseAdmin.auth.admin.updateUserById(context.userId, {
+      password: data.password,
+    });
+    if (authErr) throw new Error(authErr.message);
+
+    const { data: profile } = await supabaseAdmin
+      .from("profiles")
+      .select("org_id")
+      .eq("id", context.userId)
+      .maybeSingle();
+
     const { error } = await supabaseAdmin
       .from("profiles")
       .update({ must_change_password: false })
       .eq("id", context.userId);
     if (error) throw new Error(error.message);
+
+    const { writeSecurityEvent } = await import("@/lib/security-audit");
+    await writeSecurityEvent({
+      orgId: profile?.org_id,
+      actorUserId: context.userId,
+      eventType: "password_change",
+      entityType: "profiles",
+      entityId: context.userId,
+      summary: "Forced password change completed",
+    });
+
     return { ok: true };
   });
+
