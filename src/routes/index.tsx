@@ -27,6 +27,8 @@ import {
   KeyRound,
   ScrollText,
   Shield,
+  Sparkles,
+  Brain,
 } from "lucide-react";
 import {
   DEFAULT_LANDING,
@@ -57,13 +59,13 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "iProjectX — enterprise PMO command center with live cockpit, RAID governance, financial control, MFA, multi-tenant RLS, and auditor-ready evidence export.",
+          "iProjectX — enterprise PMO command center with MFA, multi-tenant security, and In-house AI that protects portfolio data while still delivering intelligence.",
       },
       { property: "og:title", content: "iProjectX — Enterprise PMO command center" },
       {
         property: "og:description",
         content:
-          "Live cockpit, RAID, financials, MFA-enforced access, multi-tenant security, and audit evidence packs for enterprise PMOs.",
+          "Live cockpit, RAID, financials, MFA, and In-house AI — portfolio intelligence without sending data to external AI.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -96,6 +98,7 @@ const FAILURE_ICONS: Record<string, any> = {
   "RAID rots in spreadsheets": ClipboardX,
   "Benefits never tracked": TimerReset,
   "Weak access control": Lock,
+  "AI that leaks portfolio data": Brain,
 };
 const WIN_ICONS: Record<string, any> = {
   "Live executive cockpit": Activity,
@@ -105,6 +108,7 @@ const WIN_ICONS: Record<string, any> = {
   "RAID tied to delivery": BadgeCheck,
   "Benefits realisation": LineChart,
   "Hardened tenant security": Shield,
+  "In-house AI, data stays yours": Sparkles,
 };
 const CAP_ICONS: Record<string, any> = {
   "Executive Cockpit": Activity,
@@ -117,6 +121,7 @@ const CAP_ICONS: Record<string, any> = {
   "Roadmap Analytics": Gauge,
   "Roles & Permissions": Lock,
   "Enterprise Security": Shield,
+  "In-house AI": Sparkles,
   "Audit & Evidence": ScrollText,
   "White-label & Themes": Palette,
   "Excel-Native": FileSpreadsheet,
@@ -126,6 +131,7 @@ const CAP_ICONS: Record<string, any> = {
 const TRUST_STRIP_ICONS: Record<string, any> = {
   "MFA for every user": KeyRound,
   "Multi-tenant RLS": Lock,
+  "In-house AI": Sparkles,
   "Admin audit trails": ScrollText,
   "Evidence export": FileSpreadsheet,
   "Excel-native": FileSpreadsheet,
@@ -1604,9 +1610,9 @@ function SecurityTour({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: strin
   const controls = [
     { label: "Identity", value: "MFA required" },
     { label: "Tenancy", value: "Row-level RLS" },
-    { label: "Sessions", value: "PKCE + sessionStorage" },
+    { label: "Intelligence", value: "In-house AI" },
+    { label: "Data for AI", value: "Stays in your org" },
     { label: "Audit", value: "Admin evidence export" },
-    { label: "Edge", value: "CSP + HSTS" },
     { label: "Readiness", value: "SOC 2 / ISO path" },
   ];
   return (
