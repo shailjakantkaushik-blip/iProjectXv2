@@ -34,6 +34,7 @@ import {
 } from "@/lib/project-finance";
 import {
   expandProjectsToTimelineLanes,
+  gatesForTimelineLane,
   fetchOrgStreams,
   formatProjectStreamRef,
   formatStreamLabel,
@@ -43,7 +44,12 @@ import { darkenHex, scheduleCompletionPct } from "@/lib/schedule-progress";
 import { computeTimelineBounds } from "@/components/portfolio-timeline";
 import { FyPicker, ProjectPicker } from "@/components/portfolio-filters";
 import { unwrapList } from "@/lib/query";
-import { PROJECT_PORTFOLIO_SELECT, FINANCIALS_MONTHLY_SELECT, STAGE_GATE_DEFINITIONS_SELECT } from "@/lib/query-selects";
+import {
+  PROJECT_PORTFOLIO_SELECT,
+  FINANCIALS_MONTHLY_SELECT,
+  STAGE_GATE_DEFINITIONS_SELECT,
+  STAGE_GATES_SELECT,
+} from "@/lib/query-selects";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
@@ -95,12 +101,12 @@ function ExecutiveDashboard() {
   });
 
   const gatesQ = useQuery({
+    // Must include stream_id — shared cache key with other pages; omitting it
+    // hides diamonds on stream lanes until a hard reload.
     queryKey: ["stage_gates", organization?.id],
     queryFn: async () =>
       unwrapList(
-        await supabase
-          .from("stage_gates")
-          .select("id,project_id,stream_id,gate_name,planned_date,actual_date,status"),
+        await supabase.from("stage_gates").select(STAGE_GATES_SELECT as "*").order("planned_date"),
       ),
     enabled: !!organization,
   });
@@ -142,7 +148,8 @@ function ExecutiveDashboard() {
   const gateDefs = gateDefsQ.data ?? [];
   const monthly = monthlyQ.data ?? [];
   // Cold load only — keep the dashboard visible while background refetch runs.
-  const showColdLoad = isColdLoading(projectsQ);
+  // Wait for projects + gates so timeline diamonds are not missing on first paint.
+  const showColdLoad = isColdLoading(projectsQ) || isColdLoading(gatesQ);
   const softUpdating =
     projectsQ.isFetching ||
     gatesQ.isFetching ||
@@ -1101,7 +1108,7 @@ function GanttGroup({
   const phaseOf = (p: any) =>
     p.is_project_rollup
       ? (p.current_phase || null)
-      : resolveStageShared(p, gatesByLane.get(laneKeyOf(p)) || [], orgPhases);
+      : resolveStageShared(p, gatesForTimelineLane(p, gatesByLane), orgPhases);
   const { start: rangeStart, totalMs, months, fyGroups } = bounds;
   const monthShort = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const now = new Date();
@@ -1272,14 +1279,13 @@ function GanttGroup({
               const schedPct = scheduleCompletionPct(s, e);
               const doneColor = darkenHex(color, 0.4);
               const laneKey = laneKeyOf(p);
-              const projGates = p.is_project_rollup
-                ? []
-                : (gatesByLane.get(laneKey) || [])
-                    .filter((g: any) => g.planned_date || g.actual_date)
-                    .sort((a: any, b: any) =>
-                      new Date(a.actual_date || a.planned_date).getTime() -
-                      new Date(b.actual_date || b.planned_date).getTime()
-                    );
+              const projGates = gatesForTimelineLane(p, gatesByLane)
+                .filter((g: any) => g.planned_date || g.actual_date)
+                .sort(
+                  (a: any, b: any) =>
+                    new Date(a.actual_date || a.planned_date).getTime() -
+                    new Date(b.actual_date || b.planned_date).getTime(),
+                );
               const rowKey = p.is_project_rollup ? `rollup:${projectId}` : p.id;
 
               return (

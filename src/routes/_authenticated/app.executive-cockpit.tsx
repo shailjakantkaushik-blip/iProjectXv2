@@ -94,7 +94,7 @@ function ExecutiveCockpit() {
       (
         await supabase
           .from("stage_gates")
-          .select("id,project_id,gate_name,planned_date,actual_date,status")
+          .select("id,project_id,stream_id,gate_name,planned_date,actual_date,status")
       ).data ?? [],
     enabled: !!orgId,
   });
