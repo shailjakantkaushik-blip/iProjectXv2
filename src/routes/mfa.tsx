@@ -19,6 +19,23 @@ import { readOrgAuthEntrySlug } from "@/lib/org-auth-entry";
 
 type MfaSearch = { mode?: "challenge" | "enroll"; next?: string };
 
+/** Allow only same-origin app paths — reject //evil.com and protocol-relative URLs. */
+function safeAppNextPath(next: string | undefined): string {
+  if (!next || typeof next !== "string") return "/app";
+  if (!next.startsWith("/") || next.startsWith("//") || next.includes("\\")) return "/app";
+  if (next.includes("://")) return "/app";
+  if (!/^\/[A-Za-z0-9/_\-?=&%.]*$/.test(next)) return "/app";
+  if (
+    next === "/app" ||
+    next.startsWith("/app/") ||
+    next.startsWith("/platform") ||
+    next.startsWith("/onboarding")
+  ) {
+    return next;
+  }
+  return "/app";
+}
+
 export const Route = createFileRoute("/mfa")({
   validateSearch: (s: Record<string, unknown>): MfaSearch => ({
     mode: s.mode === "enroll" ? "enroll" : s.mode === "challenge" ? "challenge" : undefined,
@@ -57,7 +74,7 @@ function MfaPage() {
   const [secret, setSecret] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
 
-  const nextPath = search.next && search.next.startsWith("/") ? search.next : "/app";
+  const nextPath = safeAppNextPath(search.next);
 
   useEffect(() => {
     fetchLandingConfig()

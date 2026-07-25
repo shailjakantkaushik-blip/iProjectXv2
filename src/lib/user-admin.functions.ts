@@ -443,6 +443,8 @@ export const adminRemoveUserRole = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     await assertCanManageUser(context.supabase, supabaseAdmin, context.userId, data.user_id);
+    // Same org-admin bound as assign — prevent mutating another tenant's role rows.
+    await assertOrgAdminForOrg(context.supabase, context.userId, data.org_id);
 
     const { error } = await supabaseAdmin
       .from("user_roles")
