@@ -2,14 +2,12 @@ import { TABLES, type TableDef, type FieldDef } from "@/lib/data-tables";
 import { supabase } from "@/integrations/supabase/client";
 import { syncScheduleDates } from "@/lib/project-dates";
 import { persistCurrentPhaseFromGates } from "@/lib/project-phase";
-
-/** Lazy-load SheetJS — static import pulled ~700KB+ into cold reload. */
-type XLSXModule = typeof import("xlsx");
-let xlsxPromise: Promise<XLSXModule> | null = null;
-function loadXlsx(): Promise<XLSXModule> {
-  if (!xlsxPromise) xlsxPromise = import("xlsx");
-  return xlsxPromise;
-}
+import {
+  listSheetNames,
+  sheetToObjects,
+  writeObjectSheets,
+  writeReadmeAndSheets,
+} from "@/lib/excel-io";
 
 // ---------- Legacy exports (kept for compatibility) ----------
 export interface ProjectRow {
@@ -109,7 +107,6 @@ function toExportRow(
 
 // ---------- Full org export ----------
 export async function exportOrganizationWorkbook(orgId: string, orgName: string) {
-  const XLSX = await loadXlsx();
   // Preload lookup maps for FK resolution.
   const [{ data: projects }, { data: bus }, { data: resources }, { data: streams }] = await Promise.all([
     supabase.from("projects").select("id,project_code,name").eq("org_id", orgId),
@@ -124,35 +121,31 @@ export async function exportOrganizationWorkbook(orgId: string, orgName: string)
     (streams ?? []).map((s: any) => [s.id, s.code || s.name || s.id] as [string, string]),
   );
 
-  const wb = XLSX.utils.book_new();
-
-  // README — customer-facing import/export guidance
-  const readme = [
-    { A: "iProjectX — Organization Data Workbook", B: "" },
-    { A: "Organization", B: orgName },
-    { A: "Generated", B: new Date().toISOString() },
-    { A: "", B: "" },
-    { A: "How to update", B: "Edit values below (never rename headers). Add rows at the bottom. Upload via Data Editor → Upload. Admin role required." },
-    { A: "Match keys", B: "Rows match on the keys listed per sheet. New codes insert; existing codes update." },
-    { A: "Project dates", B: "Edit planned_* and actual_* dates. start_date/end_date (Schedule Start/End) auto-sync as Actual → else Planned." },
-    { A: "Current phase", B: "Prefer Stage Gates sheet status. current_phase is refreshed from the in-flight gate after gate rows are saved." },
-    { A: "FK columns", B: "Use project_code / bu_code / resource_name / stream_code (not UUIDs). Dependencies also use depends_on_project_code." },
-    { A: "Streams", B: "Every project has a Core stream. Add Project Streams rows for more lanes. Child sheets (gates, milestones, finance, allocations) use stream_code." },
-    { A: "", B: "" },
-    { A: "Finance model (canonical)", B: "" },
-    { A: "1. Projects", B: "budget = approved funding; capex/opex approved & incurred; forecast_at_completion (FAC); benefits_* are rollups. With streams on, project figures roll up from Project Streams. portfolio = Business Strategic | IT Strategic | CAPEX | Unfunded (used by Executive Cockpit health & segmentation)." },
-    { A: "2. Project Streams", B: "Delivery lanes under a project. Each stream owns planned/actual dates, gates, finance, and allocations." },
-    { A: "3. Benefits sheet", B: "Benefit lines are the detail source. Keep project benefits_target / benefits_realised in sync with the sum of lines." },
-    { A: "4. FY Allocations", B: "Forward PLAN: budget + forecast $ per FY. Optional stream_code when streams are enabled." },
-    { A: "5. Financials (Monthly)", B: "Execution: planned/forecast + actual. YYYY-MM-01. Optional stream_code." },
-    { A: "6. ROI %", B: "Target ROI = (benefits_target − budget) / budget × 100. Store on Projects; realised ROI is computed from incurred + realised benefits." },
-    { A: "7. Stage gates", B: "gate_name must match Stage Gate Definitions. Include stream_code when the project uses streams." },
-    { A: "7b. Milestones", B: "Standalone milestones. Include stream_code when the project uses streams so they land on the right lane." },
-    { A: "8. Resource allocations", B: "allocation_percent is % of FTE for that month. Optional stream_code scopes allocation to a stream." },
+  const readme: Array<[string, string]> = [
+    ["iProjectX — Organization Data Workbook", ""],
+    ["Organization", orgName],
+    ["Generated", new Date().toISOString()],
+    ["", ""],
+    ["How to update", "Edit values below (never rename headers). Add rows at the bottom. Upload via Data Editor → Upload. Admin role required."],
+    ["Match keys", "Rows match on the keys listed per sheet. New codes insert; existing codes update."],
+    ["Project dates", "Edit planned_* and actual_* dates. start_date/end_date (Schedule Start/End) auto-sync as Actual → else Planned."],
+    ["Current phase", "Prefer Stage Gates sheet status. current_phase is refreshed from the in-flight gate after gate rows are saved."],
+    ["FK columns", "Use project_code / bu_code / resource_name / stream_code (not UUIDs). Dependencies also use depends_on_project_code."],
+    ["Streams", "Every project has a Core stream. Add Project Streams rows for more lanes. Child sheets (gates, milestones, finance, allocations) use stream_code."],
+    ["", ""],
+    ["Finance model (canonical)", ""],
+    ["1. Projects", "budget = approved funding; capex/opex approved & incurred; forecast_at_completion (FAC); benefits_* are rollups. With streams on, project figures roll up from Project Streams. portfolio = Business Strategic | IT Strategic | CAPEX | Unfunded (used by Executive Cockpit health & segmentation)."],
+    ["2. Project Streams", "Delivery lanes under a project. Each stream owns planned/actual dates, gates, finance, and allocations."],
+    ["3. Benefits sheet", "Benefit lines are the detail source. Keep project benefits_target / benefits_realised in sync with the sum of lines."],
+    ["4. FY Allocations", "Forward PLAN: budget + forecast $ per FY. Optional stream_code when streams are enabled."],
+    ["5. Financials (Monthly)", "Execution: planned/forecast + actual. YYYY-MM-01. Optional stream_code."],
+    ["6. ROI %", "Target ROI = (benefits_target − budget) / budget × 100. Store on Projects; realised ROI is computed from incurred + realised benefits."],
+    ["7. Stage gates", "gate_name must match Stage Gate Definitions. Include stream_code when the project uses streams."],
+    ["7b. Milestones", "Standalone milestones. Include stream_code when the project uses streams so they land on the right lane."],
+    ["8. Resource allocations", "allocation_percent is % of FTE for that month. Optional stream_code scopes allocation to a stream."],
   ];
-  const readmeSheet = XLSX.utils.json_to_sheet(readme, { skipHeader: true });
-  XLSX.utils.book_append_sheet(wb, readmeSheet, "README");
 
+  const sheets: Array<{ name: string; headers: string[]; rows: Dict[] }> = [];
   for (const t of TABLES) {
     const { data, error } = await (supabase as any)
       .from(t.key)
@@ -162,7 +155,6 @@ export async function exportOrganizationWorkbook(orgId: string, orgName: string)
     if (error) throw error;
     const headers = [...exportHeaders(t)];
     if (t.key === "dependencies") {
-      // Insert predecessor code column right after project_code
       const idx = headers.indexOf("project_code");
       headers.splice(idx + 1, 0, "depends_on_project_code");
     }
@@ -173,13 +165,15 @@ export async function exportOrganizationWorkbook(orgId: string, orgName: string)
     const rows = (data ?? []).map((r: Dict) =>
       toExportRow(r, t, projectById, buById, resourceById, streamById),
     );
-    // Ensure at least the header row is present
-    const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [Object.fromEntries(headers.map((h) => [h, ""]))], { header: headers });
-    XLSX.utils.book_append_sheet(wb, ws, t.label.slice(0, 31));
+    sheets.push({
+      name: t.label.slice(0, 31),
+      headers,
+      rows: rows.length ? rows : [Object.fromEntries(headers.map((h) => [h, ""]))],
+    });
   }
 
   const safe = orgName.replace(/[^a-z0-9]+/gi, "_");
-  XLSX.writeFile(wb, `PMO_${safe}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  await writeReadmeAndSheets(readme, sheets, `PMO_${safe}_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 // ---------- Full org import (admin only) ----------
@@ -192,11 +186,7 @@ export interface ImportReport {
 }
 
 export async function importOrganizationWorkbook(orgId: string, file: File): Promise<ImportReport[]> {
-  const XLSX = await loadXlsx();
-  const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { type: "array", cellDates: true });
-
-  // Refresh lookups after each phase (projects first so downstream tables can match).
+  const names = await listSheetNames(file);
   const results: ImportReport[] = [];
 
   // Import lookup tables + projects + streams before child sheets that reference them.
@@ -207,12 +197,14 @@ export async function importOrganizationWorkbook(orgId: string, file: File): Pro
   ];
 
   for (const t of ordered) {
-    const sheetName = wb.SheetNames.find((n) => n.toLowerCase() === t.label.toLowerCase() || n.toLowerCase() === t.key.toLowerCase());
+    const sheetName = names.find(
+      (n) => n.toLowerCase() === t.label.toLowerCase() || n.toLowerCase() === t.key.toLowerCase(),
+    );
     if (!sheetName) {
       results.push({ table: t.label, inserted: 0, updated: 0, skipped: 0, errors: ["Sheet missing"] });
       continue;
     }
-    const rows = XLSX.utils.sheet_to_json<Dict>(wb.Sheets[sheetName], { defval: null });
+    const rows = await sheetToObjects(file, sheetName);
     const report = await importTableRows(orgId, t, rows);
     results.push(report);
   }
@@ -410,28 +402,22 @@ function buildMatchKeyFromPayload(t: TableDef, payload: any, raw: Dict): string 
 
 // ---------- Blank multi-sheet customer template ----------
 export async function downloadTemplate() {
-  const XLSX = await loadXlsx();
-  const wb = XLSX.utils.book_new();
-  const readme = [
-    { A: "iProjectX — Blank Data Template", B: "" },
-    { A: "Purpose", B: "Start clean: fill sheets, then upload via Data Editor → Upload (admin)." },
-    { A: "", B: "" },
-    { A: "Import order", B: "Business Units → Stage Gate Definitions → Projects → Project Streams → Resources → all other sheets." },
-    { A: "Project code", B: "Human key used on every child sheet (risks, financials, allocations, etc.)." },
-    { A: "Stream code", B: "Optional. On Project Streams sheet set `code`. Child sheets reference it via stream_code when projects.streams_enabled=true." },
-    { A: "Dates", B: "Use YYYY-MM-DD. Prefer Planned/Actual dates; Schedule Start/End auto-sync in the app." },
-    { A: "FY labels", B: "Use FY26, FY27 style labels matching your org financial year (default April start → FY ends in labelled year)." },
-    { A: "FY Allocations", B: "Set budget and forecast $ per FY. CapEx/OpEx/Benefits are optional detail of the budget split. Optional stream_code." },
-    { A: "Benefits", B: "Add benefit lines; keep Projects.benefits_target / benefits_realised equal to the sum of lines." },
-    { A: "ROI %", B: "Target ROI on Projects. Leave blank to let the app compute from benefits_target and budget." },
-    { A: "Capacity", B: "resource_allocations.allocation_percent = % of person-month. Optional stream_code scopes the allocation to a stream." },
+  const readme: Array<[string, string]> = [
+    ["iProjectX — Blank Data Template", ""],
+    ["Purpose", "Start clean: fill sheets, then upload via Data Editor → Upload (admin)."],
+    ["", ""],
+    ["Import order", "Business Units → Stage Gate Definitions → Projects → Project Streams → Resources → all other sheets."],
+    ["Project code", "Human key used on every child sheet (risks, financials, allocations, etc.)."],
+    ["Stream code", "Optional. On Project Streams sheet set `code`. Child sheets reference it via stream_code when projects.streams_enabled=true."],
+    ["Dates", "Use YYYY-MM-DD. Prefer Planned/Actual dates; Schedule Start/End auto-sync in the app."],
+    ["FY labels", "Use FY26, FY27 style labels matching your org financial year (default April start → FY ends in labelled year)."],
+    ["FY Allocations", "Set budget and forecast $ per FY. CapEx/OpEx/Benefits are optional detail of the budget split. Optional stream_code."],
+    ["Benefits", "Add benefit lines; keep Projects.benefits_target / benefits_realised equal to the sum of lines."],
+    ["ROI %", "Target ROI on Projects. Leave blank to let the app compute from benefits_target and budget."],
+    ["Capacity", "resource_allocations.allocation_percent = % of person-month. Optional stream_code scopes the allocation to a stream."],
   ];
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.json_to_sheet(readme, { skipHeader: true }),
-    "README",
-  );
 
+  const sheets: Array<{ name: string; headers: string[]; rows: Dict[] }> = [];
   for (const t of TABLES) {
     const headers = [...exportHeaders(t)];
     if (t.key === "dependencies") {
@@ -442,11 +428,13 @@ export async function downloadTemplate() {
       const idx = headers.indexOf("resource_id");
       if (idx >= 0) headers[idx] = "resource_name";
     }
-    const sample = sampleRowForTemplate(t, headers);
-    const ws = XLSX.utils.json_to_sheet([sample], { header: headers });
-    XLSX.utils.book_append_sheet(wb, ws, t.label.slice(0, 31));
+    sheets.push({
+      name: t.label.slice(0, 31),
+      headers,
+      rows: [sampleRowForTemplate(t, headers)],
+    });
   }
-  XLSX.writeFile(wb, "iProjectX_Data_Template.xlsx");
+  await writeReadmeAndSheets(readme, sheets, "iProjectX_Data_Template.xlsx");
 }
 
 function sampleRowForTemplate(t: TableDef, headers: string[]): Dict {
@@ -557,12 +545,10 @@ function sampleRowForTemplate(t: TableDef, headers: string[]): Dict {
 }
 
 export async function parseWorkbook(file: File): Promise<ProjectRow[]> {
-  const XLSX = await loadXlsx();
-  const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { type: "array", cellDates: true });
-  const sheetName = wb.SheetNames.find((n) => n.toLowerCase() === "projects") || wb.SheetNames[0];
-  const ws = wb.Sheets[sheetName];
-  const rows = XLSX.utils.sheet_to_json<Dict>(ws, { defval: null });
+  const names = await listSheetNames(file);
+  const sheetName = names.find((n) => n.toLowerCase() === "projects") || names[0];
+  if (!sheetName) return [];
+  const rows = await sheetToObjects(file, sheetName);
   const numericCols = [
     "budget","capex_approved","capex_incurred","opex_approved","opex_incurred",
     "forecast_at_completion","benefits_target","benefits_realised","roi_percent",
@@ -590,7 +576,6 @@ export async function parseWorkbook(file: File): Promise<ProjectRow[]> {
 }
 
 export async function exportProjects(projects: Record<string, unknown>[]) {
-  const XLSX = await loadXlsx();
   const dateCols = new Set(
     (TABLES.find((t) => t.key === "projects")?.fields ?? [])
       .filter((f) => f.type === "date")
@@ -605,8 +590,8 @@ export async function exportProjects(projects: Record<string, unknown>[]) {
     }
     return o;
   });
-  const ws = XLSX.utils.json_to_sheet(rows, { header: PROJECT_COLUMNS as string[] });
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Projects");
-  XLSX.writeFile(wb, `PMO_Projects_Export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  await writeObjectSheets(
+    [{ name: "Projects", headers: PROJECT_COLUMNS as string[], rows }],
+    `PMO_Projects_Export_${new Date().toISOString().slice(0, 10)}.xlsx`,
+  );
 }

@@ -11,15 +11,18 @@ the exact wiring for a Git → Vercel → Supabase deployment.
 1. In your Supabase project → **Authentication → Providers**, enable
    **Email**. Turn off "Confirm email" only if you want instant login
    without confirmation (dev only).
-2. **Authentication → URL configuration**:
+2. **Authentication → Multi-factor authentication**: enable **TOTP**.
+   Required for admin MFA enrollment in the app (`platform_admin`,
+   `org_admin`, `admin` are forced to enroll).
+3. **Authentication → URL configuration**:
    - Site URL: `https://<your-vercel-domain>`
    - Redirect URLs: add both `https://<your-vercel-domain>/**` and
      `http://localhost:5173/**` (for local dev).
-3. Copy from **Project Settings → API**:
+4. Copy from **Project Settings → API**:
    - Project URL
    - `anon` / publishable key
    - `service_role` (secret) key — server-only
-4. Optional: add Google/Apple/etc. providers here — the app already listens
+5. Optional: add Google/Apple/etc. providers here — the app already listens
    for their sessions via `onAuthStateChange`.
 
 ## 2. Cloudflare Turnstile (bot check)

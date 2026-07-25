@@ -12,6 +12,7 @@ import {
 import { PageLoading } from "@/components/page-loading";
 import { StableBrandLogo } from "@/components/stable-brand-logo";
 import { ArrowLeft } from "lucide-react";
+import DOMPurify from "dompurify";
 
 export const Route = createFileRoute("/legal/$slug")({
   loader: async ({ params }) => {
@@ -195,7 +196,9 @@ function LegalPolicyPage() {
     );
   }
 
-  const html = markdownToHtml(stripRedundantHeader(policy.body_markdown ?? ""));
+  const html = DOMPurify.sanitize(markdownToHtml(stripRedundantHeader(policy.body_markdown ?? "")), {
+    USE_PROFILES: { html: true },
+  });
 
   return (
     <div className="min-h-screen antialiased" style={{ ...BODY, background: pageBg, color: p.textBody }}>

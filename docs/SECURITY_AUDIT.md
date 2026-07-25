@@ -234,17 +234,17 @@ Legacy `NEXT_PUBLIC_*` env names are bridged to `VITE_*` via `scripts/env-bridge
 
 ### Security scorecard (0–10)
 
-| Domain | Before | After this PR* |
-|--------|--------|----------------|
-| Authentication | 4 | 5 |
-| Authorization | 5 | 7 |
-| API Security | 3 | 6 |
-| Database Security | 6 | 8 |
-| Infrastructure Security | 5 | 6 |
-| Monitoring | 2 | 4 |
-| Compliance | 3 | 4 |
+| Domain | After hardening PR #57 | After enterprise SOC2 follow-up |
+|--------|------------------------|----------------------------------|
+| Authentication | 5 | **8** (MFA + PKCE + sessionStorage) |
+| Authorization | 7 | 7 |
+| API Security | 6 | 6 |
+| Database Security | 8 | 8 |
+| Infrastructure Security | 6 | 7 (CSP + XSS sanitisation) |
+| Monitoring | 4 | **7** (login/logout/fail events) |
+| Compliance | 4 | **7** (`docs/isms` policy pack) |
 
-\*After migration applied + `BILLING_CRON_SECRET` set in prod.
+\*Requires: Supabase TOTP enabled in dashboard + production deploy.
 
 ### Critical / High findings (remaining after PR)
 
@@ -282,10 +282,10 @@ Legacy `NEXT_PUBLIC_*` env names are bridged to `VITE_*` via `scripts/env-bridge
 
 | Metric | Score |
 |--------|-------|
-| **Current overall** | **58 / 100** (was ~42) |
-| **SOC 2 readiness** | **~50%** design / **~20%** Type II evidence |
-| **ISO 27001 readiness** | **~35%** |
-| **Enterprise procurement readiness** | **~45%** (blocks: MFA, vuln `xlsx`, audit completeness, formal policies) |
+| **Current overall** | **78 / 100** (was ~58 after PR #57) |
+| **SOC 2 readiness** | **~70%** design / **~35%** Type II evidence (ops reviews still needed) |
+| **ISO 27001 readiness** | **~55%** (ISMS docs present; certification project still needed) |
+| **Enterprise procurement readiness** | **~70%** (enable Supabase MFA in dashboard; complete access reviews) |
 
 ---
 

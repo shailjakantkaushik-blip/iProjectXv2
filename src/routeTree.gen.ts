@@ -14,6 +14,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as ForcePasswordChangeRouteImport } from './routes/force-password-change'
+import { Route as MfaRouteImport } from './routes/mfa'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as AuthenticatedAppRouteImport } from './routes/_authenticated/app'
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated/onboarding'
@@ -118,6 +119,11 @@ const ContactRoute = ContactRouteImport.update({
 const ForcePasswordChangeRoute = ForcePasswordChangeRouteImport.update({
   id: '/force-password-change',
   path: '/force-password-change',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MfaRoute = MfaRouteImport.update({
+  id: '/mfa',
+  path: '/mfa',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -594,6 +600,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/contact': typeof ContactRoute
   '/force-password-change': typeof ForcePasswordChangeRoute
+  '/mfa': typeof MfaRoute
   '/reset-password': typeof ResetPasswordRoute
   '/app': typeof AuthenticatedAppRouteWithChildren
   '/onboarding': typeof AuthenticatedOnboardingRoute
@@ -681,6 +688,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/contact': typeof ContactRoute
   '/force-password-change': typeof ForcePasswordChangeRoute
+  '/mfa': typeof MfaRoute
   '/reset-password': typeof ResetPasswordRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/platform': typeof AuthenticatedPlatformRouteWithChildren
@@ -769,6 +777,7 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/contact': typeof ContactRoute
   '/force-password-change': typeof ForcePasswordChangeRoute
+  '/mfa': typeof MfaRoute
   '/reset-password': typeof ResetPasswordRoute
   '/_authenticated/app': typeof AuthenticatedAppRouteWithChildren
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
@@ -858,6 +867,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/contact'
     | '/force-password-change'
+    | '/mfa'
     | '/reset-password'
     | '/app'
     | '/onboarding'
@@ -945,6 +955,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/contact'
     | '/force-password-change'
+    | '/mfa'
     | '/reset-password'
     | '/onboarding'
     | '/platform'
@@ -1032,6 +1043,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/contact'
     | '/force-password-change'
+    | '/mfa'
     | '/reset-password'
     | '/_authenticated/app'
     | '/_authenticated/onboarding'
@@ -1121,6 +1133,7 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   ContactRoute: typeof ContactRoute
   ForcePasswordChangeRoute: typeof ForcePasswordChangeRoute
+  MfaRoute: typeof MfaRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   LegalSlugRoute: typeof LegalSlugRoute
   OSlugLoginRoute: typeof OSlugLoginRoute
@@ -1162,6 +1175,13 @@ declare module '@tanstack/react-router' {
       path: '/force-password-change'
       fullPath: '/force-password-change'
       preLoaderRoute: typeof ForcePasswordChangeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mfa': {
+      id: '/mfa'
+      path: '/mfa'
+      fullPath: '/mfa'
+      preLoaderRoute: typeof MfaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reset-password': {
@@ -1944,6 +1964,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   ContactRoute: ContactRoute,
   ForcePasswordChangeRoute: ForcePasswordChangeRoute,
+  MfaRoute: MfaRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   LegalSlugRoute: LegalSlugRoute,
   OSlugLoginRoute: OSlugLoginRoute,

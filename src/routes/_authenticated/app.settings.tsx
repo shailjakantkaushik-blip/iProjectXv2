@@ -1,11 +1,13 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useAuth, isAdmin } from "@/lib/auth-context";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Palette, CalendarClock } from "lucide-react";
-import { useState } from "react";
+import { Palette, CalendarClock, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { MONTH_NAMES } from "@/lib/fiscal-year";
 import { toast } from "sonner";
+import { getMfaStatus, roleRequiresMfa, unenrollTotp } from "@/lib/mfa";
+import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/_authenticated/app/settings")({
   component: SettingsPage,
@@ -16,6 +18,25 @@ function SettingsPage() {
   const canEdit = isAdmin(roles);
   const [fyMonth, setFyMonth] = useState<number>(organization?.fy_start_month || 4);
   const [saving, setSaving] = useState(false);
+  const [mfaEnabled, setMfaEnabled] = useState<boolean | null>(null);
+  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
+  const mfaRequired = roleRequiresMfa(roles);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getMfaStatus()
+      .then((s) => {
+        if (cancelled) return;
+        setMfaEnabled(s.hasVerifiedFactor);
+        setMfaFactorId(s.verifiedFactorIds[0] ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setMfaEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const saveFy = async () => {
     if (!organization) return;
@@ -79,6 +100,60 @@ function SettingsPage() {
           </div>
           <div className="text-[11px] text-muted-foreground">
             Example: April → FY ending in March. FY label uses the ending calendar year (Apr 2026 – Mar 2027 = FY27).
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ShieldCheck className="h-5 w-5" /> Two-factor authentication (MFA)
+          </CardTitle>
+          <CardDescription>
+            {mfaRequired
+              ? "Required for admin accounts. Use an authenticator app for sign-in."
+              : "Optional for your role. Recommended for stronger account protection."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <div>
+            Status:{" "}
+            <strong>
+              {mfaEnabled == null ? "Checking…" : mfaEnabled ? "Enabled" : "Not enabled"}
+            </strong>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {!mfaEnabled && (
+              <Button asChild size="sm">
+                <Link to="/mfa" search={{ mode: "enroll", next: "/app/settings" }}>
+                  Set up MFA
+                </Link>
+              </Button>
+            )}
+            {mfaEnabled && mfaFactorId && !mfaRequired && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  try {
+                    await unenrollTotp(mfaFactorId);
+                    setMfaEnabled(false);
+                    setMfaFactorId(null);
+                    toast.success("MFA removed");
+                    await refresh();
+                  } catch (e: any) {
+                    toast.error(e?.message ?? "Could not remove MFA");
+                  }
+                }}
+              >
+                Remove MFA
+              </Button>
+            )}
+            {mfaEnabled && mfaRequired && (
+              <span className="text-[11px] text-muted-foreground">
+                MFA is required for your role and cannot be removed here.
+              </span>
+            )}
           </div>
         </CardContent>
       </Card>

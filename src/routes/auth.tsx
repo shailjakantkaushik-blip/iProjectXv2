@@ -20,6 +20,8 @@ import {
 import { toast } from "sonner";
 import { TurnstileWidget, isTurnstileEnabled } from "@/components/turnstile";
 import { verifyTurnstile } from "@/lib/turnstile.functions";
+import { getMfaStatus } from "@/lib/mfa";
+import { recordAuthSecurityEvent, recordFailedLogin } from "@/lib/auth-events.functions";
 import {
   fetchLandingConfig,
   DEFAULT_LANDING,
@@ -157,6 +159,8 @@ function AuthPage() {
   const { session, loading, profile } = useAuth();
   const navigate = useNavigate();
   const assertOrgMembership = useServerFn(assertUserBelongsToOrgSlug);
+  const recordAuth = useServerFn(recordAuthSecurityEvent);
+  const recordFail = useServerFn(recordFailedLogin);
   const [busy, setBusy] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [mode, setMode] = useState<"auth" | "forgot">("auth");
@@ -354,6 +358,7 @@ function AuthPage() {
     });
     if (error) {
       setBusy(false);
+      void recordFail({ data: { email, reason: error.message } });
       return toast.error(error.message);
     }
     setSwitchingAccount(false);
@@ -361,6 +366,18 @@ function AuthPage() {
       sessionStorage.removeItem("iprojectx.auth.email-draft");
     } catch {
       /* private mode */
+    }
+
+    // MFA challenge before entering the app (AAL1 → AAL2).
+    try {
+      const mfa = await getMfaStatus();
+      if (mfa.needsChallenge) {
+        setBusy(false);
+        navigate({ to: "/mfa", search: { mode: "challenge", next: "/app" }, replace: true });
+        return;
+      }
+    } catch {
+      /* If MFA APIs unavailable (not enabled in project), continue; Gate will re-check. */
     }
 
     if (orgRequested) {
@@ -379,6 +396,11 @@ function AuthPage() {
       const ok = await rejectWrongOrgSession(targetOrgSlug, true);
       setBusy(false);
       if (!ok) return;
+      try {
+        await recordAuth({ data: { eventType: "login", summary: "Password login" } });
+      } catch {
+        /* non-blocking */
+      }
       toast.success("Signed in");
       navigate({ to: "/app", replace: true });
       return;
@@ -387,6 +409,11 @@ function AuthPage() {
     // General /auth sign-in — do not treat membership as org-link entry.
     clearOrgAuthEntry();
     setBusy(false);
+    try {
+      await recordAuth({ data: { eventType: "login", summary: "Password login" } });
+    } catch {
+      /* non-blocking */
+    }
     toast.success("Signed in");
     navigate({ to: "/app", replace: true });
   };
