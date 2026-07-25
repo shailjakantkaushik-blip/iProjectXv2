@@ -35,6 +35,14 @@
 ## 5. Retention
 Retain security/audit events **≥ 12 months** (Supabase backups / export for longer contracts).
 
-## 6. Monitoring checklist
+## 6. Auditor export (one click)
+| Pack | UI | File |
+|------|----|------|
+| Org `audit_events` | App → Audit Log → **Export for auditors** | `iprojectx-audit-evidence-YYYY-MM-DD.xlsx` |
+| Platform `security_events` | Platform → Security events → **Export for auditors** | `iprojectx-security-evidence-YYYY-MM-DD.xlsx` |
+
+Exports are capped at 10,000 rows and logged as `admin_action` via `recordAuthSecurityEvent`.
+
+## 7. Monitoring checklist
 - Weekly: failed-login spikes in `security_events`
 - Alert path (future): forward to SIEM / email on threshold

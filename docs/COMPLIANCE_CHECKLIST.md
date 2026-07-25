@@ -31,6 +31,18 @@ Use this after the latest security deploy. Technical controls are largely in pla
 | B3 | Access review of `platform_admin` and `org_admin` roles | Quarterly |
 | B4 | Confirm vendor DPAs (Supabase, Vercel, Cloudflare, Resend/SendGrid) | Annually |
 | B5 | Re-read / update `docs/isms/*` if process changes | Annually |
+| B6 | **Export auditor evidence packs** (one click) | Before audits / on request |
+
+### One-click evidence export (in product)
+
+| Pack | Where | Who |
+|------|-------|-----|
+| Org audit trail (`audit_events`) | App → **Audit Log** → **Export for auditors** | Org admin / admin |
+| Platform security stream (`security_events`) | Platform → **Security events** → **Export for auditors** | Platform admin |
+
+Excel files include an `Export_Metadata` sheet (period, row count, export time) plus the event rows (cap **10,000** — narrow dates if you hit the cap). The export itself is logged as `admin_action`.
+
+**Still outside the product for Type II:** signed access-review minutes, incident tickets, vendor DPAs, change-approval records, and months of continuous operating evidence for the auditor period.
 
 ---
 
@@ -61,6 +73,7 @@ Old library **`xlsx`** had known security bugs (attackers could craft a maliciou
 | Safer sessions (sessionStorage + PKCE) | Pass |
 | Excel CVE | Pass (package removed) |
 | Login / logout / failed-login logging | Pass (needs `security_events` SQL) |
+| One-click auditor Excel export | Pass (Audit Log + Platform Security) |
 | Security headers + CSP | Pass (fonts + Turnstile + Supabase) |
 | ISMS docs | Pass (`docs/isms/`) |
 | Security audit report | Pass (`docs/SECURITY_AUDIT.md`) |

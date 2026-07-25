@@ -1,8 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { FileDown, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, isPlatformAdmin } from "@/lib/auth-context";
+import { exportPlatformSecurityEvidence } from "@/lib/compliance-export";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageLoading } from "@/components/page-loading";
 import {
@@ -13,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/_authenticated/platform/security")({
   component: PlatformSecurityPage,
@@ -23,6 +27,23 @@ function PlatformSecurityPage() {
   const allowed = isPlatformAdmin(roles);
   const [eventType, setEventType] = useState("all");
   const [emailQ, setEmailQ] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [exporting, setExporting] = useState(false);
+
+  const onExportEvidence = async () => {
+    setExporting(true);
+    try {
+      await exportPlatformSecurityEvidence({
+        dateFrom: dateFrom || null,
+        dateTo: dateTo || null,
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const { data: events = [], isLoading, error } = useQuery({
     queryKey: ["platform_security_events"],
@@ -70,6 +91,46 @@ function PlatformSecurityPage() {
           tenants.
         </p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Auditor evidence</CardTitle>
+          <CardDescription>
+            One-click Excel pack for certification (up to 10,000 rows). Optional dates narrow the
+            period. Screen preview below is capped at 500.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">From</label>
+              <Input
+                type="date"
+                className="w-40"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">To</label>
+              <Input
+                type="date"
+                className="w-40"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+              />
+            </div>
+            <Button type="button" onClick={onExportEvidence} disabled={exporting}>
+              {exporting ? (
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              ) : (
+                <FileDown className="mr-1.5 h-4 w-4" />
+              )}
+              Export for auditors
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
