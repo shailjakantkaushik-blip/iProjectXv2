@@ -95,11 +95,15 @@ bridge script locally: `node scripts/env-bridge.mjs`).
 - Turnstile: rotate from the Turnstile dashboard, update the two Vercel
   env vars, redeploy.
 
-## 7. Optional — approved In-house AI model
+## 7. Optional — approved In-house AI model (per organisation)
 
-In-house AI works **without** a model (local portfolio engine). To enable
-natural-language answers from an **approved** OpenAI-compatible endpoint
-(Azure OpenAI, private Ollama/vLLM, or your gateway):
+In-house AI works **without** a model (local portfolio engine). Customer
+portfolio context stays in-session by default.
+
+To offer an **approved** OpenAI-compatible endpoint (Azure OpenAI, private
+Ollama/vLLM, or your gateway) **only for orgs you opt in**:
+
+1. Set server env (Vercel — never `VITE_*`):
 
 | Name | Scope | Notes |
 |------|-------|-------|
@@ -110,6 +114,12 @@ natural-language answers from an **approved** OpenAI-compatible endpoint
 | `INHOUSE_AI_API_KEY` | Server | Bearer / Azure `api-key` (omit for open local Ollama) |
 | `INHOUSE_AI_LABEL` | Server | UI label, default `Approved in-house model` |
 
-Server fns reload RLS-scoped data with the user JWT, apply page ACL, and
-send only a capped context pack to that endpoint. Browser never sees the
-API key. If the model errors, the UI falls back to the local engine.
+2. Apply SQL migration `20260725190000_org_inhouse_ai_model_enabled.sql`
+   (adds `organizations.inhouse_ai_model_enabled`, default **false**).
+
+3. In the app: **Platform → In-house AI model** — toggle per organisation.
+   Only `platform_admin` can change the flag (DB trigger + server fn).
+
+Model calls run only when **both** the platform endpoint is configured **and**
+that org’s toggle is on. Otherwise the local engine answers and no context
+is sent out.
