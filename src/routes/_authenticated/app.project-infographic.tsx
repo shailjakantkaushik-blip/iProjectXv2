@@ -1623,40 +1623,73 @@ function InfographicPage() {
                 Month-wise allocation heatmap
                 {hasStreams ? " · by stream" : ""}
               </div>
-              <div className="overflow-auto max-h-[420px]">
-                <table className="w-max border-collapse text-xs">
+              {/*
+                Sticky Resource (+ Stream) columns use matching fixed widths so the
+                second sticky column's `left` offset never undershoots the first
+                column's real width (that was clipping the first month header/cells).
+              */}
+              <div className="max-h-[420px] overflow-auto">
+                <table className="w-max border-separate border-spacing-0 text-xs">
                   <thead>
                     <tr>
-                      <th className="sticky left-0 z-10 bg-background px-1.5 py-1 text-left whitespace-nowrap">
+                      <th
+                        className={[
+                          "sticky left-0 top-0 z-30 bg-background px-1.5 py-1 text-left",
+                          "w-40 min-w-40 max-w-40",
+                          !hasStreams
+                            ? "shadow-[2px_0_4px_-2px_rgba(15,23,42,0.18)]"
+                            : "",
+                        ].join(" ")}
+                      >
                         Resource
                       </th>
                       {hasStreams ? (
-                        <th className="sticky left-[7.5rem] z-10 bg-background px-1.5 py-1 text-left whitespace-nowrap">
+                        <th className="sticky left-40 top-0 z-30 w-32 min-w-32 max-w-32 bg-background px-1.5 py-1 text-left shadow-[2px_0_4px_-2px_rgba(15,23,42,0.18)]">
                           Stream
                         </th>
                       ) : null}
                       {allocationMonths.map((m) => (
                         <th
                           key={m.key}
-                          className="w-14 p-0.5 text-center font-normal text-muted-foreground"
+                          className="sticky top-0 z-20 w-14 min-w-14 bg-background p-0.5 text-center font-normal text-muted-foreground"
                         >
                           {m.label}
                         </th>
                       ))}
-                      <th className="px-1.5 py-1 text-right whitespace-nowrap">Σ %</th>
+                      <th className="sticky top-0 z-20 bg-background px-1.5 py-1 text-right whitespace-nowrap">
+                        Σ %
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {resourcePlanRows.map((r) => (
                       <tr key={r.key}>
-                        <td className="sticky left-0 z-10 bg-background px-1.5 py-0.5 font-medium whitespace-nowrap">
-                          <div>{r.name}</div>
+                        <td
+                          className={[
+                            "sticky left-0 z-10 bg-background px-1.5 py-0.5 font-medium",
+                            "w-40 min-w-40 max-w-40",
+                            !hasStreams
+                              ? "shadow-[2px_0_4px_-2px_rgba(15,23,42,0.18)]"
+                              : "",
+                          ].join(" ")}
+                        >
+                          <div className="truncate" title={r.name}>
+                            {r.name}
+                          </div>
                           {r.role ? (
-                            <div className="text-[10px] font-normal text-muted-foreground">{r.role}</div>
+                            <div
+                              className="truncate text-[10px] font-normal text-muted-foreground"
+                              title={r.role}
+                            >
+                              {r.role}
+                            </div>
                           ) : null}
                         </td>
                         {hasStreams ? (
-                          <td className="sticky left-[7.5rem] z-10 bg-background px-1.5 py-0.5 whitespace-nowrap">
+                          <td
+                            className="sticky left-40 z-10 w-32 min-w-32 max-w-32 truncate bg-background px-1.5 py-0.5 shadow-[2px_0_4px_-2px_rgba(15,23,42,0.18)]"
+                            title={r.streamName || "Project"}
+                          >
                             {r.streamName || (
                               <span className="text-muted-foreground">Project</span>
                             )}
