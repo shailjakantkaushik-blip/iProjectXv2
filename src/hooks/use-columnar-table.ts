@@ -5,8 +5,10 @@ export type ColumnSortDir = "asc" | "desc" | null;
 export type ColumnarColumn<T> = {
   key: string;
   label: string;
-  /** Value used for filter / sort / search. Defaults to row[key]. */
+  /** Value used for filter / search. Defaults to row[key]. */
   getValue?: (row: T) => unknown;
+  /** Value used for sort. Defaults to getValue / row[key]. */
+  getSortValue?: (row: T) => unknown;
   /** Disable per-column filter input. */
   filterable?: boolean;
   /** Disable sort on this column. */
@@ -44,6 +46,9 @@ export function useColumnarTable<T>(rows: T[], columns: ColumnarColumn<T>[]) {
 
   const valueOf = (row: T, col: ColumnarColumn<T>) =>
     col.getValue ? col.getValue(row) : (row as any)?.[col.key];
+
+  const sortValueOf = (row: T, col: ColumnarColumn<T>) =>
+    col.getSortValue ? col.getSortValue(row) : valueOf(row, col);
 
   const setColumnFilter = (key: string, value: string) => {
     setFilters((prev) => {
@@ -92,7 +97,7 @@ export function useColumnarTable<T>(rows: T[], columns: ColumnarColumn<T>[]) {
       const col = columns.find((c) => c.key === sortKey);
       if (col && col.sortable !== false) {
         list = list.slice().sort((a, b) => {
-          const cmp = compareValues(valueOf(a, col), valueOf(b, col));
+          const cmp = compareValues(sortValueOf(a, col), sortValueOf(b, col));
           return sortDir === "asc" ? cmp : -cmp;
         });
       }

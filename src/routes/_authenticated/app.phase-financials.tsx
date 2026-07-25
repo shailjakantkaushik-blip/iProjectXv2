@@ -48,6 +48,8 @@ export const Route = createFileRoute("/_authenticated/app/phase-financials")({
 });
 
 const fmtM = (n: number) => `$${(n / 1e6).toFixed(2)}M`;
+/** Search/filter text includes both raw and $M display so column filters match what users see. */
+const moneyFilterValue = (n: number) => `${n} ${fmtM(n)}`;
 const DEFAULT_STAGES = [
   "Discovery",
   "Business Case / Seed Funding",
@@ -271,9 +273,24 @@ function PhaseFinancialsPage() {
       { key: "project", label: "Project", getValue: (r) => r.project.project_code || r.project.name },
       { key: "stream", label: "Stream", getValue: (r) => r.streamRef || r.streamLabel || "—" },
       { key: "stage", label: "Stage", getValue: (r) => r.stage },
-      { key: "planned", label: "Planned", getValue: (r) => r.planned },
-      { key: "forecast", label: "Forecast", getValue: (r) => r.forecast },
-      { key: "actual", label: "Actual", getValue: (r) => r.actual },
+      {
+        key: "planned",
+        label: "Planned",
+        getValue: (r) => moneyFilterValue(r.planned),
+        getSortValue: (r) => r.planned,
+      },
+      {
+        key: "forecast",
+        label: "Forecast",
+        getValue: (r) => moneyFilterValue(r.forecast),
+        getSortValue: (r) => r.forecast,
+      },
+      {
+        key: "actual",
+        label: "Actual",
+        getValue: (r) => moneyFilterValue(r.actual),
+        getSortValue: (r) => r.actual,
+      },
     ],
     [],
   );
@@ -282,12 +299,37 @@ function PhaseFinancialsPage() {
   const phaseColumns: ColumnarColumn<(typeof byPhase)[number]>[] = useMemo(
     () => [
       { key: "stage", label: "Stage", getValue: (r) => r.stage },
-      { key: "count", label: "Lanes", getValue: (r) => r.count },
-      { key: "planned", label: "Planned", getValue: (r) => r.planned },
-      { key: "forecast", label: "Forecast", getValue: (r) => r.forecast },
-      { key: "actual", label: "Actual", getValue: (r) => r.actual },
-      { key: "variance", label: "Variance", getValue: (r) => r.variance },
-      { key: "remaining", label: "Remaining", getValue: (r) => r.remaining },
+      { key: "count", label: "Lanes", getValue: (r) => r.count, getSortValue: (r) => r.count },
+      {
+        key: "planned",
+        label: "Planned",
+        getValue: (r) => moneyFilterValue(r.planned),
+        getSortValue: (r) => r.planned,
+      },
+      {
+        key: "forecast",
+        label: "Forecast",
+        getValue: (r) => moneyFilterValue(r.forecast),
+        getSortValue: (r) => r.forecast,
+      },
+      {
+        key: "actual",
+        label: "Actual",
+        getValue: (r) => moneyFilterValue(r.actual),
+        getSortValue: (r) => r.actual,
+      },
+      {
+        key: "variance",
+        label: "Variance",
+        getValue: (r) => moneyFilterValue(r.variance),
+        getSortValue: (r) => r.variance,
+      },
+      {
+        key: "remaining",
+        label: "Remaining",
+        getValue: (r) => moneyFilterValue(r.remaining),
+        getSortValue: (r) => r.remaining,
+      },
     ],
     [],
   );
@@ -393,8 +435,17 @@ function PhaseFinancialsPage() {
           onClear={phaseTable.clearAll}
           placeholder="Search phase register…"
         />
-        <div className="overflow-x-auto">
-          <table className="st-table">
+        <div className="st-table-wrap">
+          <table className="st-table table-fixed min-w-[52rem]">
+            <colgroup>
+              <col className="w-[22%]" />
+              <col className="w-[10%]" />
+              <col className="w-[12%]" />
+              <col className="w-[12%]" />
+              <col className="w-[12%]" />
+              <col className="w-[16%]" />
+              <col className="w-[16%]" />
+            </colgroup>
             <thead>
               <tr>
                 {phaseColumns.map((col) => (
@@ -413,24 +464,60 @@ function PhaseFinancialsPage() {
               </tr>
             </thead>
             <tbody>
-              {phaseTable.rows.map((r) => (
-                <tr key={r.stage}>
-                  <td className="font-medium">{r.stage}</td>
-                  <td className="text-right tabular-nums">{r.count}</td>
-                  <td className="text-right tabular-nums">{fmtM(r.planned)}</td>
-                  <td className="text-right tabular-nums">{fmtM(r.forecast)}</td>
-                  <td className="text-right tabular-nums">{fmtM(r.actual)}</td>
-                  <td
-                    className={
-                      "text-right tabular-nums " +
-                      (r.variance < 0 ? "text-red-600" : "text-emerald-700")
-                    }
-                  >
-                    {fmtM(r.variance)}
+              {phaseTable.rows.length === 0 ? (
+                <tr>
+                  <td colSpan={phaseColumns.length} className="py-6 text-center text-muted-foreground">
+                    No phase rows match filters
                   </td>
-                  <td className="text-right tabular-nums">{fmtM(r.remaining)}</td>
                 </tr>
-              ))}
+              ) : (
+                phaseTable.rows.map((r) => (
+                  <tr key={r.stage}>
+                    {phaseColumns.map((col) => {
+                      if (col.key === "stage") {
+                        return (
+                          <td key={col.key} className="font-medium whitespace-nowrap">
+                            {r.stage}
+                          </td>
+                        );
+                      }
+                      if (col.key === "count") {
+                        return (
+                          <td key={col.key} className="text-right tabular-nums whitespace-nowrap">
+                            {r.count}
+                          </td>
+                        );
+                      }
+                      if (col.key === "variance") {
+                        return (
+                          <td
+                            key={col.key}
+                            className={
+                              "text-right tabular-nums whitespace-nowrap " +
+                              (r.variance < 0 ? "text-red-600" : "text-emerald-700")
+                            }
+                          >
+                            {fmtM(r.variance)}
+                          </td>
+                        );
+                      }
+                      const amount =
+                        col.key === "planned"
+                          ? r.planned
+                          : col.key === "forecast"
+                            ? r.forecast
+                            : col.key === "actual"
+                              ? r.actual
+                              : r.remaining;
+                      return (
+                        <td key={col.key} className="text-right tabular-nums whitespace-nowrap">
+                          {fmtM(amount)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -447,8 +534,16 @@ function PhaseFinancialsPage() {
           onClear={detailTable.clearAll}
           placeholder="Search project / stream / stage…"
         />
-        <div className="overflow-x-auto">
-          <table className="st-table">
+        <div className="st-table-wrap">
+          <table className="st-table table-fixed min-w-[48rem]">
+            <colgroup>
+              <col className="w-[22%]" />
+              <col className="w-[18%]" />
+              <col className="w-[20%]" />
+              <col className="w-[13%]" />
+              <col className="w-[13%]" />
+              <col className="w-[14%]" />
+            </colgroup>
             <thead>
               <tr>
                 {detailColumns.map((col) => (
@@ -469,19 +564,47 @@ function PhaseFinancialsPage() {
             <tbody>
               {detailTable.rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-6 text-center text-muted-foreground">
+                  <td colSpan={detailColumns.length} className="py-6 text-center text-muted-foreground">
                     No stream/phase spend rows match filters
                   </td>
                 </tr>
               ) : (
                 detailTable.rows.map((r) => (
                   <tr key={r.key}>
-                    <td className="font-medium">{r.project.project_code || r.project.name}</td>
-                    <td className="font-mono text-xs">{r.streamRef || r.streamLabel || "—"}</td>
-                    <td>{r.stage}</td>
-                    <td className="text-right tabular-nums">{fmtM(r.planned)}</td>
-                    <td className="text-right tabular-nums">{fmtM(r.forecast)}</td>
-                    <td className="text-right tabular-nums">{fmtM(r.actual)}</td>
+                    {detailColumns.map((col) => {
+                      if (col.key === "project") {
+                        return (
+                          <td key={col.key} className="font-medium whitespace-nowrap">
+                            {r.project.project_code || r.project.name}
+                          </td>
+                        );
+                      }
+                      if (col.key === "stream") {
+                        return (
+                          <td key={col.key} className="font-mono text-xs whitespace-nowrap">
+                            {r.streamRef || r.streamLabel || "—"}
+                          </td>
+                        );
+                      }
+                      if (col.key === "stage") {
+                        return (
+                          <td key={col.key} className="whitespace-nowrap">
+                            {r.stage}
+                          </td>
+                        );
+                      }
+                      const amount =
+                        col.key === "planned"
+                          ? r.planned
+                          : col.key === "forecast"
+                            ? r.forecast
+                            : r.actual;
+                      return (
+                        <td key={col.key} className="text-right tabular-nums whitespace-nowrap">
+                          {fmtM(amount)}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))
               )}
