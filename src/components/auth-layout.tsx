@@ -222,7 +222,7 @@ export function AuthLayout({
   };
 
   return (
-    <div className={cn("flex min-h-screen bg-background", className)}>
+    <div className={cn("flex min-h-screen max-w-[100vw] overflow-x-hidden bg-background", className)}>
       {/* Brand panel — desktop */}
       <aside
         className="relative hidden w-[44%] max-w-xl flex-col justify-between overflow-hidden px-10 py-10 lg:flex xl:w-[46%]"
@@ -283,7 +283,7 @@ export function AuthLayout({
       </aside>
 
       {/* Form panel */}
-      <div className="relative flex min-h-screen flex-1 flex-col">
+      <div className="relative flex min-h-screen min-w-0 flex-1 flex-col">
         <div
           className="pointer-events-none absolute inset-0 opacity-60"
           style={{
@@ -319,10 +319,10 @@ export function AuthLayout({
           </Link>
         </div>
 
-        <div className="relative z-10 flex flex-1 items-center justify-center px-4 py-8 sm:px-8">
+        <div className="relative z-10 flex flex-1 items-center justify-center px-4 py-6 sm:px-8 sm:py-8">
           <div
             className={cn(
-              "w-full max-w-[400px]",
+              "w-full min-w-0 max-w-[400px]",
               brandReady && "animate-in fade-in-0 slide-in-from-bottom-2 duration-500",
             )}
           >
