@@ -660,7 +660,7 @@ export const DEFAULT_LANDING: LandingConfig = {
       },
       {
         title: "In-house AI by default",
-        desc: "Portfolio Q&A stays inside your org session. An approved external model is available only if your organisation requests it and platform admin enables it.",
+        desc: "Portfolio Q&A stays inside your org session. An Approved Open AI model is available only if your organisation requests it and a platform admin enables it.",
       },
     ],
   },
@@ -699,13 +699,12 @@ export const DEFAULT_LANDING: LandingConfig = {
   security: {
     eyebrow: "Trust & security",
     title: "Protect the portfolio. Still deliver the intelligence.",
-    body: "iProjectX is multi-tenant by design: MFA, row-level isolation, hardened sessions, and admin audit trails — plus In-house AI that answers from your live PMO data inside your organisation session by default. An approved external model is opt-in only when an organisation requests it and a platform admin enables it. Built for SOC 2 and ISO 27001 readiness — without overstating certification status.",
+    body: "iProjectX is multi-tenant by design: MFA, row-level isolation, hardened sessions, and admin audit trails — plus In-house AI by default, answering from your live PMO data inside your organisation session. An Approved Open AI model is opt-in only when an organisation requests it and a platform admin enables it. Built for SOC 2 and ISO 27001 readiness — without overstating certification status.",
     bullets: [
       "MFA (authenticator) required for all users",
       "Row-level security isolating every organisation’s data",
       "In-house AI by default — answers stay in your org session",
-      "Approved external AI only if the organisation requests it (platform opt-in)",
-      "No portfolio data sent to public ChatGPT unless that org is explicitly enabled",
+      "Approved Open AI model only if the organisation requests it (platform opt-in)",
       "Admin audit log + platform security events (login, logout, failures)",
       "One-click Excel evidence packs for auditors",
       "CSP, HSTS, and session storage with PKCE — not JWTs in localStorage",
@@ -769,7 +768,7 @@ export const DEFAULT_LANDING: LandingConfig = {
       },
       {
         title: "In-house AI",
-        desc: "Private portfolio Q&A on live org data by default. Approved Open AI model available only when your organisation requests it.",
+        desc: "Default local portfolio Q&A on live org data. Approved Open AI model is opt-in per organisation — never on by default.",
       },
       {
         title: "Audit & Evidence",
@@ -819,7 +818,7 @@ export const DEFAULT_LANDING: LandingConfig = {
   },
   final_cta: {
     title: "Secure the portfolio outcome.",
-    body: "Deploy iProjectX in weeks, not months. White-label ready, multi-tenant by design, MFA-enforced — with In-house AI by default, and an approved external model only if your organisation requests it. Admin audit trails and evidence export for enterprise procurement.",
+    body: "Deploy iProjectX in weeks, not months. White-label ready, multi-tenant by design, MFA-enforced — with In-house AI by default, and an Approved Open AI model only if your organisation requests it. Admin audit trails and evidence export for enterprise procurement.",
     primary: "Expression of Interest",
     secondary: "Sign in",
   },
@@ -1031,18 +1030,39 @@ export function mergeConfig(partial: any): LandingConfig {
     ...DEFAULT_LANDING.security,
     ...(partial.security && typeof partial.security === "object" ? partial.security : {}),
   };
+  // Rewrite absolute "never external AI" claims after Approved Open AI model opt-in shipped.
+  if (
+    typeof merged.security.body === "string" &&
+    /without shipping|no portfolio data sent to chatgpt|no external model/i.test(
+      merged.security.body,
+    )
+  ) {
+    merged.security.body = DEFAULT_LANDING.security.body;
+  }
   if (!Array.isArray(merged.security.bullets) || merged.security.bullets.length === 0) {
     merged.security.bullets = [...DEFAULT_LANDING.security.bullets];
   } else {
-    const haveBullet = (
-      merged.security.bullets as string[]
-    ).map((b) => String(b).toLowerCase());
+    merged.security.bullets = (merged.security.bullets as string[]).map((b) => {
+      const t = String(b);
+      if (/no portfolio data sent to chatgpt|other external model providers/i.test(t)) {
+        return "Approved Open AI model only if the organisation requests it (platform opt-in)";
+      }
+      if (
+        /in-house ai[: ].*org session/i.test(t) &&
+        !/by default/i.test(t) &&
+        !/approved/i.test(t)
+      ) {
+        return "In-house AI by default — answers stay in your org session";
+      }
+      return t;
+    });
+    const haveBullet = merged.security.bullets.map((b) => String(b).toLowerCase());
     for (const b of DEFAULT_LANDING.security.bullets) {
       const already = haveBullet.some((h) =>
-        /in-house ai|external (model|ai)|approved (external )?ai|chatgpt/i.test(h),
+        /in-house ai|external (model|ai)|approved open ai|chatgpt/i.test(h),
       );
       if (
-        /in-house ai|external (model|ai)|approved (external )?ai|chatgpt/i.test(b) &&
+        /in-house ai|external (model|ai)|approved open ai|chatgpt/i.test(b) &&
         !already
       ) {
         merged.security.bullets.push(b);
@@ -1080,6 +1100,47 @@ export function mergeConfig(partial: any): LandingConfig {
         have.add(cap.title);
       }
     }
+    merged.capabilities.items = merged.capabilities.items.map((cap: LandingCap) => {
+      if (
+        cap.title === "In-house AI" &&
+        typeof cap.desc === "string" &&
+        /without sending data to external|no external/i.test(cap.desc)
+      ) {
+        return {
+          ...cap,
+          desc: DEFAULT_LANDING.capabilities.items.find((c) => c.title === "In-house AI")!.desc,
+        };
+      }
+      return cap;
+    });
+  }
+
+  // Comparison wins + final CTA: refresh outdated absolute AI claims in saved configs.
+  if (merged.comparison && typeof merged.comparison === "object") {
+    const wins = Array.isArray(merged.comparison.wins) ? merged.comparison.wins : [];
+    merged.comparison.wins = wins.map((w: { title?: string; desc?: string }) => {
+      if (
+        w?.title &&
+        /in-house ai/i.test(w.title) &&
+        typeof w.desc === "string" &&
+        /no external model|no inference leak|without sending/i.test(w.desc)
+      ) {
+        const def = DEFAULT_LANDING.comparison.wins.find((d) =>
+          /in-house ai/i.test(d.title),
+        );
+        return def ? { ...w, title: def.title, desc: def.desc } : w;
+      }
+      return w;
+    });
+  }
+  if (
+    merged.final_cta &&
+    typeof merged.final_cta.body === "string" &&
+    /protects your data while still delivering|without sending data to external/i.test(
+      merged.final_cta.body,
+    )
+  ) {
+    merged.final_cta.body = DEFAULT_LANDING.final_cta.body;
   }
 
   merged.hero = {

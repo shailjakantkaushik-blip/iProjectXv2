@@ -59,7 +59,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "iProjectX — enterprise PMO command center with MFA, multi-tenant security, and In-house AI by default — approved external AI only if your organisation requests it.",
+          "iProjectX — enterprise PMO command center with MFA, multi-tenant security, and In-house AI by default — Approved Open AI model only if your organisation requests it.",
       },
       { property: "og:title", content: "iProjectX — Enterprise PMO command center" },
       {
@@ -1612,7 +1612,7 @@ function SecurityTour({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: strin
     { label: "Identity", value: "MFA required" },
     { label: "Tenancy", value: "Row-level RLS" },
     { label: "Intelligence", value: "In-house AI" },
-    { label: "Data for AI", value: "Stays in your org" },
+    { label: "External AI", value: "Opt-in only" },
     { label: "Audit", value: "Admin evidence export" },
     { label: "Readiness", value: "SOC 2 / ISO path" },
   ];
