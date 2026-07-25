@@ -20,6 +20,8 @@ import { getOrgThemeBootScript } from "@/lib/org-theme";
 import { getStyleThemeBootScript } from "@/lib/style-theme";
 import { StyleThemeProvider } from "@/components/style-theme-provider";
 import { LANDING_CONFIG_CACHE_KEY } from "@/lib/landing-config";
+import { DEFAULT_FAVICON_HREF, getFaviconBootScript } from "@/lib/favicon";
+import { FaviconSync } from "@/components/favicon-sync";
 import {
   alreadyAutoRecoveredThisSession,
   clearChunkReloadMarker,
@@ -148,6 +150,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         href: "https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Sora:wght@500;600;700;800&display=swap",
       },
       { rel: "preload", as: "image", href: "/brand/iprojectx-mark.webp", type: "image/webp" },
+      { rel: "icon", href: DEFAULT_FAVICON_HREF, type: "image/png" },
+      { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
     ],
   }),
   shellComponent: RootShell,
@@ -163,11 +167,13 @@ function RootShell({ children }: { children: ReactNode }) {
   const orgThemeBoot = getOrgThemeBootScript();
   const styleThemeBoot = getStyleThemeBootScript();
   const landingBoot = `(function(){try{if(location.pathname!=="/")return;var raw=localStorage.getItem(${JSON.stringify(LANDING_CONFIG_CACHE_KEY)});if(!raw)return;var cfg=JSON.parse(raw);if(!cfg||!cfg.palette)return;var p=cfg.palette;var dark=cfg.theme==="dark";var bg=dark?p.navy:"#ffffff";document.documentElement.style.backgroundColor=bg;document.documentElement.style.color=p.textBody||"#1e3a5f";}catch(e){}})();`;
+  const faviconBoot = getFaviconBootScript();
 
   return (
     <html lang="en">
       <head>
         <HeadContent />
+        <script dangerouslySetInnerHTML={{ __html: faviconBoot }} />
         <script dangerouslySetInnerHTML={{ __html: themeBoot }} />
         <script dangerouslySetInnerHTML={{ __html: orgThemeBoot }} />
         <script dangerouslySetInnerHTML={{ __html: styleThemeBoot }} />
@@ -196,6 +202,7 @@ function RootComponent() {
         <PlatformThemeProvider>
           <OrgThemeProvider>
             <StyleThemeProvider>
+              <FaviconSync />
               <Outlet />
               <Toaster richColors closeButton />
             </StyleThemeProvider>

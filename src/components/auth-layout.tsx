@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useState, type ChangeEvent, type ReactNode } from "react";
+import { useEffect, useState, type ChangeEvent, type ReactNode } from "react";
 import { ArrowLeft, BarChart3, Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StableBrandLogo } from "@/components/stable-brand-logo";
@@ -8,6 +8,7 @@ import {
   type LogoCustomDims,
   type LogoDisplaySize,
 } from "@/lib/landing-config";
+import { applyFaviconHref, DEFAULT_FAVICON_HREF } from "@/lib/favicon";
 
 export type AuthBrand = {
   name: string;
@@ -137,6 +138,12 @@ export function AuthLayout({
           maxWidthPx: Math.max(60, Math.round(mobileDims.maxWidthPx * 0.75)),
         }
       : logoCustom;
+
+  // Browser tab icon matches whatever logo is shown on this login surface.
+  useEffect(() => {
+    if (!brandReady) return;
+    applyFaviconHref(displayLogo || DEFAULT_FAVICON_HREF);
+  }, [brandReady, displayLogo]);
 
   const BrandIdentity = ({
     onDark,
