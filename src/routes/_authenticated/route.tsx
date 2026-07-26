@@ -13,6 +13,13 @@ export const Route = createFileRoute("/_authenticated")({
   component: Gate,
 });
 
+/**
+ * Security invariants (must not regress for scroll/perf work):
+ * 1. No AppShell/Outlet until MFA enroll+AAL2 is satisfied (or MFA APIs unavailable).
+ * 2. Org white-label membership is enforced in auth.tsx BEFORE /mfa redirect.
+ * 3. Scroll/nav smoothness: do NOT remount AppShell on every pathname or quiet
+ *    profile hydrate — re-check MFA without tearing the shell down.
+ */
 function Gate() {
   const { session, profile, loading, sessionChecked, signOut } = useAuth();
   const navigate = useNavigate();
@@ -21,13 +28,35 @@ function Gate() {
   pathnameRef.current = pathname;
   const bareShell = pathname.startsWith("/onboarding");
 
-  /**
-   * MFA is checked once per authenticated user session — not on every route
-   * change. Re-running getMfaStatus() + flipping mfaReady on pathname was
-   * remounting AppShell and making scroll/nav feel janky after the security fix.
-   */
   const mfaVerifiedUserRef = useRef<string | null>(null);
   const [mfaReady, setMfaReady] = useState(false);
+
+  const redirectToMfa = (mode: "challenge" | "enroll") => {
+    navigate({
+      to: "/mfa",
+      search: { mode, next: pathnameRef.current || "/app" },
+      replace: true,
+    });
+  };
+
+  /** Returns true if the session may enter the app. */
+  const evaluateMfa = async (): Promise<"ok" | "redirect"> => {
+    const mfa = await getMfaStatus();
+    if (mfa.needsChallenge) {
+      redirectToMfa("challenge");
+      return "redirect";
+    }
+    if (!mfa.hasVerifiedFactor) {
+      redirectToMfa("enroll");
+      return "redirect";
+    }
+    // Defense-in-depth: enrolled but still on password-only assurance.
+    if (mfa.currentLevel === "aal1") {
+      redirectToMfa("challenge");
+      return "redirect";
+    }
+    return "ok";
+  };
 
   useEffect(() => {
     if (!sessionChecked) return;
@@ -55,7 +84,8 @@ function Gate() {
       return;
     }
 
-    // Already cleared MFA for this user — keep shell mounted across navigations.
+    // Already verified for this user in this Gate mount — do not re-flip state
+    // (avoids shell remount / scroll jank). Soft recheck is on visibility below.
     if (mfaVerifiedUserRef.current === session.user.id) {
       if (!mfaReady) setMfaReady(true);
       return;
@@ -64,29 +94,12 @@ function Gate() {
     let cancelled = false;
     void (async () => {
       try {
-        const mfa = await getMfaStatus();
-        if (cancelled) return;
-        const next = pathnameRef.current || "/app";
-        if (mfa.needsChallenge) {
-          navigate({
-            to: "/mfa",
-            search: { mode: "challenge", next },
-            replace: true,
-          });
-          return;
-        }
-        if (!mfa.hasVerifiedFactor) {
-          navigate({
-            to: "/mfa",
-            search: { mode: "enroll", next },
-            replace: true,
-          });
-          return;
-        }
+        const result = await evaluateMfa();
+        if (cancelled || result !== "ok") return;
         mfaVerifiedUserRef.current = session.user.id;
         setMfaReady(true);
       } catch {
-        /* MFA APIs unavailable in project — allow through (same as before). */
+        /* MFA APIs unavailable in Supabase project — same fail-open as before. */
         if (!cancelled) {
           mfaVerifiedUserRef.current = session.user.id;
           setMfaReady(true);
@@ -97,7 +110,7 @@ function Gate() {
     return () => {
       cancelled = true;
     };
-    // Intentionally omit pathname/loading — re-check only on session/profile security fields.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pathname via ref; loading omitted on purpose
   }, [
     session,
     sessionChecked,
@@ -108,7 +121,28 @@ function Gate() {
     mfaReady,
   ]);
 
-  // Cold auth only — never tear down the shell after MFA has passed (quiet hydrate).
+  // Soft security re-check when the tab becomes visible again — redirect to MFA
+  // if assurance dropped, without unmounting the shell first (no scroll jank).
+  useEffect(() => {
+    if (!mfaReady || !session) return;
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      void evaluateMfa()
+        .then((result) => {
+          if (result === "redirect") {
+            mfaVerifiedUserRef.current = null;
+            setMfaReady(false);
+          }
+        })
+        .catch(() => {
+          /* ignore transient MFA API errors on soft recheck */
+        });
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mfaReady, session?.user?.id, navigate]);
+
   if (!sessionChecked) {
     return <PageLoading label="Checking your session…" />;
   }
@@ -126,7 +160,11 @@ function Gate() {
     Boolean(profile) && profile!.id === session.user.id;
 
   if (bareShell) {
-    return profileMatchesSession || !loading ? <Outlet /> : <PageLoading label="Loading workspace…" />;
+    return profileMatchesSession || !loading ? (
+      <Outlet />
+    ) : (
+      <PageLoading label="Loading workspace…" />
+    );
   }
 
   // Keep AppShell mounted across route changes and soft profile hydrates.
