@@ -710,7 +710,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="shell-header relative sticky top-0 z-30 flex items-center gap-2 border-b border-border/50 bg-background/95 px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:gap-3 sm:px-4 lg:px-6">
+        <header className="shell-header relative sticky top-0 z-30 flex items-center gap-2 border-b border-border/50 bg-background px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:gap-3 sm:px-4 lg:px-6">
           <SoftUpdatingBar />
           <button
             type="button"

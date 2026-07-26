@@ -1,5 +1,5 @@
 import { createFileRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { readOrgAuthEntrySlug } from "@/lib/org-auth-entry";
 import { getMfaStatus } from "@/lib/mfa";
@@ -17,17 +17,23 @@ function Gate() {
   const { session, profile, loading, sessionChecked, signOut } = useAuth();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
   const bareShell = pathname.startsWith("/onboarding");
-  /** Do not paint AppShell/Outlet until MFA is satisfied (or unavailable in project). */
+
+  /**
+   * MFA is checked once per authenticated user session — not on every route
+   * change. Re-running getMfaStatus() + flipping mfaReady on pathname was
+   * remounting AppShell and making scroll/nav feel janky after the security fix.
+   */
+  const mfaVerifiedUserRef = useRef<string | null>(null);
   const [mfaReady, setMfaReady] = useState(false);
 
   useEffect(() => {
-    setMfaReady(false);
-  }, [session?.user?.id]);
+    if (!sessionChecked) return;
 
-  useEffect(() => {
-    if (!sessionChecked || loading) return;
     if (!session) {
+      mfaVerifiedUserRef.current = null;
       setMfaReady(false);
       const slug = readOrgAuthEntrySlug();
       if (slug) {
@@ -37,27 +43,34 @@ function Gate() {
       }
       return;
     }
+
     if (profile && profile.is_active === false) {
       toast.error("Your account is inactive. Contact your administrator.");
       void signOut();
       return;
     }
+
     if (profile?.must_change_password) {
       navigate({ to: "/force-password-change", replace: true });
       return;
     }
 
-    // MFA required for every user: challenge if enrolled, otherwise force enroll.
-    // Block shell render until this resolves so AAL1 sessions cannot query data.
+    // Already cleared MFA for this user — keep shell mounted across navigations.
+    if (mfaVerifiedUserRef.current === session.user.id) {
+      if (!mfaReady) setMfaReady(true);
+      return;
+    }
+
     let cancelled = false;
     void (async () => {
       try {
         const mfa = await getMfaStatus();
         if (cancelled) return;
+        const next = pathnameRef.current || "/app";
         if (mfa.needsChallenge) {
           navigate({
             to: "/mfa",
-            search: { mode: "challenge", next: pathname || "/app" },
+            search: { mode: "challenge", next },
             replace: true,
           });
           return;
@@ -65,24 +78,38 @@ function Gate() {
         if (!mfa.hasVerifiedFactor) {
           navigate({
             to: "/mfa",
-            search: { mode: "enroll", next: pathname || "/app" },
+            search: { mode: "enroll", next },
             replace: true,
           });
           return;
         }
+        mfaVerifiedUserRef.current = session.user.id;
         setMfaReady(true);
       } catch {
-        /* MFA not enabled in Supabase project — skip until dashboard toggle is on */
-        if (!cancelled) setMfaReady(true);
+        /* MFA APIs unavailable in project — allow through (same as before). */
+        if (!cancelled) {
+          mfaVerifiedUserRef.current = session.user.id;
+          setMfaReady(true);
+        }
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [session, profile, loading, sessionChecked, navigate, pathname, signOut]);
+    // Intentionally omit pathname/loading — re-check only on session/profile security fields.
+  }, [
+    session,
+    sessionChecked,
+    profile?.is_active,
+    profile?.must_change_password,
+    navigate,
+    signOut,
+    mfaReady,
+  ]);
 
-  if (!sessionChecked || loading) {
+  // Cold auth only — never tear down the shell after MFA has passed (quiet hydrate).
+  if (!sessionChecked) {
     return <PageLoading label="Checking your session…" />;
   }
   if (!session) {
@@ -96,24 +123,20 @@ function Gate() {
   }
 
   const profileMatchesSession =
-    Boolean(profile) &&
-    (!session || profile!.id === session.user.id);
-
-  if (profileMatchesSession) {
-    if (bareShell) return <Outlet />;
-    return (
-      <AppShell>
-        <Outlet />
-      </AppShell>
-    );
-  }
+    Boolean(profile) && profile!.id === session.user.id;
 
   if (bareShell) {
-    return <PageLoading label="Loading workspace…" fullScreen={false} />;
+    return profileMatchesSession || !loading ? <Outlet /> : <PageLoading label="Loading workspace…" />;
   }
+
+  // Keep AppShell mounted across route changes and soft profile hydrates.
   return (
     <AppShell>
-      <PageLoading label="Loading workspace…" fullScreen={false} />
+      {profileMatchesSession ? (
+        <Outlet />
+      ) : (
+        <PageLoading label="Loading workspace…" fullScreen={false} />
+      )}
     </AppShell>
   );
 }
