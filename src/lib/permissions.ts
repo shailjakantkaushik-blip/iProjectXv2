@@ -93,6 +93,7 @@ export const PAGES: { path: string; label: string; group: string }[] = [
   { path: "/app/data-editor", label: "Data Editor", group: "Governance" },
   { path: "/app/configuration", label: "Configuration", group: "Org Admin" },
   { path: "/app/navigation", label: "Navigation sequence", group: "Org Admin" },
+  { path: "/app/page-downloads", label: "Page downloads", group: "Org Admin" },
   { path: "/app/project-access", label: "Project data access", group: "Org Admin" },
 ];
 
@@ -103,6 +104,7 @@ export const ADMIN_ONLY_PAGES = new Set<string>([
   "/app/project-access",
   "/app/configuration",
   "/app/navigation",
+  "/app/page-downloads",
   "/app/audit-log",
 ]);
 

@@ -12,6 +12,7 @@ import {
   Menu,
   Eye,
   Trash2,
+  FileDown,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/app/configuration")({
@@ -70,6 +71,12 @@ const ORG_ADMIN_CARDS = [
     icon: Menu,
     title: "Navigation sequence",
     desc: "Reorder and hide workspace sidebar links for your organisation",
+  },
+  {
+    to: "/app/page-downloads",
+    icon: FileDown,
+    title: "Page downloads",
+    desc: "Allow or disallow Download page (PDF / PPT / PNG) on each workspace page",
   },
   {
     to: "/app/project-access",

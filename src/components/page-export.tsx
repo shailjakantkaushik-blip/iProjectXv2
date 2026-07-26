@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Download, FileDown, Presentation, Image as ImageIcon } from "lucide-react";
@@ -322,28 +322,16 @@ export function DownloadMenu({
 }
 
 /**
- * Wrap a page's main content. Renders children plus a "Download page" pill
- * pinned to the bottom-right for a page-level PDF/PPT/PNG snapshot.
- * Capture root is page content only — app shell / nav are never included.
+ * Legacy page wrapper — children only.
+ * Bottom "Download page" is owned by AppPageDownload in the /app layout so
+ * every eligible page gets one control (no duplicates / missed pages).
  */
 export function PageExport({
-  name,
-  title,
   children,
 }: {
-  name: string;
+  name?: string;
   title?: string;
   children: ReactNode;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  return (
-    <div className="relative">
-      <div ref={ref} data-export-root>
-        {children}
-      </div>
-      <div className="mt-6 flex justify-end print:hidden" data-export-hide>
-        <DownloadMenu targetRef={ref} name={name} title={title} label="Download page" />
-      </div>
-    </div>
-  );
+  return <>{children}</>;
 }

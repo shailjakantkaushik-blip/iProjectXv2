@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useLiveSync } from "@/lib/use-live-sync";
 import { usePageAccessGuard } from "@/lib/page-access-guard";
 import { PageLoading } from "@/components/page-loading";
+import { AppPageDownload } from "@/components/app-page-download";
 
 export const Route = createFileRoute("/_authenticated/app")({
   component: AppLayout,
@@ -36,5 +37,10 @@ function AppLayout() {
   }
   if (needsOnboarding) return null;
 
-  return <Outlet />;
+  // Bottom Download page — gated by org/platform page_download config.
+  return (
+    <AppPageDownload>
+      <Outlet />
+    </AppPageDownload>
+  );
 }

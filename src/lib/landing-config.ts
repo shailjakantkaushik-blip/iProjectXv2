@@ -199,6 +199,11 @@ export type LandingConfig = {
    * Edited from Platform Settings / Landing → Access & Cartoons.
    */
   navigation: NavigationConfig;
+  /**
+   * Platform default: which workspace pages show "Download page" (PDF/PPT/PNG).
+   * Orgs can override via organizations.ui_config.page_download.
+   */
+  page_download: { pages?: Record<string, boolean> };
   /** Name of the last applied predefined palette, if any */
   palette_preset: string;
   palette: LandingPalette;
@@ -578,6 +583,7 @@ export const DEFAULT_LANDING: LandingConfig = {
   cartoon_id: "guide",
   style_theme_id: "simple",
   navigation: defaultNavigationConfig(),
+  page_download: { pages: {} },
   palette_preset: "iprojectx",
   palette: { ...DEFAULT_PALETTE },
   hero: {
@@ -997,6 +1003,14 @@ export function mergeConfig(partial: any): LandingConfig {
     ),
   };
   merged.navigation = mergeNavigationConfig(merged.navigation);
+  if (!merged.page_download || typeof merged.page_download !== "object") {
+    merged.page_download = { pages: {} };
+  } else if (
+    !merged.page_download.pages ||
+    typeof merged.page_download.pages !== "object"
+  ) {
+    merged.page_download = { pages: {} };
+  }
   // Nested section arrays must come from saved config when present
   if (partial.testimonials && typeof partial.testimonials === "object") {
     merged.testimonials = {

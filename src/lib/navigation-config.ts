@@ -99,6 +99,7 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
     items: [
       { to: "/app/configuration", label: "Configuration", icon: "Settings", adminOnly: true },
       { to: "/app/navigation", label: "Navigation sequence", icon: "Menu", adminOnly: true },
+      { to: "/app/page-downloads", label: "Page downloads", icon: "FileDown", adminOnly: true },
       { to: "/app/project-access", label: "Project data access", icon: "Eye", adminOnly: true },
       {
         to: "/app/project-purge",
