@@ -49,6 +49,7 @@ import { Route as AuthenticatedAppLessonsRouteImport } from './routes/_authentic
 import { Route as AuthenticatedAppLicensesRouteImport } from './routes/_authenticated/app.licenses'
 import { Route as AuthenticatedAppMyWorkRouteImport } from './routes/_authenticated/app.my-work'
 import { Route as AuthenticatedAppNavigationRouteImport } from './routes/_authenticated/app.navigation'
+import { Route as AuthenticatedAppPageDownloadsRouteImport } from './routes/_authenticated/app.page-downloads'
 import { Route as AuthenticatedAppPermissionsRouteImport } from './routes/_authenticated/app.permissions'
 import { Route as AuthenticatedAppPhaseFinancialsRouteImport } from './routes/_authenticated/app.phase-financials'
 import { Route as AuthenticatedAppPortfolioMovementsRouteImport } from './routes/_authenticated/app.portfolio-movements'
@@ -316,6 +317,12 @@ const AuthenticatedAppNavigationRoute =
   AuthenticatedAppNavigationRouteImport.update({
     id: '/navigation',
     path: '/navigation',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
+const AuthenticatedAppPageDownloadsRoute =
+  AuthenticatedAppPageDownloadsRouteImport.update({
+    id: '/page-downloads',
+    path: '/page-downloads',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
 const AuthenticatedAppPermissionsRoute =
@@ -648,6 +655,7 @@ export interface FileRoutesByFullPath {
   '/app/licenses': typeof AuthenticatedAppLicensesRoute
   '/app/my-work': typeof AuthenticatedAppMyWorkRoute
   '/app/navigation': typeof AuthenticatedAppNavigationRoute
+  '/app/page-downloads': typeof AuthenticatedAppPageDownloadsRoute
   '/app/permissions': typeof AuthenticatedAppPermissionsRoute
   '/app/phase-financials': typeof AuthenticatedAppPhaseFinancialsRoute
   '/app/portfolio-movements': typeof AuthenticatedAppPortfolioMovementsRoute
@@ -737,6 +745,7 @@ export interface FileRoutesByTo {
   '/app/licenses': typeof AuthenticatedAppLicensesRoute
   '/app/my-work': typeof AuthenticatedAppMyWorkRoute
   '/app/navigation': typeof AuthenticatedAppNavigationRoute
+  '/app/page-downloads': typeof AuthenticatedAppPageDownloadsRoute
   '/app/permissions': typeof AuthenticatedAppPermissionsRoute
   '/app/phase-financials': typeof AuthenticatedAppPhaseFinancialsRoute
   '/app/portfolio-movements': typeof AuthenticatedAppPortfolioMovementsRoute
@@ -829,6 +838,7 @@ export interface FileRoutesById {
   '/_authenticated/app/licenses': typeof AuthenticatedAppLicensesRoute
   '/_authenticated/app/my-work': typeof AuthenticatedAppMyWorkRoute
   '/_authenticated/app/navigation': typeof AuthenticatedAppNavigationRoute
+  '/_authenticated/app/page-downloads': typeof AuthenticatedAppPageDownloadsRoute
   '/_authenticated/app/permissions': typeof AuthenticatedAppPermissionsRoute
   '/_authenticated/app/phase-financials': typeof AuthenticatedAppPhaseFinancialsRoute
   '/_authenticated/app/portfolio-movements': typeof AuthenticatedAppPortfolioMovementsRoute
@@ -921,6 +931,7 @@ export interface FileRouteTypes {
     | '/app/licenses'
     | '/app/my-work'
     | '/app/navigation'
+    | '/app/page-downloads'
     | '/app/permissions'
     | '/app/phase-financials'
     | '/app/portfolio-movements'
@@ -1010,6 +1021,7 @@ export interface FileRouteTypes {
     | '/app/licenses'
     | '/app/my-work'
     | '/app/navigation'
+    | '/app/page-downloads'
     | '/app/permissions'
     | '/app/phase-financials'
     | '/app/portfolio-movements'
@@ -1101,6 +1113,7 @@ export interface FileRouteTypes {
     | '/_authenticated/app/licenses'
     | '/_authenticated/app/my-work'
     | '/_authenticated/app/navigation'
+    | '/_authenticated/app/page-downloads'
     | '/_authenticated/app/permissions'
     | '/_authenticated/app/phase-financials'
     | '/_authenticated/app/portfolio-movements'
@@ -1446,6 +1459,13 @@ declare module '@tanstack/react-router' {
       path: '/navigation'
       fullPath: '/app/navigation'
       preLoaderRoute: typeof AuthenticatedAppNavigationRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/app/page-downloads': {
+      id: '/_authenticated/app/page-downloads'
+      path: '/page-downloads'
+      fullPath: '/app/page-downloads'
+      preLoaderRoute: typeof AuthenticatedAppPageDownloadsRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
     '/_authenticated/app/permissions': {
@@ -1839,6 +1859,7 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppLicensesRoute: typeof AuthenticatedAppLicensesRoute
   AuthenticatedAppMyWorkRoute: typeof AuthenticatedAppMyWorkRoute
   AuthenticatedAppNavigationRoute: typeof AuthenticatedAppNavigationRoute
+  AuthenticatedAppPageDownloadsRoute: typeof AuthenticatedAppPageDownloadsRoute
   AuthenticatedAppPermissionsRoute: typeof AuthenticatedAppPermissionsRoute
   AuthenticatedAppPhaseFinancialsRoute: typeof AuthenticatedAppPhaseFinancialsRoute
   AuthenticatedAppPortfolioMovementsRoute: typeof AuthenticatedAppPortfolioMovementsRoute
@@ -1898,6 +1919,7 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppLicensesRoute: AuthenticatedAppLicensesRoute,
   AuthenticatedAppMyWorkRoute: AuthenticatedAppMyWorkRoute,
   AuthenticatedAppNavigationRoute: AuthenticatedAppNavigationRoute,
+  AuthenticatedAppPageDownloadsRoute: AuthenticatedAppPageDownloadsRoute,
   AuthenticatedAppPermissionsRoute: AuthenticatedAppPermissionsRoute,
   AuthenticatedAppPhaseFinancialsRoute: AuthenticatedAppPhaseFinancialsRoute,
   AuthenticatedAppPortfolioMovementsRoute:
@@ -2017,13 +2039,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

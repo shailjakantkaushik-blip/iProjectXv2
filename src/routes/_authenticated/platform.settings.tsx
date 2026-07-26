@@ -1,13 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Save, RefreshCw, UserPlus, Sparkles, Menu } from "lucide-react";
+import { Save, RefreshCw, UserPlus, Sparkles, Menu, FileDown } from "lucide-react";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/lib/auth-context";
 import { CartoonSettingsPreview } from "@/components/cartoon-mascots";
 import { NavSequenceEditor } from "@/components/nav-sequence-editor";
+import { PageDownloadSettings } from "@/components/page-download-settings";
 import { PageLoading } from "@/components/page-loading";
 import {
   DEFAULT_LANDING,
@@ -19,6 +20,10 @@ import {
 import { CartoonPicker, StyleThemePicker } from "@/components/style-theme-picker";
 import { isStyleThemeId, type StyleThemeId } from "@/lib/style-theme";
 import { normalizeCartoonId } from "@/lib/cartoons";
+import {
+  defaultPageDownloadConfig,
+  normalizePageDownloadConfig,
+} from "@/lib/page-download";
 
 export const Route = createFileRoute("/_authenticated/platform/settings")({
   component: PlatformSettingsPage,
@@ -170,6 +175,29 @@ function PlatformSettingsPage() {
           value={cfg.navigation ?? defaultNavigationConfig()}
           onChange={(navigation) => setCfg({ ...cfg, navigation })}
           structureEditable
+        />
+      </SectionFrame>
+
+      <SectionFrame exportable={false}>
+        <div className="mb-1 flex items-center gap-2">
+          <FileDown className="h-4 w-4 text-muted-foreground" />
+          <SectionTitle>Page downloads (platform default)</SectionTitle>
+        </div>
+        <p className="mt-1 mb-4 text-sm text-muted-foreground">
+          Control which workspace pages show Download page (PDF / PPT / PNG). Organisations can
+          override under Configuration → Page downloads. Org Admin and Platform pages are never
+          included.
+        </p>
+        <PageDownloadSettings
+          value={{
+            pages: {
+              ...defaultPageDownloadConfig().pages,
+              ...normalizePageDownloadConfig(cfg.page_download).pages,
+            },
+          }}
+          onChange={(page_download) =>
+            setCfg({ ...cfg, page_download: normalizePageDownloadConfig(page_download) })
+          }
         />
       </SectionFrame>
     </div>

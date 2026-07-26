@@ -1,5 +1,6 @@
 import { lazy, Suspense, useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { usePageDownloadAllowed } from "@/lib/page-download";
 
 /** Lazy so PPT/PDF/Excel export code is never on the cold-reload critical path. */
 const DownloadMenu = lazy(async () => {
@@ -26,9 +27,11 @@ export function SectionFrame({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const name = exportName ?? id ?? "section";
+  const pageDownloadOk = usePageDownloadAllowed();
+  const showExport = exportable && pageDownloadOk;
   return (
     <div id={id} ref={ref} className={cn("section-frame relative group", className)}>
-      {exportable && (
+      {showExport && (
         <div className="absolute right-2 top-2 z-10 opacity-100 transition-opacity print:hidden md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
           <Suspense fallback={null}>
             <DownloadMenu targetRef={ref} name={name} title={exportTitle} label="" variant="ghost" />

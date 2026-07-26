@@ -70,6 +70,10 @@ export interface Organization {
         project_ids?: string[];
       }>;
     };
+    /** Per-page Download page (PDF/PPT/PNG) allow/deny — org override of platform defaults. */
+    page_download?: {
+      pages?: Record<string, boolean>;
+    };
   } | null;
 }
 

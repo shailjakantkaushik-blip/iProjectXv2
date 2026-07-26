@@ -65,6 +65,7 @@ import {
   Trash2,
   ChevronDown,
   LifeBuoy,
+  FileDown,
   type LucideIcon,
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -166,6 +167,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Table2,
   Settings,
   Menu,
+  FileDown,
   Eye,
   Trash2,
   Receipt,
