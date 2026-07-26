@@ -264,6 +264,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const cartoonsEnabled = useCartoonsEnabled();
   const desktopNavRef = useRef<HTMLElement | null>(null);
   const mobileNavRef = useRef<HTMLElement | null>(null);
+  const mainRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -407,9 +408,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     setMobileOpen(false);
   }, [pathname]);
 
-  // Document is the scroll root — clear any leftover modal/landing locks.
+  // Page content scrolls inside .shell-main — reset on navigate.
   useEffect(() => {
     unlockDocumentScroll();
+    if (mainRef.current) mainRef.current.scrollTop = 0;
   }, [pathname]);
 
   // Lock background scroll + Escape only while the mobile drawer is open.
@@ -428,8 +430,6 @@ export function AppShell({ children }: { children: ReactNode }) {
       window.removeEventListener("keydown", onKey);
     };
   }, [mobileOpen]);
-
-  // Router scrollRestoration owns scroll position — do not window.scrollTo on nav.
 
   // Left nav only: keep the selected item visible when it is off-screen.
   useEffect(() => {
@@ -693,10 +693,15 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div
-      className={cn("shell-root flex min-h-screen bg-background", focusMode && "shell-focus")}
+      className={cn(
+        // Fixed viewport chrome: sidebar + header stay put; only .shell-main scrolls.
+        "shell-root flex h-svh max-h-svh overflow-hidden bg-background",
+        focusMode && "shell-focus",
+      )}
       data-focus-mode={focusMode ? "1" : undefined}
+      data-mobile-nav-open={mobileOpen ? "1" : undefined}
     >
-      <aside className="shell-sidebar sticky top-0 hidden h-svh w-[15rem] shrink-0 flex-col border-r border-sidebar-border/70 bg-sidebar print:hidden md:flex lg:w-[16.25rem]">
+      <aside className="shell-sidebar hidden h-full w-[15rem] shrink-0 flex-col border-r border-sidebar-border/70 bg-sidebar print:hidden md:flex lg:w-[16.25rem]">
         {BrandBlock}
         {renderNav(desktopNavRef)}
         {Footer}
@@ -716,8 +721,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="shell-header relative sticky top-0 z-30 flex items-center gap-2 border-b border-border/50 bg-background px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] print:hidden sm:gap-3 sm:px-4 lg:px-6">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <header className="shell-header relative z-30 flex shrink-0 items-center gap-2 border-b border-border/50 bg-background px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] print:hidden sm:gap-3 sm:px-4 lg:px-6">
           <SoftUpdatingBar />
           <button
             type="button"
@@ -848,8 +853,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         </header>
 
         <main
+          ref={mainRef}
           className={cn(
-            "shell-main min-w-0 flex-1 overflow-x-hidden p-3 sm:p-5 lg:p-7",
+            "shell-main min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain p-3 sm:p-5 lg:p-7",
             cartoonsEnabled && !focusMode && "shell-main--with-companion",
           )}
         >

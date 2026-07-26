@@ -400,16 +400,16 @@ textarea.st-input { height: auto; min-height: 64px; }
 .rag-chip   { display:inline-flex; align-items:center; padding:2px 8px; border-radius:9999px; font-size:11px; font-weight:600; }
 
 /* Responsive spacing tweaks */
-/* Document is the scroll root (best practice). Do not put overflow-y on
-   .shell-main / #root — nested app scrollports fight sticky headers + restoration. */
+/*
+ * Public pages (landing, legal): document scrolls.
+ * Authenticated AppShell: fixed h-svh chrome; only .shell-main scrolls
+ * (sidebar + top header stay pinned — standard SaaS app pattern).
+ */
 html {
   -webkit-text-size-adjust: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
 }
 body {
   overflow-x: hidden;
-  overflow-y: visible;
   min-height: 100%;
 }
 
@@ -637,8 +637,13 @@ html[data-style-theme="aurora"] .shell-root::before {
   width: 100%;
   max-width: none;
   box-sizing: border-box;
-  /* Document scrolls — never overflow-y here (breaks sticky + restoration). */
+  /* Sole vertical scrollport inside AppShell — chrome stays fixed. */
+  -webkit-overflow-scrolling: touch;
   animation: none;
+}
+/* Mobile drawer open: freeze page scroll under the overlay */
+.shell-root[data-mobile-nav-open="1"] .shell-main {
+  overflow: hidden;
 }
 .shell-nav {
   scrollbar-width: thin;
@@ -1563,11 +1568,16 @@ html[data-style-theme="atelier"] button[data-slot="button"] {
   }
   .shell-root {
     display: block !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
     background: #fff !important;
   }
   .shell-main {
     padding: 0 !important;
     overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
   }
   .section-frame,
   [data-export-block] {
