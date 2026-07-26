@@ -406,17 +406,32 @@ export function AppShell({ children }: { children: ReactNode }) {
     setMobileOpen(false);
   }, [pathname]);
 
+  // Ensure document scroll is never left locked after auth/landing/dialog overlays.
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    html.style.overflow = "";
+    body.style.overflow = "";
+    body.style.overflowX = "";
+    body.style.overflowY = "";
+    body.style.paddingRight = "";
+    body.removeAttribute("data-scroll-locked");
+    body.style.pointerEvents = "";
+  }, [pathname]);
+
   // Lock background scroll + Escape while the mobile drawer is open.
   useEffect(() => {
-    if (!mobileOpen) return;
-    const prev = document.body.style.overflow;
+    if (!mobileOpen) {
+      document.body.style.overflow = "";
+      return;
+    }
     document.body.style.overflow = "hidden";
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setMobileOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => {
-      document.body.style.overflow = prev;
+      document.body.style.overflow = "";
       window.removeEventListener("keydown", onKey);
     };
   }, [mobileOpen]);
