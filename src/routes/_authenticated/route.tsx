@@ -14,11 +14,11 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 /**
- * Security invariants (must not regress for scroll/perf work):
- * 1. No AppShell/Outlet until MFA enroll+AAL2 is satisfied (or MFA APIs unavailable).
- * 2. Org white-label membership is enforced in auth.tsx BEFORE /mfa redirect.
- * 3. Scroll/nav smoothness: do NOT remount AppShell on every pathname or quiet
- *    profile hydrate — re-check MFA without tearing the shell down.
+ * Security invariants:
+ * 1. No AppShell/Outlet until MFA enroll + AAL2 (or MFA APIs unavailable).
+ * 2. Org white-label membership is enforced in auth.tsx BEFORE /mfa.
+ * 3. After MFA is ready, never swap the shell for a full-screen loader on soft
+ *    re-checks — that froze page scrolling. Soft re-check only navigates to /mfa.
  */
 function Gate() {
   const { session, profile, loading, sessionChecked, signOut } = useAuth();
@@ -29,9 +29,11 @@ function Gate() {
   const bareShell = pathname.startsWith("/onboarding");
 
   const mfaVerifiedUserRef = useRef<string | null>(null);
+  /** Once true for this mount, never swap AppShell for a full-screen loader. */
+  const shellUnlockedRef = useRef(false);
   const [mfaReady, setMfaReady] = useState(false);
 
-  const redirectToMfa = (mode: "challenge" | "enroll") => {
+  const goMfa = (mode: "challenge" | "enroll") => {
     navigate({
       to: "/mfa",
       search: { mode, next: pathnameRef.current || "/app" },
@@ -39,23 +41,10 @@ function Gate() {
     });
   };
 
-  /** Returns true if the session may enter the app. */
-  const evaluateMfa = async (): Promise<"ok" | "redirect"> => {
-    const mfa = await getMfaStatus();
-    if (mfa.needsChallenge) {
-      redirectToMfa("challenge");
-      return "redirect";
-    }
-    if (!mfa.hasVerifiedFactor) {
-      redirectToMfa("enroll");
-      return "redirect";
-    }
-    // Defense-in-depth: enrolled but still on password-only assurance.
-    if (mfa.currentLevel === "aal1") {
-      redirectToMfa("challenge");
-      return "redirect";
-    }
-    return "ok";
+  const markMfaReady = (userId: string) => {
+    mfaVerifiedUserRef.current = userId;
+    shellUnlockedRef.current = true;
+    setMfaReady(true);
   };
 
   useEffect(() => {
@@ -63,6 +52,7 @@ function Gate() {
 
     if (!session) {
       mfaVerifiedUserRef.current = null;
+      shellUnlockedRef.current = false;
       setMfaReady(false);
       const slug = readOrgAuthEntrySlug();
       if (slug) {
@@ -84,25 +74,28 @@ function Gate() {
       return;
     }
 
-    // Already verified for this user in this Gate mount — do not re-flip state
-    // (avoids shell remount / scroll jank). Soft recheck is on visibility below.
     if (mfaVerifiedUserRef.current === session.user.id) {
-      if (!mfaReady) setMfaReady(true);
+      if (!mfaReady) markMfaReady(session.user.id);
       return;
     }
 
     let cancelled = false;
     void (async () => {
       try {
-        const result = await evaluateMfa();
-        if (cancelled || result !== "ok") return;
-        mfaVerifiedUserRef.current = session.user.id;
-        setMfaReady(true);
+        const mfa = await getMfaStatus();
+        if (cancelled) return;
+        if (mfa.needsChallenge || mfa.currentLevel === "aal1") {
+          goMfa("challenge");
+          return;
+        }
+        if (!mfa.hasVerifiedFactor) {
+          goMfa("enroll");
+          return;
+        }
+        markMfaReady(session.user.id);
       } catch {
-        /* MFA APIs unavailable in Supabase project — same fail-open as before. */
         if (!cancelled) {
-          mfaVerifiedUserRef.current = session.user.id;
-          setMfaReady(true);
+          markMfaReady(session.user.id);
         }
       }
     })();
@@ -110,7 +103,7 @@ function Gate() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- pathname via ref; loading omitted on purpose
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     session,
     sessionChecked,
@@ -121,22 +114,25 @@ function Gate() {
     mfaReady,
   ]);
 
-  // Soft security re-check when the tab becomes visible again — redirect to MFA
-  // if assurance dropped, without unmounting the shell first (no scroll jank).
+  // Soft re-check on tab focus. Navigate to /mfa if needed — do NOT set
+  // mfaReady=false (that mounted a fixed full-screen loader and killed scroll).
   useEffect(() => {
     if (!mfaReady || !session) return;
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
-      void evaluateMfa()
-        .then((result) => {
-          if (result === "redirect") {
+      void getMfaStatus()
+        .then((mfa) => {
+          if (mfa.needsChallenge || mfa.currentLevel === "aal1") {
             mfaVerifiedUserRef.current = null;
-            setMfaReady(false);
+            goMfa("challenge");
+            return;
+          }
+          if (!mfa.hasVerifiedFactor) {
+            mfaVerifiedUserRef.current = null;
+            goMfa("enroll");
           }
         })
-        .catch(() => {
-          /* ignore transient MFA API errors on soft recheck */
-        });
+        .catch(() => {});
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
@@ -152,7 +148,8 @@ function Gate() {
   if (profile?.is_active === false) {
     return <PageLoading label="Account inactive…" />;
   }
-  if (!mfaReady) {
+  // Keep shell mounted after first unlock — full-screen loader freezes scroll.
+  if (!mfaReady && !shellUnlockedRef.current) {
     return <PageLoading label="Verifying security…" />;
   }
 
@@ -167,7 +164,6 @@ function Gate() {
     );
   }
 
-  // Keep AppShell mounted across route changes and soft profile hydrates.
   return (
     <AppShell>
       {profileMatchesSession ? (

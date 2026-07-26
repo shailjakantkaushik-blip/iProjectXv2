@@ -629,7 +629,6 @@ html[data-style-theme="aurora"] .shell-root::before {
   box-sizing: border-box;
   /* Stay mounted across routes; avoid opacity/transform enter on every nav. */
   animation: none;
-  overscroll-behavior-y: contain;
 }
 .shell-nav {
   scrollbar-width: thin;
