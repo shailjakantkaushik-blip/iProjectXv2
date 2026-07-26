@@ -4,7 +4,11 @@ import { ProcessingAnimation } from "@/components/processing-animation";
 
 type PageLoadingProps = {
   label?: string;
-  /** Full viewport overlay (default) vs fill parent */
+  /**
+   * Full viewport overlay. Default false — in-app loaders must stay in-flow so
+   * the document keeps scrolling and the shell chrome stays usable (best practice).
+   * Use fullScreen only for cold gates before AppShell exists (auth/session/MFA).
+   */
   fullScreen?: boolean;
   size?: "sm" | "md" | "lg";
   className?: string;
@@ -15,13 +19,12 @@ type PageLoadingProps = {
 /**
  * Brand loading state — mark + label as one centred group.
  *
- * Full-screen uses a fixed viewport layer and absolutely centres the cluster
- * so Suspense / ClientOnly fallbacks match the auth gate (no spinner-up /
- * caption-centre split).
+ * - In-flow (default): fills the content area; document scroll stays native.
+ * - Full-screen: fixed viewport layer for cold auth/session gates only.
  */
 export function PageLoading({
   label = "Loading…",
-  fullScreen = true,
+  fullScreen = false,
   size = "sm",
   className,
   style,
@@ -38,7 +41,6 @@ export function PageLoading({
       style={style}
       aria-busy="true"
     >
-      {/* One unit pinned to the geometric centre of this layer */}
       <div className="absolute left-1/2 top-1/2 flex w-max max-w-[min(100%,22rem)] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center">
         <ProcessingAnimation label={label} size={size} />
       </div>
@@ -47,15 +49,14 @@ export function PageLoading({
 }
 
 /**
- * Router / Suspense / ClientOnly fallback — same fixed centre as session check.
- * Must stay full-screen: fullScreen={false} left the mark near the top while
- * Gate later painted "Checking your session…" in the true viewport centre.
+ * Router pending for in-app navigations — in-flow only.
+ * Fixed overlays inside Outlet freeze scroll and cover the shell (anti-pattern).
  */
 export function RoutePending() {
   return <PageLoading label="Loading…" size="sm" />;
 }
 
-/** Auth-gate pending — same copy + placement as Gate's session loader. */
+/** Cold auth-gate pending — full-screen before AppShell exists. */
 export function SessionPending() {
-  return <PageLoading label="Checking your session…" size="sm" />;
+  return <PageLoading label="Checking your session…" size="sm" fullScreen />;
 }

@@ -43,6 +43,7 @@ import {
 } from "@/lib/landing-config";
 import { StableBrandLogo } from "@/components/stable-brand-logo";
 import { PageLoading } from "@/components/page-loading";
+import { lockDocumentScroll, unlockDocumentScroll } from "@/lib/document-scroll";
 
 const EoiModal = lazy(() =>
   import("@/components/eoi-form").then((m) => ({ default: m.EoiModal })),
@@ -100,6 +101,7 @@ function LandingPending() {
   return (
     <PageLoading
       label="Loading iProjectX…"
+      fullScreen
       style={{ background: bg }}
       className={theme === "dark" ? "text-white" : undefined}
     />
@@ -497,10 +499,12 @@ function Nav({ cfg, signupEnabled }: { cfg: LandingConfig; signupEnabled: boolea
   }, []);
 
   useEffect(() => {
-    document.body.style.overflow = open ? "hidden" : "";
-    return () => {
-      document.body.style.overflow = "";
-    };
+    if (open) {
+      lockDocumentScroll();
+      return () => unlockDocumentScroll();
+    }
+    unlockDocumentScroll();
+    return undefined;
   }, [open]);
 
   const navBg =

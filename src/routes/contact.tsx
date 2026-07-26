@@ -31,6 +31,7 @@ function ContactPending() {
   return (
     <PageLoading
       label="Loading…"
+      fullScreen
       style={{ background: theme === "dark" ? p.navy : "#fafbfc" }}
       className={theme === "dark" ? "text-white" : undefined}
     />

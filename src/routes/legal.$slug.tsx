@@ -49,6 +49,7 @@ function LegalPending() {
   return (
     <PageLoading
       label="Loading…"
+      fullScreen
       style={{ background: bg }}
       className={theme === "dark" ? "text-white" : undefined}
     />
