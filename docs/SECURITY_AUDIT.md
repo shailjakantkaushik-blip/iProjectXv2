@@ -58,6 +58,7 @@ Prior audits validated RLS, MFA enrollment, AI egress, and many server-fn authz 
 | Org white-label login gate × MFA | **PASS (re-audited)** | Membership before MFA; home-org only; shell blocked until AAL2 |
 | Admin role helpers scoped to home org | **PASS (apply SQL)** | `has_any_admin` / `has_role` / `can_edit_project` |
 | MFA for all users | **PASS** | App + Supabase TOTP On; shell waits for MFA before data UI |
+| MFA gate vs scroll/nav perf | **PASS** | Shell stays mounted after AAL2; MFA re-checked on tab focus without tearing chrome; org gate unchanged |
 | Safer sessions | **PASS** | `sessionStorage` + PKCE (not localStorage JWTs) |
 | Excel CVE (`xlsx`) | **PASS** | Package removed; `read-excel-file` / `write-excel-file` |
 | Login / logout / failed-login logging | **PASS** | `security_events` SQL applied; smoke-tested |

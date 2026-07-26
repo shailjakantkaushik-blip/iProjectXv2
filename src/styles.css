@@ -630,8 +630,6 @@ html[data-style-theme="aurora"] .shell-root::before {
   /* Stay mounted across routes; avoid opacity/transform enter on every nav. */
   animation: none;
   overscroll-behavior-y: contain;
-  /* Promote a stable scroll layer — reduces paint churn while navigating. */
-  contain: layout style;
 }
 .shell-nav {
   scrollbar-width: thin;
