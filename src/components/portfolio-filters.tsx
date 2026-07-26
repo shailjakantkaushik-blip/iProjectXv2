@@ -102,8 +102,8 @@ export function ProjectPicker({
       if (triggerRef.current?.contains(t) || panelRef.current?.contains(t)) return;
       setOpen(false);
     };
-    window.addEventListener("resize", onScroll);
-    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onScroll, { passive: true });
+    window.addEventListener("scroll", onScroll, { capture: true, passive: true });
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     return () => {
@@ -253,8 +253,8 @@ export function FyPicker({
       if (triggerRef.current?.contains(t) || panelRef.current?.contains(t)) return;
       setOpen(false);
     };
-    window.addEventListener("resize", onScroll);
-    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onScroll, { passive: true });
+    window.addEventListener("scroll", onScroll, { capture: true, passive: true });
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     return () => {
