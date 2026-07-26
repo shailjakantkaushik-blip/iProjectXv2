@@ -696,7 +696,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       className={cn("shell-root flex min-h-screen bg-background", focusMode && "shell-focus")}
       data-focus-mode={focusMode ? "1" : undefined}
     >
-      <aside className="shell-sidebar sticky top-0 hidden h-svh w-[15rem] shrink-0 flex-col border-r border-sidebar-border/70 bg-sidebar md:flex lg:w-[16.25rem]">
+      <aside className="shell-sidebar sticky top-0 hidden h-svh w-[15rem] shrink-0 flex-col border-r border-sidebar-border/70 bg-sidebar print:hidden md:flex lg:w-[16.25rem]">
         {BrandBlock}
         {renderNav(desktopNavRef)}
         {Footer}
