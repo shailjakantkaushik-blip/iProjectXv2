@@ -256,13 +256,16 @@ export function FyPicker({
       if (triggerRef.current?.contains(t) || panelRef.current?.contains(t)) return;
       setOpen(false);
     };
+    const main = document.querySelector<HTMLElement>(".shell-main");
     window.addEventListener("resize", onScroll, { passive: true });
     window.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    main?.addEventListener("scroll", onScroll, { passive: true });
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("resize", onScroll);
       window.removeEventListener("scroll", onScroll, true);
+      main?.removeEventListener("scroll", onScroll);
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
     };
