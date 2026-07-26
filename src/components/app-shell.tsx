@@ -105,6 +105,7 @@ import {
 } from "@/lib/navigation-config";
 import { useFocusMode } from "@/lib/use-focus-mode";
 import { cn } from "@/lib/utils";
+import { lockDocumentScroll, unlockDocumentScroll } from "@/lib/document-scroll";
 const StyleThemePicker = lazy(() =>
   import("@/components/style-theme-picker").then((m) => ({ default: m.StyleThemePicker })),
 );
@@ -406,38 +407,29 @@ export function AppShell({ children }: { children: ReactNode }) {
     setMobileOpen(false);
   }, [pathname]);
 
-  // Ensure document scroll is never left locked after auth/landing/dialog overlays.
+  // Document is the scroll root — clear any leftover modal/landing locks.
   useEffect(() => {
-    const html = document.documentElement;
-    const body = document.body;
-    html.style.overflow = "";
-    body.style.overflow = "";
-    body.style.overflowX = "";
-    body.style.overflowY = "";
-    body.style.paddingRight = "";
-    body.removeAttribute("data-scroll-locked");
-    body.style.pointerEvents = "";
+    unlockDocumentScroll();
   }, [pathname]);
 
-  // Lock background scroll + Escape while the mobile drawer is open.
+  // Lock background scroll + Escape only while the mobile drawer is open.
   useEffect(() => {
     if (!mobileOpen) {
-      document.body.style.overflow = "";
+      unlockDocumentScroll();
       return;
     }
-    document.body.style.overflow = "hidden";
+    lockDocumentScroll();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setMobileOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => {
-      document.body.style.overflow = "";
+      unlockDocumentScroll();
       window.removeEventListener("keydown", onKey);
     };
   }, [mobileOpen]);
 
-  // Page scroll is handled by the router's scrollRestoration — do not fight it
-  // with a manual window.scrollTo on every pathname change.
+  // Router scrollRestoration owns scroll position — do not window.scrollTo on nav.
 
   // Left nav only: keep the selected item visible when it is off-screen.
   useEffect(() => {

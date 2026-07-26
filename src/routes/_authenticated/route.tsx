@@ -6,6 +6,7 @@ import { getMfaStatus } from "@/lib/mfa";
 import { toast } from "sonner";
 import { PageLoading, SessionPending } from "@/components/page-loading";
 import { AppShell } from "@/components/app-shell";
+import { unlockDocumentScroll } from "@/lib/document-scroll";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -14,11 +15,13 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 /**
- * Security invariants:
- * 1. No AppShell/Outlet until MFA enroll + AAL2 (or MFA APIs unavailable).
- * 2. Org white-label membership is enforced in auth.tsx BEFORE /mfa.
- * 3. After MFA is ready, never swap the shell for a full-screen loader on soft
- *    re-checks — that froze page scrolling. Soft re-check only navigates to /mfa.
+ * Auth gate — best-practice scroll model:
+ *
+ * 1. Cold start only: block with a full-screen loader until session + MFA OK.
+ * 2. After unlock: AppShell stays mounted; document scrolls (window), never a
+ *    nested main scrollport or fixed overlay for soft checks.
+ * 3. Soft security rechecks redirect to /mfa — they do not remount loaders.
+ * 4. Org white-label membership is enforced in auth.tsx BEFORE /mfa.
  */
 function Gate() {
   const { session, profile, loading, sessionChecked, signOut } = useAuth();
@@ -29,8 +32,6 @@ function Gate() {
   const bareShell = pathname.startsWith("/onboarding");
 
   const mfaVerifiedUserRef = useRef<string | null>(null);
-  /** Once true for this mount, never swap AppShell for a full-screen loader. */
-  const shellUnlockedRef = useRef(false);
   const [mfaReady, setMfaReady] = useState(false);
 
   const goMfa = (mode: "challenge" | "enroll") => {
@@ -43,8 +44,8 @@ function Gate() {
 
   const markMfaReady = (userId: string) => {
     mfaVerifiedUserRef.current = userId;
-    shellUnlockedRef.current = true;
     setMfaReady(true);
+    unlockDocumentScroll();
   };
 
   useEffect(() => {
@@ -52,7 +53,6 @@ function Gate() {
 
     if (!session) {
       mfaVerifiedUserRef.current = null;
-      shellUnlockedRef.current = false;
       setMfaReady(false);
       const slug = readOrgAuthEntrySlug();
       if (slug) {
@@ -94,9 +94,8 @@ function Gate() {
         }
         markMfaReady(session.user.id);
       } catch {
-        if (!cancelled) {
-          markMfaReady(session.user.id);
-        }
+        // MFA APIs unavailable — fail open (same as historical behaviour).
+        if (!cancelled) markMfaReady(session.user.id);
       }
     })();
 
@@ -114,8 +113,7 @@ function Gate() {
     mfaReady,
   ]);
 
-  // Soft re-check on tab focus. Navigate to /mfa if needed — do NOT set
-  // mfaReady=false (that mounted a fixed full-screen loader and killed scroll).
+  // Soft recheck: route transition only — never tear down the shell.
   useEffect(() => {
     if (!mfaReady || !session) return;
     const onVisible = () => {
@@ -139,20 +137,18 @@ function Gate() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mfaReady, session?.user?.id, navigate]);
 
-  if (!sessionChecked) {
-    return <PageLoading label="Checking your session…" />;
-  }
-  if (!session) {
-    return <PageLoading label="Checking your session…" />;
+  // ── Cold gate (no shell yet) ──────────────────────────────────────────
+  if (!sessionChecked || !session) {
+    return <PageLoading label="Checking your session…" fullScreen />;
   }
   if (profile?.is_active === false) {
-    return <PageLoading label="Account inactive…" />;
+    return <PageLoading label="Account inactive…" fullScreen />;
   }
-  // Keep shell mounted after first unlock — full-screen loader freezes scroll.
-  if (!mfaReady && !shellUnlockedRef.current) {
-    return <PageLoading label="Verifying security…" />;
+  if (!mfaReady) {
+    return <PageLoading label="Verifying security…" fullScreen />;
   }
 
+  // ── Hot path: shell stays mounted; loaders are in-flow only ───────────
   const profileMatchesSession =
     Boolean(profile) && profile!.id === session.user.id;
 
@@ -160,7 +156,7 @@ function Gate() {
     return profileMatchesSession || !loading ? (
       <Outlet />
     ) : (
-      <PageLoading label="Loading workspace…" />
+      <PageLoading label="Loading workspace…" fullScreen />
     );
   }
 
@@ -169,7 +165,7 @@ function Gate() {
       {profileMatchesSession ? (
         <Outlet />
       ) : (
-        <PageLoading label="Loading workspace…" fullScreen={false} />
+        <PageLoading label="Loading workspace…" />
       )}
     </AppShell>
   );
