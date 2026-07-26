@@ -226,7 +226,7 @@ function CostVsBenefitPage() {
         </div>
       </SectionFrame>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2" data-export-block>
         <SectionFrame>
           <ExpandableChart title="Top 10 Projects by ROI" heightClass="h-72">
             <BarChart

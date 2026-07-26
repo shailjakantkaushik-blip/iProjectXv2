@@ -14,24 +14,158 @@ async function loadExportLibs() {
   return { toPng, jsPDF, pptxgen: pptxgenMod.default ?? pptxgenMod };
 }
 
-async function snapshotDataUrl(el: HTMLElement): Promise<{ dataUrl: string; width: number; height: number }> {
-  const { toPng } = await loadExportLibs();
-  const width = el.scrollWidth;
-  const height = el.scrollHeight;
-  const dataUrl = await toPng(el, {
-    backgroundColor: "#ffffff",
-    pixelRatio: 1.5,
-    cacheBust: true,
-    width,
-    height,
+/**
+ * Hide UI chrome (download menus, Expand, etc.) while capturing.
+ * Nav/shell are already outside the capture root — this only cleans page chrome.
+ */
+async function withExportChromeHidden<T>(root: HTMLElement, fn: () => Promise<T>): Promise<T> {
+  const hideEls = Array.from(
+    root.querySelectorAll<HTMLElement>(".print\\:hidden, [data-export-hide]"),
+  );
+  const prev = hideEls.map((el) => el.style.display);
+  hideEls.forEach((el) => {
+    el.style.display = "none";
   });
-  const img = await new Promise<HTMLImageElement>((res, rej) => {
-    const i = new Image();
-    i.onload = () => res(i);
-    i.onerror = rej;
-    i.src = dataUrl;
+  try {
+    return await fn();
+  } finally {
+    hideEls.forEach((el, i) => {
+      el.style.display = prev[i] || "";
+    });
+  }
+}
+
+type ExportBlock = { top: number; bottom: number };
+
+/**
+ * Collect keep-together regions (section cards, explicit export blocks).
+ * Coordinates are in snapshot image pixels.
+ */
+function collectExportBlocks(
+  root: HTMLElement,
+  scaleX: number,
+  scaleY: number,
+): ExportBlock[] {
+  const rootRect = root.getBoundingClientRect();
+  const blocks: ExportBlock[] = [];
+  const seen = new Set<Element>();
+
+  const add = (el: Element) => {
+    if (seen.has(el)) return;
+    seen.add(el);
+    const r = el.getBoundingClientRect();
+    const top = (r.top - rootRect.top + root.scrollTop) * scaleY;
+    const bottom = (r.bottom - rootRect.top + root.scrollTop) * scaleY;
+    if (bottom - top < 2) return;
+    blocks.push({
+      top: Math.max(0, top),
+      bottom: Math.max(0, bottom),
+    });
+  };
+
+  // Explicit groups first (e.g. side-by-side chart rows).
+  root.querySelectorAll("[data-export-block]").forEach(add);
+
+  // Section cards — skip ones nested inside an explicit export block.
+  root.querySelectorAll(".section-frame").forEach((el) => {
+    if (el.closest("[data-export-block]")) return;
+    add(el);
   });
-  return { dataUrl, width: img.naturalWidth, height: img.naturalHeight };
+
+  root.querySelectorAll(".page-heading").forEach(add);
+
+  return blocks.sort((a, b) => a.top - b.top || a.bottom - b.bottom);
+}
+
+/**
+ * Build page end Y positions so we never cut through a keep-together block.
+ * If a block cannot fit on the remaining page, it moves to the next page.
+ * Oversized blocks (taller than one page) fall back to a hard slice.
+ */
+function computePageEnds(
+  contentHeight: number,
+  pageHeight: number,
+  blocks: ExportBlock[],
+): number[] {
+  if (contentHeight <= 0) return [0];
+  if (pageHeight <= 0) return [contentHeight];
+
+  const ends: number[] = [];
+  let y = 0;
+  const minProgress = Math.max(24, pageHeight * 0.12);
+
+  while (y < contentHeight - 0.5) {
+    const ideal = Math.min(y + pageHeight, contentHeight);
+    if (ideal >= contentHeight - 0.5) {
+      ends.push(contentHeight);
+      break;
+    }
+
+    // Blocks that would be sliced by a hard cut at `ideal`.
+    const cut = blocks.filter((b) => b.top < ideal && b.bottom > ideal + 0.5 && b.bottom > y);
+    let breakAt = ideal;
+
+    if (cut.length > 0) {
+      const earliestTop = Math.min(...cut.map((b) => b.top));
+      if (earliestTop > y + minProgress) {
+        // Move whole block(s) to the next page.
+        breakAt = earliestTop;
+      } else {
+        // Block starts near the top and is taller than the page — hard slice.
+        breakAt = ideal;
+      }
+    } else {
+      // Prefer ending just after a completed block for cleaner pages.
+      const bottoms = blocks
+        .map((b) => b.bottom)
+        .filter((b) => b > y + minProgress && b <= ideal + 0.5);
+      if (bottoms.length) breakAt = Math.max(...bottoms);
+    }
+
+    if (breakAt <= y + 1) breakAt = ideal;
+    ends.push(breakAt);
+    y = breakAt;
+  }
+
+  return ends;
+}
+
+async function snapshotDataUrl(el: HTMLElement): Promise<{
+  dataUrl: string;
+  width: number;
+  height: number;
+  layoutW: number;
+  layoutH: number;
+  blocks: ExportBlock[];
+}> {
+  return withExportChromeHidden(el, async () => {
+    const { toPng } = await loadExportLibs();
+    const layoutW = Math.max(1, el.scrollWidth);
+    const layoutH = Math.max(1, el.scrollHeight);
+    // Measure keep-together blocks with chrome already hidden (matches snapshot).
+    const layoutBlocks = collectExportBlocks(el, 1, 1);
+    const dataUrl = await toPng(el, {
+      backgroundColor: "#ffffff",
+      pixelRatio: 1.5,
+      cacheBust: true,
+      width: layoutW,
+      height: layoutH,
+    });
+    const img = await new Promise<HTMLImageElement>((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = rej;
+      i.src = dataUrl;
+    });
+    return {
+      dataUrl,
+      width: img.naturalWidth,
+      height: img.naturalHeight,
+      layoutW,
+      layoutH,
+      blocks: layoutBlocks,
+    };
+  });
 }
 
 export async function snapshotElement(el: HTMLElement) {
@@ -59,7 +193,14 @@ export async function exportElementPDF(
 ) {
   try {
     const { jsPDF } = await loadExportLibs();
-    const { dataUrl, width, height } = await snapshotDataUrl(el);
+    const { dataUrl, width, height, layoutH, blocks: layoutBlocks } =
+      await snapshotDataUrl(el);
+    const scaleY = height / layoutH;
+    const blocks = layoutBlocks.map((b) => ({
+      top: b.top * scaleY,
+      bottom: b.bottom * scaleY,
+    }));
+
     const opts = typeof titleOrOpts === "object" && titleOrOpts ? titleOrOpts : undefined;
     const orientation = opts?.orientation ?? "landscape";
     const pdf = new jsPDF({ orientation, unit: "pt", format: "a4" });
@@ -67,25 +208,30 @@ export async function exportElementPDF(
     const ph = pdf.internal.pageSize.getHeight();
     const ratio = pw / width;
     const pageCanvasH = ph / ratio;
+
     const src = await new Promise<HTMLImageElement>((res, rej) => {
       const i = new Image();
       i.onload = () => res(i);
       i.onerror = rej;
       i.src = dataUrl;
     });
-    let y = 0,
-      first = true;
-    while (y < height) {
-      if (!first) pdf.addPage();
-      first = false;
-      const sliceH = Math.min(pageCanvasH, height - y);
+
+    const pageEnds = computePageEnds(height, pageCanvasH, blocks);
+    let y = 0;
+    pageEnds.forEach((end, idx) => {
+      if (idx > 0) pdf.addPage();
+      const sliceH = Math.max(1, Math.min(end, height) - y);
       const c = document.createElement("canvas");
       c.width = width;
       c.height = Math.max(1, Math.floor(sliceH));
       c.getContext("2d")!.drawImage(src, 0, y, width, sliceH, 0, 0, width, sliceH);
+      // White page fill so short final pages aren't transparent
+      pdf.setFillColor(255, 255, 255);
+      pdf.rect(0, 0, pw, ph, "F");
       pdf.addImage(c.toDataURL("image/png"), "PNG", 0, 0, pw, sliceH * ratio);
-      y += pageCanvasH;
-    }
+      y = end;
+    });
+
     pdf.save(`${name}.pdf`);
   } catch (e: any) {
     toast.error(`PDF export failed: ${e.message ?? e}`);
@@ -155,6 +301,7 @@ export function DownloadMenu({
           variant={variant as any}
           size={size === "xs" ? "sm" : (size as any)}
           className="gap-2 print:hidden"
+          data-export-hide
         >
           <Download className="h-3.5 w-3.5" /> {label}
         </Button>
@@ -177,6 +324,7 @@ export function DownloadMenu({
 /**
  * Wrap a page's main content. Renders children plus a "Download page" pill
  * pinned to the bottom-right for a page-level PDF/PPT/PNG snapshot.
+ * Capture root is page content only — app shell / nav are never included.
  */
 export function PageExport({
   name,
@@ -190,8 +338,10 @@ export function PageExport({
   const ref = useRef<HTMLDivElement>(null);
   return (
     <div className="relative">
-      <div ref={ref}>{children}</div>
-      <div className="mt-6 flex justify-end print:hidden">
+      <div ref={ref} data-export-root>
+        {children}
+      </div>
+      <div className="mt-6 flex justify-end print:hidden" data-export-hide>
         <DownloadMenu targetRef={ref} name={name} title={title} label="Download page" />
       </div>
     </div>

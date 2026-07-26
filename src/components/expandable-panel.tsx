@@ -43,8 +43,9 @@ export function ExpandablePanel({
             <button
               type="button"
               onClick={() => setOpen(true)}
-              className="inline-flex h-7 items-center gap-1 rounded-md border border-border/70 bg-background/80 px-2 text-[10px] font-medium text-muted-foreground transition hover:text-foreground hover:opacity-100"
+              className="inline-flex h-7 items-center gap-1 rounded-md border border-border/70 bg-background/80 px-2 text-[10px] font-medium text-muted-foreground transition hover:text-foreground hover:opacity-100 print:hidden"
               title={`Expand ${title}`}
+              data-export-hide
             >
               <Maximize2 className="h-3 w-3" />
               Expand

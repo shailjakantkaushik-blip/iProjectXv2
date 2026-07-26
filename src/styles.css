@@ -1551,3 +1551,27 @@ html[data-style-theme="atelier"] button[data-slot="button"] {
     transform: none !important;
   }
 }
+
+/* Browser Print / Save-as-PDF: page data only — no app chrome */
+@media print {
+  .shell-sidebar,
+  .shell-header,
+  .cartoon-companion,
+  .print\:hidden,
+  [data-export-hide] {
+    display: none !important;
+  }
+  .shell-root {
+    display: block !important;
+    background: #fff !important;
+  }
+  .shell-main {
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  .section-frame,
+  [data-export-block] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
