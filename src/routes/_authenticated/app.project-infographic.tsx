@@ -45,6 +45,10 @@ import { exportElementPDF } from "@/components/page-export";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { isDoneGateStatus, resolveCurrentStage } from "@/lib/project-phase";
 import {
+  phaseSpendByStage,
+  type MonthlyFinanceRow,
+} from "@/lib/finance-lifecycle";
+import {
   expandProjectsToTimelineLanes,
   fetchProjectStreams,
   formatProjectStreamRef,
@@ -674,60 +678,153 @@ function InfographicPage() {
   );
   const milestoneTable = useColumnarTable(milestoneRows, milestoneColumns);
 
-  const gateDetailRows = useMemo(() => {
-    if (!project) return [] as any[];
-    const sorted = [...(projectStreams as any[])].sort(
-      (a, b) =>
-        (a.sort_order ?? 0) - (b.sort_order ?? 0) || String(a.name).localeCompare(String(b.name)),
-    );
+  /** Monthly cashflow keyed by stream_id, else project_id (null-stream / no-stream projects). */
+  const monthlyByLane = useMemo(() => {
+    const m = new Map<string, MonthlyFinanceRow[]>();
+    if (!project?.id) return m;
+    for (const row of monthly as MonthlyFinanceRow[]) {
+      const key = row.stream_id || project.id;
+      const list = m.get(key) || [];
+      list.push(row);
+      m.set(key, list);
+    }
+    return m;
+  }, [monthly, project?.id]);
+
+  const sortedStreams = useMemo(
+    () =>
+      [...(projectStreams as any[])].sort(
+        (a, b) =>
+          (a.sort_order ?? 0) - (b.sort_order ?? 0) ||
+          String(a.name).localeCompare(String(b.name)),
+      ),
+    [projectStreams],
+  );
+
+  /** Phase budget/forecast/actual from monthly cashflow + gate date windows (not stage_gates.phase_*). */
+  const phaseSpendSections = useMemo(() => {
+    if (!project) {
+      return {
+        phaseCards: [] as {
+          name: string;
+          status: string;
+          planned?: string | null;
+          actual?: string | null;
+          approver?: string | null;
+          budget: number;
+          forecast: number;
+          actualSpend: number;
+        }[],
+        streamGateSections: [] as {
+          stream: any;
+          streamCode: string;
+          streamLabel: string;
+          streamRef: string;
+          cards: {
+            name: string;
+            status: string;
+            planned?: string | null;
+            actual?: string | null;
+            approver?: string | null;
+            budget: number;
+            forecast: number;
+            actualSpend: number;
+          }[];
+        }[],
+      };
+    }
+
+    const spendFor = (pgates: any[], rows: MonthlyFinanceRow[], name: string) => {
+      const spend = phaseSpendByStage(pgates, rows, PHASES).get(name);
+      return {
+        budget: spend?.planned ?? 0,
+        forecast: spend?.forecast ?? 0,
+        actualSpend: spend?.actual ?? 0,
+      };
+    };
+
+    const streamGateSections =
+      sortedStreams.length > 0
+        ? sortedStreams.map((stream) => {
+            const streamGates = (gates as any[]).filter(
+              (g) => g.stream_id === stream.id || (!g.stream_id && stream.is_default),
+            );
+            const rows =
+              monthlyByLane.get(stream.id) || monthlyByLane.get(project.id) || [];
+            const byName = new Map<string, any>();
+            streamGates.forEach((g) => byName.set((g.gate_name || "").trim(), g));
+            const cards = PHASES.map((name) => {
+              const g = byName.get(name);
+              const $ = spendFor(streamGates, rows, name);
+              return {
+                name,
+                status: g?.status || "Not Started",
+                planned: g?.planned_date,
+                actual: g?.actual_date,
+                approver: g?.approver,
+                ...$,
+              };
+            });
+            return {
+              stream,
+              streamCode: formatStreamCode(stream),
+              streamLabel: formatStreamLabel(stream),
+              streamRef: formatProjectStreamRef(project, stream),
+              cards,
+            };
+          })
+        : [];
+
     const phaseCards = PHASES.map((name) => {
       const matching = (gates as any[]).filter((g) => (g.gate_name || "").trim() === name);
       const g = matching.find((x) => !isDoneGateStatus(x.status)) || matching[0];
+      let budget = 0;
+      let forecast = 0;
+      let actualSpend = 0;
+      if (streamGateSections.length > 0) {
+        for (const section of streamGateSections) {
+          const card = section.cards.find((c) => c.name === name);
+          budget += card?.budget ?? 0;
+          forecast += card?.forecast ?? 0;
+          actualSpend += card?.actualSpend ?? 0;
+        }
+      } else {
+        const rows = monthlyByLane.get(project.id) || (monthly as MonthlyFinanceRow[]);
+        const $ = spendFor(gates as any[], rows, name);
+        budget = $.budget;
+        forecast = $.forecast;
+        actualSpend = $.actualSpend;
+      }
       return {
         name,
         status: g?.status || "Not Started",
         planned: g?.planned_date,
         actual: g?.actual_date,
         approver: g?.approver,
-        budget: matching.reduce((n, x) => n + Number(x?.phase_budget ?? 0), 0),
-        forecast: matching.reduce((n, x) => n + Number(x?.phase_forecast ?? 0), 0),
-        actualSpend: matching.reduce((n, x) => n + Number(x?.phase_actual ?? 0), 0),
+        budget,
+        forecast,
+        actualSpend,
       };
     });
+
     const sections =
-      sorted.length > 0
-        ? sorted.map((stream) => {
-            const streamGates = (gates as any[]).filter(
-              (g) => g.stream_id === stream.id || (!g.stream_id && stream.is_default),
-            );
-            const byName = new Map<string, any>();
-            streamGates.forEach((g) => byName.set((g.gate_name || "").trim(), g));
-            return {
-              streamLabel: formatStreamLabel(stream),
-              streamRef: formatProjectStreamRef(project, stream),
-              cards: PHASES.map((name) => {
-                const g = byName.get(name);
-                return {
-                  name,
-                  status: g?.status || "Not Started",
-                  planned: g?.planned_date,
-                  actual: g?.actual_date,
-                  approver: g?.approver,
-                  budget: Number(g?.phase_budget ?? 0),
-                  forecast: Number(g?.phase_forecast ?? 0),
-                  actualSpend: Number(g?.phase_actual ?? 0),
-                };
-              }),
-            };
-          })
+      streamGateSections.length > 0
+        ? streamGateSections
         : [
             {
+              stream: null,
+              streamCode: "",
               streamLabel: "Project",
               streamRef: project.project_code || project.name || "Project",
               cards: phaseCards,
             },
           ];
-    return sections.flatMap((section) =>
+
+    return { phaseCards, streamGateSections: sections };
+  }, [project, sortedStreams, gates, monthlyByLane, monthly]);
+
+  const gateDetailRows = useMemo(() => {
+    return phaseSpendSections.streamGateSections.flatMap((section) =>
       section.cards.map((p) => ({
         key: `${section.streamRef}:${p.name}`,
         streamLabel: section.streamLabel,
@@ -742,7 +839,7 @@ function InfographicPage() {
         actualSpend: p.actualSpend,
       })),
     );
-  }, [project, projectStreams, gates]);
+  }, [phaseSpendSections]);
 
   const gateDetailColumns: ColumnarColumn<any>[] = useMemo(
     () => [
@@ -801,66 +898,9 @@ function InfographicPage() {
   const remaining = Math.max(0, budget - incurred);
   const utilPct = budget ? (incurred / budget) * 100 : 0;
 
-  // Project-level phase rollup (sums stream gate $; status from earliest in-flight)
-  const phaseCards = PHASES.map((name) => {
-    const matching = (gates as any[]).filter((g) => (g.gate_name || "").trim() === name);
-    const g =
-      matching.find((x) => !isDoneGateStatus(x.status)) ||
-      matching[0];
-    return {
-      name,
-      status: g?.status || "Not Started",
-      planned: g?.planned_date,
-      actual: g?.actual_date,
-      approver: g?.approver,
-      budget: matching.reduce((n, x) => n + Number(x?.phase_budget ?? 0), 0),
-      forecast: matching.reduce((n, x) => n + Number(x?.phase_forecast ?? 0), 0),
-      actualSpend: matching.reduce((n, x) => n + Number(x?.phase_actual ?? 0), 0),
-    };
-  });
-
-  // Stage gates by stream — primary view when streams exist
-  const sortedStreams = [...(projectStreams as any[])].sort(
-    (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || String(a.name).localeCompare(String(b.name)),
-  );
-  const streamGateSections =
-    sortedStreams.length > 0
-      ? sortedStreams.map((stream) => {
-          const streamGates = (gates as any[]).filter(
-            (g) => g.stream_id === stream.id || (!g.stream_id && stream.is_default),
-          );
-          const byName = new Map<string, any>();
-          streamGates.forEach((g) => byName.set((g.gate_name || "").trim(), g));
-          const cards = PHASES.map((name) => {
-            const g = byName.get(name);
-            return {
-              name,
-              status: g?.status || "Not Started",
-              planned: g?.planned_date,
-              actual: g?.actual_date,
-              approver: g?.approver,
-              budget: Number(g?.phase_budget ?? 0),
-              forecast: Number(g?.phase_forecast ?? 0),
-              actualSpend: Number(g?.phase_actual ?? 0),
-            };
-          });
-          return {
-            stream,
-            streamCode: formatStreamCode(stream),
-            streamLabel: formatStreamLabel(stream),
-            streamRef: formatProjectStreamRef(project, stream),
-            cards,
-          };
-        })
-      : [
-          {
-            stream: null,
-            streamCode: "",
-            streamLabel: "Project",
-            streamRef: project.project_code || project.name || "Project",
-            cards: phaseCards,
-          },
-        ];
+  // Project-level phase rollup + stream gate cards (spend from monthly + gate windows)
+  const phaseCards = phaseSpendSections.phaseCards;
+  const streamGateSections = phaseSpendSections.streamGateSections;
 
   // Health chips (simple heuristics)
   const scheduleHealth = phaseCards.some((p) => p.status === "Delayed" || p.status === "Blocked")
