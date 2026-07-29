@@ -44,7 +44,7 @@ export function TableEditor({ def }: { def: TableDef }) {
   const [showAdd, setShowAdd] = useState(false);
 
   const { data: lookups } = useQuery({
-    queryKey: ["editor-lookups", organization?.id],
+    queryKey: ["editor-lookups", organization?.id, "v2-user-labels"],
     enabled: !!organization,
     queryFn: async (): Promise<LookupMaps> => {
       const [{ data: projects }, { data: bus }, { data: resources }, { data: streams }, gatesRes, { data: profiles }] =
