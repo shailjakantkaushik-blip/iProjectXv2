@@ -17,6 +17,9 @@
 --   work_items, audit_log / audit_events, project_purge_notices
 --
 -- SEEDS (per organisation) — completely full demo
+--   Demo assignments prefer these org profiles by lower(email):
+--     Kamini Sharma <kaaminisharma1994@gmail.com>
+--     Shailja Kant Kaushik <shailja.kant.kaushik@gmail.com>
 --   Resources synced from existing org profiles (same person as login),
 --   16 projects (always-on Core + second stream),
 --   9 stage gates PER STREAM (with planned/actual dates + status),
@@ -30,7 +33,7 @@
 --   sample timesheets (draft / pending / approved / rejected) with
 --   billable work-item rows + non-billable custom tasks
 --
--- Expected counts per org (approx):
+-- Expected counts per org:
 --   16 projects, 32 streams, 288 stage gates (16×2×9),
 --   work items with stage_gate_id set
 --
@@ -230,7 +233,7 @@ DECLARE
     '2026-07-15','2026-11-01','2026-04-30','2026-10-15','2027-04-01','2025-11-01',
     '2026-12-15','2027-02-28','2026-06-15','2026-09-15'
   ]::date[];
-  sponsors text[] := ARRAY[
+  sponsor_titles text[] := ARRAY[
     'CDO','CTO','CDO','CISO','COO','CFO','CHRO','CPO','CTO','CRO','CDO','CTO','COO','CSO','CTO','COO'
   ];
   alt_names text[] := ARRAY[
@@ -280,6 +283,22 @@ DECLARE
   s_fac numeric;
   brief_json jsonb;
   prev_p uuid;
+  target_emails text[] := ARRAY[
+    'kaaminisharma1994@gmail.com',
+    'shailja.kant.kaushik@gmail.com'
+  ];
+  target_names text[] := ARRAY[
+    'Kamini Sharma',
+    'Shailja Kant Kaushik'
+  ];
+  seed_user_ids uuid[] := ARRAY[]::uuid[];
+  seed_person_names text[] := ARRAY[]::text[];
+  seed_person_emails text[] := ARRAY[]::text[];
+  n_people int;
+  primary_person_name text;
+  secondary_person_name text;
+  sponsor_name text;
+  sponsor_email text;
 BEGIN
   FOR r_org IN SELECT id, COALESCE(fy_start_month, 4) AS fy_start_month FROM public.organizations LOOP
     fy_start := r_org.fy_start_month;
@@ -293,32 +312,102 @@ BEGIN
     END IF;
 
     res_ids := ARRAY[]::uuid[];
-    -- Resources = org members (same person). No fictional sample people.
+    seed_user_ids := ARRAY[]::uuid[];
+    seed_person_names := ARRAY[]::text[];
+    seed_person_emails := ARRAY[]::text[];
+
+    -- Resolve the two named demo members first, matched case-insensitively by email.
+    SELECT
+      COALESCE(array_agg(x.id ORDER BY x.sort_order), ARRAY[]::uuid[]),
+      COALESCE(array_agg(x.person_name ORDER BY x.sort_order), ARRAY[]::text[]),
+      COALESCE(array_agg(x.email ORDER BY x.sort_order), ARRAY[]::text[])
+    INTO seed_user_ids, seed_person_names, seed_person_emails
+    FROM (
+      SELECT
+        p.id,
+        CASE lower(p.email)
+          WHEN target_emails[1] THEN target_names[1]
+          WHEN target_emails[2] THEN target_names[2]
+          ELSE COALESCE(NULLIF(trim(p.full_name), ''), p.email)
+        END AS person_name,
+        lower(p.email) AS email,
+        array_position(target_emails, lower(p.email)) AS sort_order
+      FROM public.profiles p
+      WHERE p.org_id = r_org.id
+        AND lower(p.email) = ANY(target_emails)
+    ) x;
+
+    IF COALESCE(array_length(seed_user_ids, 1), 0) = 0 THEN
+      RAISE NOTICE 'Org % has neither Kamini/Shailja target profile; falling back to up to two org profiles', r_org.id;
+
+      SELECT
+        COALESCE(array_agg(x.id ORDER BY x.sort_order), ARRAY[]::uuid[]),
+        COALESCE(array_agg(x.person_name ORDER BY x.sort_order), ARRAY[]::text[]),
+        COALESCE(array_agg(x.email ORDER BY x.sort_order), ARRAY[]::text[])
+      INTO seed_user_ids, seed_person_names, seed_person_emails
+      FROM (
+        SELECT
+          p.id,
+          COALESCE(NULLIF(trim(p.full_name), ''), p.email) AS person_name,
+          lower(p.email) AS email,
+          row_number() OVER (ORDER BY COALESCE(p.full_name, p.email, p.id::text)) AS sort_order
+        FROM public.profiles p
+        WHERE p.org_id = r_org.id
+        ORDER BY COALESCE(p.full_name, p.email, p.id::text)
+        LIMIT 2
+      ) x;
+    END IF;
+
+    n_people := COALESCE(array_length(seed_person_names, 1), 0);
+    IF n_people = 0 THEN
+      RAISE NOTICE 'Org % has no profiles; using canonical demo names for text fields and skipping resource-dependent rows', r_org.id;
+      seed_person_names := target_names;
+      seed_person_emails := target_emails;
+      n_people := 2;
+    END IF;
+
+    -- Resources = selected org members (same person as login). No fictional sample people.
     BEGIN
       PERFORM public.sync_org_resources_from_profiles(r_org.id);
     EXCEPTION WHEN undefined_function THEN
       RAISE NOTICE 'sync_org_resources_from_profiles missing — continuing without auto-sync';
     END;
-    SELECT coalesce(array_agg(r.id ORDER BY r.name), ARRAY[]::uuid[])
+
+    UPDATE public.resources r
+    SET
+      name = seed_person_names[array_position(seed_user_ids, r.user_id)],
+      email = seed_person_emails[array_position(seed_user_ids, r.user_id)],
+      capacity_hours_week = 40,
+      status = 'Active'
+    WHERE r.org_id = r_org.id
+      AND r.user_id = ANY(seed_user_ids);
+
+    SELECT COALESCE(array_agg(r.id ORDER BY array_position(seed_user_ids, r.user_id)), ARRAY[]::uuid[])
     INTO res_ids
     FROM public.resources r
-    WHERE r.org_id = r_org.id AND r.user_id IS NOT NULL;
+    WHERE r.org_id = r_org.id
+      AND r.user_id = ANY(seed_user_ids);
 
-    -- If org has no logins yet, skip resource-dependent seed rows gracefully
-    IF coalesce(array_length(res_ids, 1), 0) = 0 THEN
-      RAISE NOTICE 'Org % has no profiles/resources — seeding projects without allocations/timesheets', r_org.id;
+    -- If org has no selected logins/resources yet, skip resource-dependent seed rows gracefully.
+    IF COALESCE(array_length(res_ids, 1), 0) = 0 THEN
+      RAISE NOTICE 'Org % has no selected profiles/resources — seeding projects without allocations/timesheets', r_org.id;
     END IF;
 
     FOR i IN 1..16 LOOP
       core_share := 0.58;
       alt_share := 0.42;
+      primary_person_name := seed_person_names[1];
+      secondary_person_name := seed_person_names[LEAST(2, n_people)];
+      sponsor_name := seed_person_names[((i - 1) % n_people) + 1];
+      sponsor_email := seed_person_emails[((i - 1) % n_people) + 1];
 
       brief_json := jsonb_build_object(
         'section1', jsonb_build_object(
           'portfolio_workstream', programs[i],
-          'sponsor', sponsors[i],
-          'business_owner', sponsors[i] || ' Business Owner',
-          'business_solution_manager', 'Sam Rivera',
+          'sponsor', sponsor_name,
+          'sponsor_title', sponsor_titles[i],
+          'business_owner', sponsor_name,
+          'business_solution_manager', secondary_person_name,
           'strategic_alignment', align[i],
           'background_context', 'Strategic initiative to deliver ' || names[i] || ' within the ' || programs[i] || ' program.',
           'opportunity_problem', 'Current capability gaps create cost, risk, and customer friction that this project addresses.',
@@ -354,7 +443,7 @@ BEGIN
       ) VALUES (
         r_org.id, r_bu, codes[i], names[i],
         (ARRAY['Business Strategic','IT Strategic','CAPEX','Unfunded'])[((i - 1) % 4) + 1],
-        programs[i], sponsors[i], priorities[i],
+        programs[i], sponsor_name, priorities[i],
         statuses[i], rags[i], phases[i], methods[i], true,
         starts[i], ends[i],
         CASE WHEN statuses[i] = 'Not Started' THEN NULL ELSE starts[i] + 14 END,
@@ -383,7 +472,7 @@ BEGIN
         name = 'Core',
         code = 'CORE',
         description = 'Primary delivery stream for ' || names[i],
-        owner = 'Sam Rivera',
+        owner = primary_person_name,
         status = statuses[i]::text,
         rag = rags[i]::text,
         planned_start_date = starts[i],
@@ -413,7 +502,7 @@ BEGIN
         false, 1,
         statuses[i]::text,
         CASE WHEN rags[i] = 'Green' THEN 'Amber' WHEN rags[i] = 'Amber' THEN 'Green' ELSE 'Amber' END,
-        'Jordan Lee',
+        secondary_person_name,
         starts[i] + 21,
         ends[i] + CASE WHEN i % 2 = 0 THEN 14 ELSE 0 END,
         CASE WHEN statuses[i] = 'Not Started' THEN NULL ELSE starts[i] + 28 END,
@@ -480,7 +569,7 @@ BEGIN
                 + CASE WHEN sid = alt_id THEN 10 ELSE 3 END
               ELSE NULL END,
             g_status,
-            sponsors[i],
+            CASE WHEN sid = core_id THEN primary_person_name ELSE secondary_person_name END,
             CASE WHEN sid = core_id THEN 'Core stream gate' ELSE alt_names[i] || ' stream gate' END
           );
         END LOOP;
@@ -500,17 +589,17 @@ BEGIN
           (r_org.id, p_id, sid, 'Kick-off complete', s_start + 14,
            CASE WHEN statuses[i] = 'Not Started' THEN NULL ELSE s_start + 16 END,
            CASE WHEN statuses[i] = 'Not Started' THEN 'Planned' ELSE 'Complete' END,
-           'Sam Rivera', 'Stream kick-off'),
+           CASE WHEN sid = core_id THEN primary_person_name ELSE secondary_person_name END, 'Stream kick-off'),
           (r_org.id, p_id, sid, 'Design baseline', s_start + 90,
            CASE WHEN g_idx > 3 THEN s_start + 95 ELSE NULL END,
            CASE WHEN g_idx > 3 THEN 'Complete' WHEN g_idx = 3 THEN 'In Progress' ELSE 'Planned' END,
-           'Riley Chen', NULL),
+           secondary_person_name, NULL),
           (r_org.id, p_id, sid, 'UAT exit', s_end - 45, NULL,
            CASE WHEN g_idx >= 6 THEN 'In Progress' ELSE 'Planned' END,
-           'Casey Brooks', NULL),
+           primary_person_name, NULL),
           (r_org.id, p_id, sid, 'Go-live', lives[i] + CASE WHEN sid = alt_id THEN 7 ELSE 0 END, NULL,
            CASE WHEN statuses[i] = 'Completed' THEN 'Complete' ELSE 'Planned' END,
-           'Jordan Lee', 'Target go-live for stream');
+           CASE WHEN sid = core_id THEN primary_person_name ELSE secondary_person_name END, 'Target go-live for stream');
 
         fy_a := 'FY' || to_char(
           CASE WHEN EXTRACT(MONTH FROM s_start) >= fy_start
@@ -580,15 +669,27 @@ BEGIN
           FOR j IN 1..3 LOOP
             m := (date_trunc('month', CURRENT_DATE)::date - ((j - 1) * INTERVAL '1 month'))::date;
             r1 := 1 + ((i + j - 1) % array_length(res_ids, 1));
-            r2 := 1 + ((i + j + 2) % array_length(res_ids, 1));
-            IF r1 = r2 THEN r2 := 1 + (r1 % array_length(res_ids, 1)); END IF;
-            INSERT INTO public.resource_allocations (
-              org_id, project_id, stream_id, resource_id, period_month,
-              allocation_percent, allocated_hours, role_on_project
-            ) VALUES
-              (r_org.id, p_id, sid, res_ids[r1], m, 25 + ((i + j) % 3) * 10, 40, CASE WHEN sid = core_id THEN 'Core Delivery' ELSE alt_names[i] END),
-              (r_org.id, p_id, sid, res_ids[r2], m, 20 + (i % 4) * 5, 32, CASE WHEN sid = core_id THEN 'Core Support' ELSE alt_names[i] || ' Support' END)
-            ON CONFLICT DO NOTHING;
+            IF array_length(res_ids, 1) = 1 THEN
+              INSERT INTO public.resource_allocations (
+                org_id, project_id, stream_id, resource_id, period_month,
+                allocation_percent, allocated_hours, role_on_project
+              ) VALUES (
+                r_org.id, p_id, sid, res_ids[r1], m,
+                35 + ((i + j) % 3) * 10, 40,
+                CASE WHEN sid = core_id THEN 'Core Delivery' ELSE alt_names[i] END
+              )
+              ON CONFLICT DO NOTHING;
+            ELSE
+              r2 := 1 + ((i + j + 2) % array_length(res_ids, 1));
+              IF r1 = r2 THEN r2 := 1 + (r1 % array_length(res_ids, 1)); END IF;
+              INSERT INTO public.resource_allocations (
+                org_id, project_id, stream_id, resource_id, period_month,
+                allocation_percent, allocated_hours, role_on_project
+              ) VALUES
+                (r_org.id, p_id, sid, res_ids[r1], m, 25 + ((i + j) % 3) * 10, 40, CASE WHEN sid = core_id THEN 'Core Delivery' ELSE alt_names[i] END),
+                (r_org.id, p_id, sid, res_ids[r2], m, 20 + (i % 4) * 5, 32, CASE WHEN sid = core_id THEN 'Core Support' ELSE alt_names[i] || ' Support' END)
+              ON CONFLICT DO NOTHING;
+            END IF;
           END LOOP;
         END IF;
       END LOOP;
@@ -600,30 +701,30 @@ BEGIN
         org_id, project_id, title, benefit_type, target_value, realised_value,
         realisation_date, owner, status, notes
       ) VALUES
-        (r_org.id, p_id, 'Primary value realisation', 'Financial', b1, round(ben_r[i] * 0.6, 2), lives[i], sponsors[i],
+        (r_org.id, p_id, 'Primary value realisation', 'Financial', b1, round(ben_r[i] * 0.6, 2), lives[i], sponsor_name,
          CASE WHEN ben_r[i] > 0 THEN 'In Progress' ELSE 'Planned' END, 'Tracked in benefits register'),
-        (r_org.id, p_id, 'Secondary / efficiency benefit', 'Efficiency', b2, ben_r[i] - round(ben_r[i] * 0.6, 2), lives[i], sponsors[i],
+        (r_org.id, p_id, 'Secondary / efficiency benefit', 'Efficiency', b2, ben_r[i] - round(ben_r[i] * 0.6, 2), lives[i], sponsor_name,
          CASE WHEN ben_r[i] > 0 THEN 'In Progress' ELSE 'Planned' END, NULL);
 
       INSERT INTO public.risks (
         org_id, project_id, title, description, category, probability, impact, severity, status, owner, mitigation, due_date
       ) VALUES
-        (r_org.id, p_id, 'Delivery capacity constraint', 'Key skills contention across portfolio', 'Resource', 3, 4, 12, 'Open', 'Sam Rivera', 'Prioritise critical path; surge contractors', CURRENT_DATE + 30),
-        (r_org.id, p_id, 'Dependency slippage', 'Upstream platform dependency may slip', 'Dependency', 4, 3, 12, 'Open', 'Jordan Lee', 'Weekly dependency forum; contingency design', CURRENT_DATE + 21),
-        (r_org.id, p_id, 'Scope creep on ' || alt_names[i], 'Secondary stream requirements expanding', 'Scope', 2, 3, 6, 'Mitigating', 'Riley Chen', 'Change board; freeze after Design', CURRENT_DATE + 45);
+        (r_org.id, p_id, 'Delivery capacity constraint', 'Key skills contention across portfolio', 'Resource', 3, 4, 12, 'Open', primary_person_name, 'Prioritise critical path; surge contractors', CURRENT_DATE + 30),
+        (r_org.id, p_id, 'Dependency slippage', 'Upstream platform dependency may slip', 'Dependency', 4, 3, 12, 'Open', secondary_person_name, 'Weekly dependency forum; contingency design', CURRENT_DATE + 21),
+        (r_org.id, p_id, 'Scope creep on ' || alt_names[i], 'Secondary stream requirements expanding', 'Scope', 2, 3, 6, 'Mitigating', sponsor_name, 'Change board; freeze after Design', CURRENT_DATE + 45);
 
       INSERT INTO public.issues (
         org_id, project_id, title, description, priority, status, owner, raised_date, target_date
       ) VALUES
-        (r_org.id, p_id, 'Environment access delay', 'Non-prod access pending for ' || alt_names[i], 'Medium', 'Open', 'Jordan Lee', CURRENT_DATE - 7, CURRENT_DATE + 14),
-        (r_org.id, p_id, 'Vendor response lag', 'Third-party awaiting security questionnaire', 'High', 'Open', 'Morgan Patel', CURRENT_DATE - 3, CURRENT_DATE + 10);
+        (r_org.id, p_id, 'Environment access delay', 'Non-prod access pending for ' || alt_names[i], 'Medium', 'Open', secondary_person_name, CURRENT_DATE - 7, CURRENT_DATE + 14),
+        (r_org.id, p_id, 'Vendor response lag', 'Third-party awaiting security questionnaire', 'High', 'Open', primary_person_name, CURRENT_DATE - 3, CURRENT_DATE + 10);
 
       INSERT INTO public.actions (
         org_id, project_id, title, description, owner, due_date, status, priority
       ) VALUES
-        (r_org.id, p_id, 'Confirm FY funding drawdown', 'Validate drawdown against FY allocations', sponsors[i], CURRENT_DATE + 14, 'Open', 'Medium'),
-        (r_org.id, p_id, 'Complete stream RAID review', 'Joint Core + ' || alt_names[i] || ' RAID workshop', 'Sam Rivera', CURRENT_DATE + 7, 'Open', 'High'),
-        (r_org.id, p_id, 'Publish status pack', 'Monthly status for steering', 'Sam Rivera', CURRENT_DATE + 3, 'In Progress', 'Medium');
+        (r_org.id, p_id, 'Confirm FY funding drawdown', 'Validate drawdown against FY allocations', sponsor_name, CURRENT_DATE + 14, 'Open', 'Medium'),
+        (r_org.id, p_id, 'Complete stream RAID review', 'Joint Core + ' || alt_names[i] || ' RAID workshop', primary_person_name, CURRENT_DATE + 7, 'Open', 'High'),
+        (r_org.id, p_id, 'Publish status pack', 'Monthly status for steering', secondary_person_name, CURRENT_DATE + 3, 'In Progress', 'Medium');
 
       INSERT INTO public.decisions (
         org_id, project_id, stage_gate_id, title, description, decision_date, decided_by, rationale, impact, status
@@ -635,7 +736,7 @@ BEGIN
          ORDER BY sg.planned_date LIMIT 1),
         'Adopt dual-stream delivery',
         'Core + ' || alt_names[i] || ' streams approved',
-        starts[i] + 20, sponsors[i],
+        starts[i] + 20, sponsor_name,
         'Clear ownership of dates, gates and finance per stream',
         'Enables rollup timelines and PvA by stream',
         'Approved'
@@ -648,7 +749,7 @@ BEGIN
          ORDER BY sg.planned_date LIMIT 1),
         'Hybrid delivery method',
         'Confirm ' || methods[i]::text || ' approach',
-        starts[i] + 30, 'Sam Rivera',
+        starts[i] + 30, primary_person_name,
         'Aligns cadence with dependencies',
         'Sprint + stage-gate hybrid where needed',
         'Approved';
@@ -656,21 +757,21 @@ BEGIN
       INSERT INTO public.stakeholders (
         org_id, project_id, name, role, email, influence, interest, engagement_strategy
       ) VALUES
-        (r_org.id, p_id, sponsors[i], 'Executive Sponsor', lower(sponsors[i]) || '@example.com', 'High', 'High', 'Monthly steering'),
-        (r_org.id, p_id, 'Sam Rivera', 'Delivery Manager', 'sam.rivera@example.com', 'High', 'High', 'Weekly stand-up + RAID'),
-        (r_org.id, p_id, 'Business Owner', 'Business Owner', 'owner@example.com', 'Medium', 'High', 'Sprint reviews / demos');
+        (r_org.id, p_id, sponsor_name, 'Executive Sponsor', sponsor_email, 'High', 'High', 'Monthly steering'),
+        (r_org.id, p_id, primary_person_name, 'Delivery Manager', seed_person_emails[1], 'High', 'High', 'Weekly stand-up + RAID'),
+        (r_org.id, p_id, secondary_person_name, 'Business Owner', seed_person_emails[LEAST(2, n_people)], 'Medium', 'High', 'Sprint reviews / demos');
 
       INSERT INTO public.status_updates (
         org_id, project_id, update_date, reporter, overall_rag, schedule_rag, cost_rag, scope_rag,
         progress_summary, achievements, next_steps, blockers
       ) VALUES
-        (r_org.id, p_id, CURRENT_DATE - 7, 'Sam Rivera', rags[i], rags[i],
+        (r_org.id, p_id, CURRENT_DATE - 7, primary_person_name, rags[i], rags[i],
          'Green'::public.project_rag, 'Green'::public.project_rag,
          names[i] || ' progressing across Core and ' || alt_names[i] || ' streams.',
          'Gates advanced; monthly actuals posted; allocations confirmed.',
          'Close open issues; prepare next stage gate pack.',
          CASE WHEN rags[i] = 'Red' THEN 'Network vendor delay impacting critical path.' WHEN rags[i] = 'Amber' THEN 'Capacity pressure on specialist roles.' ELSE NULL END),
-        (r_org.id, p_id, CURRENT_DATE, 'Sam Rivera', rags[i],
+        (r_org.id, p_id, CURRENT_DATE, secondary_person_name, rags[i],
          rags[i],
          CASE WHEN facs[i] > budgets[i] THEN 'Amber'::public.project_rag ELSE 'Green'::public.project_rag END,
          'Green'::public.project_rag,
@@ -682,9 +783,9 @@ BEGIN
       INSERT INTO public.documents (
         org_id, project_id, name, doc_type, url, version, owner, uploaded_date
       ) VALUES
-        (r_org.id, p_id, 'Business Case', 'Business Case', 'https://example.com/docs/' || codes[i] || '/business-case', '1.0', sponsors[i], starts[i] + 10),
-        (r_org.id, p_id, 'Project Charter', 'Charter', 'https://example.com/docs/' || codes[i] || '/charter', '1.1', 'Sam Rivera', starts[i] + 20),
-        (r_org.id, p_id, 'Latest Status Report', 'Status Report', 'https://example.com/docs/' || codes[i] || '/status', 'current', 'Sam Rivera', CURRENT_DATE);
+        (r_org.id, p_id, 'Business Case', 'Business Case', 'https://example.com/docs/' || codes[i] || '/business-case', '1.0', sponsor_name, starts[i] + 10),
+        (r_org.id, p_id, 'Project Charter', 'Charter', 'https://example.com/docs/' || codes[i] || '/charter', '1.1', primary_person_name, starts[i] + 20),
+        (r_org.id, p_id, 'Latest Status Report', 'Status Report', 'https://example.com/docs/' || codes[i] || '/status', 'current', secondary_person_name, CURRENT_DATE);
 
       INSERT INTO public.lessons_learned (
         org_id, project_id, category, what_happened, root_cause, recommendation, captured_by, captured_date
@@ -692,7 +793,7 @@ BEGIN
         (r_org.id, p_id, 'Delivery', 'Stream ownership clarified mid-flight improved reporting',
          'Initial single-lane plan hid secondary stream risk',
          'Enable dual streams at project setup with Core always on',
-         'Sam Rivera', CURRENT_DATE - 14);
+         primary_person_name, CURRENT_DATE - 14);
 
       INSERT INTO public.change_requests (
         org_id, project_id, cr_number, title, description, change_type,
@@ -702,9 +803,9 @@ BEGIN
          'Expand secondary stream integration envelope', 'Scope',
          'Secondary stream APIs + test packs', 14, round(budgets[i] * 0.03, 2),
          CASE WHEN i % 3 = 0 THEN 'Approved' ELSE 'Submitted' END,
-         'Jordan Lee', CURRENT_DATE - 20,
+         secondary_person_name, CURRENT_DATE - 20,
          CASE WHEN i % 3 = 0 THEN CURRENT_DATE - 10 ELSE NULL END,
-         sponsors[i]);
+         sponsor_name);
 
       -- Sprints (Agile / Hybrid)
       IF methods[i] IN ('Agile', 'Hybrid') THEN
@@ -729,9 +830,9 @@ BEGIN
         org_id, project_id, stream_id, wbs_code, title, description, status, priority, owner,
         percent_complete, planned_start, planned_end, estimate_hours, actual_hours, milestone_id, sort_order
       ) VALUES
-        (r_org.id, p_id, core_id, '1.0', 'Core discovery pack', 'Discovery artefacts for Core stream', 'Done', 'High', 'Alex Morgan', 100, starts[i], starts[i] + 30, 80, 76, ms_id, 1),
-        (r_org.id, p_id, alt_id, '2.0', alt_names[i] || ' build backlog', 'Backlog refinement for secondary stream', 'In Progress', 'High', 'Jordan Lee', 45, starts[i] + 21, ends[i] - 60, 200, 90, NULL, 2),
-        (r_org.id, p_id, core_id, '3.0', 'UAT preparation', 'Cross-stream UAT scripts and data', 'To Do', 'Medium', 'Casey Brooks', 10, ends[i] - 60, ends[i] - 30, 120, 8, NULL, 3);
+        (r_org.id, p_id, core_id, '1.0', 'Core discovery pack', 'Discovery artefacts for Core stream', 'Done', 'High', primary_person_name, 100, starts[i], starts[i] + 30, 80, 76, ms_id, 1),
+        (r_org.id, p_id, alt_id, '2.0', alt_names[i] || ' build backlog', 'Backlog refinement for secondary stream', 'In Progress', 'High', secondary_person_name, 45, starts[i] + 21, ends[i] - 60, 200, 90, NULL, 2),
+        (r_org.id, p_id, core_id, '3.0', 'UAT preparation', 'Cross-stream UAT scripts and data', 'To Do', 'Medium', sponsor_name, 10, ends[i] - 60, ends[i] - 30, 120, 8, NULL, 3);
 
       -- Link each work item to a stream stage gate (phase) for labor cost attribution
       UPDATE public.work_items wi
@@ -760,7 +861,7 @@ BEGIN
           r_org.id, p_id, prev_p,
           'Depends on ' || codes[i - 1],
           'Needs platform outputs / learnings from predecessor project',
-          'Internal', 'Open', 'Jordan Lee', starts[i] + 60
+          'Internal', 'Open', secondary_person_name, starts[i] + 60
         );
       END IF;
 
@@ -769,7 +870,7 @@ BEGIN
       ) VALUES (
         r_org.id, p_id, 'External vendor security clearance',
         'Vendor must clear security review before production cutover',
-        'External', 'Open', 'Morgan Patel', lives[i] - 30
+        'External', 'Open', primary_person_name, lives[i] - 30
       );
 
       PERFORM public.rollup_project_from_streams(p_id);
@@ -780,9 +881,9 @@ BEGIN
       org_id, bu_id, idea_name, sponsor, description, status,
       estimated_cost, estimated_benefit, estimated_roi, strategic_alignment, complexity
     ) VALUES
-      (r_org.id, r_bu, 'Loyalty wallet concept', 'CDO', 'Early demand idea for wallet-led loyalty', 'Idea', 800000, 1200000, 45, 3, 2),
-      (r_org.id, r_bu, 'Branch digital kiosk', 'COO', 'Under assessment for branch experience', 'Assessment', 1200000, 1600000, 30, 4, 3),
-      (r_org.id, r_bu, 'Realtime fraud signals', 'CISO', 'Streaming fraud features for payments', 'Business Case', 2100000, 3800000, 55, 5, 4);
+      (r_org.id, r_bu, 'Loyalty wallet concept', seed_person_names[1], 'Early demand idea for wallet-led loyalty', 'Idea', 800000, 1200000, 45, 3, 2),
+      (r_org.id, r_bu, 'Branch digital kiosk', seed_person_names[LEAST(2, n_people)], 'Under assessment for branch experience', 'Assessment', 1200000, 1600000, 30, 4, 3),
+      (r_org.id, r_bu, 'Realtime fraud signals', seed_person_names[1], 'Streaming fraud features for payments', 'Business Case', 2100000, 3800000, 55, 5, 4);
 
     -- Portfolio scenario
     INSERT INTO public.portfolio_scenarios (org_id, name, description, budget_cap, config)
@@ -813,6 +914,8 @@ DO $$
 DECLARE
   r_org RECORD;
   member_ids uuid[];
+  member_names text[];
+  member_emails text[];
   mgr_uid uuid;
   pm_uid uuid;
   res RECORD;
@@ -834,6 +937,16 @@ DECLARE
   rid1 uuid;
   rid2 uuid;
   owner_uid uuid;
+  entry_stream_id uuid;
+  entry_stage_gate_id uuid;
+  target_emails text[] := ARRAY[
+    'kaaminisharma1994@gmail.com',
+    'shailja.kant.kaushik@gmail.com'
+  ];
+  target_names text[] := ARRAY[
+    'Kamini Sharma',
+    'Shailja Kant Kaushik'
+  ];
 BEGIN
   -- Monday of current week (ISO)
   week0 := CURRENT_DATE - ((EXTRACT(ISODOW FROM CURRENT_DATE)::int) - 1);
@@ -845,10 +958,51 @@ BEGIN
   ];
 
   FOR r_org IN SELECT id FROM public.organizations LOOP
-    SELECT array_agg(p.id ORDER BY COALESCE(p.full_name, p.email, p.id::text))
-    INTO member_ids
-    FROM public.profiles p
-    WHERE p.org_id = r_org.id;
+    member_ids := ARRAY[]::uuid[];
+    member_names := ARRAY[]::text[];
+    member_emails := ARRAY[]::text[];
+
+    -- Resolve the two named demo members first, matched case-insensitively by email.
+    SELECT
+      COALESCE(array_agg(x.id ORDER BY x.sort_order), ARRAY[]::uuid[]),
+      COALESCE(array_agg(x.person_name ORDER BY x.sort_order), ARRAY[]::text[]),
+      COALESCE(array_agg(x.email ORDER BY x.sort_order), ARRAY[]::text[])
+    INTO member_ids, member_names, member_emails
+    FROM (
+      SELECT
+        p.id,
+        CASE lower(p.email)
+          WHEN target_emails[1] THEN target_names[1]
+          WHEN target_emails[2] THEN target_names[2]
+          ELSE COALESCE(NULLIF(trim(p.full_name), ''), p.email)
+        END AS person_name,
+        lower(p.email) AS email,
+        array_position(target_emails, lower(p.email)) AS sort_order
+      FROM public.profiles p
+      WHERE p.org_id = r_org.id
+        AND lower(p.email) = ANY(target_emails)
+    ) x;
+
+    IF COALESCE(array_length(member_ids, 1), 0) = 0 THEN
+      RAISE NOTICE 'Org % has neither Kamini/Shailja target profile; falling back to up to two org profiles for resources/timesheets', r_org.id;
+
+      SELECT
+        COALESCE(array_agg(x.id ORDER BY x.sort_order), ARRAY[]::uuid[]),
+        COALESCE(array_agg(x.person_name ORDER BY x.sort_order), ARRAY[]::text[]),
+        COALESCE(array_agg(x.email ORDER BY x.sort_order), ARRAY[]::text[])
+      INTO member_ids, member_names, member_emails
+      FROM (
+        SELECT
+          p.id,
+          COALESCE(NULLIF(trim(p.full_name), ''), p.email) AS person_name,
+          lower(p.email) AS email,
+          row_number() OVER (ORDER BY COALESCE(p.full_name, p.email, p.id::text)) AS sort_order
+        FROM public.profiles p
+        WHERE p.org_id = r_org.id
+        ORDER BY COALESCE(p.full_name, p.email, p.id::text)
+        LIMIT 2
+      ) x;
+    END IF;
 
     n_members := COALESCE(array_length(member_ids, 1), 0);
     IF n_members = 0 THEN
@@ -856,29 +1010,34 @@ BEGIN
       CONTINUE;
     END IF;
 
-    SELECT ur.user_id INTO mgr_uid
-    FROM public.user_roles ur
-    WHERE ur.org_id = r_org.id
-      AND ur.role IN ('admin', 'org_admin')
-    ORDER BY ur.role
-    LIMIT 1;
-    mgr_uid := COALESCE(mgr_uid, member_ids[1]);
-    pm_uid := COALESCE(member_ids[LEAST(2, n_members)], member_ids[1]);
+    mgr_uid := member_ids[LEAST(2, n_members)];
+    pm_uid := member_ids[1];
 
     -- Ensure resources match org profiles (same person), then seed rates/managers
-    PERFORM public.sync_org_resources_from_profiles(r_org.id);
+    BEGIN
+      PERFORM public.sync_org_resources_from_profiles(r_org.id);
+    EXCEPTION WHEN undefined_function THEN
+      RAISE NOTICE 'sync_org_resources_from_profiles missing — continuing without auto-sync';
+    END;
 
     UPDATE public.resources r
     SET
-      manager_user_id = COALESCE(r.manager_user_id, mgr_uid),
-      cost_rate = CASE
-        WHEN COALESCE(r.cost_rate, 0) > 0 THEN r.cost_rate
-        ELSE (80 + (abs(hashtext(r.id::text)) % 61))::numeric
+      name = member_names[array_position(member_ids, r.user_id)],
+      email = member_emails[array_position(member_ids, r.user_id)],
+      manager_user_id = CASE
+        WHEN n_members = 1 THEN member_ids[1]
+        WHEN r.user_id = member_ids[1] THEN member_ids[2]
+        WHEN r.user_id = member_ids[2] THEN member_ids[1]
+        ELSE member_ids[1]
       END,
-      capacity_hours_week = COALESCE(NULLIF(r.capacity_hours_week, 0), 40),
-      status = COALESCE(NULLIF(r.status, ''), 'Active')
+      cost_rate = CASE
+        WHEN array_position(member_ids, r.user_id) = 1 THEN 125
+        ELSE 135
+      END,
+      capacity_hours_week = 40,
+      status = 'Active'
     WHERE r.org_id = r_org.id
-      AND r.user_id IS NOT NULL;
+      AND r.user_id = ANY(member_ids);
 
     -- Nominate PMs on projects (rotate members)
     idx := 0;
@@ -892,10 +1051,11 @@ BEGIN
     END LOOP;
 
     -- Assign work items to linked resources (same people as org logins)
-    SELECT array_agg(r.id ORDER BY r.name)
+    SELECT array_agg(r.id ORDER BY array_position(member_ids, r.user_id))
     INTO res_id_list
     FROM public.resources r
-    WHERE r.org_id = r_org.id AND r.user_id IS NOT NULL;
+    WHERE r.org_id = r_org.id
+      AND r.user_id = ANY(member_ids);
     n_res := COALESCE(array_length(res_id_list, 1), 0);
 
     idx := 0;
@@ -937,19 +1097,26 @@ BEGIN
     FOR res IN
       SELECT r.id AS resource_id, r.user_id, r.manager_user_id, r.cost_rate
       FROM public.resources r
-      WHERE r.org_id = r_org.id AND r.user_id IS NOT NULL
-      ORDER BY r.name
+      WHERE r.org_id = r_org.id
+        AND r.user_id = ANY(member_ids)
+      ORDER BY array_position(member_ids, r.user_id)
     LOOP
       u_idx := u_idx + 1;
 
       FOR w_idx IN 1..4 LOOP
         w := weeks[w_idx];
 
-        -- Mix of statuses for demo reporting / approvals
+        -- Mix of draft / pending / approved / rejected for demo reporting.
         st := CASE
-          WHEN w_idx = 1 THEN CASE WHEN u_idx % 3 = 0 THEN 'pending_pm' WHEN u_idx % 3 = 1 THEN 'draft' ELSE 'pending_rm' END
-          WHEN w_idx = 2 THEN CASE WHEN u_idx % 4 = 0 THEN 'rejected' ELSE 'approved' END
-          WHEN w_idx = 3 THEN 'approved'
+          WHEN n_res = 1 THEN
+            CASE
+              WHEN w_idx = 1 THEN 'draft'
+              WHEN w_idx = 2 THEN 'pending_pm'
+              WHEN w_idx = 3 THEN 'approved'
+              ELSE 'rejected'
+            END
+          WHEN w_idx = 1 THEN CASE WHEN u_idx = 1 THEN 'draft' ELSE 'pending_pm' END
+          WHEN w_idx = 2 THEN CASE WHEN u_idx = 1 THEN 'pending_rm' ELSE 'rejected' END
           ELSE 'approved'
         END;
 
@@ -1011,13 +1178,16 @@ BEGIN
 
         IF wi_ids IS NOT NULL THEN
           FOREACH wi IN ARRAY wi_ids LOOP
-            SELECT project_id INTO p_id FROM public.work_items WHERE id = wi;
+            SELECT project_id, stream_id, stage_gate_id
+            INTO p_id, entry_stream_id, entry_stage_gate_id
+            FROM public.work_items
+            WHERE id = wi;
             INSERT INTO public.timesheet_entries (
-              org_id, timesheet_id, project_id, work_item_id, billable, custom_task,
+              org_id, timesheet_id, project_id, work_item_id, stream_id, stage_gate_id, billable, custom_task,
               hours_mon, hours_tue, hours_wed, hours_thu, hours_fri,
               hours_sat, hours_sun, notes, hourly_rate, labor_cost
             ) VALUES (
-              r_org.id, sheet_id, p_id, wi, true, NULL,
+              r_org.id, sheet_id, p_id, wi, entry_stream_id, entry_stage_gate_id, true, NULL,
               hours_base, hours_base, hours_base - 1, hours_base, hours_base - 0.5,
               0, 0,
               'Billable delivery',
@@ -1031,11 +1201,11 @@ BEGIN
 
         -- Non-billable admin/training row
         INSERT INTO public.timesheet_entries (
-          org_id, timesheet_id, project_id, work_item_id, billable, custom_task,
+          org_id, timesheet_id, project_id, work_item_id, stream_id, stage_gate_id, billable, custom_task,
           hours_mon, hours_tue, hours_wed, hours_thu, hours_fri,
           hours_sat, hours_sun, notes, hourly_rate, labor_cost
         ) VALUES (
-          r_org.id, sheet_id, NULL, NULL, false, 'Training / admin',
+          r_org.id, sheet_id, NULL, NULL, NULL, NULL, false, 'Training / admin',
           0, 0, 1, 0, 0.5,
           0, 0,
           'Non-billable',
@@ -1054,7 +1224,7 @@ BEGIN
               COALESCE((SELECT pm_user_id FROM public.projects WHERE id = p_id), pm_uid),
               CASE
                 WHEN st = 'pending_pm' THEN 'pending'
-                WHEN st = 'rejected' AND w_idx = 2 AND u_idx % 4 = 0 THEN 'rejected'
+                WHEN st = 'rejected' THEN 'rejected'
                 ELSE 'approved'
               END,
               CASE WHEN st = 'rejected' THEN 'Hours look high vs plan' ELSE NULL END,
