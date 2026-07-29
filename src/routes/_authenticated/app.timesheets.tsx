@@ -101,6 +101,10 @@ type WorkItem = {
   status: string | null;
   wbs_code: string | null;
   owner_user_id: string | null;
+  stream_id?: string | null;
+  stage_gate_id?: string | null;
+  estimate_hours?: number | null;
+  actual_hours?: number | null;
 };
 
 type ResourceRow = {
@@ -293,7 +297,9 @@ function TimesheetsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("work_items" as any)
-        .select("id,project_id,title,status,wbs_code,owner_user_id");
+        .select(
+          "id,project_id,stream_id,stage_gate_id,title,status,wbs_code,owner_user_id,estimate_hours,actual_hours",
+        );
       if (error) throw error;
       return (data ?? []) as unknown as WorkItem[];
     },
@@ -814,18 +820,32 @@ function TimesheetsPage() {
                     <tr>
                       <th>Type</th>
                       <th>Project / task</th>
+                      <th className="text-right">Plan</th>
                       {DAY_LABELS.map((d) => (
                         <th key={d} className="w-14 text-center">
                           {d}
                         </th>
                       ))}
-                      <th className="text-right">Total</th>
+                      <th className="text-right">Week</th>
+                      <th className="text-right">Left</th>
                     </tr>
                   </thead>
                   <tbody>
                     {Object.entries(draftRows).map(([rowKey, row]) => {
                       const wi = row.work_item_id ? workById.get(row.work_item_id) : null;
                       const proj = row.project_id ? projectById.get(row.project_id) : null;
+                      const planned = Number(wi?.estimate_hours) || 0;
+                      const actualToDate = Number(wi?.actual_hours) || 0;
+                      const weekHrs = entryWeekTotal(row);
+                      const weekInActuals =
+                        normalizeTimesheetStatus(sheet?.status) === "approved";
+                      // Pending: planned − approved actuals − this week's draft (until approved)
+                      const left = Math.max(
+                        0,
+                        planned - actualToDate - (row.billable && !weekInActuals ? weekHrs : 0),
+                      );
+                      const weekdayPlan =
+                        planned > 0 ? Math.round((planned / 5) * 100) / 100 : 0;
                       return (
                         <tr key={rowKey}>
                           <td className="whitespace-nowrap">
@@ -855,9 +875,14 @@ function TimesheetsPage() {
                                     workById,
                                   )}
                                 </div>
-                                {wi?.status ? (
-                                  <div className="text-[10px] text-muted-foreground">{wi.status}</div>
-                                ) : null}
+                                <div className="text-[10px] text-muted-foreground">
+                                  {wi?.status ? `${wi.status}` : ""}
+                                  {planned > 0
+                                    ? `${wi?.status ? " · " : ""}Actual ${actualToDate.toFixed(1)}h of ${planned.toFixed(1)}h planned`
+                                    : wi?.status
+                                      ? ""
+                                      : "No planned hours on work item"}
+                                </div>
                               </>
                             ) : (
                               <input
@@ -874,31 +899,50 @@ function TimesheetsPage() {
                               />
                             )}
                           </td>
-                          {DAY_KEYS.map((dk) => (
-                            <td key={dk}>
-                              <input
-                                type="number"
-                                min={0}
-                                max={24}
-                                step={0.25}
-                                disabled={!editable}
-                                className="st-input !w-14 !py-0.5 !px-1 text-center"
-                                value={row[dk] || ""}
-                                onChange={(e) => {
-                                  const v = e.target.value === "" ? 0 : Number(e.target.value);
-                                  setDraftRows((prev) => ({
-                                    ...prev,
-                                    [rowKey]: {
-                                      ...prev[rowKey],
-                                      [dk]: Number.isFinite(v) ? v : 0,
-                                    },
-                                  }));
-                                }}
-                              />
-                            </td>
-                          ))}
+                          <td className="text-right tabular-nums text-muted-foreground">
+                            {row.billable && planned > 0 ? planned.toFixed(1) : "—"}
+                          </td>
+                          {DAY_KEYS.map((dk, dayIdx) => {
+                            const isWeekday = dayIdx < 5;
+                            return (
+                              <td key={dk} className="align-top">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={24}
+                                  step={0.25}
+                                  disabled={!editable}
+                                  title={
+                                    row.billable && isWeekday && weekdayPlan > 0
+                                      ? `Work item plan ≈ ${weekdayPlan}h/weekday`
+                                      : undefined
+                                  }
+                                  className="st-input !w-14 !py-0.5 !px-1 text-center"
+                                  value={row[dk] || ""}
+                                  onChange={(e) => {
+                                    const v = e.target.value === "" ? 0 : Number(e.target.value);
+                                    setDraftRows((prev) => ({
+                                      ...prev,
+                                      [rowKey]: {
+                                        ...prev[rowKey],
+                                        [dk]: Number.isFinite(v) ? v : 0,
+                                      },
+                                    }));
+                                  }}
+                                />
+                                {row.billable && isWeekday && weekdayPlan > 0 ? (
+                                  <div className="mt-0.5 text-center text-[9px] tabular-nums text-muted-foreground">
+                                    plan {weekdayPlan}
+                                  </div>
+                                ) : null}
+                              </td>
+                            );
+                          })}
                           <td className="text-right font-semibold tabular-nums">
-                            {entryWeekTotal(row).toFixed(1)}
+                            {weekHrs.toFixed(1)}
+                          </td>
+                          <td className="text-right tabular-nums text-muted-foreground">
+                            {row.billable && planned > 0 ? left.toFixed(1) : "—"}
                           </td>
                         </tr>
                       );
@@ -906,13 +950,14 @@ function TimesheetsPage() {
                   </tbody>
                   <tfoot>
                     <tr>
-                      <td colSpan={2} className="font-semibold">
+                      <td colSpan={3} className="font-semibold">
                         Week total
                       </td>
                       <td colSpan={7} />
                       <td className="text-right font-semibold tabular-nums">
                         {weekTotal.toFixed(1)}
                       </td>
+                      <td />
                     </tr>
                   </tfoot>
                 </table>
