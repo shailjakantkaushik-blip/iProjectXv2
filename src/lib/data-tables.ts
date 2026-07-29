@@ -11,7 +11,7 @@ export interface FieldDef {
   options?: string[];
   required?: boolean;
   // In export/import, replace a UUID FK with a human-readable code column.
-  fk?: "project" | "bu" | "stream" | "stage_gate";
+  fk?: "project" | "bu" | "stream" | "stage_gate" | "user";
   // Show in list/editor tables (default true)
   hidden?: boolean;
   // Width hint for the editor grid
@@ -267,7 +267,7 @@ export const TABLES: TableDef[] = [
       { key: "sponsor", label: "Sponsor", type: "text" },
       { key: "decided_by", label: "Decided By", type: "text" },
       { key: "approvers", label: "Approvers (name)", type: "text" },
-      { key: "approver_user_id", label: "Approver user id", type: "text" },
+      { key: "approver_user_id", label: "Approver", type: "text", fk: "user" },
       { key: "outcome", label: "Outcome", type: "select", options: DECISION_OUTCOME },
       { key: "status", label: "Status", type: "text" },
       { key: "decision_date", label: "Date", type: "date" },
@@ -441,8 +441,8 @@ export const TABLES: TableDef[] = [
       { key: "cost_rate", label: "Cost Rate", type: "number" },
       { key: "location", label: "Location", type: "text" },
       { key: "status", label: "Status", type: "select", options: ["Active", "Inactive"] },
-      { key: "user_id", label: "Linked User ID", type: "text" },
-      { key: "manager_user_id", label: "Manager User ID", type: "text" },
+      { key: "user_id", label: "Linked login", type: "text", fk: "user" },
+      { key: "manager_user_id", label: "Manager", type: "text", fk: "user" },
     ],
   },
   {

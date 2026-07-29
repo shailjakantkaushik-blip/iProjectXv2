@@ -29,7 +29,8 @@ export type DecisionOutcomeLike = {
 };
 
 export function memberLabel(m: OrgMember) {
-  return m.full_name?.trim() || m.email || m.id.slice(0, 8);
+  // Never surface raw auth UUIDs in UI — fall back to email or a neutral label.
+  return m.full_name?.trim() || m.email?.trim() || "Unknown user";
 }
 
 /**

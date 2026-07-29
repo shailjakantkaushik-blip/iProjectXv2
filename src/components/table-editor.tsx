@@ -27,6 +27,12 @@ interface LookupMaps {
   gatesById: Map<string, string>;
   /** label → stage_gate id (best-effort import; accepts legacy "name · stream · date") */
   gatesByLabel: Map<string, string>;
+  /** profile id → display label (name / email) — never show raw UUID in the grid */
+  usersById: Map<string, string>;
+  /** email or full_name (lower) → profile id for add-row / import */
+  usersByLabel: Map<string, string>;
+  /** options for user selects */
+  userOptions: { label: string; value: string }[];
 }
 
 export function TableEditor({ def }: { def: TableDef }) {
@@ -41,7 +47,7 @@ export function TableEditor({ def }: { def: TableDef }) {
     queryKey: ["editor-lookups", organization?.id],
     enabled: !!organization,
     queryFn: async (): Promise<LookupMaps> => {
-      const [{ data: projects }, { data: bus }, { data: resources }, { data: streams }, gatesRes] =
+      const [{ data: projects }, { data: bus }, { data: resources }, { data: streams }, gatesRes, { data: profiles }] =
         await Promise.all([
           supabase.from("projects").select("id,project_code,name").eq("org_id", organization!.id),
           supabase.from("business_units").select("id,code,name").eq("org_id", organization!.id),
@@ -52,6 +58,7 @@ export function TableEditor({ def }: { def: TableDef }) {
             .select("id,project_id,stream_id,gate_name,planned_date,status")
             .eq("org_id", organization!.id)
             .order("planned_date"),
+          supabase.from("profiles").select("id,full_name,email").eq("org_id", organization!.id),
         ]);
       const projectsById = new Map((projects ?? []).map((p) => [p.id, p.project_code || p.name]));
       const projectsByCode = new Map<string, string>();
@@ -83,6 +90,21 @@ export function TableEditor({ def }: { def: TableDef }) {
         const legacy = [name, streamLbl, date].filter(Boolean).join(" · ");
         if (legacy && legacy !== name) gatesByLabel.set(legacy, g.id);
       });
+      const usersById = new Map<string, string>();
+      const usersByLabel = new Map<string, string>();
+      const userOptions: { label: string; value: string }[] = [];
+      (profiles ?? []).forEach((p: any) => {
+        const label =
+          String(p.full_name || "").trim() ||
+          String(p.email || "").trim() ||
+          "Unknown user";
+        usersById.set(p.id, label);
+        userOptions.push({ label, value: p.id });
+        if (p.email) usersByLabel.set(String(p.email).trim().toLowerCase(), p.id);
+        if (p.full_name) usersByLabel.set(String(p.full_name).trim().toLowerCase(), p.id);
+        usersByLabel.set(label.toLowerCase(), p.id);
+      });
+      userOptions.sort((a, b) => a.label.localeCompare(b.label));
       return {
         projectsById,
         projectsByCode,
@@ -95,6 +117,9 @@ export function TableEditor({ def }: { def: TableDef }) {
         defaultStreamByProject,
         gatesById,
         gatesByLabel,
+        usersById,
+        usersByLabel,
+        userOptions,
       };
     },
   });
@@ -127,11 +152,13 @@ export function TableEditor({ def }: { def: TableDef }) {
         label: f.label,
         getValue: (row: any) => {
           const v = row[f.key];
-          if (f.fk === "project") return lookups?.projectsById.get(String(v)) ?? v;
-          if (f.fk === "bu") return lookups?.busById.get(String(v)) ?? v;
-          if (f.fk === "stream") return lookups?.streamsById.get(String(v)) ?? v;
-          if (f.fk === "stage_gate") return lookups?.gatesById.get(String(v)) ?? v;
-          if (f.key === "resource_id") return lookups?.resourcesById.get(String(v)) ?? v;
+          if (v == null || v === "") return "";
+          if (f.fk === "project") return lookups?.projectsById.get(String(v)) ?? "";
+          if (f.fk === "bu") return lookups?.busById.get(String(v)) ?? "";
+          if (f.fk === "stream") return lookups?.streamsById.get(String(v)) ?? "";
+          if (f.fk === "stage_gate") return lookups?.gatesById.get(String(v)) ?? "";
+          if (f.fk === "user") return lookups?.usersById.get(String(v)) ?? "";
+          if (f.key === "resource_id") return lookups?.resourcesById.get(String(v)) ?? "";
           return v;
         },
       })),
@@ -265,14 +292,36 @@ function CellRenderer({
   forceEditable?: boolean;
 }) {
   const v = row[field.key];
-  if (field.fk === "project") return <span className="font-mono">{lookups?.projectsById.get(String(v)) ?? "—"}</span>;
-  if (field.fk === "bu") return <span>{lookups?.busById.get(String(v)) ?? "—"}</span>;
-  if (field.fk === "stream") return <span className="font-mono">{lookups?.streamsById.get(String(v)) ?? "—"}</span>;
-  if (field.fk === "stage_gate") {
-    const label = v ? lookups?.gatesById.get(String(v)) : null;
-    return <span title={v ? String(v) : undefined}>{label || (v ? String(v).slice(0, 8) + "…" : "—")}</span>;
+  if (field.fk === "project") {
+    return <span className="font-mono">{v ? lookups?.projectsById.get(String(v)) ?? "—" : "—"}</span>;
   }
-  if (field.key === "resource_id") return <span>{lookups?.resourcesById.get(String(v)) ?? "—"}</span>;
+  if (field.fk === "bu") return <span>{v ? lookups?.busById.get(String(v)) ?? "—" : "—"}</span>;
+  if (field.fk === "stream") {
+    return <span className="font-mono">{v ? lookups?.streamsById.get(String(v)) ?? "—" : "—"}</span>;
+  }
+  if (field.fk === "stage_gate") {
+    return <span>{v ? lookups?.gatesById.get(String(v)) ?? "—" : "—"}</span>;
+  }
+  if (field.key === "resource_id") {
+    return <span>{v ? lookups?.resourcesById.get(String(v)) ?? "—" : "—"}</span>;
+  }
+  if (field.fk === "user") {
+    const options = [{ label: "— None —", value: "" }, ...(lookups?.userOptions ?? [])];
+    return (
+      <EditableCell
+        table={def.key}
+        rowId={row.id}
+        field={field.key}
+        value={v ?? ""}
+        type="select"
+        options={options}
+        display={(val) =>
+          val ? lookups?.usersById.get(String(val)) || "—" : <span className="text-muted-foreground">—</span>
+        }
+        forceEditable={forceEditable}
+      />
+    );
+  }
 
   const type = field.type === "textarea" ? "text" : field.type === "select" ? "select" : field.type === "number" ? "number" : field.type === "date" ? "date" : "text";
   const options = field.options?.map((o) => ({ label: o, value: o }));
@@ -322,6 +371,12 @@ function AddRowForm({ def, lookups, orgId, onDone }: { def: TableDef; lookups: L
           const resolved = lookups.gatesByLabel.get(v) || (lookups.gatesById.has(v) ? v : null);
           if (!resolved) throw new Error(`Unknown stage gate: ${v}`);
           payload[f.key] = resolved;
+        } else if (f.fk === "user") {
+          const id =
+            lookups.usersByLabel.get(v.trim().toLowerCase()) ||
+            (lookups.usersById.has(v) ? v : null);
+          if (!id) throw new Error(`Unknown user: ${v}`);
+          payload[f.key] = id;
         } else if (f.key === "resource_id") {
           const id = lookups.resourcesByName.get(v);
           if (!id) throw new Error(`Unknown resource: ${v}`);
@@ -369,9 +424,21 @@ function AddRowForm({ def, lookups, orgId, onDone }: { def: TableDef; lookups: L
               {f.fk === "bu" && <span className="ml-1 normal-case text-muted-foreground">(bu_code)</span>}
               {f.fk === "stream" && <span className="ml-1 normal-case text-muted-foreground">(stream_code)</span>}
               {f.fk === "stage_gate" && <span className="ml-1 normal-case text-muted-foreground">(gate name)</span>}
+              {f.fk === "user" && <span className="ml-1 normal-case text-muted-foreground">(name / email)</span>}
               {f.key === "resource_id" && <span className="ml-1 normal-case text-muted-foreground">(name)</span>}
             </label>
-            {f.type === "select" && f.options ? (
+            {f.fk === "user" ? (
+              <select
+                value={values[f.key] ?? ""}
+                onChange={(e) => setValues((s) => ({ ...s, [f.key]: e.target.value }))}
+                className="h-8 w-full rounded border bg-background px-2 text-xs"
+              >
+                <option value="">—</option>
+                {lookups.userOptions.map((o) => (
+                  <option key={o.value} value={o.label}>{o.label}</option>
+                ))}
+              </select>
+            ) : f.type === "select" && f.options ? (
               <select
                 value={values[f.key] ?? ""}
                 onChange={(e) => setValues((s) => ({ ...s, [f.key]: e.target.value }))}

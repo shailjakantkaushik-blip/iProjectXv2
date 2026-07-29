@@ -31,7 +31,7 @@ type Props = {
 };
 
 function resourceLabel(r: ResourceOption) {
-  return r.name?.trim() || r.email || r.id.slice(0, 8);
+  return r.name?.trim() || r.email || "Unknown resource";
 }
 
 /** Searchable multi-select for org resources (work-item team assignment). */
@@ -59,7 +59,7 @@ export function ResourceMultiSelect({
       ? placeholder
       : value.length <= 2
         ? value
-            .map((id) => resourceLabel(byId.get(id) || { id, name: id.slice(0, 8) }))
+            .map((id) => resourceLabel(byId.get(id) || { id, name: "Unknown resource" }))
             .join(", ")
         : `${value.length} selected`;
 
@@ -122,7 +122,7 @@ export function ResourceMultiSelect({
                 onClick={() => toggle(id)}
                 disabled={disabled}
               >
-                {resourceLabel(r || { id, name: id.slice(0, 8) })}
+                {resourceLabel(r || { id, name: "Unknown resource" })}
                 <X className="h-3 w-3 opacity-60" />
               </button>
             );

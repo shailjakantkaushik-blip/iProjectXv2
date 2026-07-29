@@ -181,7 +181,7 @@ export function TimesheetApprovalsPanel({
     const byUser = resourceByUser.get(s.user_id);
     if (byUser?.name) return byUser.name;
     const m = memberById.get(s.user_id);
-    return m ? memberLabel(m) : s.user_id.slice(0, 8);
+    return m ? memberLabel(m) : "Unknown user";
   };
 
   const filteredApprovals = useMemo(() => {
@@ -323,7 +323,7 @@ export function TimesheetApprovalsPanel({
         const r = resourceById.get(id);
         if (r) return { id: r.id, label: r.name };
         const m = memberById.get(id);
-        return { id, label: m ? memberLabel(m) : id.slice(0, 8) };
+        return { id, label: m ? memberLabel(m) : "Unknown user" };
       })
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [myApprovals, sheetById, resourceById, resourceByUser, memberById]);

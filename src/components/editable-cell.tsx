@@ -48,6 +48,7 @@ export function EditableCell({
       if (type === "number") payload = draft === "" ? null : Number(draft);
       if (type === "date") payload = draft === "" ? null : draft;
       if (type === "text" && draft === "") payload = null;
+      if (type === "select" && draft === "") payload = null;
 
       // Projects: keep schedule start/end aligned when planned/actual dates change.
       if (

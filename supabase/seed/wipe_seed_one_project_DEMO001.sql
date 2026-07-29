@@ -170,7 +170,7 @@ DECLARE
   p_end date := DATE '2026-03-31';
   n_months int := 12;
   -- Project totals (round)
-  budget numeric := 1000000;
+  v_budget numeric := 1000000;
   capex_a numeric := 700000;
   opex_a numeric := 300000;
   fac numeric := 1050000;
@@ -283,9 +283,9 @@ BEGIN
       'High', 'In Progress', 'Green', 'Build', 'Hybrid',
       p_start, p_end, p_start,
       p_start, p_end, DATE '2026-02-15',
-      budget, capex_a, 0, opex_a, 0,
+      v_budget, capex_a, 0, opex_a, 0,
       fac, ben_t, ben_r, 100,
-      budget, capex_a, opex_a, ben_t, p_start, 'Baseline v1',
+      v_budget, capex_a, opex_a, ben_t, p_start, 'Baseline v1',
       'Single-project verification seed. Budget $1.0M = Capex $0.7M + Opex $0.3M. Core 60% / Platform 40%.',
       true, uid_alex
     ) RETURNING id INTO p_id;
@@ -304,14 +304,14 @@ BEGIN
       ) VALUES (
         r_org.id, p_id, 'Core', 'CORE', true, 0, alex_name, 'In Progress', 'Green',
         p_start, p_end, p_start,
-        budget * core_share, capex_a * core_share, opex_a * core_share, fac * core_share
+        v_budget * core_share, capex_a * core_share, opex_a * core_share, fac * core_share
       ) RETURNING id INTO core_id;
     ELSE
       UPDATE public.project_streams SET
         name = 'Core', code = 'CORE', is_default = true, sort_order = 0,
         owner = alex_name, status = 'In Progress', rag = 'Green',
         planned_start_date = p_start, planned_end_date = p_end, actual_start_date = p_start,
-        budget = budget * core_share,
+        budget = v_budget * core_share,
         capex_approved = capex_a * core_share,
         opex_approved = opex_a * core_share,
         forecast_at_completion = fac * core_share,
@@ -326,7 +326,7 @@ BEGIN
     ) VALUES (
       r_org.id, p_id, 'Platform', 'PLT', false, 1, sam_name, 'In Progress', 'Amber',
       p_start + 14, p_end, p_start + 14,
-      budget * alt_share, capex_a * alt_share, opex_a * alt_share, fac * alt_share,
+      v_budget * alt_share, capex_a * alt_share, opex_a * alt_share, fac * alt_share,
       'Platform lane (40% of project)'
     )
     ON CONFLICT (project_id, name) DO UPDATE SET
@@ -381,7 +381,7 @@ BEGIN
     fy_label := 'FY' || to_char(p_end, 'YY');
     FOREACH sid IN ARRAY ARRAY[core_id, alt_id]
     LOOP
-      s_budget := budget * CASE WHEN sid = core_id THEN core_share ELSE alt_share END;
+      s_budget := v_budget * CASE WHEN sid = core_id THEN core_share ELSE alt_share END;
       s_capex_a := capex_a * CASE WHEN sid = core_id THEN core_share ELSE alt_share END;
       s_opex_a := opex_a * CASE WHEN sid = core_id THEN core_share ELSE alt_share END;
       s_fac := fac * CASE WHEN sid = core_id THEN core_share ELSE alt_share END;
@@ -399,7 +399,7 @@ BEGIN
     months_past := 6;
     FOREACH sid IN ARRAY ARRAY[core_id, alt_id]
     LOOP
-      s_budget := budget * CASE WHEN sid = core_id THEN core_share ELSE alt_share END;
+      s_budget := v_budget * CASE WHEN sid = core_id THEN core_share ELSE alt_share END;
       s_capex_a := capex_a * CASE WHEN sid = core_id THEN core_share ELSE alt_share END;
       s_opex_a := opex_a * CASE WHEN sid = core_id THEN core_share ELSE alt_share END;
       s_fac := fac * CASE WHEN sid = core_id THEN core_share ELSE alt_share END;

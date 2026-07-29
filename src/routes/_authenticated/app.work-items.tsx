@@ -363,12 +363,17 @@ function WorkItemsPage() {
         label: "Resources",
         getValue: (i) =>
           (assigneesByWorkItem.get(i.id) || [])
-            .map((rid) => resourceById.get(rid)?.name || rid.slice(0, 8))
+            .map((rid) => resourceById.get(rid)?.name || "Unknown")
             .join(", "),
       },
       { key: "planned_end", label: "End" },
     ],
     [projectById, streamById, assigneesByWorkItem, resourceById, gateById, allocations],
+  );
+
+  const numericColKeys = useMemo(
+    () => new Set(["lane_allocated", "estimate_hours", "actual_hours", "pending_hours", "percent_complete"]),
+    [],
   );
 
   const table = useColumnarTable(visibleBase, columns);
@@ -761,8 +766,25 @@ function WorkItemsPage() {
             {table.total === 0 ? "No work items yet." : "No matching work items."}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="st-table">
+          <div className="st-table-wrap overflow-x-auto">
+            <table className="st-table w-full min-w-[72rem] table-fixed text-xs">
+              <colgroup>
+                <col className="w-[6rem]" />
+                <col className="w-[8rem]" />
+                <col className="w-[4.5rem]" />
+                <col className="w-[12rem]" />
+                <col className="w-[8rem]" />
+                <col className="w-[5.5rem]" />
+                <col className="w-[5rem]" />
+                <col className="w-[5rem]" />
+                <col className="w-[5rem]" />
+                <col className="w-[7rem]" />
+                <col className="w-[4rem]" />
+                <col className="w-[7rem]" />
+                <col className="w-[12rem]" />
+                <col className="w-[6.5rem]" />
+                <col className="w-[4rem]" />
+              </colgroup>
               <thead>
                 <tr>
                   {columns.map((col) => (
@@ -774,9 +796,13 @@ function WorkItemsPage() {
                       sortKey={table.sortKey}
                       sortDir={table.sortDir}
                       onToggleSort={table.toggleSort}
+                      align={numericColKeys.has(col.key) ? "right" : "left"}
+                      className={numericColKeys.has(col.key) ? "st-num" : undefined}
                     />
                   ))}
-                  <th></th>
+                  <th className="align-top !text-left">
+                    <span className="font-semibold"> </span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -786,132 +812,190 @@ function WorkItemsPage() {
                   const itemStreams = streamsByProject.get(i.project_id) || [];
                   return (
                     <tr key={i.id}>
-                      <td className="font-medium">{proj?.project_code || "—"}</td>
-                      <td>
-                        <select
-                          className="st-input !py-0.5 !text-xs font-mono"
-                          value={i.stream_id || ""}
-                          onChange={(e) => {
-                            const stream_id = e.target.value || null;
-                            const updates: Record<string, unknown> = { stream_id };
-                            const gate = i.stage_gate_id ? gateById.get(i.stage_gate_id) : null;
-                            if (
-                              !stream_id ||
-                              (gate?.stream_id && gate.stream_id !== stream_id)
-                            ) {
-                              updates.stage_gate_id = null;
-                            }
-                            patch.mutate({ id: i.id, updates });
-                          }}
-                        >
-                          <option value="">—</option>
-                          {itemStreams.map((s: any) => (
-                            <option key={s.id} value={s.id}>
-                              {formatStreamLabel(s)}
-                            </option>
-                          ))}
-                        </select>
-                        {stream && proj ? (
-                          <div className="mt-0.5 text-[10px] text-muted-foreground font-mono">
-                            {formatProjectStreamRef(proj, stream)}
-                          </div>
-                        ) : null}
-                      </td>
-                      <td className="text-xs font-mono">{i.wbs_code || "—"}</td>
-                      <td className="min-w-[12rem]">{i.title}</td>
-                      <td>
-                        <select
-                          className="st-input !py-0.5 !text-xs"
-                          value={i.stage_gate_id || ""}
-                          onChange={(e) =>
-                            patch.mutate({
-                              id: i.id,
-                              updates: { stage_gate_id: e.target.value || null },
-                            })
-                          }
-                        >
-                          <option value="">— None —</option>
-                          {gatesForWorkItem(i.project_id, i.stream_id).map((g) => (
-                              <option key={g.id} value={g.id}>
-                                {g.gate_name || "Gate"}
-                              </option>
-                            ))}
-                        </select>
-                      </td>
-                      <td className="text-right tabular-nums text-xs text-muted-foreground">
-                        {i.stage_gate_id
-                          ? sumLaneAllocatedHours(allocations, {
-                              projectId: i.project_id,
-                              streamId: i.stream_id,
-                              stageGateId: i.stage_gate_id,
-                            }).toFixed(1)
-                          : "—"}
-                      </td>
-                      <td>
-                        <input
-                          className="st-input !w-16 !py-0.5 !text-xs text-right"
-                          type="number"
-                          min={0}
-                          step={0.5}
-                          defaultValue={numH(i.estimate_hours) || ""}
-                          key={`est-${i.id}-${i.estimate_hours}`}
-                          onBlur={(e) =>
-                            patch.mutate({
-                              id: i.id,
-                              updates: {
-                                estimate_hours:
-                                  e.target.value === "" ? null : Number(e.target.value) || 0,
-                              },
-                            })
-                          }
-                        />
-                      </td>
-                      <td className="text-right tabular-nums text-xs">
-                        {numH(i.actual_hours).toFixed(1)}
-                      </td>
-                      <td className="text-right tabular-nums text-xs font-medium">
-                        {Math.max(0, numH(i.estimate_hours) - numH(i.actual_hours)).toFixed(1)}
-                      </td>
-                      <td>
-                        <select
-                          className="st-input !py-0.5 !text-xs"
-                          value={i.status || "To Do"}
-                          onChange={(e) =>
-                            patch.mutate({ id: i.id, updates: { status: e.target.value } })
-                          }
-                        >
-                          {STATUSES.map((s) => (
-                            <option key={s}>{s}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <input
-                          className="st-input !w-16 !py-0.5 !text-xs"
-                          type="number"
-                          min={0}
-                          max={100}
-                          defaultValue={Number(i.percent_complete || 0)}
-                          onBlur={(e) =>
-                            patch.mutate({
-                              id: i.id,
-                              updates: { percent_complete: Number(e.target.value) || 0 },
-                            })
-                          }
-                        />
-                      </td>
-                      <td className="text-xs">{i.owner || "—"}</td>
-                      <td className="min-w-[14rem]">
-                        <ResourceMultiSelect
-                          resources={activeResources}
-                          value={assigneesByWorkItem.get(i.id) || []}
-                          onChange={(ids) =>
-                            setAssignees.mutate({ workItemId: i.id, resourceIds: ids })
-                          }
-                          placeholder="Assign resources…"
-                        />
-                      </td>
-                      <td className="text-xs whitespace-nowrap">{i.planned_end || "—"}</td>
+                      {columns.map((col) => {
+                        switch (col.key) {
+                          case "project":
+                            return (
+                              <td key={col.key} className="font-medium font-mono truncate">
+                                {proj?.project_code || "—"}
+                              </td>
+                            );
+                          case "stream":
+                            return (
+                              <td key={col.key}>
+                                <select
+                                  className="st-input !w-full !min-w-0 !py-0.5 !text-xs font-mono"
+                                  value={i.stream_id || ""}
+                                  onChange={(e) => {
+                                    const stream_id = e.target.value || null;
+                                    const updates: Record<string, unknown> = { stream_id };
+                                    const gate = i.stage_gate_id ? gateById.get(i.stage_gate_id) : null;
+                                    if (
+                                      !stream_id ||
+                                      (gate?.stream_id && gate.stream_id !== stream_id)
+                                    ) {
+                                      updates.stage_gate_id = null;
+                                    }
+                                    patch.mutate({ id: i.id, updates });
+                                  }}
+                                >
+                                  <option value="">—</option>
+                                  {itemStreams.map((s: any) => (
+                                    <option key={s.id} value={s.id}>
+                                      {formatStreamLabel(s)}
+                                    </option>
+                                  ))}
+                                </select>
+                                {stream && proj ? (
+                                  <div className="mt-0.5 truncate text-[10px] text-muted-foreground font-mono">
+                                    {formatProjectStreamRef(proj, stream)}
+                                  </div>
+                                ) : null}
+                              </td>
+                            );
+                          case "wbs_code":
+                            return (
+                              <td key={col.key} className="font-mono truncate">
+                                {i.wbs_code || "—"}
+                              </td>
+                            );
+                          case "title":
+                            return (
+                              <td key={col.key} className="truncate" title={i.title || ""}>
+                                {i.title}
+                              </td>
+                            );
+                          case "stage_gate":
+                            return (
+                              <td key={col.key}>
+                                <select
+                                  className="st-input !w-full !min-w-0 !py-0.5 !text-xs"
+                                  value={i.stage_gate_id || ""}
+                                  onChange={(e) =>
+                                    patch.mutate({
+                                      id: i.id,
+                                      updates: { stage_gate_id: e.target.value || null },
+                                    })
+                                  }
+                                >
+                                  <option value="">— None —</option>
+                                  {gatesForWorkItem(i.project_id, i.stream_id).map((g) => (
+                                    <option key={g.id} value={g.id}>
+                                      {g.gate_name || "Gate"}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                            );
+                          case "lane_allocated":
+                            return (
+                              <td key={col.key} className="st-num text-right tabular-nums text-muted-foreground">
+                                {i.stage_gate_id
+                                  ? sumLaneAllocatedHours(allocations, {
+                                      projectId: i.project_id,
+                                      streamId: i.stream_id,
+                                      stageGateId: i.stage_gate_id,
+                                    }).toFixed(1)
+                                  : "—"}
+                              </td>
+                            );
+                          case "estimate_hours":
+                            return (
+                              <td key={col.key} className="st-num text-right">
+                                <input
+                                  className="st-input !w-full !min-w-0 !py-0.5 !text-xs text-right"
+                                  type="number"
+                                  min={0}
+                                  step={0.5}
+                                  defaultValue={numH(i.estimate_hours) || ""}
+                                  key={`est-${i.id}-${i.estimate_hours}`}
+                                  onBlur={(e) =>
+                                    patch.mutate({
+                                      id: i.id,
+                                      updates: {
+                                        estimate_hours:
+                                          e.target.value === "" ? null : Number(e.target.value) || 0,
+                                      },
+                                    })
+                                  }
+                                />
+                              </td>
+                            );
+                          case "actual_hours":
+                            return (
+                              <td key={col.key} className="st-num text-right tabular-nums">
+                                {numH(i.actual_hours).toFixed(1)}
+                              </td>
+                            );
+                          case "pending_hours":
+                            return (
+                              <td key={col.key} className="st-num text-right tabular-nums font-medium">
+                                {Math.max(0, numH(i.estimate_hours) - numH(i.actual_hours)).toFixed(1)}
+                              </td>
+                            );
+                          case "status":
+                            return (
+                              <td key={col.key}>
+                                <select
+                                  className="st-input !w-full !min-w-0 !py-0.5 !text-xs"
+                                  value={i.status || "To Do"}
+                                  onChange={(e) =>
+                                    patch.mutate({ id: i.id, updates: { status: e.target.value } })
+                                  }
+                                >
+                                  {STATUSES.map((s) => (
+                                    <option key={s}>{s}</option>
+                                  ))}
+                                </select>
+                              </td>
+                            );
+                          case "percent_complete":
+                            return (
+                              <td key={col.key} className="st-num text-right">
+                                <input
+                                  className="st-input !w-full !min-w-0 !py-0.5 !text-xs text-right"
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  defaultValue={Number(i.percent_complete || 0)}
+                                  onBlur={(e) =>
+                                    patch.mutate({
+                                      id: i.id,
+                                      updates: { percent_complete: Number(e.target.value) || 0 },
+                                    })
+                                  }
+                                />
+                              </td>
+                            );
+                          case "owner":
+                            return (
+                              <td key={col.key} className="truncate">
+                                {i.owner || "—"}
+                              </td>
+                            );
+                          case "team":
+                            return (
+                              <td key={col.key}>
+                                <ResourceMultiSelect
+                                  resources={activeResources}
+                                  value={assigneesByWorkItem.get(i.id) || []}
+                                  onChange={(ids) =>
+                                    setAssignees.mutate({ workItemId: i.id, resourceIds: ids })
+                                  }
+                                  placeholder="Assign resources…"
+                                />
+                              </td>
+                            );
+                          case "planned_end":
+                            return (
+                              <td key={col.key} className="whitespace-nowrap">
+                                {i.planned_end || "—"}
+                              </td>
+                            );
+                          default:
+                            return <td key={col.key}>—</td>;
+                        }
+                      })}
                       <td>
                         <button
                           className="text-xs text-rose-600 hover:underline"

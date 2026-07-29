@@ -157,7 +157,7 @@ export function TimesheetReportsPanel({
 
   const nameOf = (id: string) => {
     const m = memberById.get(id);
-    return m ? memberLabel(m) : id.slice(0, 8);
+    return m ? memberLabel(m) : "Unknown user";
   };
 
   const utilisation = useMemo(

@@ -57,9 +57,17 @@ function dateOnly(v: unknown): string {
 function exportHeaders(t: TableDef): string[] {
   const cols: string[] = [];
   for (const f of t.fields) {
-    if (f.fk === "project") cols.push("project_code");
+    if (f.fk === "project") cols.push(f.key === "depends_on_project_id" ? "depends_on_project_code" : "project_code");
     else if (f.fk === "bu") cols.push("bu_code");
     else if (f.fk === "stream") cols.push("stream_code");
+    else if (f.fk === "stage_gate") cols.push("stage_gate_name");
+    else if (f.fk === "user") {
+      if (f.key === "user_id") cols.push("linked_login");
+      else if (f.key === "manager_user_id") cols.push("manager_login");
+      else if (f.key === "approver_user_id") cols.push("approver_login");
+      else cols.push(f.key.replace(/_user_id$/, "_login").replace(/_id$/, "_login"));
+    }
+    else if (f.key === "resource_id") cols.push("resource_name");
     else cols.push(f.key);
   }
   return cols;
@@ -73,6 +81,8 @@ function toExportRow(
   buById: Map<string, string>,
   resourceById?: Map<string, string>,
   streamById?: Map<string, string>,
+  gateById?: Map<string, string>,
+  userById?: Map<string, string>,
 ): Dict {
   const out: Dict = {};
   for (const f of t.fields) {
@@ -88,6 +98,14 @@ function toExportRow(
       out["bu_code"] = v ? buById.get(String(v)) ?? "" : "";
     } else if (f.fk === "stream") {
       out["stream_code"] = v && streamById ? streamById.get(String(v)) ?? "" : "";
+    } else if (f.fk === "stage_gate") {
+      out["stage_gate_name"] = v && gateById ? gateById.get(String(v)) ?? "" : "";
+    } else if (f.fk === "user") {
+      const label = v && userById ? userById.get(String(v)) ?? "" : "";
+      if (f.key === "user_id") out["linked_login"] = label;
+      else if (f.key === "manager_user_id") out["manager_login"] = label;
+      else if (f.key === "approver_user_id") out["approver_login"] = label;
+      else out[f.key.replace(/_user_id$/, "_login").replace(/_id$/, "_login")] = label;
     } else if (f.key === "resource_id" && resourceById) {
       out["resource_name"] = v ? resourceById.get(String(v)) ?? "" : "";
     } else if (f.type === "date") {
@@ -108,17 +126,27 @@ function toExportRow(
 // ---------- Full org export ----------
 export async function exportOrganizationWorkbook(orgId: string, orgName: string) {
   // Preload lookup maps for FK resolution.
-  const [{ data: projects }, { data: bus }, { data: resources }, { data: streams }] = await Promise.all([
-    supabase.from("projects").select("id,project_code,name").eq("org_id", orgId),
-    supabase.from("business_units").select("id,code,name").eq("org_id", orgId),
-    supabase.from("resources").select("id,name").eq("org_id", orgId),
-    supabase.from("project_streams").select("id,code,name,project_id").eq("org_id", orgId),
-  ]);
+  const [{ data: projects }, { data: bus }, { data: resources }, { data: streams }, { data: gates }, { data: profiles }] =
+    await Promise.all([
+      supabase.from("projects").select("id,project_code,name").eq("org_id", orgId),
+      supabase.from("business_units").select("id,code,name").eq("org_id", orgId),
+      supabase.from("resources").select("id,name").eq("org_id", orgId),
+      supabase.from("project_streams").select("id,code,name,project_id").eq("org_id", orgId),
+      supabase.from("stage_gates").select("id,gate_name").eq("org_id", orgId),
+      supabase.from("profiles").select("id,full_name,email").eq("org_id", orgId),
+    ]);
   const projectById = new Map((projects ?? []).map((p) => [p.id, p.project_code || p.name]));
   const buById = new Map((bus ?? []).map((b) => [b.id, b.code || b.name]));
   const resourceById = new Map((resources ?? []).map((r) => [r.id, r.name]));
   const streamById = new Map(
     (streams ?? []).map((s: any) => [s.id, s.code || s.name || s.id] as [string, string]),
+  );
+  const gateById = new Map((gates ?? []).map((g: any) => [g.id, g.gate_name || "Gate"]));
+  const userById = new Map(
+    (profiles ?? []).map((p: any) => [
+      p.id,
+      String(p.full_name || "").trim() || String(p.email || "").trim() || "Unknown user",
+    ]),
   );
 
   const readme: Array<[string, string]> = [
@@ -130,7 +158,7 @@ export async function exportOrganizationWorkbook(orgId: string, orgName: string)
     ["Match keys", "Rows match on the keys listed per sheet. New codes insert; existing codes update."],
     ["Project dates", "Edit planned_* and actual_* dates. start_date/end_date (Schedule Start/End) auto-sync as Actual → else Planned."],
     ["Current phase", "Prefer Stage Gates sheet status. current_phase is refreshed from the in-flight gate after gate rows are saved."],
-    ["FK columns", "Use project_code / bu_code / resource_name / stream_code (not UUIDs). Dependencies also use depends_on_project_code."],
+    ["FK columns", "Use project_code / bu_code / resource_name / stream_code / stage_gate_name / linked_login / manager_login (not UUIDs). Dependencies also use depends_on_project_code."],
     ["Streams", "Every project has a Core stream. Add Project Streams rows for more lanes. Child sheets (gates, milestones, finance, allocations) use stream_code."],
     ["", ""],
     ["Finance model (canonical)", ""],
@@ -155,15 +183,10 @@ export async function exportOrganizationWorkbook(orgId: string, orgName: string)
     if (error) throw error;
     const headers = [...exportHeaders(t)];
     if (t.key === "dependencies") {
-      const idx = headers.indexOf("project_code");
-      headers.splice(idx + 1, 0, "depends_on_project_code");
-    }
-    if (t.key === "resource_allocations") {
-      const idx = headers.indexOf("resource_id");
-      if (idx >= 0) headers[idx] = "resource_name";
+      // depends_on_project_code already emitted by exportHeaders for depends_on_project_id
     }
     const rows = (data ?? []).map((r: Dict) =>
-      toExportRow(r, t, projectById, buById, resourceById, streamById),
+      toExportRow(r, t, projectById, buById, resourceById, streamById, gateById, userById),
     );
     sheets.push({
       name: t.label.slice(0, 31),
@@ -215,12 +238,15 @@ async function importTableRows(orgId: string, t: TableDef, rows: Dict[]): Promis
   const report: ImportReport = { table: t.label, inserted: 0, updated: 0, skipped: 0, errors: [] };
 
   // Lookup maps per import (rebuilt fresh — projects/streams may have been added earlier).
-  const [{ data: projects }, { data: bus }, { data: resources }, { data: streams }] = await Promise.all([
-    supabase.from("projects").select("id,project_code,name").eq("org_id", orgId),
-    supabase.from("business_units").select("id,code,name").eq("org_id", orgId),
-    supabase.from("resources").select("id,name").eq("org_id", orgId),
-    supabase.from("project_streams").select("id,code,name,project_id").eq("org_id", orgId),
-  ]);
+  const [{ data: projects }, { data: bus }, { data: resources }, { data: streams }, { data: gates }, { data: profiles }] =
+    await Promise.all([
+      supabase.from("projects").select("id,project_code,name").eq("org_id", orgId),
+      supabase.from("business_units").select("id,code,name").eq("org_id", orgId),
+      supabase.from("resources").select("id,name").eq("org_id", orgId),
+      supabase.from("project_streams").select("id,code,name,project_id").eq("org_id", orgId),
+      supabase.from("stage_gates").select("id,project_id,stream_id,gate_name").eq("org_id", orgId),
+      supabase.from("profiles").select("id,full_name,email").eq("org_id", orgId),
+    ]);
   const projectByCode = new Map<string, string>();
   (projects ?? []).forEach((p) => {
     if (p.project_code) projectByCode.set(String(p.project_code).trim(), p.id);
@@ -251,6 +277,19 @@ async function importTableRows(orgId: string, t: TableDef, rows: Dict[]): Promis
   const streamCodeById = new Map<string, string>();
   (streams ?? []).forEach((s: any) => {
     streamCodeById.set(s.id, s.code || s.name || s.id);
+  });
+  const gateByName = new Map<string, string>();
+  (gates ?? []).forEach((g: any) => {
+    const name = String(g.gate_name || "").trim();
+    if (!name) return;
+    gateByName.set(name, g.id);
+    if (g.project_id) gateByName.set(`${g.project_id}||${name}`, g.id);
+    if (g.project_id && g.stream_id) gateByName.set(`${g.project_id}||${g.stream_id}||${name}`, g.id);
+  });
+  const userByLabel = new Map<string, string>();
+  (profiles ?? []).forEach((p: any) => {
+    if (p.email) userByLabel.set(String(p.email).trim().toLowerCase(), p.id);
+    if (p.full_name) userByLabel.set(String(p.full_name).trim().toLowerCase(), p.id);
   });
 
   // Existing rows for match key
@@ -296,6 +335,30 @@ async function importTableRows(orgId: string, t: TableDef, rows: Dict[]): Promis
         } else {
           v = null;
         }
+      } else if (f.fk === "stage_gate") {
+        const name = raw["stage_gate_name"] ?? raw["stage_gate"] ?? raw["gate_name"] ?? raw[f.key];
+        if (name) {
+          const n = String(name).trim();
+          const streamRaw = raw["stream_code"] ?? raw["stream"];
+          const streamId = streamRaw
+            ? (resolvedProjectId && streamByCode.get(`${resolvedProjectId}||${String(streamRaw).trim()}`)) ||
+              streamByCode.get(String(streamRaw).trim())
+            : null;
+          v =
+            (resolvedProjectId && streamId && gateByName.get(`${resolvedProjectId}||${streamId}||${n}`)) ||
+            (resolvedProjectId && gateByName.get(`${resolvedProjectId}||${n}`)) ||
+            gateByName.get(n) ||
+            null;
+        } else {
+          v = null;
+        }
+      } else if (f.fk === "user") {
+        const label =
+          (f.key === "user_id" ? raw["linked_login"] : null) ??
+          (f.key === "manager_user_id" ? raw["manager_login"] : null) ??
+          (f.key === "approver_user_id" ? raw["approver_login"] : null) ??
+          raw[f.key];
+        v = label ? userByLabel.get(String(label).trim().toLowerCase()) || null : null;
       } else if (f.key === "resource_id") {
         const nm = raw["resource_name"] ?? raw["resource"];
         v = nm ? resByName.get(String(nm).trim()) : null;
@@ -420,14 +483,6 @@ export async function downloadTemplate() {
   const sheets: Array<{ name: string; headers: string[]; rows: Dict[] }> = [];
   for (const t of TABLES) {
     const headers = [...exportHeaders(t)];
-    if (t.key === "dependencies") {
-      const idx = headers.indexOf("project_code");
-      headers.splice(idx + 1, 0, "depends_on_project_code");
-    }
-    if (t.key === "resource_allocations") {
-      const idx = headers.indexOf("resource_id");
-      if (idx >= 0) headers[idx] = "resource_name";
-    }
     sheets.push({
       name: t.label.slice(0, 31),
       headers,
