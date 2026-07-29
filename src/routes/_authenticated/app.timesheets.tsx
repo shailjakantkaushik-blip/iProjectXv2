@@ -520,8 +520,22 @@ function TimesheetsPage() {
   };
 
   const ensureSheet = async (): Promise<string> => {
-    if (sheet?.id) return sheet.id;
     if (!orgId || !userId) throw new Error("Not signed in");
+
+    // Prefer cached row, then re-fetch — avoids duplicate insert when the
+    // unique (org_id, user_id, week_start) row already exists but cache was empty.
+    if (sheet?.id) return sheet.id;
+
+    const existing = await supabase
+      .from("timesheets" as any)
+      .select("id")
+      .eq("org_id", orgId)
+      .eq("user_id", userId)
+      .eq("week_start", weekStart)
+      .maybeSingle();
+    if (existing.error) throw existing.error;
+    if (existing.data?.id) return (existing.data as { id: string }).id;
+
     const { data, error } = await supabase
       .from("timesheets" as any)
       .insert({
@@ -532,10 +546,25 @@ function TimesheetsPage() {
         status: "draft",
         manager_user_id: myResource?.manager_user_id || null,
       } as never)
-      .select("*")
+      .select("id")
       .single();
-    if (error) throw error;
-    return (data as unknown as Timesheet).id;
+
+    if (error) {
+      // Concurrent save/submit: another request created the row first.
+      const code = (error as { code?: string }).code;
+      if (code === "23505" || /duplicate key|unique constraint/i.test(error.message || "")) {
+        const again = await supabase
+          .from("timesheets" as any)
+          .select("id")
+          .eq("org_id", orgId)
+          .eq("user_id", userId)
+          .eq("week_start", weekStart)
+          .maybeSingle();
+        if (again.data?.id) return (again.data as { id: string }).id;
+      }
+      throw error;
+    }
+    return (data as unknown as { id: string }).id;
   };
 
   const saveDraft = useMutation({
@@ -851,6 +880,7 @@ function TimesheetsPage() {
                       const { weekHours: weekPlan, perDay: dayPlan } = row.billable
                         ? workItemWeekdayPlan({
                             estimateHours: plannedTotal,
+                            actualHours: actualToDate,
                             plannedStart: wi?.planned_start,
                             plannedEnd: wi?.planned_end,
                             weekStart,
@@ -1232,8 +1262,9 @@ const TIMESHEET_HOURS_GLOSSARY: ColumnGlossaryItem[] = [
     description: "Project code and work-item title (billable), or the free-text non-billable task name.",
   },
   {
-    name: "Plan",
-    description: "Work-item planned hours (estimate). Used with Actuals to compute hours left.",
+    name: "Week plan",
+    description:
+      "Suggested hours for this week from the work item (date-window share, or remaining paced across Mon–Fri when dates miss this week).",
   },
   {
     name: "Mon–Sun",

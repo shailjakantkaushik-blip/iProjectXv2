@@ -85,15 +85,35 @@ function emptyDayHours(): Record<DayKey, number> {
   };
 }
 
+/** Evenly split hours across Mon–Fri (weekends 0). */
+function distributeAcrossWeekdays(hours: number): {
+  weekHours: number;
+  perDay: Record<DayKey, number>;
+} {
+  const perDay = emptyDayHours();
+  if (!(hours > 0)) return { weekHours: 0, perDay };
+  const base = Math.floor((hours / 5) * 100) / 100;
+  let allocated = 0;
+  for (let i = 0; i < 4; i++) {
+    perDay[DAY_KEYS[i]] = base;
+    allocated += base;
+  }
+  perDay.hours_fri = Math.round((hours - allocated) * 100) / 100;
+  return { weekHours: Math.round(hours * 100) / 100, perDay };
+}
+
 /**
  * Spread work-item planned hours evenly across weekdays in the item’s date
  * window, then return this timesheet week’s total and per-day plan.
  *
- * - No planned_start/end → all planned hours sit on the current week (÷ 5 weekdays).
- * - With dates → hours ÷ count of Mon–Fri in [start, end]; weekends stay 0.
+ * - No planned_start/end → remaining planned hours on the current week (÷ 5).
+ * - With dates intersecting this week → share of total across that window.
+ * - With dates that miss this week → fall back to remaining hours ÷ 5 so the
+ *   Week plan column is never blank while work remains.
  */
 export function workItemWeekdayPlan(opts: {
   estimateHours: number;
+  actualHours?: number | null;
   plannedStart?: string | null;
   plannedEnd?: string | null;
   weekStart: string;
@@ -102,20 +122,14 @@ export function workItemWeekdayPlan(opts: {
   const hours = Number(opts.estimateHours) || 0;
   if (!(hours > 0) || !opts.weekStart) return empty;
 
+  const actual = Math.max(0, Number(opts.actualHours) || 0);
+  const remaining = Math.max(0, hours - actual);
   const weekDates = DAY_KEYS.map((_, i) => addDays(opts.weekStart, i));
   let rangeStart = (opts.plannedStart || "").slice(0, 10);
   let rangeEnd = (opts.plannedEnd || "").slice(0, 10);
 
   if (!rangeStart && !rangeEnd) {
-    const base = Math.floor((hours / 5) * 100) / 100;
-    const perDay = emptyDayHours();
-    let allocated = 0;
-    for (let i = 0; i < 4; i++) {
-      perDay[DAY_KEYS[i]] = base;
-      allocated += base;
-    }
-    perDay.hours_fri = Math.round((hours - allocated) * 100) / 100;
-    return { weekHours: Math.round(hours * 100) / 100, perDay };
+    return distributeAcrossWeekdays(remaining > 0 ? remaining : hours);
   }
 
   if (!rangeStart) rangeStart = rangeEnd;
@@ -129,7 +143,15 @@ export function workItemWeekdayPlan(opts: {
     if (dow >= 1 && dow <= 5) weekdaysInRange.push(d);
     if (weekdaysInRange.length > 520) break;
   }
-  if (weekdaysInRange.length === 0) return empty;
+  /** When the calendar window misses this week, pace remaining work across a normal 5×8 week. */
+  const outsideWindowFallback = () => {
+    const left = remaining > 0 ? remaining : hours;
+    return distributeAcrossWeekdays(Math.min(left, 40));
+  };
+
+  if (weekdaysInRange.length === 0) {
+    return outsideWindowFallback();
+  }
 
   const per = hours / weekdaysInRange.length;
   const inRange = new Set(weekdaysInRange);
@@ -141,6 +163,11 @@ export function workItemWeekdayPlan(opts: {
     perDay[DAY_KEYS[i]] = h;
     weekHours += h;
   });
+
+  // Date window does not touch this timesheet week — still show a pace guide.
+  if (weekHours <= 0) {
+    return outsideWindowFallback();
+  }
   return { weekHours: Math.round(weekHours * 100) / 100, perDay };
 }
 
