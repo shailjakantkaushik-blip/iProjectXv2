@@ -25,14 +25,21 @@ import {
   type TimesheetStatus,
 } from "@/lib/timesheet";
 import { TimesheetReportsPanel } from "@/components/timesheet-reports-panel";
+import { ResourceAnalyticsPanels } from "@/components/resource-analytics-panels";
+import { useCapabilityPermission } from "@/lib/permissions";
+import { RESOURCE_ALLOCATIONS_SELECT, RESOURCES_SELECT } from "@/lib/query-selects";
 
-type TimesheetTab = "mine" | "approvals" | "reports" | "setup";
+type TimesheetTab = "mine" | "approvals" | "cost" | "reports" | "setup";
 type TimesheetsSearch = { tab?: TimesheetTab };
 
 export const Route = createFileRoute("/_authenticated/app/timesheets")({
   validateSearch: (s: Record<string, unknown>): TimesheetsSearch => ({
     tab:
-      s.tab === "approvals" || s.tab === "setup" || s.tab === "mine" || s.tab === "reports"
+      s.tab === "approvals" ||
+      s.tab === "setup" ||
+      s.tab === "mine" ||
+      s.tab === "reports" ||
+      s.tab === "cost"
         ? (s.tab as TimesheetTab)
         : undefined,
   }),
@@ -149,29 +156,39 @@ function TimesheetsPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const qc = useQueryClient();
-  // Resource setup + org reporting — org admins only
+  // Resource setup — org admins only. Cost / reports — capability::timesheet_cost_view.
   const canManageSetup = roles.some((r) => r === "admin" || r === "org_admin");
-  const adminOnlyTabs: TimesheetTab[] = ["setup", "reports"];
+  const { canEdit: canViewCost } = useCapabilityPermission("timesheet_cost_view");
+  const setupOnlyTabs: TimesheetTab[] = ["setup"];
+  const costTabs: TimesheetTab[] = ["cost", "reports"];
 
   const initialTab =
-    search.tab && adminOnlyTabs.includes(search.tab) && !canManageSetup
+    search.tab && setupOnlyTabs.includes(search.tab) && !canManageSetup
       ? "mine"
-      : search.tab || "mine";
+      : search.tab && costTabs.includes(search.tab) && !canViewCost
+        ? "mine"
+        : search.tab || "mine";
   const [tab, setTab] = useState<TimesheetTab>(initialTab);
   const [weekStart, setWeekStart] = useState(() => weekStartMonday());
   const [customTaskDraft, setCustomTaskDraft] = useState("");
 
   useEffect(() => {
-    if (search.tab && adminOnlyTabs.includes(search.tab) && !canManageSetup) {
+    if (search.tab && setupOnlyTabs.includes(search.tab) && !canManageSetup) {
+      setTab("mine");
+      navigate({ search: {}, replace: true });
+      return;
+    }
+    if (search.tab && costTabs.includes(search.tab) && !canViewCost) {
       setTab("mine");
       navigate({ search: {}, replace: true });
       return;
     }
     if (search.tab) setTab(search.tab);
-  }, [search.tab, canManageSetup, navigate]);
+  }, [search.tab, canManageSetup, canViewCost, navigate]);
 
   const setTabNav = (t: TimesheetTab) => {
-    if (adminOnlyTabs.includes(t) && !canManageSetup) return;
+    if (setupOnlyTabs.includes(t) && !canManageSetup) return;
+    if (costTabs.includes(t) && !canViewCost) return;
     setTab(t);
     navigate({ search: { tab: t === "mine" ? undefined : t } });
   };
@@ -666,12 +683,13 @@ function TimesheetsPage() {
               [
                 ["mine", "My timesheet"],
                 ["approvals", `Approvals${pendingForMe.length ? ` (${pendingForMe.length})` : ""}`],
-                ...(canManageSetup
+                ...(canViewCost
                   ? ([
+                      ["cost", "Cost quick view"],
                       ["reports", "Org reporting"],
-                      ["setup", "Resource setup"],
                     ] as const)
                   : []),
+                ...(canManageSetup ? ([["setup", "Resource setup"]] as const) : []),
               ] as const
             ).map(([key, label]) => (
               <button
@@ -1084,7 +1102,11 @@ function TimesheetsPage() {
         </SectionFrame>
       )}
 
-      {tab === "reports" && canManageSetup && orgId && (
+      {tab === "cost" && canViewCost && orgId && (
+        <TimesheetCostQuickView />
+      )}
+
+      {tab === "reports" && canViewCost && orgId && (
         <TimesheetReportsPanel
           orgId={orgId}
           orgName={organization?.name}
@@ -1145,6 +1167,45 @@ function TimesheetsPage() {
         </SectionFrame>
       )}
     </PageExport>
+  );
+}
+
+function TimesheetCostQuickView() {
+  const { organization } = useAuth();
+  const { data: projects = [] } = useQuery({
+    queryKey: ["projects", organization?.id, "ts-cost"],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("projects")
+          .select("id,name,project_code,program,portfolio")
+          .order("project_code")
+      ).data ?? [],
+    enabled: !!organization,
+  });
+  const { data: resources = [] } = useQuery({
+    queryKey: ["resources", organization?.id, "ts-cost"],
+    queryFn: async () =>
+      ((await supabase.from("resources").select(RESOURCES_SELECT as "*")).data as any[]) ?? [],
+    enabled: !!organization,
+  });
+  const { data: allocations = [] } = useQuery({
+    queryKey: ["resource_allocations", organization?.id, "ts-cost"],
+    queryFn: async () =>
+      (
+        (await supabase.from("resource_allocations").select(RESOURCE_ALLOCATIONS_SELECT as "*"))
+          .data as any[]
+      ) ?? [],
+    enabled: !!organization,
+  });
+
+  return (
+    <ResourceAnalyticsPanels
+      mode="cost"
+      projects={projects as any}
+      resources={resources}
+      allocations={allocations}
+    />
   );
 }
 

@@ -451,6 +451,13 @@ function FinancialsPage() {
             accent="#0ea5e9"
           />
         </div>
+        {!phaseScoped ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Incurred OpEx includes <strong>FTE labor</strong> from approved timesheets plus{" "}
+            <strong>other OpEx</strong> (vendors / licenses). Labor is stored as{" "}
+            <code>opex_labor_actual</code>; other as <code>opex_other_actual</code>.
+          </p>
+        ) : null}
       </SectionFrame>
 
       <div className="grid gap-4 lg:grid-cols-2">

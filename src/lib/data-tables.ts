@@ -326,6 +326,7 @@ export const TABLES: TableDef[] = [
       { key: "opex_planned", label: "OPEX Plan", type: "number" },
       { key: "opex_actual", label: "OPEX Actual (all)", type: "number" },
       { key: "opex_labor_actual", label: "OPEX Labor / FTE", type: "number" },
+      { key: "opex_other_actual", label: "OPEX Other", type: "number" },
       { key: "opex_forecast", label: "OPEX Forecast", type: "number" },
       { key: "benefits_planned", label: "Benefits Plan", type: "number" },
       { key: "benefits_actual", label: "Benefits Actual", type: "number" },
@@ -449,10 +450,11 @@ export const TABLES: TableDef[] = [
     matchOn: ["project_code", "stream_code", "resource_name", "period_month"],
     orderBy: "period_month",
     description:
-      "Allocate people to a project (and optional stream via stream_code). allocation_percent is % of FTE for the month.",
+      "Allocate people to a project (optional stream + stage gate). allocation_percent is % of FTE for the month; allocated_hours is planned hours.",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
       { key: "stream_id", label: "Stream", type: "text", fk: "stream" },
+      { key: "stage_gate_id", label: "Stage Gate", type: "text", fk: "stage_gate" },
       { key: "resource_id", label: "Resource", type: "text", required: true },
       { key: "period_month", label: "Month", type: "date", required: true },
       { key: "allocation_percent", label: "Allocation %", type: "number" },

@@ -822,12 +822,25 @@ BEGIN
           FOR j IN 1..3 LOOP
             m := (date_trunc('month', CURRENT_DATE)::date - ((j - 1) * INTERVAL '1 month'))::date;
             r1 := 1 + ((i + j - 1) % array_length(res_ids, 1));
+            -- Plan against the stream's current-phase gate (fallback: first gate)
+            SELECT g.id INTO prev_p
+            FROM public.stage_gates g
+            WHERE g.stream_id = sid
+              AND g.gate_name = gate_names[GREATEST(g_idx, 1)]
+            LIMIT 1;
+            IF prev_p IS NULL THEN
+              SELECT g.id INTO prev_p
+              FROM public.stage_gates g
+              WHERE g.stream_id = sid
+              ORDER BY g.planned_date NULLS LAST
+              LIMIT 1;
+            END IF;
             IF array_length(res_ids, 1) = 1 THEN
               INSERT INTO public.resource_allocations (
-                org_id, project_id, stream_id, resource_id, period_month,
+                org_id, project_id, stream_id, stage_gate_id, resource_id, period_month,
                 allocation_percent, allocated_hours, role_on_project
               ) VALUES (
-                r_org.id, p_id, sid, res_ids[r1], m,
+                r_org.id, p_id, sid, prev_p, res_ids[r1], m,
                 35 + ((i + j) % 3) * 10, 40,
                 CASE WHEN sid = core_id THEN 'Core Delivery' ELSE alt_names[i] END
               )
@@ -836,11 +849,11 @@ BEGIN
               r2 := 1 + ((i + j + 2) % array_length(res_ids, 1));
               IF r1 = r2 THEN r2 := 1 + (r1 % array_length(res_ids, 1)); END IF;
               INSERT INTO public.resource_allocations (
-                org_id, project_id, stream_id, resource_id, period_month,
+                org_id, project_id, stream_id, stage_gate_id, resource_id, period_month,
                 allocation_percent, allocated_hours, role_on_project
               ) VALUES
-                (r_org.id, p_id, sid, res_ids[r1], m, 25 + ((i + j) % 3) * 10, 40, CASE WHEN sid = core_id THEN 'Core Delivery' ELSE alt_names[i] END),
-                (r_org.id, p_id, sid, res_ids[r2], m, 20 + (i % 4) * 5, 32, CASE WHEN sid = core_id THEN 'Core Support' ELSE alt_names[i] || ' Support' END)
+                (r_org.id, p_id, sid, prev_p, res_ids[r1], m, 25 + ((i + j) % 3) * 10, 40, CASE WHEN sid = core_id THEN 'Core Delivery' ELSE alt_names[i] END),
+                (r_org.id, p_id, sid, prev_p, res_ids[r2], m, 20 + (i % 4) * 5, 32, CASE WHEN sid = core_id THEN 'Core Support' ELSE alt_names[i] || ' Support' END)
               ON CONFLICT DO NOTHING;
             END IF;
           END LOOP;
