@@ -1,7 +1,8 @@
 /**
  * BYOD data-plane helpers (server-only).
  * Default orgs → shared iProjectX supabaseAdmin.
- * Active BYOD orgs → ephemeral customer Supabase client (service role).
+ * Active BYOD orgs → ephemeral client against the customer HTTPS DB API
+ * (PostgREST-compatible; not limited to *.supabase.co).
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { decryptByodSecret } from "@/lib/byod-crypto.server";
@@ -28,8 +29,19 @@ type ByodRow = {
 
 export function normalizeSupabaseUrl(url: string): string {
   const u = url.trim().replace(/\/+$/, "");
-  if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(u) && !/^https:\/\/.+/i.test(u)) {
-    throw new Error("Supabase URL must be an https URL (e.g. https://xxxx.supabase.co)");
+  if (!/^https:\/\/.+/i.test(u)) {
+    throw new Error(
+      "Customer database URL must be https (e.g. https://db.customer.example.com or https://xxxx.supabase.co)",
+    );
+  }
+  try {
+    const parsed = new URL(u);
+    if (parsed.protocol !== "https:") {
+      throw new Error("Customer database URL must use https");
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("Customer database")) throw e;
+    throw new Error("Customer database URL is not a valid https URL");
   }
   return u;
 }

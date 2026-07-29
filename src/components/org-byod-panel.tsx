@@ -176,9 +176,11 @@ export function OrgByodPanel({
           Customer-hosted database (BYOD)
         </CardTitle>
         <CardDescription>
-          Optional for <strong>{orgName}</strong>. Default organisations continue on the shared
-          iProjectX Supabase. When active, server-side tenant data access uses this customer
-          project. Auth, billing, and white-label stay on iProjectX.
+          Optional for <strong>{orgName}</strong>. By default, organisations use the shared
+          iProjectX data plane. When active, server-side tenant data is read/written against
+          this customer-hosted database URL (any HTTPS Postgres/PostgREST-compatible API —
+          including self-hosted or third-party hosts, not only one vendor). Auth, billing, and
+          white-label stay on iProjectX.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -205,18 +207,22 @@ export function OrgByodPanel({
 
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1.5 md:col-span-2">
-            <Label htmlFor={`byod-url-${orgId}`}>Customer Supabase URL</Label>
+            <Label htmlFor={`byod-url-${orgId}`}>Customer database URL</Label>
             <Input
               id={`byod-url-${orgId}`}
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://xxxx.supabase.co"
+              placeholder="https://db.customer.example.com  or  https://xxxx.supabase.co"
               className="font-mono text-xs"
               autoComplete="off"
             />
+            <p className="text-[11px] text-muted-foreground">
+              HTTPS endpoint for the customer database API (PostgREST-compatible). Not limited to
+              a Supabase hostname.
+            </p>
           </div>
           <div className="space-y-1.5 md:col-span-2">
-            <Label htmlFor={`byod-anon-${orgId}`}>Publishable / anon key (optional)</Label>
+            <Label htmlFor={`byod-anon-${orgId}`}>API publishable key (optional)</Label>
             <Input
               id={`byod-anon-${orgId}`}
               value={publishable}
@@ -224,7 +230,7 @@ export function OrgByodPanel({
               placeholder={
                 data.publishable_key_configured
                   ? "Configured — paste to replace"
-                  : "eyJhbGciOi… or sb_publishable_…"
+                  : "Publishable / anon API key if your host requires one"
               }
               className="font-mono text-xs"
               autoComplete="off"
@@ -232,7 +238,7 @@ export function OrgByodPanel({
           </div>
           <div className="space-y-1.5 md:col-span-2">
             <div className="flex items-center justify-between gap-2">
-              <Label htmlFor={`byod-secret-${orgId}`}>Service role secret</Label>
+              <Label htmlFor={`byod-secret-${orgId}`}>Service role / admin secret</Label>
               {data.secret_configured && (
                 <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
                   <EyeOff className="h-3 w-3" />
@@ -246,7 +252,7 @@ export function OrgByodPanel({
                 type="password"
                 value={secret}
                 onChange={(e) => setSecret(e.target.value)}
-                placeholder="Paste service_role key (write-only)"
+                placeholder="Paste service-role / admin API secret (write-only)"
                 className="font-mono text-xs"
                 autoComplete="new-password"
               />
@@ -319,7 +325,7 @@ export function OrgByodPanel({
                   return;
                 }
                 if (!url.trim()) {
-                  toast.error("Supabase URL is required.");
+                  toast.error("Customer database URL is required.");
                   return;
                 }
                 saveMut.mutate();
@@ -351,8 +357,8 @@ export function OrgByodPanel({
         </div>
 
         <p className="text-[11px] text-muted-foreground">
-          Customer project must receive iProjectX schema migrations before portfolio data will work.
-          Until then, Test connection only verifies URL + service role authentication.
+          The customer database must receive iProjectX schema migrations before portfolio data will
+          work. Until then, Test connection only verifies URL + admin credentials.
           {data.last_tested_at
             ? ` Last tested ${new Date(data.last_tested_at).toLocaleString()}.`
             : ""}

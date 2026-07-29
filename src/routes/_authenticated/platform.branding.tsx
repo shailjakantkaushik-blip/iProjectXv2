@@ -132,9 +132,9 @@ function PlatformBrandingPage() {
         </h1>
         <p className="text-sm text-muted-foreground">
           Manage display name, logo, colour palette, style themes, per-org SSO, and optional
-          customer-hosted database (BYOD) for each organisation (platform admin only). Style themes
-          change UI chrome — sections, buttons, navigation shape, and motion — without changing
-          colour palettes.
+          customer-hosted database (BYOD — any PostgREST-compatible HTTPS API, not only one
+          vendor) for each organisation (platform admin only). Style themes change UI chrome —
+          sections, buttons, navigation shape, and motion — without changing colour palettes.
         </p>
       </div>
 

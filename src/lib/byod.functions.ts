@@ -212,7 +212,7 @@ export const testOrgByodConnection = createServerFn({ method: "POST" })
     }
     const row = await loadByodRow(data.org_id);
     if (!row?.supabase_url || !row.secret_configured || !row.secret_ciphertext || !row.secret_nonce) {
-      throw new Error("Save a Supabase URL and service role secret before testing.");
+      throw new Error("Save a customer database URL and service role secret before testing.");
     }
 
     const { decryptByodSecret } = await import("@/lib/byod-crypto.server");

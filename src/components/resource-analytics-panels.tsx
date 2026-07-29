@@ -203,7 +203,7 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
               <SelectItem value="all">All projects</SelectItem>
               {projects.map((p) => (
                 <SelectItem key={p.id} value={p.id}>
-                  {p.project_code || p.name}
+                  {p.project_code ? `${p.project_code} — ${p.name}` : p.name}
                 </SelectItem>
               ))}
             </SelectContent>

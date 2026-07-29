@@ -465,7 +465,7 @@ function ResourcesPage() {
                 <SelectItem value="all">All projects</SelectItem>
                 {projects.map((p) => (
                   <SelectItem key={p.id} value={p.id}>
-                    {p.name}
+                    {p.project_code ? `${p.project_code} — ${p.name}` : p.name}
                   </SelectItem>
                 ))}
               </SelectContent>
