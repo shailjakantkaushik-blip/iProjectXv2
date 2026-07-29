@@ -624,6 +624,23 @@ function TimesheetsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const syncResources = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.rpc("sync_org_resources_from_profiles" as any, {
+        _org_id: orgId,
+      });
+      if (error) throw error;
+      return data as { created?: number; updated?: number };
+    },
+    onSuccess: (data) => {
+      invalidate();
+      toast.success(
+        `Resources synced (${data?.created ?? 0} created, ${data?.updated ?? 0} updated)`,
+      );
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const weekTotal = useMemo(() => {
     return Object.values(draftRows).reduce((sum, r) => sum + entryWeekTotal(r), 0);
   }, [draftRows]);
@@ -642,7 +659,7 @@ function TimesheetsPage() {
     <PageExport name="Timesheets" title="Timesheets">
       <PageHeading
         title="Timesheets"
-        subtitle="Fill hours against assigned work items — approval runs Project Manager, then Resource Manager"
+        subtitle="Billable hours are logged against assigned work items; non-billable uses custom tasks. Approval: Project Manager → Resource Manager."
         actions={
           <div className="flex flex-wrap gap-2">
             {(
@@ -1080,9 +1097,21 @@ function TimesheetsPage() {
         <SectionFrame>
           <SectionTitle>Resource setup (org admin)</SectionTitle>
           <p className="mb-3 text-sm text-muted-foreground">
-            Link each resource to a login, nominate a Resource Manager, and set the hourly cost rate.
-            Approved billable timesheet hours × rate flow into monthly OpEx → project → portfolio.
+            Each org member is the same person as their resource (auto-synced). Set hourly cost and
+            Resource Manager here. Billable timesheet hours × rate add to{" "}
+            <strong>OPEX Labor / FTE</strong> and total OpEx actual for the work item&apos;s project
+            / stream (other OpEx can still be entered separately).
           </p>
+          <div className="mb-3 flex flex-wrap gap-2" data-export-hide>
+            <button
+              type="button"
+              className="st-btn-secondary text-xs"
+              disabled={syncResources.isPending}
+              onClick={() => syncResources.mutate()}
+            >
+              {syncResources.isPending ? "Syncing…" : "Sync members → resources"}
+            </button>
+          </div>
           {resourcesLoading ? (
             <PageLoading label="Loading resources…" fullScreen={false} />
           ) : (

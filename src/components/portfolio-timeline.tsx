@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth-context";
 import { fyStartFor as fyStartForOrg, fyEndFor as fyEndForOrg, fyLabel as fyLabelOrg } from "@/lib/fiscal-year";
 import { RAG_COLORS } from "@/lib/chart-theme";
 import { ExpandablePanel } from "@/components/expandable-panel";
-import { summarizeTimelineLaneFinancials } from "@/lib/project-streams";
+import { summarizeTimelineLaneFinancials, gatesForTimelineLane } from "@/lib/project-streams";
 import { darkenHex, scheduleCompletionPct } from "@/lib/schedule-progress";
 
 function money(n: number) {
@@ -135,11 +135,11 @@ export function computeTimelineBounds(
 }
 
 export function GanttGroup({
-  title, items, bounds, gatesByProject, collapsed, onToggle, showPlannedVsActual = false, showGates,
+  title, items, bounds, gatesByLane, collapsed, onToggle, showPlannedVsActual = false, showGates,
   showProjectTimeline, onShowProjectTimelineChange,
 }: {
   title: string; items: any[]; bounds: TimelineBounds;
-  gatesByProject: Map<string, any[]>; collapsed: boolean; onToggle: () => void;
+  gatesByLane: Map<string, any[]>; collapsed: boolean; onToggle: () => void;
   showPlannedVsActual?: boolean;
   showGates?: boolean;
   /** Controlled: show project rollup lane checkbox (parent expands lanes). */
@@ -330,11 +330,10 @@ export function GanttGroup({
               const doneColor = darkenHex(color, 0.4);
               // Lane key: stream id for stream lanes; project id for rollup / fallback.
               // Project rollup intentionally omits stream-scoped gates (those sit on stream lanes).
-              const laneKey = p.is_project_rollup ? (p.project_id || p.id) : (p.stream_id || p.id);
-              const rawGates = p.is_project_rollup
-                ? []
-                : (gatesByProject.get(laneKey) || []).filter((g: any) => g.planned_date || g.actual_date);
-              const projGates = rawGates
+              const projGates = (
+                p.is_project_rollup ? [] : gatesForTimelineLane(p, gatesByLane)
+              )
+                .filter((g: any) => g.planned_date || g.actual_date)
                 .slice()
                 .sort((a: any, b: any) =>
                   new Date(a.actual_date || a.planned_date).getTime() -
@@ -664,18 +663,14 @@ export function PortfolioTimeline({
   const fyStartMonth = organization?.fy_start_month || 4;
   const bounds = useMemo(() => computeTimelineBounds(projects, fy, fyStartMonth), [projects, fy, fyStartMonth]);
   // Key gates by stream when present so stream lanes get their own markers;
-  // also keep project_id buckets for non-stream projects / fallback.
-  const gatesByProject = useMemo(() => {
+  // project_id bucket holds null-stream_id gates for Core merge.
+  const gatesByLane = useMemo(() => {
     const m = new Map<string, any[]>();
     gates.forEach((g: any) => {
       const laneKey = g.stream_id || g.project_id;
+      if (!laneKey) return;
       if (!m.has(laneKey)) m.set(laneKey, []);
       m.get(laneKey)!.push(g);
-      if (g.stream_id && g.project_id) {
-        // Do not double-add to project bucket — stream lanes own their gates.
-      } else if (!g.stream_id) {
-        // already keyed by project_id
-      }
     });
     return m;
   }, [gates]);
@@ -695,7 +690,7 @@ export function PortfolioTimeline({
         title={groupTitle}
         items={items}
         bounds={bounds}
-        gatesByProject={gatesByProject}
+        gatesByLane={gatesByLane}
         collapsed={collapsed}
         onToggle={() => setCollapsed((c) => !c)}
         showPlannedVsActual={showPlannedVsActual}

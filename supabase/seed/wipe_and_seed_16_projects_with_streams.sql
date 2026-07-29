@@ -17,15 +17,15 @@
 --   work_items, audit_log / audit_events, project_purge_notices
 --
 -- SEEDS (per organisation)
---   8 resources (linked to org logins when available),
+--   Resources synced from existing org profiles (same person as login),
 --   16 projects (always-on Core + second stream),
 --   stage gates + milestones per stream, FY + monthly finance per stream,
 --   resource allocations, benefits, risks, issues, actions, decisions,
 --   stakeholders, status updates, documents, lessons, change requests,
---   sprints, work items (+ assignees), dependencies, demand pipeline,
+--   sprints, work items (+ resource assignees), dependencies, demand pipeline,
 --   portfolio scenario, project.brief + baselines,
 --   sample timesheets (draft / pending / approved / rejected) with
---   billable + non-billable entries and approval rows
+--   billable work-item rows + non-billable custom tasks
 --
 -- Requires: always-on Core streams migration (ensure_project_core_stream,
 --           rollup_project_from_streams) + timesheet migrations.
@@ -268,30 +268,17 @@ BEGIN
     END IF;
 
     res_ids := ARRAY[]::uuid[];
-    INSERT INTO public.resources (org_id, bu_id, name, email, role, skills, capacity_hours_week, cost_rate, location, status)
-    VALUES (r_org.id, r_bu, 'Alex Morgan', 'alex.morgan@example.com', 'Senior BA', 'Analysis,Agile,Jira', 40, 95, 'Hybrid', 'Active')
-    RETURNING id INTO rid; res_ids := array_append(res_ids, rid);
-    INSERT INTO public.resources (org_id, bu_id, name, email, role, skills, capacity_hours_week, cost_rate, location, status)
-    VALUES (r_org.id, r_bu, 'Jordan Lee', 'jordan.lee@example.com', 'Tech Lead', 'Architecture,Cloud,API', 40, 140, 'Hybrid', 'Active')
-    RETURNING id INTO rid; res_ids := array_append(res_ids, rid);
-    INSERT INTO public.resources (org_id, bu_id, name, email, role, skills, capacity_hours_week, cost_rate, location, status)
-    VALUES (r_org.id, r_bu, 'Sam Rivera', 'sam.rivera@example.com', 'Delivery Manager', 'PMO,RAID,Stakeholder', 40, 120, 'Hybrid', 'Active')
-    RETURNING id INTO rid; res_ids := array_append(res_ids, rid);
-    INSERT INTO public.resources (org_id, bu_id, name, email, role, skills, capacity_hours_week, cost_rate, location, status)
-    VALUES (r_org.id, r_bu, 'Taylor Kim', 'taylor.kim@example.com', 'Data Engineer', 'SQL,ETL,Python', 40, 125, 'Hybrid', 'Active')
-    RETURNING id INTO rid; res_ids := array_append(res_ids, rid);
-    INSERT INTO public.resources (org_id, bu_id, name, email, role, skills, capacity_hours_week, cost_rate, location, status)
-    VALUES (r_org.id, r_bu, 'Casey Brooks', 'casey.brooks@example.com', 'QA Lead', 'Testing,Automation', 40, 100, 'Hybrid', 'Active')
-    RETURNING id INTO rid; res_ids := array_append(res_ids, rid);
-    INSERT INTO public.resources (org_id, bu_id, name, email, role, skills, capacity_hours_week, cost_rate, location, status)
-    VALUES (r_org.id, r_bu, 'Riley Chen', 'riley.chen@example.com', 'UX Designer', 'Design,Research', 40, 105, 'Hybrid', 'Active')
-    RETURNING id INTO rid; res_ids := array_append(res_ids, rid);
-    INSERT INTO public.resources (org_id, bu_id, name, email, role, skills, capacity_hours_week, cost_rate, location, status)
-    VALUES (r_org.id, r_bu, 'Morgan Patel', 'morgan.patel@example.com', 'Security Analyst', 'Security,Risk', 40, 115, 'Hybrid', 'Active')
-    RETURNING id INTO rid; res_ids := array_append(res_ids, rid);
-    INSERT INTO public.resources (org_id, bu_id, name, email, role, skills, capacity_hours_week, cost_rate, location, status)
-    VALUES (r_org.id, r_bu, 'Avery Nguyen', 'avery.nguyen@example.com', 'Finance Analyst', 'Finance,Benefits', 40, 90, 'Hybrid', 'Active')
-    RETURNING id INTO rid; res_ids := array_append(res_ids, rid);
+    -- Resources = org members (same person). No fictional sample people.
+    PERFORM public.sync_org_resources_from_profiles(r_org.id);
+    SELECT coalesce(array_agg(r.id ORDER BY r.name), ARRAY[]::uuid[])
+    INTO res_ids
+    FROM public.resources r
+    WHERE r.org_id = r_org.id AND r.user_id IS NOT NULL;
+
+    -- If org has no logins yet, skip resource-dependent seed rows gracefully
+    IF coalesce(array_length(res_ids, 1), 0) = 0 THEN
+      RAISE NOTICE 'Org % has no profiles/resources — seeding projects without allocations/timesheets', r_org.id;
+    END IF;
 
     FOR i IN 1..16 LOOP
       core_share := 0.58;
@@ -549,19 +536,21 @@ BEGIN
           j := j + 1;
         END LOOP;
 
-        FOR j IN 1..3 LOOP
-          m := (date_trunc('month', CURRENT_DATE)::date - ((j - 1) * INTERVAL '1 month'))::date;
-          r1 := 1 + ((i + j - 1) % array_length(res_ids, 1));
-          r2 := 1 + ((i + j + 2) % array_length(res_ids, 1));
-          IF r1 = r2 THEN r2 := 1 + (r1 % array_length(res_ids, 1)); END IF;
-          INSERT INTO public.resource_allocations (
-            org_id, project_id, stream_id, resource_id, period_month,
-            allocation_percent, allocated_hours, role_on_project
-          ) VALUES
-            (r_org.id, p_id, sid, res_ids[r1], m, 25 + ((i + j) % 3) * 10, 40, CASE WHEN sid = core_id THEN 'Core Delivery' ELSE alt_names[i] END),
-            (r_org.id, p_id, sid, res_ids[r2], m, 20 + (i % 4) * 5, 32, CASE WHEN sid = core_id THEN 'Core Support' ELSE alt_names[i] || ' Support' END)
-          ON CONFLICT DO NOTHING;
-        END LOOP;
+        IF coalesce(array_length(res_ids, 1), 0) > 0 THEN
+          FOR j IN 1..3 LOOP
+            m := (date_trunc('month', CURRENT_DATE)::date - ((j - 1) * INTERVAL '1 month'))::date;
+            r1 := 1 + ((i + j - 1) % array_length(res_ids, 1));
+            r2 := 1 + ((i + j + 2) % array_length(res_ids, 1));
+            IF r1 = r2 THEN r2 := 1 + (r1 % array_length(res_ids, 1)); END IF;
+            INSERT INTO public.resource_allocations (
+              org_id, project_id, stream_id, resource_id, period_month,
+              allocation_percent, allocated_hours, role_on_project
+            ) VALUES
+              (r_org.id, p_id, sid, res_ids[r1], m, 25 + ((i + j) % 3) * 10, 40, CASE WHEN sid = core_id THEN 'Core Delivery' ELSE alt_names[i] END),
+              (r_org.id, p_id, sid, res_ids[r2], m, 20 + (i % 4) * 5, 32, CASE WHEN sid = core_id THEN 'Core Support' ELSE alt_names[i] || ' Support' END)
+            ON CONFLICT DO NOTHING;
+          END LOOP;
+        END IF;
       END LOOP;
 
       -- Project-level attributes
@@ -798,21 +787,20 @@ BEGIN
     mgr_uid := COALESCE(mgr_uid, member_ids[1]);
     pm_uid := COALESCE(member_ids[LEAST(2, n_members)], member_ids[1]);
 
-    -- Link one resource per org member (unique resources.user_id per org)
-    idx := 0;
-    FOR res IN
-      SELECT id FROM public.resources
-      WHERE org_id = r_org.id
-      ORDER BY name
-    LOOP
-      idx := idx + 1;
-      EXIT WHEN idx > n_members;
-      UPDATE public.resources
-      SET
-        user_id = member_ids[idx],
-        manager_user_id = mgr_uid
-      WHERE id = res.id;
-    END LOOP;
+    -- Ensure resources match org profiles (same person), then seed rates/managers
+    PERFORM public.sync_org_resources_from_profiles(r_org.id);
+
+    UPDATE public.resources r
+    SET
+      manager_user_id = COALESCE(r.manager_user_id, mgr_uid),
+      cost_rate = CASE
+        WHEN COALESCE(r.cost_rate, 0) > 0 THEN r.cost_rate
+        ELSE (80 + (abs(hashtext(r.id::text)) % 61))::numeric
+      END,
+      capacity_hours_week = COALESCE(NULLIF(r.capacity_hours_week, 0), 40),
+      status = COALESCE(NULLIF(r.status, ''), 'Active')
+    WHERE r.org_id = r_org.id
+      AND r.user_id IS NOT NULL;
 
     -- Nominate PMs on projects (rotate members)
     idx := 0;
@@ -825,11 +813,11 @@ BEGIN
       WHERE id = p_id;
     END LOOP;
 
-    -- Assign work items to resources (not login users)
+    -- Assign work items to linked resources (same people as org logins)
     SELECT array_agg(r.id ORDER BY r.name)
     INTO res_id_list
     FROM public.resources r
-    WHERE r.org_id = r_org.id;
+    WHERE r.org_id = r_org.id AND r.user_id IS NOT NULL;
     n_res := COALESCE(array_length(res_id_list, 1), 0);
 
     idx := 0;

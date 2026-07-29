@@ -315,10 +315,10 @@ export function groupGatesByLane<T extends { project_id: string; stream_id?: str
 
 /**
  * Gates for a timeline lane. Matches expandProjectsToTimelineLanes:
- * stream-owned gates, plus project-level (null stream_id) on the default stream.
+ * stream-owned gates plus project-level (null stream_id) gates on Core.
  * Project rollup lanes intentionally show no diamonds.
  */
-export function gatesForTimelineLane<T extends { project_id: string; stream_id?: string | null }>(
+export function gatesForTimelineLane<T extends { id?: string; project_id: string; stream_id?: string | null }>(
   lane: {
     id?: string;
     project_id?: string | null;
@@ -332,12 +332,28 @@ export function gatesForTimelineLane<T extends { project_id: string; stream_id?:
   if (lane.is_project_rollup) return [];
   const projectId = lane.project_id || lane.id;
   const streamId = lane.stream_id || (lane.is_stream_lane ? lane.id : null);
+
+  const merge = (a: T[], b: T[]) => {
+    if (!a.length) return b;
+    if (!b.length) return a;
+    const seen = new Set<string>();
+    const out: T[] = [];
+    for (const g of [...a, ...b]) {
+      const id = g.id;
+      if (id) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+      }
+      out.push(g);
+    }
+    return out;
+  };
+
   if (streamId) {
     const owned = gatesByLane.get(streamId) || [];
-    if (owned.length) return owned;
-    // Legacy / cached rows may omit stream_id — show project-level gates on Core.
-    if (lane.is_default && projectId) return gatesByLane.get(projectId) || [];
-    return [];
+    const projectLevel =
+      lane.is_default && projectId ? gatesByLane.get(projectId) || [] : [];
+    return merge(owned, projectLevel);
   }
   return projectId ? gatesByLane.get(projectId) || [] : [];
 }

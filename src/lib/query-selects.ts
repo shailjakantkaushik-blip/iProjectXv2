@@ -34,6 +34,7 @@ export const FINANCIALS_MONTHLY_SELECT = [
   "capex_forecast",
   "opex_planned",
   "opex_actual",
+  "opex_labor_actual",
   "opex_forecast",
   "benefits_planned",
   "benefits_actual",
