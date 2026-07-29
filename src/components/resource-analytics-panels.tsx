@@ -74,6 +74,8 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
   const { canEdit: canViewCost } = useCapabilityPermission("timesheet_cost_view");
   const [grain, setGrain] = useState<PvaGrain>(mode === "cost" ? "resource" : "stage_gate");
   const [projectFilter, setProjectFilter] = useState("all");
+  const [streamFilter, setStreamFilter] = useState("all");
+  const [gateFilter, setGateFilter] = useState("all");
   const [resourceFilter, setResourceFilter] = useState("all");
   const [monthFrom, setMonthFrom] = useState("all");
   const [monthTo, setMonthTo] = useState("all");
@@ -190,6 +192,50 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
     return m;
   }, [gates]);
 
+  const streamById = useMemo(
+    () => new Map((streams as any[]).map((s) => [s.id, s])),
+    [streams],
+  );
+
+  const streamOptions = useMemo(() => {
+    let list = (streams as any[]).slice();
+    if (projectFilter !== "all") {
+      list = list.filter((s) => s.project_id === projectFilter);
+    }
+    return list.sort(
+      (a, b) =>
+        (a.sort_order ?? 0) - (b.sort_order ?? 0) ||
+        String(a.code || a.name || "").localeCompare(String(b.code || b.name || ""), undefined, {
+          sensitivity: "base",
+        }),
+    );
+  }, [streams, projectFilter]);
+
+  const gateOptions = useMemo(() => {
+    let list = (gates as any[]).slice();
+    if (projectFilter !== "all") {
+      list = list.filter((g) => g.project_id === projectFilter);
+    }
+    if (streamFilter !== "all") {
+      list = list.filter((g) => !g.stream_id || g.stream_id === streamFilter);
+    }
+    return list.sort((a, b) =>
+      String(a.gate_name || "").localeCompare(String(b.gate_name || ""), undefined, {
+        sensitivity: "base",
+      }),
+    );
+  }, [gates, projectFilter, streamFilter]);
+
+  const setProjectFilterCascading = (v: string) => {
+    setProjectFilter(v);
+    setStreamFilter("all");
+    setGateFilter("all");
+  };
+  const setStreamFilterCascading = (v: string) => {
+    setStreamFilter(v);
+    setGateFilter("all");
+  };
+
   /** Scope to projects the caller can see (RLS / project visibility). */
   const scopedPlans = useMemo(
     () =>
@@ -212,20 +258,24 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
   const filteredPlans = useMemo(() => {
     return scopedPlans.filter((a: AllocationPlanRow) => {
       if (projectFilter !== "all" && a.project_id !== projectFilter) return false;
+      if (streamFilter !== "all" && (a.stream_id || null) !== streamFilter) return false;
+      if (gateFilter !== "all" && (a.stage_gate_id || null) !== gateFilter) return false;
       if (resourceFilter !== "all" && a.resource_id !== resourceFilter) return false;
       if (!inMonthRange(a.period_month, monthFrom, monthTo)) return false;
       return true;
     });
-  }, [scopedPlans, projectFilter, resourceFilter, monthFrom, monthTo]);
+  }, [scopedPlans, projectFilter, streamFilter, gateFilter, resourceFilter, monthFrom, monthTo]);
 
   const filteredActuals = useMemo(() => {
     return scopedActuals.filter((a: TimesheetEffortRow) => {
       if (projectFilter !== "all" && a.project_id !== projectFilter) return false;
+      if (streamFilter !== "all" && (a.stream_id || null) !== streamFilter) return false;
+      if (gateFilter !== "all" && (a.stage_gate_id || null) !== gateFilter) return false;
       if (resourceFilter !== "all" && a.resource_id !== resourceFilter) return false;
       if (!inMonthRange(a.period_month || a.week_start, monthFrom, monthTo)) return false;
       return true;
     });
-  }, [scopedActuals, projectFilter, resourceFilter, monthFrom, monthTo]);
+  }, [scopedActuals, projectFilter, streamFilter, gateFilter, resourceFilter, monthFrom, monthTo]);
 
   const rows = useMemo(
     () =>
@@ -283,8 +333,8 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
           </SectionTitle>
           <p className="text-xs text-muted-foreground">
             {mode === "cost"
-              ? "Labor cost from approved timesheets. Filter by period, project, and resource; group by resource, project, stream, stage gate, program, portfolio, or month."
-              : "Planned FTE from resource allocations vs actual hours on approved timesheets (work items stamp stream + stage gate)."}
+              ? "Labor cost from approved timesheets. Filter by period, project, stream, stage gate, and resource; group by resource, project, stream, stage gate, program, portfolio, or month."
+              : "Planned FTE from resource allocations vs actual hours on approved timesheets (work items stamp stream + stage gate). Filter by stream and stage gate to focus a delivery lane."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -334,7 +384,7 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
           </div>
           <div className="flex flex-col gap-0.5">
             <span className="text-[10px] font-medium text-muted-foreground">Project</span>
-            <Select value={projectFilter} onValueChange={setProjectFilter}>
+            <Select value={projectFilter} onValueChange={setProjectFilterCascading}>
               <SelectTrigger className="h-9 w-44">
                 <SelectValue placeholder="Project" />
               </SelectTrigger>
@@ -345,6 +395,57 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
                     {p.project_code ? `${p.project_code} — ${p.name}` : p.name}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-medium text-muted-foreground">Stream</span>
+            <Select value={streamFilter} onValueChange={setStreamFilterCascading}>
+              <SelectTrigger className="h-9 w-44">
+                <SelectValue placeholder="Stream" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All streams</SelectItem>
+                {streamOptions.map((s: any) => {
+                  const proj = projectsById.get(s.project_id);
+                  const label = formatStreamLabel(s);
+                  return (
+                    <SelectItem key={s.id} value={s.id}>
+                      {projectFilter === "all" && proj
+                        ? `${proj.project_code || proj.name} · ${label}`
+                        : label}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-medium text-muted-foreground">Stage gate</span>
+            <Select value={gateFilter} onValueChange={setGateFilter}>
+              <SelectTrigger className="h-9 w-44">
+                <SelectValue placeholder="Stage gate" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All stage gates</SelectItem>
+                {gateOptions.map((g: any) => {
+                  const proj = projectsById.get(g.project_id);
+                  const stream = g.stream_id ? streamById.get(g.stream_id) : null;
+                  const name = g.gate_name || "Gate";
+                  const bits: string[] = [];
+                  if (projectFilter === "all" && proj) {
+                    bits.push(String(proj.project_code || proj.name || ""));
+                  }
+                  if (streamFilter === "all" && stream) {
+                    bits.push(formatStreamLabel(stream));
+                  }
+                  bits.push(name);
+                  return (
+                    <SelectItem key={g.id} value={g.id}>
+                      {bits.filter(Boolean).join(" · ")}
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>
