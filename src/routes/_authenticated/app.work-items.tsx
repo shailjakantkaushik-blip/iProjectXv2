@@ -268,12 +268,12 @@ function WorkItemsPage() {
 
   /** Lane totals for create form — resource allocation vs work-item planned + FTE $. */
   const formLanePlan = useMemo(() => {
-    if (!form.project_id || !form.stream_id || !form.stage_gate_id) return null;
+    if (!form.project_id || !form.stream_id) return null;
     const streamId = form.stream_id;
     const laneOpts = {
       projectId: form.project_id,
       streamId,
-      stageGateId: form.stage_gate_id,
+      stageGateId: form.stage_gate_id || null,
     };
     const allocated = sumLaneAllocatedHours(allocations, laneOpts);
     const workPlanned = sumLaneDemandHours(demandSlices, laneOpts);
@@ -330,16 +330,14 @@ function WorkItemsPage() {
       {
         key: "lane_allocated",
         label: "Lane allocated",
-        getValue: (i) => {
-          if (!i.stage_gate_id) return "";
-          return String(
+        getValue: (i) =>
+          String(
             sumLaneAllocatedHours(allocations, {
               projectId: i.project_id,
               streamId: i.stream_id,
               stageGateId: i.stage_gate_id,
             }),
-          );
-        },
+          ),
       },
       {
         key: "estimate_hours",
@@ -705,8 +703,9 @@ function WorkItemsPage() {
           </div>
         ) : (
           <p className="mt-2 text-[11px] text-muted-foreground">
-            Select project, stream, and stage gate to see lane allocated hours vs work-item planned
-            demand — use allocated as the ceiling when setting planned hours.
+            Select project and stream (and optionally stage gate) to see lane allocated hours from
+            Resource Allocations vs work-item planned demand — use allocated as the ceiling when
+            setting planned hours.
           </p>
         )}
         <p className="mt-2 text-[11px] text-muted-foreground">
@@ -885,13 +884,11 @@ function WorkItemsPage() {
                                 key={col.key}
                                 className="st-num text-right tabular-nums whitespace-nowrap text-muted-foreground"
                               >
-                                {i.stage_gate_id
-                                  ? sumLaneAllocatedHours(allocations, {
-                                      projectId: i.project_id,
-                                      streamId: i.stream_id,
-                                      stageGateId: i.stage_gate_id,
-                                    }).toFixed(1)
-                                  : "—"}
+                                {sumLaneAllocatedHours(allocations, {
+                                  projectId: i.project_id,
+                                  streamId: i.stream_id,
+                                  stageGateId: i.stage_gate_id,
+                                }).toFixed(1)}
                               </td>
                             );
                           case "estimate_hours":

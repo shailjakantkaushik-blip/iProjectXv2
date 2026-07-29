@@ -110,8 +110,48 @@ export function hoursFromAllocation(a: AllocationPlanRow, capacityHoursWeek = 40
 }
 
 /**
+ * Whether an allocation row applies to a work-item / analytics lane.
+ *
+ * Hierarchical: a blank stream/gate on the allocation is a wider pool that
+ * rolls into more specific work items. A blank stream/gate on the work item
+ * only matches equally blank allocations (avoids double-counting stream rows
+ * into a project-only view).
+ */
+export function allocationMatchesLane(
+  a: Pick<AllocationPlanRow, "project_id" | "stream_id" | "stage_gate_id" | "period_month">,
+  opts: {
+    projectId: string;
+    streamId?: string | null;
+    stageGateId?: string | null;
+    periodMonth?: string | null;
+  },
+): boolean {
+  if (a.project_id !== opts.projectId) return false;
+  const aStream = a.stream_id || null;
+  const wantStream = opts.streamId || null;
+  if (wantStream) {
+    if (aStream && aStream !== wantStream) return false;
+  } else if (aStream) {
+    return false;
+  }
+  const aGate = a.stage_gate_id || null;
+  const wantGate = opts.stageGateId || null;
+  if (wantGate) {
+    // Stream/project-level allocations (no gate) still feed gated work items.
+    if (aGate && aGate !== wantGate) return false;
+  } else if (aGate) {
+    return false;
+  }
+  const month = opts.periodMonth ? normMonth(opts.periodMonth) : null;
+  if (month && normMonth(a.period_month) !== month) return false;
+  return true;
+}
+
+/**
  * Sum planned resource-allocation hours for a project / stream / stage-gate lane.
  * When `periodMonth` is set (YYYY-MM-01), only that month is included.
+ * Updates to Resource Allocations (Hours / Allocation %) flow here — not into
+ * work_items.estimate_hours (that stays demand).
  */
 export function sumLaneAllocatedHours(
   plans: AllocationPlanRow[],
@@ -122,18 +162,8 @@ export function sumLaneAllocatedHours(
     periodMonth?: string | null;
   },
 ): number {
-  const month = opts.periodMonth ? normMonth(opts.periodMonth) : null;
   return plans.reduce((sum, a) => {
-    if (a.project_id !== opts.projectId) return sum;
-    const aStream = a.stream_id || null;
-    const wantStream = opts.streamId || null;
-    if (wantStream && aStream !== wantStream) return sum;
-    if (!wantStream && aStream) return sum;
-    const aGate = a.stage_gate_id || null;
-    const wantGate = opts.stageGateId || null;
-    if (wantGate && aGate !== wantGate) return sum;
-    if (!wantGate && aGate) return sum;
-    if (month && normMonth(a.period_month) !== month) return sum;
+    if (!allocationMatchesLane(a, opts)) return sum;
     return sum + hoursFromAllocation(a);
   }, 0);
 }
