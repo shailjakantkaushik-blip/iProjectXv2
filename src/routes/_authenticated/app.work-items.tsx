@@ -13,6 +13,7 @@ import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-tabl
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
 import { memberLabel, type OrgMember } from "@/lib/decision-approval";
+import { MemberMultiSelect } from "@/components/member-multi-select";
 
 export const Route = createFileRoute("/_authenticated/app/work-items")({
   component: WorkItemsPage,
@@ -406,23 +407,15 @@ function WorkItemsPage() {
             />
             Assign to me
           </label>
-          <select
-            className="st-input md:col-span-2"
-            multiple
-            size={Math.min(4, Math.max(2, members.length || 2))}
-            value={form.assignee_ids}
-            onChange={(e) => {
-              const selected = Array.from(e.target.selectedOptions).map((o) => o.value);
-              setForm((f) => ({ ...f, assignee_ids: selected }));
-            }}
-            title="Hold Ctrl/Cmd to select multiple team members"
-          >
-            {members.map((m) => (
-              <option key={m.id} value={m.id}>
-                {memberLabel(m)}
-              </option>
-            ))}
-          </select>
+          <div className="md:col-span-2">
+            <div className="mb-1 text-[11px] font-medium text-muted-foreground">Team members</div>
+            <MemberMultiSelect
+              members={members}
+              value={form.assignee_ids}
+              onChange={(ids) => setForm((f) => ({ ...f, assignee_ids: ids }))}
+              placeholder="Search and select team…"
+            />
+          </div>
           <input
             className="st-input"
             type="date"
@@ -549,24 +542,15 @@ function WorkItemsPage() {
                         />
                       </td>
                       <td className="text-xs">{i.owner || "—"}</td>
-                      <td>
-                        <select
-                          className="st-input !py-0.5 !text-xs min-w-[9rem]"
-                          multiple
-                          size={2}
+                      <td className="min-w-[14rem]">
+                        <MemberMultiSelect
+                          members={members}
                           value={assigneesByWorkItem.get(i.id) || []}
-                          onChange={(e) => {
-                            const selected = Array.from(e.target.selectedOptions).map((o) => o.value);
-                            setAssignees.mutate({ workItemId: i.id, userIds: selected });
-                          }}
-                          title="Team members (Ctrl/Cmd+click)"
-                        >
-                          {members.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {memberLabel(m)}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={(ids) =>
+                            setAssignees.mutate({ workItemId: i.id, userIds: ids })
+                          }
+                          placeholder="Assign team…"
+                        />
                       </td>
                       <td className="text-xs whitespace-nowrap">{i.planned_end || "—"}</td>
                       <td>

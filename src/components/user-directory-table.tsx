@@ -19,19 +19,12 @@ export type DirectoryUser = {
   roles: string[];
 };
 
-const ROLE_OPTIONS = [
-  { value: "org_admin", label: "Org Admin" },
-  { value: "admin", label: "Admin" },
-  { value: "bu_lead", label: "BU Lead" },
-  { value: "pm", label: "PM" },
-  { value: "executive", label: "Executive" },
-] as const;
-
 export function UserDirectoryTable({
   users,
   orgId,
   currentUserId,
   busyId,
+  roleOptions,
   onToggleActive,
   onDelete,
   onAssignRole,
@@ -41,6 +34,8 @@ export function UserDirectoryTable({
   orgId: string;
   currentUserId?: string | null;
   busyId?: string | null;
+  /** Dynamic org roles (falls back to built-in list). */
+  roleOptions?: { value: string; label: string }[];
   onToggleActive: (user: DirectoryUser, next: boolean) => void;
   /** Only platform admins should pass this (org admins can deactivate only). */
   onDelete?: (user: DirectoryUser) => void;
@@ -48,6 +43,16 @@ export function UserDirectoryTable({
   onRemoveRole: (user: DirectoryUser, role: string) => void;
 }) {
   const [addRoleFor, setAddRoleFor] = useState<Record<string, string>>({});
+  const ROLE_OPTIONS =
+    roleOptions && roleOptions.length > 0
+      ? roleOptions
+      : ([
+          { value: "org_admin", label: "Org Admin" },
+          { value: "admin", label: "Admin" },
+          { value: "bu_lead", label: "BU Lead" },
+          { value: "pm", label: "PM" },
+          { value: "executive", label: "Executive" },
+        ] as { value: string; label: string }[]);
 
   if (users.length === 0) {
     return <p className="py-4 text-sm text-muted-foreground">No users in this organisation yet.</p>;

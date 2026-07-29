@@ -16,7 +16,14 @@ import {
   writeCachedAuthChrome,
 } from "@/lib/auth-chrome-cache";
 
-export type AppRole = "admin" | "org_admin" | "bu_lead" | "pm" | "executive" | "platform_admin";
+export type AppRole =
+  | "admin"
+  | "org_admin"
+  | "bu_lead"
+  | "pm"
+  | "executive"
+  | "platform_admin"
+  | (string & {});
 
 export interface Profile {
   id: string;

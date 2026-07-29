@@ -53,8 +53,10 @@ type Timesheet = {
 type Entry = {
   id: string;
   timesheet_id: string;
-  project_id: string;
-  work_item_id: string;
+  project_id: string | null;
+  work_item_id: string | null;
+  billable: boolean;
+  custom_task: string | null;
   hours_mon: number;
   hours_tue: number;
   hours_wed: number;
@@ -63,6 +65,7 @@ type Entry = {
   hours_sat: number;
   hours_sun: number;
   notes: string | null;
+  labor_cost?: number | null;
 };
 
 type Approval = {
@@ -91,6 +94,7 @@ type ResourceRow = {
   email: string | null;
   user_id: string | null;
   manager_user_id: string | null;
+  cost_rate: number | null;
   status: string | null;
 };
 
@@ -113,16 +117,26 @@ function TimesheetsPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const qc = useQueryClient();
-  const isAdmin = roles.some((r) => r === "admin" || r === "org_admin");
+  // Resource setup (link user + manager + hourly cost) — org admins only
+  const canManageSetup = roles.some((r) => r === "admin" || r === "org_admin");
 
-  const [tab, setTab] = useState<"mine" | "approvals" | "setup">(search.tab || "mine");
+  const initialTab =
+    search.tab === "setup" && !canManageSetup ? "mine" : search.tab || "mine";
+  const [tab, setTab] = useState<"mine" | "approvals" | "setup">(initialTab);
   const [weekStart, setWeekStart] = useState(() => weekStartMonday());
+  const [customTaskDraft, setCustomTaskDraft] = useState("");
 
   useEffect(() => {
+    if (search.tab === "setup" && !canManageSetup) {
+      setTab("mine");
+      navigate({ search: {}, replace: true });
+      return;
+    }
     if (search.tab) setTab(search.tab);
-  }, [search.tab]);
+  }, [search.tab, canManageSetup, navigate]);
 
   const setTabNav = (t: "mine" | "approvals" | "setup") => {
+    if (t === "setup" && !canManageSetup) return;
     setTab(t);
     navigate({ search: { tab: t === "mine" ? undefined : t } });
   };
@@ -152,7 +166,7 @@ function TimesheetsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("resources")
-        .select("id,name,email,user_id,manager_user_id,status")
+        .select("id,name,email,user_id,manager_user_id,cost_rate,status")
         .order("name");
       if (error) throw error;
       return (data ?? []) as unknown as ResourceRow[];
@@ -284,17 +298,28 @@ function TimesheetsPage() {
 
   const editable = canEditTimesheet(sheet?.status);
 
-  /** Draft row state merged with placeholders for assigned work items. */
-  const [draftRows, setDraftRows] = useState<
-    Record<string, Record<DayKey, number> & { notes: string }>
-  >({});
+  type DraftRow = Record<DayKey, number> & {
+    notes: string;
+    billable: boolean;
+    work_item_id: string | null;
+    project_id: string | null;
+    custom_task: string;
+  };
+
+  /** Draft rows: billable placeholders from assignments + non-billable custom tasks. */
+  const [draftRows, setDraftRows] = useState<Record<string, DraftRow>>({});
 
   useEffect(() => {
-    const next: Record<string, Record<DayKey, number> & { notes: string }> = {};
+    const next: Record<string, DraftRow> = {};
     for (const wi of assignedWorkItems) {
-      const existing = entries.find((e) => e.work_item_id === wi.id);
-      next[wi.id] = {
+      const existing = entries.find((e) => e.billable !== false && e.work_item_id === wi.id);
+      next[`b:${wi.id}`] = {
         ...emptyHours(),
+        billable: true,
+        work_item_id: wi.id,
+        project_id: wi.project_id,
+        custom_task: "",
+        notes: "",
         ...(existing
           ? {
               hours_mon: Number(existing.hours_mon) || 0,
@@ -306,13 +331,34 @@ function TimesheetsPage() {
               hours_sun: Number(existing.hours_sun) || 0,
               notes: existing.notes || "",
             }
-          : { notes: "" }),
+          : {}),
       };
     }
-    // Keep any saved entries that are no longer assigned (still show)
     for (const e of entries) {
-      if (!next[e.work_item_id]) {
-        next[e.work_item_id] = {
+      if (e.billable === false) {
+        const key = `nb:${e.id}`;
+        next[key] = {
+          ...emptyHours(),
+          billable: false,
+          work_item_id: null,
+          project_id: e.project_id,
+          custom_task: e.custom_task || "",
+          hours_mon: Number(e.hours_mon) || 0,
+          hours_tue: Number(e.hours_tue) || 0,
+          hours_wed: Number(e.hours_wed) || 0,
+          hours_thu: Number(e.hours_thu) || 0,
+          hours_fri: Number(e.hours_fri) || 0,
+          hours_sat: Number(e.hours_sat) || 0,
+          hours_sun: Number(e.hours_sun) || 0,
+          notes: e.notes || "",
+        };
+      } else if (e.work_item_id && !next[`b:${e.work_item_id}`]) {
+        next[`b:${e.work_item_id}`] = {
+          ...emptyHours(),
+          billable: true,
+          work_item_id: e.work_item_id,
+          project_id: e.project_id,
+          custom_task: "",
           hours_mon: Number(e.hours_mon) || 0,
           hours_tue: Number(e.hours_tue) || 0,
           hours_wed: Number(e.hours_wed) || 0,
@@ -326,6 +372,53 @@ function TimesheetsPage() {
     }
     setDraftRows(next);
   }, [assignedWorkItems, entries, weekStart, sheet?.id]);
+
+  const buildEntryPayload = (orgId: string, sheetId: string) => {
+    const rows: Record<string, unknown>[] = [];
+    for (const row of Object.values(draftRows)) {
+      const total = entryWeekTotal(row);
+      if (row.billable) {
+        if (!row.work_item_id || !row.project_id) continue;
+        if (total <= 0 && !row.notes) continue;
+        rows.push({
+          org_id: orgId,
+          timesheet_id: sheetId,
+          billable: true,
+          project_id: row.project_id,
+          work_item_id: row.work_item_id,
+          custom_task: null,
+          hours_mon: row.hours_mon || 0,
+          hours_tue: row.hours_tue || 0,
+          hours_wed: row.hours_wed || 0,
+          hours_thu: row.hours_thu || 0,
+          hours_fri: row.hours_fri || 0,
+          hours_sat: row.hours_sat || 0,
+          hours_sun: row.hours_sun || 0,
+          notes: row.notes || null,
+        });
+      } else {
+        const task = (row.custom_task || "").trim();
+        if (!task) continue;
+        rows.push({
+          org_id: orgId,
+          timesheet_id: sheetId,
+          billable: false,
+          project_id: null,
+          work_item_id: null,
+          custom_task: task,
+          hours_mon: row.hours_mon || 0,
+          hours_tue: row.hours_tue || 0,
+          hours_wed: row.hours_wed || 0,
+          hours_thu: row.hours_thu || 0,
+          hours_fri: row.hours_fri || 0,
+          hours_sat: row.hours_sat || 0,
+          hours_sun: row.hours_sun || 0,
+          notes: row.notes || null,
+        });
+      }
+    }
+    return rows;
+  };
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["timesheets"] });
@@ -364,24 +457,8 @@ function TimesheetsPage() {
         );
       }
       const sheetId = await ensureSheet();
-      const rows = Object.entries(draftRows).map(([workItemId, hours]) => {
-        const wi = workById.get(workItemId) || assignedWorkItems.find((w) => w.id === workItemId);
-        if (!wi) throw new Error("Unknown work item");
-        return {
-          org_id: orgId,
-          timesheet_id: sheetId,
-          project_id: wi.project_id,
-          work_item_id: workItemId,
-          hours_mon: hours.hours_mon || 0,
-          hours_tue: hours.hours_tue || 0,
-          hours_wed: hours.hours_wed || 0,
-          hours_thu: hours.hours_thu || 0,
-          hours_fri: hours.hours_fri || 0,
-          hours_sat: hours.hours_sat || 0,
-          hours_sun: hours.hours_sun || 0,
-          notes: hours.notes || null,
-        };
-      });
+      const rows = buildEntryPayload(orgId, sheetId);
+      if (!rows.length) throw new Error("Add hours on a billable work item or a non-billable task");
       // Upsert by deleting and re-inserting draft rows for this sheet
       const { error: delErr } = await supabase
         .from("timesheet_entries" as any)
@@ -413,25 +490,8 @@ function TimesheetsPage() {
         throw new Error("Resource Manager must be configured before submit.");
       }
       const sheetId = await ensureSheet();
-      const rows = Object.entries(draftRows).map(([workItemId, hours]) => {
-        const wi = workById.get(workItemId) || assignedWorkItems.find((w) => w.id === workItemId);
-        if (!wi) throw new Error("Unknown work item");
-        return {
-          org_id: orgId,
-          timesheet_id: sheetId,
-          project_id: wi.project_id,
-          work_item_id: workItemId,
-          hours_mon: hours.hours_mon || 0,
-          hours_tue: hours.hours_tue || 0,
-          hours_wed: hours.hours_wed || 0,
-          hours_thu: hours.hours_thu || 0,
-          hours_fri: hours.hours_fri || 0,
-          hours_sat: hours.hours_sat || 0,
-          hours_sun: hours.hours_sun || 0,
-          notes: hours.notes || null,
-        };
-      });
-      if (!rows.length) throw new Error("Add hours on at least one assigned work item");
+      const rows = buildEntryPayload(orgId, sheetId);
+      if (!rows.length) throw new Error("Add hours on a billable work item or a non-billable task");
       const { error: delErr } = await supabase
         .from("timesheet_entries" as any)
         .delete()
@@ -483,14 +543,16 @@ function TimesheetsPage() {
       id,
       user_id,
       manager_user_id,
+      cost_rate,
     }: {
       id: string;
       user_id: string | null;
       manager_user_id: string | null;
+      cost_rate: number | null;
     }) => {
       const { error } = await supabase
         .from("resources")
-        .update({ user_id, manager_user_id } as never)
+        .update({ user_id, manager_user_id, cost_rate } as never)
         .eq("id", id);
       if (error) throw error;
     },
@@ -526,7 +588,7 @@ function TimesheetsPage() {
               [
                 ["mine", "My timesheet"],
                 ["approvals", `Approvals${pendingForMe.length ? ` (${pendingForMe.length})` : ""}`],
-                ...(isAdmin ? ([["setup", "Resource setup"]] as const) : []),
+                ...(canManageSetup ? ([["setup", "Resource setup"]] as const) : []),
               ] as const
             ).map(([key, label]) => (
               <button
@@ -584,7 +646,7 @@ function TimesheetsPage() {
             {!myResource && (
               <p className="mt-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
                 Your login is not linked to a resource. Ask an org admin to open{" "}
-                {isAdmin ? (
+                {canManageSetup ? (
                   <button
                     type="button"
                     className="underline font-semibold"
@@ -643,21 +705,21 @@ function TimesheetsPage() {
           </SectionFrame>
 
           <SectionFrame>
-            <SectionTitle>Hours by work item</SectionTitle>
+            <SectionTitle>Hours — billable &amp; non-billable</SectionTitle>
             {sheetLoading || resourcesLoading ? (
               <PageLoading label="Loading timesheet…" fullScreen={false} />
-            ) : assignedWorkItems.length === 0 && Object.keys(draftRows).length === 0 ? (
+            ) : Object.keys(draftRows).length === 0 ? (
               <div className="py-8 text-center text-sm text-muted-foreground">
-                No assigned work items. Ask a PM to assign you on Work Items — those rows appear here as
-                placeholders.
+                No assigned work items yet. Ask a PM to assign you on Work Items for billable
+                placeholders, or add a non-billable task below.
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="st-table text-xs">
                   <thead>
                     <tr>
-                      <th>Project</th>
-                      <th>Work item</th>
+                      <th>Type</th>
+                      <th>Project / task</th>
                       {DAY_LABELS.map((d) => (
                         <th key={d} className="w-14 text-center">
                           {d}
@@ -667,23 +729,48 @@ function TimesheetsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {Object.keys(draftRows).map((wiId) => {
-                      const wi = workById.get(wiId);
-                      const proj = wi ? projectById.get(wi.project_id) : null;
-                      const row = draftRows[wiId];
+                    {Object.entries(draftRows).map(([rowKey, row]) => {
+                      const wi = row.work_item_id ? workById.get(row.work_item_id) : null;
+                      const proj = row.project_id ? projectById.get(row.project_id) : null;
                       return (
-                        <tr key={wiId}>
-                          <td className="whitespace-nowrap font-medium">
-                            {(proj as any)?.project_code || "—"}
+                        <tr key={rowKey}>
+                          <td className="whitespace-nowrap">
+                            <span
+                              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                                row.billable
+                                  ? "bg-sky-100 text-sky-800"
+                                  : "bg-slate-100 text-slate-700"
+                              }`}
+                            >
+                              {row.billable ? "Billable" : "Non-billable"}
+                            </span>
                           </td>
                           <td className="min-w-[14rem]">
-                            <div className="font-medium text-foreground">
-                              {wi?.wbs_code ? `${wi.wbs_code} · ` : ""}
-                              {wi?.title || wiId.slice(0, 8)}
-                            </div>
-                            {wi?.status ? (
-                              <div className="text-[10px] text-muted-foreground">{wi.status}</div>
-                            ) : null}
+                            {row.billable ? (
+                              <>
+                                <div className="font-medium">
+                                  {(proj as any)?.project_code || "—"} ·{" "}
+                                  {wi?.wbs_code ? `${wi.wbs_code} · ` : ""}
+                                  {wi?.title || row.work_item_id?.slice(0, 8)}
+                                </div>
+                                {wi?.status ? (
+                                  <div className="text-[10px] text-muted-foreground">{wi.status}</div>
+                                ) : null}
+                              </>
+                            ) : (
+                              <input
+                                className="st-input !py-0.5 !text-xs w-full"
+                                disabled={!editable}
+                                placeholder="Custom task (e.g. Training, Admin)"
+                                value={row.custom_task}
+                                onChange={(e) =>
+                                  setDraftRows((prev) => ({
+                                    ...prev,
+                                    [rowKey]: { ...prev[rowKey], custom_task: e.target.value },
+                                  }))
+                                }
+                              />
+                            )}
                           </td>
                           {DAY_KEYS.map((dk) => (
                             <td key={dk}>
@@ -699,7 +786,10 @@ function TimesheetsPage() {
                                   const v = e.target.value === "" ? 0 : Number(e.target.value);
                                   setDraftRows((prev) => ({
                                     ...prev,
-                                    [wiId]: { ...prev[wiId], [dk]: Number.isFinite(v) ? v : 0 },
+                                    [rowKey]: {
+                                      ...prev[rowKey],
+                                      [dk]: Number.isFinite(v) ? v : 0,
+                                    },
                                   }));
                                 }}
                               />
@@ -728,6 +818,46 @@ function TimesheetsPage() {
             )}
 
             {editable && (
+              <div className="mt-3 flex flex-wrap items-end gap-2">
+                <div className="min-w-[14rem] flex-1">
+                  <div className="mb-1 text-[11px] text-muted-foreground">Add non-billable task</div>
+                  <input
+                    className="st-input !text-xs"
+                    placeholder="e.g. Internal training"
+                    value={customTaskDraft}
+                    onChange={(e) => setCustomTaskDraft(e.target.value)}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="st-btn-secondary"
+                  onClick={() => {
+                    const task = customTaskDraft.trim();
+                    if (!task) {
+                      toast.error("Enter a task name");
+                      return;
+                    }
+                    const key = `nb:new:${Date.now()}`;
+                    setDraftRows((prev) => ({
+                      ...prev,
+                      [key]: {
+                        ...emptyHours(),
+                        billable: false,
+                        work_item_id: null,
+                        project_id: null,
+                        custom_task: task,
+                        notes: "",
+                      },
+                    }));
+                    setCustomTaskDraft("");
+                  }}
+                >
+                  Add task
+                </button>
+              </div>
+            )}
+
+            {editable && (
               <div className="mt-4 flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -746,8 +876,10 @@ function TimesheetsPage() {
                   {submit.isPending ? "Submitting…" : "Submit for approval"}
                 </button>
                 <p className="w-full text-[11px] text-muted-foreground">
-                  Sequence: (1) each Project Manager for projects on this sheet, then (2) your Resource
-                  Manager.
+                  Billable rows need Project Manager approval first, then Resource Manager.
+                  Non-billable-only sheets go straight to Resource Manager. Hourly cost on your
+                  resource profile rolls approved billable hours into stream → project → portfolio
+                  OpEx.
                 </p>
               </div>
             )}
@@ -823,8 +955,7 @@ function TimesheetsPage() {
                       <table className="st-table text-xs">
                         <thead>
                           <tr>
-                            <th>Project</th>
-                            <th>Work item</th>
+                            <th>Project / task</th>
                             {DAY_LABELS.map((d) => (
                               <th key={d} className="text-center">
                                 {d}
@@ -835,12 +966,15 @@ function TimesheetsPage() {
                         </thead>
                         <tbody>
                           {lines.map((e) => {
-                            const wi = workById.get(e.work_item_id);
-                            const proj = projectById.get(e.project_id);
+                            const wi = e.work_item_id ? workById.get(e.work_item_id) : null;
+                            const proj = e.project_id ? projectById.get(e.project_id) : null;
                             return (
                               <tr key={e.id}>
-                                <td>{(proj as any)?.project_code || "—"}</td>
-                                <td>{wi?.title || e.work_item_id.slice(0, 8)}</td>
+                                <td colSpan={2}>
+                                  {e.billable === false
+                                    ? `Non-billable · ${e.custom_task || "Task"}`
+                                    : `${(proj as any)?.project_code || "—"} · ${wi?.title || (e.work_item_id || "").slice(0, 8)}`}
+                                </td>
                                 {DAY_KEYS.map((dk) => (
                                   <td key={dk} className="text-center tabular-nums">
                                     {Number(e[dk]) || "·"}
@@ -863,12 +997,12 @@ function TimesheetsPage() {
         </SectionFrame>
       )}
 
-      {tab === "setup" && isAdmin && (
+      {tab === "setup" && canManageSetup && (
         <SectionFrame>
-          <SectionTitle>Resource → user &amp; manager</SectionTitle>
+          <SectionTitle>Resource setup (org admin)</SectionTitle>
           <p className="mb-3 text-sm text-muted-foreground">
-            Every resource who fills timesheets needs a linked login and a nominated Resource Manager.
-            Project Managers come from each project&apos;s PM field and approve first.
+            Link each resource to a login, nominate a Resource Manager, and set the hourly cost rate.
+            Approved billable timesheet hours × rate flow into monthly OpEx → project → portfolio.
           </p>
           {resourcesLoading ? (
             <PageLoading label="Loading resources…" fullScreen={false} />
@@ -880,6 +1014,7 @@ function TimesheetsPage() {
                     <th>Resource</th>
                     <th>Linked user</th>
                     <th>Resource Manager</th>
+                    <th>Hourly cost</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -890,8 +1025,8 @@ function TimesheetsPage() {
                       resource={r}
                       members={members}
                       saving={patchResource.isPending}
-                      onSave={(user_id, manager_user_id) =>
-                        patchResource.mutate({ id: r.id, user_id, manager_user_id })
+                      onSave={(user_id, manager_user_id, cost_rate) =>
+                        patchResource.mutate({ id: r.id, user_id, manager_user_id, cost_rate })
                       }
                     />
                   ))}
@@ -914,19 +1049,25 @@ function ResourceSetupRow({
   resource: ResourceRow;
   members: OrgMember[];
   saving: boolean;
-  onSave: (userId: string | null, managerId: string | null) => void;
+  onSave: (userId: string | null, managerId: string | null, costRate: number | null) => void;
 }) {
   const [userId, setUserId] = useState(resource.user_id || "");
   const [managerId, setManagerId] = useState(resource.manager_user_id || "");
+  const [costRate, setCostRate] = useState(
+    resource.cost_rate != null ? String(resource.cost_rate) : "",
+  );
 
   useEffect(() => {
     setUserId(resource.user_id || "");
     setManagerId(resource.manager_user_id || "");
-  }, [resource.user_id, resource.manager_user_id]);
+    setCostRate(resource.cost_rate != null ? String(resource.cost_rate) : "");
+  }, [resource.user_id, resource.manager_user_id, resource.cost_rate]);
 
+  const nextRate = costRate === "" ? null : Number(costRate);
   const dirty =
     (userId || null) !== (resource.user_id || null) ||
-    (managerId || null) !== (resource.manager_user_id || null);
+    (managerId || null) !== (resource.manager_user_id || null) ||
+    (nextRate ?? null) !== (resource.cost_rate ?? null);
 
   return (
     <tr>
@@ -963,11 +1104,24 @@ function ResourceSetupRow({
         </select>
       </td>
       <td>
+        <input
+          type="number"
+          min={0}
+          step={0.01}
+          className="st-input !w-24 !py-0.5 !text-xs"
+          placeholder="0.00"
+          value={costRate}
+          onChange={(e) => setCostRate(e.target.value)}
+        />
+      </td>
+      <td>
         <button
           type="button"
           className="st-btn-primary !py-1 !text-xs"
-          disabled={!dirty || saving}
-          onClick={() => onSave(userId || null, managerId || null)}
+          disabled={!dirty || saving || (nextRate != null && !Number.isFinite(nextRate))}
+          onClick={() =>
+            onSave(userId || null, managerId || null, nextRate != null && Number.isFinite(nextRate) ? nextRate : null)
+          }
         >
           Save
         </button>

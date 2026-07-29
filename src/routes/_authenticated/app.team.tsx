@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth, isAdmin } from "@/lib/auth-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import {
 } from "@/lib/user-admin.functions";
 import { UserDirectoryTable, randomPassword } from "@/components/user-directory-table";
 import { PageLoading } from "@/components/page-loading";
+import { assignableOrgRoles, useOrgRoles } from "@/lib/org-roles";
 
 export const Route = createFileRoute("/_authenticated/app/team")({
   component: Team,
@@ -51,11 +52,27 @@ function Team() {
     enabled: !!organization && admin,
   });
 
+  const rolesQ = useOrgRoles(organization?.id);
+  const roleOptions = useMemo(
+    () =>
+      assignableOrgRoles(rolesQ.data ?? []).map((r) => ({
+        value: r.role_key,
+        label: r.label,
+      })),
+    [rolesQ.data],
+  );
+
   const [busyId, setBusyId] = useState<string | null>(null);
   const [uEmail, setUEmail] = useState("");
   const [uName, setUName] = useState("");
   const [uRole, setURole] = useState("pm");
   const [uPwd, setUPwd] = useState(randomPassword());
+
+  useEffect(() => {
+    if (roleOptions.length && !roleOptions.some((r) => r.value === uRole)) {
+      setURole(roleOptions.find((r) => r.value === "pm")?.value || roleOptions[0].value);
+    }
+  }, [roleOptions, uRole]);
 
   const addUser = useMutation({
     mutationFn: async () =>
@@ -125,11 +142,20 @@ function Team() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="org_admin">Org Admin</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
-                <SelectItem value="bu_lead">BU Lead</SelectItem>
-                <SelectItem value="pm">Project Manager</SelectItem>
-                <SelectItem value="executive">Executive</SelectItem>
+                {(roleOptions.length
+                  ? roleOptions
+                  : [
+                      { value: "org_admin", label: "Org Admin" },
+                      { value: "admin", label: "Admin" },
+                      { value: "bu_lead", label: "BU Lead" },
+                      { value: "pm", label: "Project Manager" },
+                      { value: "executive", label: "Executive" },
+                    ]
+                ).map((r) => (
+                  <SelectItem key={r.value} value={r.value}>
+                    {r.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -173,6 +199,7 @@ function Team() {
               orgId={orgId}
               currentUserId={user?.id}
               busyId={busyId}
+              roleOptions={roleOptions}
               onToggleActive={(u, next) =>
                 void runUserAction(
                   u.id,

@@ -2,7 +2,12 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
-const AssignableRole = z.enum(["admin", "org_admin", "bu_lead", "pm", "executive"]);
+const AssignableRole = z
+  .string()
+  .min(2)
+  .max(64)
+  .regex(/^[a-z][a-z0-9_]*$/, "Invalid role key")
+  .refine((r) => r !== "platform_admin", "Cannot assign platform_admin here");
 
 type DirUser = {
   id: string;
@@ -228,7 +233,7 @@ async function provisionUser(
   if (!existingRole) {
     const { error: rErr } = await supabaseAdmin
       .from("user_roles")
-      .insert({ user_id: userId, org_id: data.org_id, role: data.role });
+      .insert({ user_id: userId, org_id: data.org_id, role: data.role as any });
     if (rErr && !/duplicate|unique/i.test(rErr.message)) throw new Error(rErr.message);
   }
 
@@ -400,20 +405,32 @@ export const adminAssignUserRole = createServerFn({ method: "POST" })
     await assertCanManageUser(context.supabase, supabaseAdmin, context.userId, data.user_id);
     await assertOrgAdminForOrg(context.supabase, context.userId, data.org_id);
 
+    // Role must exist in org catalog (or be a legacy system key)
+    const { data: catalog } = await supabaseAdmin
+      .from("org_roles" as any)
+      .select("role_key")
+      .eq("org_id", data.org_id)
+      .eq("role_key", data.role)
+      .maybeSingle();
+    const legacy = ["admin", "org_admin", "bu_lead", "pm", "executive"].includes(data.role);
+    if (!catalog && !legacy) {
+      throw new Error(`Unknown role “${data.role}” for this organisation`);
+    }
+
     const { data: existing } = await supabaseAdmin
       .from("user_roles")
       .select("id")
       .eq("user_id", data.user_id)
       .eq("org_id", data.org_id)
-      .eq("role", data.role)
+      .eq("role", data.role as any)
       .is("bu_id", null)
       .maybeSingle();
     if (existing) return { ok: true };
 
     const { error } = await supabaseAdmin
       .from("user_roles")
-      .insert({ user_id: data.user_id, org_id: data.org_id, role: data.role });
-    if (error) throw new Error(error.message);
+      .insert({ user_id: data.user_id, org_id: data.org_id, role: data.role as any });
+    if (error) throw error.message ? new Error(error.message) : error;
 
     const { writeSecurityEvent } = await import("@/lib/security-audit");
     await writeSecurityEvent({
@@ -451,7 +468,7 @@ export const adminRemoveUserRole = createServerFn({ method: "POST" })
       .delete()
       .eq("user_id", data.user_id)
       .eq("org_id", data.org_id)
-      .eq("role", data.role);
+      .eq("role", data.role as any);
     if (error) throw new Error(error.message);
 
     const { writeSecurityEvent } = await import("@/lib/security-audit");
