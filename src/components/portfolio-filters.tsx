@@ -21,16 +21,35 @@ export const emptyFilters: PortfolioFilterState = {
   projectIds: [],
 };
 
-export function applyFilters<T extends Record<string, any>>(rows: T[], f: PortfolioFilterState): T[] {
+export type ApplyFiltersOptions = {
+  /**
+   * `current` (default): phase matches `projects.current_phase`.
+   * `ignore`: leave phase filtering to the page (e.g. stage-gate spend windows).
+   */
+  phaseMode?: "current" | "ignore";
+};
+
+export function applyFilters<T extends Record<string, any>>(
+  rows: T[],
+  f: PortfolioFilterState,
+  opts?: ApplyFiltersOptions,
+): T[] {
   const q = f.search.trim().toLowerCase();
   const idSet = f.projectIds.length ? new Set(f.projectIds) : null;
+  const phaseMode = opts?.phaseMode ?? "current";
   return rows.filter((p) => {
     if (idSet && !idSet.has(p.id)) return false;
     if (f.portfolio !== "All" && (p.portfolio || "Unassigned") !== f.portfolio) return false;
     if (f.program !== "All" && (p.program || "Unassigned") !== f.program) return false;
     if (f.sponsor !== "All" && (p.sponsor || "—") !== f.sponsor) return false;
     if (f.rag !== "All" && (p.rag || "Green") !== f.rag) return false;
-    if (f.phase !== "All" && (p.current_phase || "—") !== f.phase) return false;
+    if (
+      phaseMode === "current" &&
+      f.phase !== "All" &&
+      (p.current_phase || "—") !== f.phase
+    ) {
+      return false;
+    }
     if (
       q &&
       !(`${p.name ?? ""} ${p.project_code ?? ""} ${p.portfolio ?? ""} ${p.program ?? ""} ${p.sponsor ?? ""}`)
@@ -348,10 +367,15 @@ export function PortfolioFilters({
   projects,
   value,
   onChange,
+  phaseOptions,
+  phaseAllLabel = "All phases",
 }: {
   projects: any[];
   value: PortfolioFilterState;
   onChange: (v: PortfolioFilterState) => void;
+  /** When set, phase dropdown uses these labels (e.g. org stage-gate names). */
+  phaseOptions?: string[];
+  phaseAllLabel?: string;
 }) {
   const portfolios = useMemo(
     () => Array.from(new Set(projects.map((p) => p.portfolio || "Unassigned"))).sort(),
@@ -365,10 +389,12 @@ export function PortfolioFilters({
     () => Array.from(new Set(projects.map((p) => p.sponsor || "—"))).sort(),
     [projects],
   );
-  const phases = useMemo(
-    () => Array.from(new Set(projects.map((p) => p.current_phase || "—"))).sort(),
-    [projects],
-  );
+  const phases = useMemo(() => {
+    if (phaseOptions?.length) {
+      return Array.from(new Set(phaseOptions.filter(Boolean)));
+    }
+    return Array.from(new Set(projects.map((p) => p.current_phase || "—"))).sort();
+  }, [projects, phaseOptions]);
 
   const set = (k: keyof PortfolioFilterState, v: any) => onChange({ ...value, [k]: v });
 
@@ -425,7 +451,7 @@ export function PortfolioFilters({
         <option>Red</option>
       </select>
       <select className={box} value={value.phase} onChange={(e) => set("phase", e.target.value)}>
-        <option value="All">All phases</option>
+        <option value="All">{phaseAllLabel}</option>
         {phases.map((p) => (
           <option key={p} value={p}>
             {p}
