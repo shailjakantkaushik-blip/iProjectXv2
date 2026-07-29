@@ -276,6 +276,7 @@ function FinancialsPage() {
   const variance = totalApproved - totalIncurred;
 
   // Execution layer (monthly) — Plan vs Actual vs Forecast
+  // These sums are totals across all monthly rows in the filter (should ≈ budget / FAC / incurred).
   const monthlyPlanned = sumMonthlyPlanned(mFiltered);
   const monthlyActual = sumMonthlyActual(mFiltered);
   const monthlyForecast = sumMonthlyForecast(mFiltered);
@@ -360,6 +361,12 @@ function FinancialsPage() {
     });
   }, [mFiltered]);
 
+  const monthCount = monthlyAgg.length;
+  const avgMonthlyPlanned = monthCount > 0 ? monthlyPlanned / monthCount : 0;
+  const avgMonthlyActual = monthCount > 0 ? monthlyActual / monthCount : 0;
+  const thisMonthKey = new Date().toISOString().slice(0, 7);
+  const thisMonthRow = monthlyAgg.find((r) => r.month === thisMonthKey) ?? null;
+
   // Top 10 variance (approved funding − incurred)
   const varianceTop = [...filtered]
     .map((p: any) => {
@@ -412,19 +419,57 @@ function FinancialsPage() {
       <SectionFrame>
         <SectionTitle>Plan vs Actual vs Forecast (monthly cashflow)</SectionTitle>
         <p className="mb-3 text-xs text-muted-foreground">
-          Monthly Planned should equal approved funding (budget). Monthly Forecast should equal
-          Forecast at Completion (FAC). Monthly Actual should equal CapEx+OpEx incurred after sync.
+          The Σ totals below sum <em>every</em> month in the filter — so for one project,{" "}
+          <strong>Σ Planned ≈ Total Budget</strong> (e.g. PRJ-013 $3.4M), not the spend in a single
+          month. Per-month planned is shown in the chart and table (typically a few hundred thousand
+          for PRJ-013). Avg / this month KPIs are the true monthly cashflow view.
         </p>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <KpiCard label="Monthly Planned" value={money(monthlyPlanned)} accent="#93c5fd" />
-          <KpiCard label="Monthly Actual" value={money(monthlyActual)} accent="#1d4ed8" />
-          <KpiCard label="Monthly Forecast" value={money(monthlyForecast)} accent="#f59e0b" />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8">
+          <KpiCard
+            label="Σ Planned (all months)"
+            value={money(monthlyPlanned)}
+            sub="Should ≈ Total Budget"
+            accent="#93c5fd"
+          />
+          <KpiCard
+            label="Σ Actual (all months)"
+            value={money(monthlyActual)}
+            sub="Should ≈ Total Incurred"
+            accent="#1d4ed8"
+          />
+          <KpiCard
+            label="Σ Forecast (all months)"
+            value={money(monthlyForecast)}
+            sub={!phaseScoped ? "Should ≈ Register FAC" : undefined}
+            accent="#f59e0b"
+          />
           {!phaseScoped ? (
             <KpiCard label="Register FAC" value={money(registerFac)} accent="#8b5cf6" />
           ) : null}
           <KpiCard
-            label="Plan − Actual"
+            label="Avg monthly planned"
+            value={money(avgMonthlyPlanned)}
+            sub={monthCount ? `${monthCount} months` : "No months"}
+            accent="#64748b"
+          />
+          <KpiCard
+            label="This month planned"
+            value={thisMonthRow ? money(thisMonthRow.planned) : "—"}
+            sub={
+              thisMonthRow
+                ? `${thisMonthKey} · actual ${money(thisMonthRow.actual)}`
+                : thisMonthKey
+            }
+            accent="#0ea5e9"
+          />
+          <KpiCard
+            label="Σ Plan − Σ Actual"
             value={money(planVsActualVar)}
+            sub={
+              monthlyPlanned
+                ? `Actual / Planned ${planVsActualPct.toFixed(1)}% · avg act ${money(avgMonthlyActual)}`
+                : undefined
+            }
             accent={planVsActualVar < 0 ? "#ef4444" : "#22c55e"}
           />
           <KpiCard
@@ -514,27 +559,63 @@ function FinancialsPage() {
             No monthly financial data yet.
           </div>
         ) : (
-          <ExpandableChart
-            title="Monthly Cashflow — Planned vs Actual vs Forecast"
-            heightClass="h-80"
-          >
-            <ComposedChart data={monthlyAgg}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-              <XAxis dataKey="month" fontSize={10} />
-              <YAxis fontSize={11} tickFormatter={money} />
-              <Tooltip formatter={(v: any) => money(Number(v))} />
-              <Legend verticalAlign="top" height={28} wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="planned" fill="#93c5fd" name="Planned" />
-              <Bar dataKey="actual" fill="#1d4ed8" name="Actual" />
-              <Line
-                type="monotone"
-                dataKey="forecast"
-                stroke="#f59e0b"
-                strokeWidth={2}
-                name="Forecast"
-              />
-            </ComposedChart>
-          </ExpandableChart>
+          <>
+            <ExpandableChart
+              title="Monthly Cashflow — Planned vs Actual vs Forecast (per month)"
+              heightClass="h-80"
+            >
+              <ComposedChart data={monthlyAgg}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+                <XAxis dataKey="month" fontSize={10} />
+                <YAxis fontSize={11} tickFormatter={money} />
+                <Tooltip formatter={(v: any) => money(Number(v))} />
+                <Legend verticalAlign="top" height={28} wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="planned" fill="#93c5fd" name="Planned" />
+                <Bar dataKey="actual" fill="#1d4ed8" name="Actual" />
+                <Line
+                  type="monotone"
+                  dataKey="forecast"
+                  stroke="#f59e0b"
+                  strokeWidth={2}
+                  name="Forecast"
+                />
+              </ComposedChart>
+            </ExpandableChart>
+            <div className="mt-3 max-h-64 overflow-auto">
+              <table className="st-table w-full table-fixed text-xs">
+                <thead className="sticky top-0 z-[1] bg-[#f1f3f6]">
+                  <tr>
+                    <th>Month</th>
+                    <th className="st-num">Planned</th>
+                    <th className="st-num">Actual</th>
+                    <th className="st-num">Forecast</th>
+                    <th className="st-num">Cum. planned</th>
+                    <th className="st-num">Cum. actual</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthlyAgg.map((r) => (
+                    <tr
+                      key={r.month}
+                      className={r.month === thisMonthKey ? "bg-sky-50/80" : undefined}
+                    >
+                      <td className="font-medium">
+                        {r.month}
+                        {r.month === thisMonthKey ? (
+                          <span className="ml-1 text-[10px] text-sky-700">(this month)</span>
+                        ) : null}
+                      </td>
+                      <td className="st-num">{money(r.planned)}</td>
+                      <td className="st-num">{money(r.actual)}</td>
+                      <td className="st-num">{money(r.forecast)}</td>
+                      <td className="st-num">{money(r.cumPlanned)}</td>
+                      <td className="st-num">{money(r.cumActual)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </SectionFrame>
 
