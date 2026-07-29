@@ -454,17 +454,14 @@ BEGIN
     -- Resource allocations (Build gate, last 3 months of past window: Jan–Mar 2026 relative… use Oct–Dec 2025)
     -- Oct/Nov/Dec 2025 = months 7–9 of schedule — use months that are "past": Apr–Sep.
     -- Allocate Jul/Aug/Sep 2025 (months 4–6) for clear verification.
-    FOR m IN
-      SELECT d::date AS d FROM (VALUES
-        ('2025-07-01'), ('2025-08-01'), ('2025-09-01')
-      ) AS t(d)
+    FOREACH m IN ARRAY ARRAY[DATE '2025-07-01', DATE '2025-08-01', DATE '2025-09-01']
     LOOP
       INSERT INTO public.resource_allocations (
         org_id, project_id, stream_id, stage_gate_id, resource_id, period_month,
         allocation_percent, allocated_hours, role_on_project
       ) VALUES
-        (r_org.id, p_id, core_id, build_core, rid_alex, m.d, 50, 80, 'Developer'),
-        (r_org.id, p_id, alt_id, build_alt, rid_sam, m.d, 25, 40, 'QA Lead');
+        (r_org.id, p_id, core_id, build_core, rid_alex, m, 50, 80, 'Developer'),
+        (r_org.id, p_id, alt_id, build_alt, rid_sam, m, 25, 40, 'QA Lead');
     END LOOP;
 
     -- Work items (planned hours feed demand + planned FTE $)
