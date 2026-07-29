@@ -578,31 +578,19 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
       </div>
 
       <div className="max-h-[480px] overflow-auto">
-        <table className="st-table w-full table-fixed text-sm">
-          <colgroup>
-            <col className="w-[22%]" />
-            <col className="w-[8%]" />
-            <col className="w-[8%]" />
-            <col className="w-[8%]" />
-            <col className="w-[8%]" />
-            <col className="w-[8%]" />
-            <col className="w-[7%]" />
-            <col className="w-[9%]" />
-            {showCost && <col className="w-[11%]" />}
-            {showCost && <col className="w-[11%]" />}
-          </colgroup>
+        <table className="st-table !w-max min-w-full text-sm">
           <thead className="sticky top-0 z-[1] bg-[#f1f3f6]">
             <tr>
-              <th>Dimension</th>
-              <th className="st-num">Alloc h</th>
-              <th className="st-num">Demand h</th>
-              <th className="st-num">Gap h</th>
-              <th className="st-num">Actual h</th>
-              <th className="st-num">Var h</th>
-              <th className="st-num">Util%</th>
-              <th>Status</th>
-              {showCost && <th className="st-num">Plan FTE $</th>}
-              {showCost && <th className="st-num">Actual FTE $</th>}
+              <th className="min-w-[12rem]">Dimension</th>
+              <th className="st-num whitespace-nowrap">Alloc h</th>
+              <th className="st-num whitespace-nowrap">Demand h</th>
+              <th className="st-num whitespace-nowrap">Gap h</th>
+              <th className="st-num whitespace-nowrap">Actual h</th>
+              <th className="st-num whitespace-nowrap">Var h</th>
+              <th className="st-num whitespace-nowrap">Util%</th>
+              <th className="whitespace-nowrap">Status</th>
+              {showCost && <th className="st-num whitespace-nowrap">Plan FTE $</th>}
+              {showCost && <th className="st-num whitespace-nowrap">Actual FTE $</th>}
             </tr>
           </thead>
           <tbody>
@@ -615,18 +603,22 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
             ) : (
               rows.map((r) => (
                 <tr key={r.key}>
-                  <td className="font-medium">{r.label}</td>
-                  <td className="st-num">{r.planned_hours.toFixed(1)}</td>
-                  <td className="st-num">{r.demand_hours.toFixed(1)}</td>
-                  <td className="st-num">{r.demand_gap_hours.toFixed(1)}</td>
-                  <td className="st-num">{r.actual_hours.toFixed(1)}</td>
-                  <td className="st-num">{r.variance_hours.toFixed(1)}</td>
-                  <td className="st-num">
+                  <td className="font-medium whitespace-nowrap">{r.label}</td>
+                  <td className="st-num whitespace-nowrap">{r.planned_hours.toFixed(1)}</td>
+                  <td className="st-num whitespace-nowrap">{r.demand_hours.toFixed(1)}</td>
+                  <td className="st-num whitespace-nowrap">{r.demand_gap_hours.toFixed(1)}</td>
+                  <td className="st-num whitespace-nowrap">{r.actual_hours.toFixed(1)}</td>
+                  <td className="st-num whitespace-nowrap">{r.variance_hours.toFixed(1)}</td>
+                  <td className="st-num whitespace-nowrap">
                     {r.utilization_pct == null ? "—" : `${r.utilization_pct}%`}
                   </td>
-                  <td className={STATUS_COLOR[r.status]}>{r.status}</td>
-                  {showCost && <td className="st-num">{money(r.planned_labor_cost)}</td>}
-                  {showCost && <td className="st-num">{money(r.labor_cost)}</td>}
+                  <td className={`${STATUS_COLOR[r.status]} whitespace-nowrap`}>{r.status}</td>
+                  {showCost && (
+                    <td className="st-num whitespace-nowrap">{money(r.planned_labor_cost)}</td>
+                  )}
+                  {showCost && (
+                    <td className="st-num whitespace-nowrap">{money(r.labor_cost)}</td>
+                  )}
                 </tr>
               ))
             )}

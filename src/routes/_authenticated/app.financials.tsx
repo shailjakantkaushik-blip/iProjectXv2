@@ -11,6 +11,7 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
+import { ColumnGlossary } from "@/components/column-glossary";
 import {
   PortfolioFilters,
   emptyFilters,
@@ -631,17 +632,17 @@ function FinancialsPage() {
               </ComposedChart>
             </ExpandableChart>
             <div className="mt-3 max-h-64 overflow-auto">
-              <table className="st-table w-full table-fixed text-xs">
+              <table className="st-table !w-max min-w-full text-xs">
                 <thead className="sticky top-0 z-[1] bg-[#f1f3f6]">
                   <tr>
-                    <th>Month</th>
-                    <th className="st-num">Planned</th>
-                    <th className="st-num">Actual</th>
-                    <th className="st-num">Forecast</th>
-                    <th className="st-num">FTE plan</th>
-                    <th className="st-num">FTE actual</th>
-                    <th className="st-num">Cum. planned</th>
-                    <th className="st-num">Cum. actual</th>
+                    <th className="whitespace-nowrap">Month</th>
+                    <th className="st-num whitespace-nowrap">Planned</th>
+                    <th className="st-num whitespace-nowrap">Actual</th>
+                    <th className="st-num whitespace-nowrap">Forecast</th>
+                    <th className="st-num whitespace-nowrap">FTE plan</th>
+                    <th className="st-num whitespace-nowrap">FTE actual</th>
+                    <th className="st-num whitespace-nowrap">Cum. planned</th>
+                    <th className="st-num whitespace-nowrap">Cum. actual</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -650,19 +651,19 @@ function FinancialsPage() {
                       key={r.month}
                       className={r.month === thisMonthKey ? "bg-sky-50/80" : undefined}
                     >
-                      <td className="font-medium">
+                      <td className="font-medium whitespace-nowrap">
                         {r.month}
                         {r.month === thisMonthKey ? (
                           <span className="ml-1 text-[10px] text-sky-700">(this month)</span>
                         ) : null}
                       </td>
-                      <td className="st-num">{money(r.planned)}</td>
-                      <td className="st-num">{money(r.actual)}</td>
-                      <td className="st-num">{money(r.forecast)}</td>
-                      <td className="st-num">{money(r.ftePlan)}</td>
-                      <td className="st-num">{money(r.fteActual)}</td>
-                      <td className="st-num">{money(r.cumPlanned)}</td>
-                      <td className="st-num">{money(r.cumActual)}</td>
+                      <td className="st-num whitespace-nowrap">{money(r.planned)}</td>
+                      <td className="st-num whitespace-nowrap">{money(r.actual)}</td>
+                      <td className="st-num whitespace-nowrap">{money(r.forecast)}</td>
+                      <td className="st-num whitespace-nowrap">{money(r.ftePlan)}</td>
+                      <td className="st-num whitespace-nowrap">{money(r.fteActual)}</td>
+                      <td className="st-num whitespace-nowrap">{money(r.cumPlanned)}</td>
+                      <td className="st-num whitespace-nowrap">{money(r.cumActual)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -740,14 +741,26 @@ function FinancialsPage() {
             </thead>
             <tbody>
               {financeTable.rows.map((p: any) => {
-                const appr = projectApprovedFunding(p);
-                const inc = projectIncurred(p);
-                const ben = projectBenefitsRealised(p);
-                const roi = projectRealisedRoi(p);
-                const vari = appr - inc;
+                const phase = phaseScoped ? phaseTripleByProject.get(p.id) : null;
+                const appr = phaseScoped
+                  ? phase?.planned ?? 0
+                  : projectApprovedFunding(p);
+                const capexAppr = phaseScoped ? 0 : Number(p.capex_approved || 0);
+                const capexIncd = phaseScoped
+                  ? phase?.actual ?? 0
+                  : Number(p.capex_incurred || 0);
+                const opexAppr = phaseScoped ? 0 : Number(p.opex_approved || 0);
+                const opexIncd = phaseScoped
+                  ? phase?.forecast ?? 0
+                  : Number(p.opex_incurred || 0);
+                const ben = phaseScoped ? 0 : projectBenefitsRealised(p);
+                const roi = phaseScoped ? 0 : projectRealisedRoi(p);
+                const vari = phaseScoped
+                  ? (phase?.planned ?? 0) - (phase?.actual ?? 0)
+                  : appr - projectIncurred(p);
                 return (
                   <tr key={p.id}>
-                    <td className="font-mono text-[11px]">
+                    <td className="font-mono text-[11px] whitespace-nowrap">
                       <Link
                         to="/app/project-infographic"
                         search={{ pid: p.id }}
@@ -756,32 +769,26 @@ function FinancialsPage() {
                         {p.project_code}
                       </Link>
                     </td>
-                    <td className="font-medium">{p.name}</td>
-                    <td>{p.program || "—"}</td>
-                    <td className="text-right tabular-nums">{money(appr)}</td>
-                    <td className="text-right tabular-nums">
-                      {money(Number(p.capex_approved || 0))}
-                    </td>
-                    <td className="text-right tabular-nums">
-                      {money(Number(p.capex_incurred || 0))}
-                    </td>
-                    <td className="text-right tabular-nums">
-                      {money(Number(p.opex_approved || 0))}
-                    </td>
-                    <td className="text-right tabular-nums">
-                      {money(Number(p.opex_incurred || 0))}
-                    </td>
-                    <td className="text-right tabular-nums">{money(ben)}</td>
+                    <td className="font-medium min-w-[10rem]">{p.name}</td>
+                    <td className="whitespace-nowrap">{p.program || "—"}</td>
+                    <td className="text-right tabular-nums whitespace-nowrap">{money(appr)}</td>
+                    <td className="text-right tabular-nums whitespace-nowrap">{money(capexAppr)}</td>
+                    <td className="text-right tabular-nums whitespace-nowrap">{money(capexIncd)}</td>
+                    <td className="text-right tabular-nums whitespace-nowrap">{money(opexAppr)}</td>
+                    <td className="text-right tabular-nums whitespace-nowrap">{money(opexIncd)}</td>
+                    <td className="text-right tabular-nums whitespace-nowrap">{money(ben)}</td>
                     <td
                       className={
-                        "text-right tabular-nums " + (vari < 0 ? "text-red-700" : "text-green-700")
+                        "text-right tabular-nums whitespace-nowrap " +
+                        (vari < 0 ? "text-red-700" : "text-green-700")
                       }
                     >
                       {money(vari)}
                     </td>
                     <td
                       className={
-                        "text-right tabular-nums " + (roi >= 0 ? "text-green-700" : "text-red-700")
+                        "text-right tabular-nums whitespace-nowrap " +
+                        (roi >= 0 ? "text-green-700" : "text-red-700")
                       }
                     >
                       {roi.toFixed(1)}%
@@ -803,6 +810,80 @@ function FinancialsPage() {
           </table>
         </div>
       </SectionFrame>
+
+      <ColumnGlossary
+        title="Financials — column reference"
+        items={[
+          {
+            name: "Month",
+            description: "Calendar month key for the cashflow roll-up (highlight marks the current month).",
+          },
+          {
+            name: "Planned",
+            description: "Sum of planned spend for that month across filtered projects/streams.",
+          },
+          {
+            name: "Actual",
+            description: "Sum of actual / incurred spend booked in that month.",
+          },
+          {
+            name: "Forecast",
+            description: "Sum of forecast spend for that month (estimate to complete / remaining outlook).",
+          },
+          {
+            name: "FTE plan",
+            description: "Planned labor $ for the month (from work-item planned hours × rates when synced).",
+          },
+          {
+            name: "FTE actual",
+            description: "Actual labor $ for the month (typically from approved timesheets × rates).",
+          },
+          {
+            name: "Cum. planned / Cum. actual",
+            description: "Running totals of planned and actual cashflow through that month (S-curve).",
+          },
+          {
+            name: "Code",
+            description: "Project code; links to the project infographic.",
+          },
+          {
+            name: "Project / Program",
+            description: "Project name and optional program grouping.",
+          },
+          {
+            name: phaseScoped ? "Phase Planned" : "Budget",
+            description: phaseScoped
+              ? "Planned spend inside the selected phase window for that project."
+              : "Total approved funding (CAPEX + OPEX approved) on the project register.",
+          },
+          {
+            name: phaseScoped ? "Phase Actual" : "CAPEX Appr. / CAPEX Incd.",
+            description: phaseScoped
+              ? "Actual spend inside the selected phase window."
+              : "Approved capital funding vs capital amount incurred to date.",
+          },
+          {
+            name: phaseScoped ? "Phase Forecast" : "OPEX Appr. / OPEX Incd.",
+            description: phaseScoped
+              ? "Forecast spend inside the selected phase window."
+              : "Approved operating funding vs operating amount incurred to date.",
+          },
+          {
+            name: "Benefits",
+            description: "Benefits realised recorded on the project (hidden / zero when a phase filter is on).",
+          },
+          {
+            name: "Variance",
+            description: phaseScoped
+              ? "Phase Planned − Phase Actual."
+              : "Approved funding − total incurred (negative means overspend).",
+          },
+          {
+            name: "ROI %",
+            description: "Realised return on investment from benefits vs cost (project register; not phase-scoped).",
+          },
+        ]}
+      />
     </PageExport>
   );
 }

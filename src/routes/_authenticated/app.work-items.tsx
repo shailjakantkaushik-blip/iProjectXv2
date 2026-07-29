@@ -24,6 +24,7 @@ import {
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
+import { ColumnGlossary } from "@/components/column-glossary";
 import { ResourceMultiSelect } from "@/components/resource-multi-select";
 
 export const Route = createFileRoute("/_authenticated/app/work-items")({
@@ -767,24 +768,7 @@ function WorkItemsPage() {
           </div>
         ) : (
           <div className="st-table-wrap overflow-x-auto">
-            <table className="st-table w-full min-w-[72rem] table-fixed text-xs">
-              <colgroup>
-                <col className="w-[6rem]" />
-                <col className="w-[8rem]" />
-                <col className="w-[4.5rem]" />
-                <col className="w-[12rem]" />
-                <col className="w-[8rem]" />
-                <col className="w-[5.5rem]" />
-                <col className="w-[5rem]" />
-                <col className="w-[5rem]" />
-                <col className="w-[5rem]" />
-                <col className="w-[7rem]" />
-                <col className="w-[4rem]" />
-                <col className="w-[7rem]" />
-                <col className="w-[12rem]" />
-                <col className="w-[6.5rem]" />
-                <col className="w-[4rem]" />
-              </colgroup>
+            <table className="st-table !w-max min-w-full text-xs">
               <thead>
                 <tr>
                   {columns.map((col) => (
@@ -797,11 +781,17 @@ function WorkItemsPage() {
                       sortDir={table.sortDir}
                       onToggleSort={table.toggleSort}
                       align={numericColKeys.has(col.key) ? "right" : "left"}
-                      className={numericColKeys.has(col.key) ? "st-num" : undefined}
+                      className={
+                        numericColKeys.has(col.key)
+                          ? "st-num whitespace-nowrap"
+                          : col.key === "title" || col.key === "team"
+                            ? "min-w-[10rem]"
+                            : "whitespace-nowrap"
+                      }
                     />
                   ))}
-                  <th className="align-top !text-left">
-                    <span className="font-semibold"> </span>
+                  <th className="align-top whitespace-nowrap w-16">
+                    <span className="font-semibold">Actions</span>
                   </th>
                 </tr>
               </thead>
@@ -816,15 +806,15 @@ function WorkItemsPage() {
                         switch (col.key) {
                           case "project":
                             return (
-                              <td key={col.key} className="font-medium font-mono truncate">
+                              <td key={col.key} className="font-medium font-mono whitespace-nowrap">
                                 {proj?.project_code || "—"}
                               </td>
                             );
                           case "stream":
                             return (
-                              <td key={col.key}>
+                              <td key={col.key} className="min-w-[7.5rem]">
                                 <select
-                                  className="st-input !w-full !min-w-0 !py-0.5 !text-xs font-mono"
+                                  className="st-input !min-w-[6.5rem] !max-w-[9rem] !py-0.5 !text-xs font-mono"
                                   value={i.stream_id || ""}
                                   onChange={(e) => {
                                     const stream_id = e.target.value || null;
@@ -847,7 +837,7 @@ function WorkItemsPage() {
                                   ))}
                                 </select>
                                 {stream && proj ? (
-                                  <div className="mt-0.5 truncate text-[10px] text-muted-foreground font-mono">
+                                  <div className="mt-0.5 max-w-[9rem] truncate text-[10px] text-muted-foreground font-mono">
                                     {formatProjectStreamRef(proj, stream)}
                                   </div>
                                 ) : null}
@@ -855,21 +845,23 @@ function WorkItemsPage() {
                             );
                           case "wbs_code":
                             return (
-                              <td key={col.key} className="font-mono truncate">
+                              <td key={col.key} className="font-mono whitespace-nowrap">
                                 {i.wbs_code || "—"}
                               </td>
                             );
                           case "title":
                             return (
-                              <td key={col.key} className="truncate" title={i.title || ""}>
-                                {i.title}
+                              <td key={col.key} className="min-w-[11rem] max-w-[16rem]">
+                                <span className="line-clamp-2" title={i.title || ""}>
+                                  {i.title || "—"}
+                                </span>
                               </td>
                             );
                           case "stage_gate":
                             return (
-                              <td key={col.key}>
+                              <td key={col.key} className="min-w-[8rem]">
                                 <select
-                                  className="st-input !w-full !min-w-0 !py-0.5 !text-xs"
+                                  className="st-input !min-w-[7rem] !max-w-[11rem] !py-0.5 !text-xs"
                                   value={i.stage_gate_id || ""}
                                   onChange={(e) =>
                                     patch.mutate({
@@ -889,7 +881,10 @@ function WorkItemsPage() {
                             );
                           case "lane_allocated":
                             return (
-                              <td key={col.key} className="st-num text-right tabular-nums text-muted-foreground">
+                              <td
+                                key={col.key}
+                                className="st-num text-right tabular-nums whitespace-nowrap text-muted-foreground"
+                              >
                                 {i.stage_gate_id
                                   ? sumLaneAllocatedHours(allocations, {
                                       projectId: i.project_id,
@@ -901,9 +896,9 @@ function WorkItemsPage() {
                             );
                           case "estimate_hours":
                             return (
-                              <td key={col.key} className="st-num text-right">
+                              <td key={col.key} className="st-num text-right whitespace-nowrap">
                                 <input
-                                  className="st-input !w-full !min-w-0 !py-0.5 !text-xs text-right"
+                                  className="st-input !w-[4.5rem] !py-0.5 !text-xs text-right"
                                   type="number"
                                   min={0}
                                   step={0.5}
@@ -923,21 +918,24 @@ function WorkItemsPage() {
                             );
                           case "actual_hours":
                             return (
-                              <td key={col.key} className="st-num text-right tabular-nums">
+                              <td key={col.key} className="st-num text-right tabular-nums whitespace-nowrap">
                                 {numH(i.actual_hours).toFixed(1)}
                               </td>
                             );
                           case "pending_hours":
                             return (
-                              <td key={col.key} className="st-num text-right tabular-nums font-medium">
+                              <td
+                                key={col.key}
+                                className="st-num text-right tabular-nums font-medium whitespace-nowrap"
+                              >
                                 {Math.max(0, numH(i.estimate_hours) - numH(i.actual_hours)).toFixed(1)}
                               </td>
                             );
                           case "status":
                             return (
-                              <td key={col.key}>
+                              <td key={col.key} className="whitespace-nowrap">
                                 <select
-                                  className="st-input !w-full !min-w-0 !py-0.5 !text-xs"
+                                  className="st-input !min-w-[6.5rem] !py-0.5 !text-xs"
                                   value={i.status || "To Do"}
                                   onChange={(e) =>
                                     patch.mutate({ id: i.id, updates: { status: e.target.value } })
@@ -951,12 +949,13 @@ function WorkItemsPage() {
                             );
                           case "percent_complete":
                             return (
-                              <td key={col.key} className="st-num text-right">
+                              <td key={col.key} className="st-num text-right whitespace-nowrap">
                                 <input
-                                  className="st-input !w-full !min-w-0 !py-0.5 !text-xs text-right"
+                                  className="st-input !w-14 !py-0.5 !text-xs text-right"
                                   type="number"
                                   min={0}
                                   max={100}
+                                  key={`pct-${i.id}-${i.percent_complete}`}
                                   defaultValue={Number(i.percent_complete || 0)}
                                   onBlur={(e) =>
                                     patch.mutate({
@@ -969,13 +968,13 @@ function WorkItemsPage() {
                             );
                           case "owner":
                             return (
-                              <td key={col.key} className="truncate">
+                              <td key={col.key} className="max-w-[8rem] truncate whitespace-nowrap">
                                 {i.owner || "—"}
                               </td>
                             );
                           case "team":
                             return (
-                              <td key={col.key}>
+                              <td key={col.key} className="min-w-[12rem] max-w-[16rem]">
                                 <ResourceMultiSelect
                                   resources={activeResources}
                                   value={assigneesByWorkItem.get(i.id) || []}
@@ -996,7 +995,7 @@ function WorkItemsPage() {
                             return <td key={col.key}>—</td>;
                         }
                       })}
-                      <td>
+                      <td className="whitespace-nowrap">
                         <button
                           className="text-xs text-rose-600 hover:underline"
                           onClick={() => confirm("Delete work item?") && del.mutate(i.id)}
@@ -1012,6 +1011,77 @@ function WorkItemsPage() {
           </div>
         )}
       </SectionFrame>
+
+      <ColumnGlossary
+        title="Work register — column reference"
+        items={[
+          {
+            name: "Project",
+            description: "Project code for the work item’s parent project.",
+          },
+          {
+            name: "Stream",
+            description:
+              "Delivery lane (Core / other). Changing stream clears a stage gate that belongs to another stream.",
+          },
+          {
+            name: "WBS",
+            description: "Work breakdown structure code for ordering and reporting.",
+          },
+          {
+            name: "Title",
+            description: "Task / work item name shown on timesheets and planning views.",
+          },
+          {
+            name: "Stage gate",
+            description:
+              "Phase for this work item. Used to attribute planned FTE $ and timesheet labor to that gate.",
+          },
+          {
+            name: "Lane allocated",
+            description:
+              "Hours already booked in Resource Allocation for this project + stream + stage gate (planning ceiling).",
+          },
+          {
+            name: "Planned h",
+            description:
+              "Work-item estimate hours (demand). Feeds Resources demand and Planned FTE $ when synced.",
+          },
+          {
+            name: "Actual h",
+            description: "Approved timesheet hours rolled up to this work item.",
+          },
+          {
+            name: "Pending h",
+            description: "Planned h − Actual h (remaining planned effort).",
+          },
+          {
+            name: "Status",
+            description: "Delivery status (To Do, In Progress, Blocked, Done, Cancelled).",
+          },
+          {
+            name: "%",
+            description: "Percent complete (0–100).",
+          },
+          {
+            name: "Owner",
+            description: "Named owner text on the work item (display / reporting).",
+          },
+          {
+            name: "Resources",
+            description:
+              "Assigned people. Linked logins get this work item as a billable timesheet placeholder.",
+          },
+          {
+            name: "End",
+            description: "Planned end date for the work item.",
+          },
+          {
+            name: "Actions",
+            description: "Delete removes the work item (and its assignee links).",
+          },
+        ]}
+      />
     </PageExport>
   );
 }

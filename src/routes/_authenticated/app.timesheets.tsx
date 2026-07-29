@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
+import { ColumnGlossary, type ColumnGlossaryItem } from "@/components/column-glossary";
 import { PageLoading } from "@/components/page-loading";
 import { memberLabel, type OrgMember } from "@/lib/decision-approval";
 import { TimesheetReportsPanel } from "@/components/timesheet-reports-panel";
@@ -1177,9 +1178,118 @@ function TimesheetsPage() {
           )}
         </SectionFrame>
       )}
+
+      {tab === "mine" ? (
+        <ColumnGlossary
+          title="Timesheet hours — column reference"
+          items={TIMESHEET_HOURS_GLOSSARY}
+        />
+      ) : null}
+      {tab === "cost" && canViewCost ? (
+        <ColumnGlossary
+          title="Cost quick view — column reference"
+          items={TIMESHEET_COST_GLOSSARY}
+        />
+      ) : null}
+      {tab === "setup" && canAccessSetup ? (
+        <ColumnGlossary
+          title="Resource setup — column reference"
+          items={TIMESHEET_SETUP_GLOSSARY}
+        />
+      ) : null}
     </PageExport>
   );
 }
+
+const TIMESHEET_HOURS_GLOSSARY: ColumnGlossaryItem[] = [
+  {
+    name: "Type",
+    description: "Billable (work item) or Non-billable (custom task).",
+  },
+  {
+    name: "Project / task",
+    description: "Project code and work-item title (billable), or the free-text non-billable task name.",
+  },
+  {
+    name: "Plan",
+    description: "Work-item planned hours (estimate). Used with Actuals to compute hours left.",
+  },
+  {
+    name: "Mon–Sun",
+    description: "Hours logged for each weekday in the selected week.",
+  },
+  {
+    name: "Week",
+    description: "Sum of hours entered for this row in the current week.",
+  },
+  {
+    name: "Left",
+    description:
+      "Remaining planned effort: Planned − approved actuals − this week’s draft (for billable rows still unapproved).",
+  },
+];
+
+const TIMESHEET_COST_GLOSSARY: ColumnGlossaryItem[] = [
+  {
+    name: "Dimension",
+    description: "Grouping row label (project, stream, resource, stage gate, or month — based on view).",
+  },
+  {
+    name: "Alloc h",
+    description: "Hours from Resource Allocation plans for the filtered scope.",
+  },
+  {
+    name: "Demand h",
+    description: "Work-item planned hours (demand) rolled up to the same dimension.",
+  },
+  {
+    name: "Gap h",
+    description: "Alloc h − Demand h (positive = spare allocation; negative = over-planned demand).",
+  },
+  {
+    name: "Actual h",
+    description: "Approved timesheet hours attributed to that dimension.",
+  },
+  {
+    name: "Var h",
+    description: "Demand h − Actual h (remaining demand vs timesheet actuals).",
+  },
+  {
+    name: "Util%",
+    description: "Utilization of allocated hours by actuals (when allocation exists).",
+  },
+  {
+    name: "Status",
+    description: "Traffic-light status from gap / variance thresholds (On track, Watch, Over).",
+  },
+  {
+    name: "Plan FTE $",
+    description: "Planned labor cost from work-item planned hours × assignee cost rates.",
+  },
+  {
+    name: "Actual FTE $",
+    description: "Actual labor cost from approved timesheet hours × resource cost rates.",
+  },
+];
+
+const TIMESHEET_SETUP_GLOSSARY: ColumnGlossaryItem[] = [
+  {
+    name: "Resource",
+    description: "People record used for allocations, work-item assignment, and costing.",
+  },
+  {
+    name: "Linked user",
+    description: "Login profile tied to this resource (required for timesheet placeholders).",
+  },
+  {
+    name: "Resource Manager",
+    description: "Approver for the second approval step (after Project Manager on billable sheets).",
+  },
+  {
+    name: "Hourly cost",
+    description: "Cost rate ($/h) used for Plan/Actual FTE $ and OPEX labor roll-ups.",
+  },
+];
 
 function TimesheetCostQuickView() {
   const { organization } = useAuth();
