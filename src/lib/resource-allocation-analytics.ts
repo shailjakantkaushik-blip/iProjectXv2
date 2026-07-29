@@ -87,11 +87,41 @@ export function allocationStatus(plannedPct: number, actualHours: number, planne
   return "Under";
 }
 
-function hoursFromAllocation(a: AllocationPlanRow, capacityHoursWeek = 40): number {
+/** Planned hours from an allocation row (explicit hours, else % of monthly FTE). */
+export function hoursFromAllocation(a: AllocationPlanRow, capacityHoursWeek = 40): number {
   const explicit = num(a.allocated_hours);
   if (explicit > 0) return explicit;
   // ~4.33 weeks/month × weekly capacity × allocation %
   return Math.round(((capacityHoursWeek * 4.33 * num(a.allocation_percent)) / 100) * 100) / 100;
+}
+
+/**
+ * Sum planned resource-allocation hours for a project / stream / stage-gate lane.
+ * When `periodMonth` is set (YYYY-MM-01), only that month is included.
+ */
+export function sumLaneAllocatedHours(
+  plans: AllocationPlanRow[],
+  opts: {
+    projectId: string;
+    streamId?: string | null;
+    stageGateId?: string | null;
+    periodMonth?: string | null;
+  },
+): number {
+  const month = opts.periodMonth ? normMonth(opts.periodMonth) : null;
+  return plans.reduce((sum, a) => {
+    if (a.project_id !== opts.projectId) return sum;
+    const aStream = a.stream_id || null;
+    const wantStream = opts.streamId || null;
+    if (wantStream && aStream !== wantStream) return sum;
+    if (!wantStream && aStream) return sum;
+    const aGate = a.stage_gate_id || null;
+    const wantGate = opts.stageGateId || null;
+    if (wantGate && aGate !== wantGate) return sum;
+    if (!wantGate && aGate) return sum;
+    if (month && normMonth(a.period_month) !== month) return sum;
+    return sum + hoursFromAllocation(a);
+  }, 0);
 }
 
 type Agg = {

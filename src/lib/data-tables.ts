@@ -532,7 +532,7 @@ export const TABLES: TableDef[] = [
       { key: "planned_end", label: "Planned End", type: "date" },
       { key: "actual_start", label: "Actual Start", type: "date" },
       { key: "actual_end", label: "Actual End", type: "date" },
-      { key: "estimate_hours", label: "Est. Hours", type: "number" },
+      { key: "estimate_hours", label: "Planned Hours", type: "number" },
       { key: "actual_hours", label: "Actual Hours", type: "number" },
       { key: "description", label: "Description", type: "textarea" },
     ],

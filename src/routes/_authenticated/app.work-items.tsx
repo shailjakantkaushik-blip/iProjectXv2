@@ -11,7 +11,11 @@ import { PageLoading } from "@/components/page-loading";
 import { fetchOrgStreams, formatProjectStreamRef, formatStreamLabel } from "@/lib/project-streams";
 import { fetchStageGates } from "@/lib/stage-gates";
 import { sortGatesByOrgOrder } from "@/lib/project-phase";
-import { WORK_ITEMS_SELECT } from "@/lib/query-selects";
+import { WORK_ITEMS_SELECT, RESOURCE_ALLOCATIONS_SELECT } from "@/lib/query-selects";
+import {
+  sumLaneAllocatedHours,
+  type AllocationPlanRow,
+} from "@/lib/resource-allocation-analytics";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
@@ -23,6 +27,11 @@ export const Route = createFileRoute("/_authenticated/app/work-items")({
 
 const STATUSES = ["To Do", "In Progress", "Blocked", "Done", "Cancelled"];
 const PRIORITIES = ["Critical", "High", "Medium", "Low"];
+
+const numH = (v: unknown) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
 
 type ResourceRow = {
   id: string;
@@ -162,6 +171,18 @@ function WorkItemsPage() {
   });
   const assignees = assigneesQ.data ?? [];
 
+  const { data: allocations = [] } = useQuery({
+    queryKey: ["resource_allocations", orgId, "work-items"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("resource_allocations")
+        .select(RESOURCE_ALLOCATIONS_SELECT as "*");
+      if (error) throw error;
+      return (data ?? []) as unknown as AllocationPlanRow[];
+    },
+    enabled: !!orgId,
+  });
+
   const assigneesByWorkItem = useMemo(() => {
     const m = new Map<string, string[]>();
     for (const a of assignees) {
@@ -214,6 +235,7 @@ function WorkItemsPage() {
     planned_end: "",
     percent_complete: "0",
     wbs_code: "",
+    estimate_hours: "",
   });
 
   const formStreams = streamsByProject.get(form.project_id) || [];
@@ -222,6 +244,37 @@ function WorkItemsPage() {
     () => gatesForWorkItem(form.project_id, form.stream_id || null),
     [gatesForWorkItem, form.project_id, form.stream_id],
   );
+
+  /** Lane totals for create form — resource allocation vs work-item planned. */
+  const formLanePlan = useMemo(() => {
+    if (!form.project_id || !form.stage_gate_id) return null;
+    const streamId =
+      form.stream_id ||
+      formStreams.find((s: any) => s.is_default)?.id ||
+      formStreams[0]?.id ||
+      null;
+    const allocated = sumLaneAllocatedHours(allocations, {
+      projectId: form.project_id,
+      streamId,
+      stageGateId: form.stage_gate_id,
+    });
+    const workPlanned = items
+      .filter(
+        (i) =>
+          i.project_id === form.project_id &&
+          (i.stream_id || null) === (streamId || null) &&
+          (i.stage_gate_id || null) === form.stage_gate_id &&
+          i.status !== "Cancelled",
+      )
+      .reduce((s, i) => s + numH(i.estimate_hours), 0);
+    const thisPlan = numH(form.estimate_hours);
+    return {
+      allocated,
+      workPlanned,
+      pending: allocated - workPlanned,
+      afterThis: allocated - workPlanned - thisPlan,
+    };
+  }, [form.project_id, form.stream_id, form.stage_gate_id, form.estimate_hours, formStreams, allocations, items]);
 
   const visibleBase = useMemo(() => {
     if (!mineOnly) return items;
@@ -258,6 +311,35 @@ function WorkItemsPage() {
         label: "Stage gate",
         getValue: (i) => (i.stage_gate_id ? gateById.get(i.stage_gate_id)?.gate_name || "" : ""),
       },
+      {
+        key: "lane_allocated",
+        label: "Lane allocated",
+        getValue: (i) => {
+          if (!i.stage_gate_id) return "";
+          return String(
+            sumLaneAllocatedHours(allocations, {
+              projectId: i.project_id,
+              streamId: i.stream_id,
+              stageGateId: i.stage_gate_id,
+            }),
+          );
+        },
+      },
+      {
+        key: "estimate_hours",
+        label: "Planned h",
+        getValue: (i) => String(numH(i.estimate_hours) || ""),
+      },
+      {
+        key: "actual_hours",
+        label: "Actual h",
+        getValue: (i) => String(numH(i.actual_hours) || ""),
+      },
+      {
+        key: "pending_hours",
+        label: "Pending h",
+        getValue: (i) => String(Math.max(0, numH(i.estimate_hours) - numH(i.actual_hours))),
+      },
       { key: "status", label: "Status" },
       { key: "percent_complete", label: "%" },
       { key: "owner", label: "Owner" },
@@ -271,7 +353,7 @@ function WorkItemsPage() {
       },
       { key: "planned_end", label: "End" },
     ],
-    [projectById, streamById, assigneesByWorkItem, resourceById, gateById],
+    [projectById, streamById, assigneesByWorkItem, resourceById, gateById, allocations],
   );
 
   const table = useColumnarTable(visibleBase, columns);
@@ -313,6 +395,7 @@ function WorkItemsPage() {
           percent_complete: Number(form.percent_complete) || 0,
           wbs_code: form.wbs_code || null,
           stage_gate_id: form.stage_gate_id || null,
+          estimate_hours: form.estimate_hours === "" ? null : Number(form.estimate_hours) || 0,
         } as never)
         .select("id")
         .single();
@@ -343,6 +426,7 @@ function WorkItemsPage() {
         planned_end: "",
         assignee_ids: [],
         stage_gate_id: "",
+        estimate_hours: "",
       }));
     },
     onError: (e: Error) => toast.error(e.message),
@@ -492,11 +576,7 @@ function WorkItemsPage() {
             <option value="">— Stage gate / phase —</option>
             {formGates.map((g) => (
               <option key={g.id} value={g.id}>
-                {g.gate_name}
-                {g.planned_date ? ` · ${g.planned_date}` : ""}
-                {g.stream_id && streamById.get(g.stream_id)
-                  ? ` · ${formatStreamLabel(streamById.get(g.stream_id))}`
-                  : ""}
+                {g.gate_name || "Gate"}
               </option>
             ))}
           </select>
@@ -505,6 +585,15 @@ function WorkItemsPage() {
             placeholder="WBS code"
             value={form.wbs_code}
             onChange={(e) => setForm((f) => ({ ...f, wbs_code: e.target.value }))}
+          />
+          <input
+            className="st-input"
+            type="number"
+            min={0}
+            step={0.5}
+            placeholder="Planned hours"
+            value={form.estimate_hours}
+            onChange={(e) => setForm((f) => ({ ...f, estimate_hours: e.target.value }))}
           />
           <select
             className="st-input"
@@ -568,10 +657,48 @@ function WorkItemsPage() {
             {create.isPending ? "Saving…" : "Create work item"}
           </button>
         </div>
+        {formLanePlan ? (
+          <div className="mt-3 grid grid-cols-2 gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-[11px] sm:grid-cols-4">
+            <div>
+              <div className="text-muted-foreground">Lane allocated (resource plan)</div>
+              <div className="font-semibold tabular-nums">{formLanePlan.allocated.toFixed(1)} h</div>
+            </div>
+            <div>
+              <div className="text-muted-foreground">Work items planned</div>
+              <div className="font-semibold tabular-nums">{formLanePlan.workPlanned.toFixed(1)} h</div>
+            </div>
+            <div>
+              <div className="text-muted-foreground">Pending to assign</div>
+              <div
+                className={`font-semibold tabular-nums ${
+                  formLanePlan.pending < 0 ? "text-amber-700" : ""
+                }`}
+              >
+                {formLanePlan.pending.toFixed(1)} h
+              </div>
+            </div>
+            <div>
+              <div className="text-muted-foreground">After this item</div>
+              <div
+                className={`font-semibold tabular-nums ${
+                  formLanePlan.afterThis < 0 ? "text-amber-700" : ""
+                }`}
+              >
+                {formLanePlan.afterThis.toFixed(1)} h
+              </div>
+            </div>
+          </div>
+        ) : (
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Select project, stream, and stage gate to see total resource-allocation hours for that
+            lane — use it as the ceiling when setting planned hours on this work item.
+          </p>
+        )}
         <p className="mt-2 text-[11px] text-muted-foreground">
           Assign resources so timesheet placeholders appear for their linked logins. Stream defaults
           to the project&apos;s Core stream. Pick a stage gate so approved billable hours attribute to
-          that phase/stream for cost reporting.
+          that phase/stream for cost reporting. Planned hours on the work item should fit within the
+          lane&apos;s resource allocation; timesheets then book actuals against the plan.
         </p>
       </SectionFrame>
 
@@ -696,11 +823,44 @@ function WorkItemsPage() {
                           <option value="">— None —</option>
                           {gatesForWorkItem(i.project_id, i.stream_id).map((g) => (
                               <option key={g.id} value={g.id}>
-                                {g.gate_name}
-                                {g.planned_date ? ` (${g.planned_date})` : ""}
+                                {g.gate_name || "Gate"}
                               </option>
                             ))}
                         </select>
+                      </td>
+                      <td className="text-right tabular-nums text-xs text-muted-foreground">
+                        {i.stage_gate_id
+                          ? sumLaneAllocatedHours(allocations, {
+                              projectId: i.project_id,
+                              streamId: i.stream_id,
+                              stageGateId: i.stage_gate_id,
+                            }).toFixed(1)
+                          : "—"}
+                      </td>
+                      <td>
+                        <input
+                          className="st-input !w-16 !py-0.5 !text-xs text-right"
+                          type="number"
+                          min={0}
+                          step={0.5}
+                          defaultValue={numH(i.estimate_hours) || ""}
+                          key={`est-${i.id}-${i.estimate_hours}`}
+                          onBlur={(e) =>
+                            patch.mutate({
+                              id: i.id,
+                              updates: {
+                                estimate_hours:
+                                  e.target.value === "" ? null : Number(e.target.value) || 0,
+                              },
+                            })
+                          }
+                        />
+                      </td>
+                      <td className="text-right tabular-nums text-xs">
+                        {numH(i.actual_hours).toFixed(1)}
+                      </td>
+                      <td className="text-right tabular-nums text-xs font-medium">
+                        {Math.max(0, numH(i.estimate_hours) - numH(i.actual_hours)).toFixed(1)}
                       </td>
                       <td>
                         <select

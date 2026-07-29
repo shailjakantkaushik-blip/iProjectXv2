@@ -216,5 +216,7 @@ export const WORK_ITEMS_SELECT = [
   "planned_start",
   "planned_end",
   "actual_end",
+  "estimate_hours",
+  "actual_hours",
   "sort_order",
 ].join(",");

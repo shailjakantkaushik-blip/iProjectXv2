@@ -46,15 +46,13 @@ export async function fetchStageGates(): Promise<StageGateRow[]> {
   return (star.data ?? []) as StageGateRow[];
 }
 
-/** Human label for data editor / dropdowns. */
+/**
+ * Human label for stage gate FKs / dropdowns.
+ * Show the gate/phase name only — stream and dates belong in their own columns.
+ */
 export function formatStageGateLabel(
   g: { gate_name?: string | null; planned_date?: string | null; status?: string | null },
-  streamLabel?: string | null,
+  _streamLabel?: string | null,
 ): string {
-  const name = (g.gate_name || "Gate").trim() || "Gate";
-  const bits = [name];
-  if (streamLabel) bits.push(streamLabel);
-  if (g.planned_date) bits.push(String(g.planned_date).slice(0, 10));
-  if (g.status) bits.push(String(g.status));
-  return bits.join(" · ");
+  return (g.gate_name || "Gate").trim() || "Gate";
 }

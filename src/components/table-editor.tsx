@@ -23,9 +23,9 @@ interface LookupMaps {
   streamsByCode: Map<string, string>;
   /** project_id → default stream id (Core) for autopopulate */
   defaultStreamByProject: Map<string, string>;
-  /** stage_gate id → "Gate · stream · date" */
+  /** stage_gate id → gate name (phase) */
   gatesById: Map<string, string>;
-  /** label → stage_gate id (best-effort import) */
+  /** label → stage_gate id (best-effort import; accepts legacy "name · stream · date") */
   gatesByLabel: Map<string, string>;
 }
 
@@ -73,17 +73,15 @@ export function TableEditor({ def }: { def: TableDef }) {
       const gatesById = new Map<string, string>();
       const gatesByLabel = new Map<string, string>();
       (gatesRes.data ?? []).forEach((g: any) => {
+        const name = String(g.gate_name || "Gate").trim() || "Gate";
         const streamLbl = g.stream_id ? streamsById.get(g.stream_id) : null;
-        const label = [
-          g.gate_name || "Gate",
-          streamLbl,
-          g.planned_date ? String(g.planned_date).slice(0, 10) : null,
-        ]
-          .filter(Boolean)
-          .join(" · ");
-        gatesById.set(g.id, label);
-        if (label) gatesByLabel.set(label, g.id);
-        if (g.gate_name) gatesByLabel.set(String(g.gate_name).trim(), g.id);
+        const date = g.planned_date ? String(g.planned_date).slice(0, 10) : null;
+        // Display: gate name only (stream/date are separate columns on the sheet).
+        gatesById.set(g.id, name);
+        gatesByLabel.set(name, g.id);
+        // Legacy composite labels from older imports / displays still resolve.
+        const legacy = [name, streamLbl, date].filter(Boolean).join(" · ");
+        if (legacy && legacy !== name) gatesByLabel.set(legacy, g.id);
       });
       return {
         projectsById,
