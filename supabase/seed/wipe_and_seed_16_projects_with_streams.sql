@@ -974,7 +974,7 @@ BEGIN
               CASE WHEN st = 'rejected' THEN 'Hours look high vs plan' ELSE NULL END,
               CASE WHEN st = 'pending_pm' THEN NULL ELSE (w + 6)::timestamptz END
             )
-            ON CONFLICT (timesheet_id, step, project_id) DO NOTHING;
+            ON CONFLICT (timesheet_id, project_id) WHERE step = 'pm' DO NOTHING;
           END LOOP;
         END IF;
 
@@ -988,7 +988,7 @@ BEGIN
             NULL,
             CASE WHEN st = 'pending_rm' THEN NULL ELSE (w + 7)::timestamptz END
           )
-          ON CONFLICT DO NOTHING;
+          ON CONFLICT (timesheet_id) WHERE step = 'rm' DO NOTHING;
         END IF;
 
         -- Roll labor into financials for approved sheets
