@@ -420,12 +420,12 @@ export function TimesheetReportsPanel({
                 <thead>
                   <tr>
                     <th>Person</th>
-                    <th style={{ textAlign: "right" }}>Capacity</th>
-                    <th style={{ textAlign: "right" }}>Total</th>
-                    <th style={{ textAlign: "right" }}>Billable</th>
-                    <th style={{ textAlign: "right" }}>Non-billable</th>
-                    <th style={{ textAlign: "right" }}>Utilisation</th>
-                    {showCost ? <th style={{ textAlign: "right" }}>Labor cost</th> : null}
+                    <th className="st-num">Capacity</th>
+                    <th className="st-num">Total</th>
+                    <th className="st-num">Billable</th>
+                    <th className="st-num">Non-billable</th>
+                    <th className="st-num">Utilisation</th>
+                    {showCost ? <th className="st-num">Labor cost</th> : null}
                     <th>Status</th>
                   </tr>
                 </thead>
@@ -440,29 +440,12 @@ export function TimesheetReportsPanel({
                     utilisation.map((r) => (
                       <tr key={r.user_id}>
                         <td className="font-medium">{r.name}</td>
-                        <td className="tabular-nums whitespace-nowrap" style={{ textAlign: "right" }}>
-                          {r.capacity}
-                        </td>
-                        <td className="tabular-nums whitespace-nowrap" style={{ textAlign: "right" }}>
-                          {r.total_hours}
-                        </td>
-                        <td className="tabular-nums whitespace-nowrap" style={{ textAlign: "right" }}>
-                          {r.billable_hours}
-                        </td>
-                        <td className="tabular-nums whitespace-nowrap" style={{ textAlign: "right" }}>
-                          {r.non_billable_hours}
-                        </td>
-                        <td
-                          className="tabular-nums font-semibold whitespace-nowrap"
-                          style={{ textAlign: "right" }}
-                        >
-                          {r.utilisation_pct}%
-                        </td>
-                        {showCost ? (
-                          <td className="tabular-nums whitespace-nowrap" style={{ textAlign: "right" }}>
-                            {r.labor_cost}
-                          </td>
-                        ) : null}
+                        <td className="st-num">{r.capacity}</td>
+                        <td className="st-num">{r.total_hours}</td>
+                        <td className="st-num">{r.billable_hours}</td>
+                        <td className="st-num">{r.non_billable_hours}</td>
+                        <td className="st-num font-semibold">{r.utilisation_pct}%</td>
+                        {showCost ? <td className="st-num">{r.labor_cost}</td> : null}
                         <td className="text-muted-foreground">{r.status_summary}</td>
                       </tr>
                     ))
@@ -482,11 +465,11 @@ export function TimesheetReportsPanel({
                 <thead>
                   <tr>
                     <th>Project</th>
-                    <th style={{ textAlign: "right" }}>Billable</th>
-                    <th style={{ textAlign: "right" }}>Non-billable</th>
-                    <th style={{ textAlign: "right" }}>Total</th>
-                    <th style={{ textAlign: "right" }}>People</th>
-                    {showCost ? <th style={{ textAlign: "right" }}>Labor cost</th> : null}
+                    <th className="st-num">Billable</th>
+                    <th className="st-num">Non-billable</th>
+                    <th className="st-num">Total</th>
+                    <th className="st-num">People</th>
+                    {showCost ? <th className="st-num">Labor cost</th> : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -500,26 +483,11 @@ export function TimesheetReportsPanel({
                     projectEffort.map((r) => (
                       <tr key={r.project_id}>
                         <td className="font-medium">{r.project_name}</td>
-                        <td className="tabular-nums whitespace-nowrap" style={{ textAlign: "right" }}>
-                          {r.billable_hours}
-                        </td>
-                        <td className="tabular-nums whitespace-nowrap" style={{ textAlign: "right" }}>
-                          {r.non_billable_hours}
-                        </td>
-                        <td
-                          className="tabular-nums font-semibold whitespace-nowrap"
-                          style={{ textAlign: "right" }}
-                        >
-                          {r.total_hours}
-                        </td>
-                        <td className="tabular-nums whitespace-nowrap" style={{ textAlign: "right" }}>
-                          {r.people}
-                        </td>
-                        {showCost ? (
-                          <td className="tabular-nums whitespace-nowrap" style={{ textAlign: "right" }}>
-                            {r.labor_cost}
-                          </td>
-                        ) : null}
+                        <td className="st-num">{r.billable_hours}</td>
+                        <td className="st-num">{r.non_billable_hours}</td>
+                        <td className="st-num font-semibold">{r.total_hours}</td>
+                        <td className="st-num">{r.people}</td>
+                        {showCost ? <td className="st-num">{r.labor_cost}</td> : null}
                       </tr>
                     ))
                   )}

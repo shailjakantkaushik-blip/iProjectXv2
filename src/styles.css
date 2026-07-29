@@ -311,6 +311,25 @@
   top: 0;
   vertical-align: top;
 }
+/* Numeric / aligned columns — must beat thead th { text-align: left } (higher specificity).
+   Use className="st-num" or Tailwind text-right / text-center on both <th> and <td>. */
+.st-table thead th.text-right,
+.st-table tbody td.text-right,
+.st-table th.st-num,
+.st-table td.st-num {
+  text-align: right;
+}
+.st-table thead th.text-center,
+.st-table tbody td.text-center,
+.st-table th.st-center,
+.st-table td.st-center {
+  text-align: center;
+}
+.st-table th.st-num,
+.st-table td.st-num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .st-table tbody td {
   padding: 7px 10px;
   border-bottom: 1px solid #eef0f3;

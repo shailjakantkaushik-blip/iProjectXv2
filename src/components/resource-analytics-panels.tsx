@@ -287,23 +287,36 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
       </div>
 
       <div className="max-h-[480px] overflow-auto">
-        <table className="st-table text-sm">
-          <thead className="sticky top-0 bg-white">
+        <table className="st-table w-full table-fixed text-sm">
+          <colgroup>
+            <col className="w-[28%]" />
+            <col className="w-[10%]" />
+            <col className="w-[10%]" />
+            <col className="w-[10%]" />
+            <col className="w-[10%]" />
+            <col className="w-[10%]" />
+            <col className="w-[12%]" />
+            {(mode === "cost" || canViewCost) && <col className="w-[10%]" />}
+          </colgroup>
+          <thead className="sticky top-0 z-[1] bg-[#f1f3f6]">
             <tr>
               <th>Dimension</th>
-              <th className="text-right">Plan h</th>
-              <th className="text-right">Plan %</th>
-              <th className="text-right">Actual h</th>
-              <th className="text-right">Var h</th>
-              <th className="text-right">Util %</th>
+              <th className="st-num">Plan h</th>
+              <th className="st-num">Plan %</th>
+              <th className="st-num">Actual h</th>
+              <th className="st-num">Var h</th>
+              <th className="st-num">Util %</th>
               <th>Status</th>
-              {(mode === "cost" || canViewCost) && <th className="text-right">Labor $</th>}
+              {(mode === "cost" || canViewCost) && <th className="st-num">Labor $</th>}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-6 text-center text-muted-foreground">
+                <td
+                  colSpan={mode === "cost" || canViewCost ? 8 : 7}
+                  className="py-6 text-center text-muted-foreground"
+                >
                   No allocation or timesheet data for this view.
                 </td>
               </tr>
@@ -311,16 +324,16 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
               rows.map((r) => (
                 <tr key={r.key}>
                   <td className="font-medium">{r.label}</td>
-                  <td className="text-right tabular-nums">{r.planned_hours.toFixed(1)}</td>
-                  <td className="text-right tabular-nums">{r.planned_percent.toFixed(0)}%</td>
-                  <td className="text-right tabular-nums">{r.actual_hours.toFixed(1)}</td>
-                  <td className="text-right tabular-nums">{r.variance_hours.toFixed(1)}</td>
-                  <td className="text-right tabular-nums">
+                  <td className="st-num">{r.planned_hours.toFixed(1)}</td>
+                  <td className="st-num">{r.planned_percent.toFixed(0)}%</td>
+                  <td className="st-num">{r.actual_hours.toFixed(1)}</td>
+                  <td className="st-num">{r.variance_hours.toFixed(1)}</td>
+                  <td className="st-num">
                     {r.utilization_pct == null ? "—" : `${r.utilization_pct}%`}
                   </td>
                   <td className={STATUS_COLOR[r.status]}>{r.status}</td>
                   {(mode === "cost" || canViewCost) && (
-                    <td className="text-right tabular-nums">{money(r.labor_cost)}</td>
+                    <td className="st-num">{money(r.labor_cost)}</td>
                   )}
                 </tr>
               ))
