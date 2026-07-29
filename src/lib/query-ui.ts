@@ -31,7 +31,7 @@ type PostgrestLike = {
 };
 
 const SCHEMA_OPS_RE =
-  /schema cache|could not find\b|PGRST20[45]|undefined\s+column|column .+ does not exist|relation .+ does not exist|42703|42P01|missing column|Reload schema/i;
+  /schema cache|could not find\b|PGRST20[45]|undefined\s+column|column .+ does not exist|relation .+ does not exist|42703|42P01|missing column|Reload schema|operator does not exist|explicit type casts|42883/i;
 const PERMISSION_RE =
   /permission denied|row-level security|not authorized|JWT expired|PGRST301|42501|forbidden|401|403/i;
 const NETWORK_RE =
