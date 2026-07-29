@@ -175,6 +175,39 @@ DECLARE
   opex_split numeric;
   r1 int;
   r2 int;
+  months_total int;
+  months_past int;
+  months_fy_a int;
+  months_fy_b int;
+  fy_label text;
+  fy_a_bud numeric;
+  fy_a_fcst numeric;
+  fy_b_bud numeric;
+  fy_b_fcst numeric;
+  sum_cap_p_a numeric;
+  sum_opex_p_a numeric;
+  sum_cap_f_a numeric;
+  sum_opex_f_a numeric;
+  sum_cap_p_b numeric;
+  sum_opex_p_b numeric;
+  sum_cap_f_b numeric;
+  sum_opex_f_b numeric;
+  sum_cap_act numeric;
+  sum_opex_act numeric;
+  sum_ben_p numeric;
+  sum_ben_act numeric;
+  i_a int;
+  i_b int;
+  i_past int;
+  i_all int;
+  cap_p numeric;
+  opex_p numeric;
+  cap_f numeric;
+  opex_f numeric;
+  cap_act numeric;
+  opex_act numeric;
+  ben_p numeric;
+  ben_act numeric;
 BEGIN
   FOR r_org IN SELECT id, COALESCE(fy_start_month, 4) AS fy_start_month FROM public.organizations LOOP
     fy_start := r_org.fy_start_month;
@@ -272,7 +305,94 @@ ${resourceInserts}
 
       j := 0;
       m := date_trunc('month', starts[i])::date;
-      WHILE m <= ends[i] AND j < 8 LOOP
+      -- Full-schedule monthly cashflow aligned to FY allocations (not first-8 /8).
+      months_total := 0; months_past := 0; months_fy_a := 0; months_fy_b := 0;
+      WHILE m <= date_trunc('month', ends[i])::date LOOP
+        months_total := months_total + 1;
+        IF m <= date_trunc('month', CURRENT_DATE)::date THEN months_past := months_past + 1; END IF;
+        fy_label := 'FY' || to_char(
+          CASE WHEN EXTRACT(MONTH FROM m) >= fy_start
+            THEN make_date(EXTRACT(YEAR FROM m)::int + 1, 1, 1)
+            ELSE make_date(EXTRACT(YEAR FROM m)::int, 1, 1)
+          END, 'YY');
+        IF fy_label = fy_a THEN months_fy_a := months_fy_a + 1;
+        ELSIF fy_label = fy_b THEN months_fy_b := months_fy_b + 1; END IF;
+        m := (m + INTERVAL '1 month')::date;
+      END LOOP;
+      IF months_total < 1 THEN months_total := 1; END IF;
+      IF months_fy_a < 1 AND split_a > 0 THEN months_fy_a := 1; END IF;
+      IF months_fy_b < 1 AND split_b > 0 THEN months_fy_b := 1; END IF;
+      fy_a_bud := round(budgets[i] * split_a, 2);
+      fy_a_fcst := round(facs[i] * split_a, 2);
+      fy_b_bud := round(budgets[i] * split_b, 2);
+      fy_b_fcst := round(facs[i] * split_b, 2);
+      sum_cap_p_a := 0; sum_opex_p_a := 0; sum_cap_f_a := 0; sum_opex_f_a := 0;
+      sum_cap_p_b := 0; sum_opex_p_b := 0; sum_cap_f_b := 0; sum_opex_f_b := 0;
+      sum_cap_act := 0; sum_opex_act := 0; sum_ben_p := 0; sum_ben_act := 0;
+      i_a := 0; i_b := 0; i_past := 0; i_all := 0;
+      m := date_trunc('month', starts[i])::date;
+      WHILE m <= date_trunc('month', ends[i])::date LOOP
+        i_all := i_all + 1;
+        fy_label := 'FY' || to_char(
+          CASE WHEN EXTRACT(MONTH FROM m) >= fy_start
+            THEN make_date(EXTRACT(YEAR FROM m)::int + 1, 1, 1)
+            ELSE make_date(EXTRACT(YEAR FROM m)::int, 1, 1)
+          END, 'YY');
+        IF fy_label = fy_a AND months_fy_a > 0 THEN
+          i_a := i_a + 1;
+          IF i_a = months_fy_a THEN
+            cap_p := round(fy_a_bud * cap_split, 2) - sum_cap_p_a;
+            opex_p := round(fy_a_bud * opex_split, 2) - sum_opex_p_a;
+            cap_f := round(fy_a_fcst * cap_split, 2) - sum_cap_f_a;
+            opex_f := round(fy_a_fcst * opex_split, 2) - sum_opex_f_a;
+          ELSE
+            cap_p := round(fy_a_bud * cap_split / months_fy_a, 2);
+            opex_p := round(fy_a_bud * opex_split / months_fy_a, 2);
+            cap_f := round(fy_a_fcst * cap_split / months_fy_a, 2);
+            opex_f := round(fy_a_fcst * opex_split / months_fy_a, 2);
+            sum_cap_p_a := sum_cap_p_a + cap_p; sum_opex_p_a := sum_opex_p_a + opex_p;
+            sum_cap_f_a := sum_cap_f_a + cap_f; sum_opex_f_a := sum_opex_f_a + opex_f;
+          END IF;
+        ELSIF fy_label = fy_b AND months_fy_b > 0 THEN
+          i_b := i_b + 1;
+          IF i_b = months_fy_b THEN
+            cap_p := round(fy_b_bud * cap_split, 2) - sum_cap_p_b;
+            opex_p := round(fy_b_bud * opex_split, 2) - sum_opex_p_b;
+            cap_f := round(fy_b_fcst * cap_split, 2) - sum_cap_f_b;
+            opex_f := round(fy_b_fcst * opex_split, 2) - sum_opex_f_b;
+          ELSE
+            cap_p := round(fy_b_bud * cap_split / months_fy_b, 2);
+            opex_p := round(fy_b_bud * opex_split / months_fy_b, 2);
+            cap_f := round(fy_b_fcst * cap_split / months_fy_b, 2);
+            opex_f := round(fy_b_fcst * opex_split / months_fy_b, 2);
+            sum_cap_p_b := sum_cap_p_b + cap_p; sum_opex_p_b := sum_opex_p_b + opex_p;
+            sum_cap_f_b := sum_cap_f_b + cap_f; sum_opex_f_b := sum_opex_f_b + opex_f;
+          END IF;
+        ELSE
+          cap_p := 0; opex_p := 0; cap_f := 0; opex_f := 0;
+        END IF;
+        IF m <= date_trunc('month', CURRENT_DATE)::date AND months_past > 0 THEN
+          i_past := i_past + 1;
+          IF i_past = months_past THEN
+            cap_act := round(capex_i[i], 2) - sum_cap_act;
+            opex_act := round(opex_i[i], 2) - sum_opex_act;
+            ben_act := round(ben_r[i], 2) - sum_ben_act;
+          ELSE
+            cap_act := round(capex_i[i] / months_past, 2);
+            opex_act := round(opex_i[i] / months_past, 2);
+            ben_act := round(ben_r[i] / months_past, 2);
+            sum_cap_act := sum_cap_act + cap_act; sum_opex_act := sum_opex_act + opex_act;
+            sum_ben_act := sum_ben_act + ben_act;
+          END IF;
+        ELSE
+          cap_act := 0; opex_act := 0; ben_act := 0;
+        END IF;
+        IF i_all = months_total THEN
+          ben_p := round(ben_t[i], 2) - sum_ben_p;
+        ELSE
+          ben_p := round(ben_t[i] / months_total, 2);
+          sum_ben_p := sum_ben_p + ben_p;
+        END IF;
         INSERT INTO public.financials_monthly (
           org_id, project_id, period_month,
           capex_planned, capex_actual, capex_forecast,
@@ -280,17 +400,11 @@ ${resourceInserts}
           benefits_planned, benefits_actual
         ) VALUES (
           r_org.id, p_id, m,
-          round(capex_a[i] / 8.0, 2),
-          round((capex_i[i] / 8.0) * CASE WHEN m <= CURRENT_DATE THEN 1 ELSE 0 END, 2),
-          round(capex_a[i] / 8.0, 2),
-          round(opex_a[i] / 8.0, 2),
-          round((opex_i[i] / 8.0) * CASE WHEN m <= CURRENT_DATE THEN 1 ELSE 0 END, 2),
-          round(opex_a[i] / 8.0, 2),
-          round(ben_t[i] / 12.0, 2),
-          round((ben_r[i] / 12.0) * CASE WHEN m <= CURRENT_DATE THEN 1 ELSE 0 END, 2)
+          cap_p, cap_act, cap_f,
+          opex_p, opex_act, opex_f,
+          ben_p, ben_act
         );
         m := (m + INTERVAL '1 month')::date;
-        j := j + 1;
       END LOOP;
 
       -- severity = probability × impact (canonical)

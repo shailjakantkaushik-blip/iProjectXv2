@@ -41,6 +41,7 @@ import {
   projectBenefitCostRatio,
   projectBenefitsRealised,
   projectRealisedRoi,
+  projectForecast,
 } from "@/lib/project-finance";
 import {
   monthlyRowsForPhaseFilter,
@@ -273,6 +274,9 @@ function FinancialsPage() {
   const monthlyPlanned = sumMonthlyPlanned(mFiltered);
   const monthlyActual = sumMonthlyActual(mFiltered);
   const monthlyForecast = sumMonthlyForecast(mFiltered);
+  const registerFac = phaseScoped
+    ? 0
+    : filtered.reduce((s, p: any) => s + projectForecast(p), 0);
   const planVsActualVar = monthlyPlanned - monthlyActual;
   const planVsActualPct =
     monthlyPlanned > 0 ? (monthlyActual / monthlyPlanned) * 100 : 0;
@@ -402,10 +406,17 @@ function FinancialsPage() {
 
       <SectionFrame>
         <SectionTitle>Plan vs Actual vs Forecast (monthly cashflow)</SectionTitle>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
+        <p className="mb-3 text-xs text-muted-foreground">
+          Monthly Planned should equal approved funding (budget). Monthly Forecast should equal
+          Forecast at Completion (FAC). Monthly Actual should equal CapEx+OpEx incurred after sync.
+        </p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <KpiCard label="Monthly Planned" value={money(monthlyPlanned)} accent="#93c5fd" />
           <KpiCard label="Monthly Actual" value={money(monthlyActual)} accent="#1d4ed8" />
           <KpiCard label="Monthly Forecast" value={money(monthlyForecast)} accent="#f59e0b" />
+          {!phaseScoped ? (
+            <KpiCard label="Register FAC" value={money(registerFac)} accent="#8b5cf6" />
+          ) : null}
           <KpiCard
             label="Plan − Actual"
             value={money(planVsActualVar)}

@@ -109,6 +109,10 @@ export function sumMonthlyForecast(rows: MonthlyFinanceRow[]): number {
  * Distribute FY budget/forecast into monthly planned/forecast rows.
  * Preserves existing actuals. Months outside project schedule are skipped when
  * start/end are provided; otherwise all 12 FY months are used.
+ *
+ * Stream-aware: when allocations carry `stream_id` (or `streamId` is passed),
+ * rows are upserted into that stream lane. Avoids creating parallel null-stream
+ * months that would double-count against stream-scoped seed data.
  */
 export async function cascadeMonthlyFromFyPlan(opts: {
   orgId: string;
@@ -121,10 +125,12 @@ export async function cascadeMonthlyFromFyPlan(opts: {
     actual_start_date?: string | null;
     actual_end_date?: string | null;
   };
-  allocations: FyAllocationLike[];
+  allocations: (FyAllocationLike & { stream_id?: string | null })[];
   fyStartMonth?: number | null;
+  /** Force all allocations into this stream lane (optional). */
+  streamId?: string | null;
 }): Promise<{ monthsUpserted: number }> {
-  const { orgId, projectId, project, allocations, fyStartMonth } = opts;
+  const { orgId, projectId, project, allocations, fyStartMonth, streamId } = opts;
   const startIso =
     project.actual_start_date ||
     project.planned_start_date ||
@@ -142,14 +148,27 @@ export async function cascadeMonthlyFromFyPlan(opts: {
     .from("financials_monthly")
     .select("*")
     .eq("project_id", projectId);
-  const byMonth = new Map(
-    (existing ?? []).map((r: any) => [monthKey(r.period_month), r]),
+
+  const hasStreamRows = (existing ?? []).some((r: any) => !!r.stream_id);
+  const rowKey = (stream: string | null | undefined, period: string) =>
+    `${stream ?? "∅"}|${monthKey(period)}`;
+
+  const byKey = new Map(
+    (existing ?? []).map((r: any) => [rowKey(r.stream_id, r.period_month), r]),
   );
 
   let upserted = 0;
   for (const a of allocations) {
     const fy = String((a as any).fy || "");
     if (!fy) continue;
+    const laneStreamId =
+      streamId !== undefined ? streamId : ((a as any).stream_id ?? null);
+
+    // Do not invent null-stream plan rows when the project already uses streams.
+    if (laneStreamId == null && hasStreamRows) {
+      continue;
+    }
+
     const budget = fyAllocBudget(a);
     const forecast = fyAllocForecast(a);
     let months = monthsForFyLabel(fy, fyStartMonth);
@@ -167,10 +186,12 @@ export async function cascadeMonthlyFromFyPlan(opts: {
     const fSplit = splitCapexOpex(fEach, project);
 
     for (const m of months) {
-      const prev = byMonth.get(m);
+      const key = rowKey(laneStreamId, m);
+      const prev = byKey.get(key);
       const row = {
         org_id: orgId,
         project_id: projectId,
+        stream_id: laneStreamId,
         period_month: m,
         capex_planned: Math.round(bSplit.capex * 100) / 100,
         opex_planned: Math.round(bSplit.opex * 100) / 100,
@@ -192,7 +213,7 @@ export async function cascadeMonthlyFromFyPlan(opts: {
         const { error } = await supabase.from("financials_monthly").insert(row);
         if (error) throw error;
       }
-      byMonth.set(m, row);
+      byKey.set(key, { ...prev, ...row });
       upserted++;
     }
   }
