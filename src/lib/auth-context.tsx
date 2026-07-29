@@ -37,6 +37,8 @@ export interface Organization {
   primary_color?: string | null;
   accent_color?: string | null;
   fy_start_month?: number | null;
+  /** True when this org uses a customer-hosted Supabase for tenant data (BYOD). */
+  byod_active?: boolean | null;
   ui_config?: {
     navigation?: any;
     focus_mode?: boolean;
@@ -96,7 +98,7 @@ const AuthContext = createContext<AuthState | undefined>(undefined);
 const PROFILE_WITH_ORG_SELECT = `
   id,email,full_name,org_id,must_change_password,is_active,
   organizations (
-    id,name,slug,plan,brand_name,logo_url,primary_color,accent_color,fy_start_month,ui_config
+    id,name,slug,plan,brand_name,logo_url,primary_color,accent_color,fy_start_month,byod_active,ui_config
   )
 `.trim();
 

@@ -1262,6 +1262,7 @@ export type Database = {
           accent_color: string | null
           billing_email: string | null
           brand_name: string | null
+          byod_active: boolean
           created_at: string
           fy_start_month: number
           id: string
@@ -1285,6 +1286,7 @@ export type Database = {
           accent_color?: string | null
           billing_email?: string | null
           brand_name?: string | null
+          byod_active?: boolean
           created_at?: string
           fy_start_month?: number
           id?: string
@@ -1308,6 +1310,7 @@ export type Database = {
           accent_color?: string | null
           billing_email?: string | null
           brand_name?: string | null
+          byod_active?: boolean
           created_at?: string
           fy_start_month?: number
           id?: string
