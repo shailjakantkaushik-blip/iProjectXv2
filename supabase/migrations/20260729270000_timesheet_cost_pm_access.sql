@@ -64,6 +64,67 @@ COMMENT ON FUNCTION public.user_has_capability(uuid, text) IS
   'True when user is admin or has can_edit on the capability row; timesheet_cost_view defaults to org admin + PM when unconfigured.';
 
 -- ========== Timesheets: cost viewers may read approved sheets for visible projects ==========
+-- Cross-table checks must be SECURITY DEFINER — policy EXISTS loops between
+-- timesheets ↔ timesheet_entries cause "infinite recursion detected in policy".
+CREATE OR REPLACE FUNCTION public.user_can_view_approved_timesheet_for_cost(
+  _user_id uuid,
+  _timesheet_id uuid
+)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.timesheets t
+    WHERE t.id = _timesheet_id
+      AND t.status = 'approved'
+      AND public.user_has_capability(_user_id, 'capability::timesheet_cost_view')
+      AND EXISTS (
+        SELECT 1
+        FROM public.timesheet_entries e
+        WHERE e.timesheet_id = t.id
+          AND e.project_id IS NOT NULL
+          AND public.user_can_view_project(_user_id, e.project_id)
+      )
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.user_can_read_timesheet_row(
+  _user_id uuid,
+  _timesheet_id uuid,
+  _entry_project_id uuid DEFAULT NULL
+)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.timesheets t
+    WHERE t.id = _timesheet_id
+      AND (
+        t.user_id = _user_id
+        OR public.has_any_admin(_user_id)
+        OR public.is_timesheet_approver(_user_id, t.id)
+        OR t.manager_user_id = _user_id
+        OR (
+          t.status = 'approved'
+          AND public.user_has_capability(_user_id, 'capability::timesheet_cost_view')
+          AND _entry_project_id IS NOT NULL
+          AND public.user_can_view_project(_user_id, _entry_project_id)
+        )
+      )
+  );
+$$;
+
+GRANT EXECUTE ON FUNCTION public.user_can_view_approved_timesheet_for_cost(uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.user_can_read_timesheet_row(uuid, uuid, uuid) TO authenticated;
+
 DROP POLICY IF EXISTS "org read own or approve timesheets" ON public.timesheets;
 CREATE POLICY "org read own or approve timesheets" ON public.timesheets
   FOR SELECT TO authenticated
@@ -74,17 +135,7 @@ CREATE POLICY "org read own or approve timesheets" ON public.timesheets
       OR public.has_any_admin(auth.uid())
       OR public.is_timesheet_approver(auth.uid(), id)
       OR manager_user_id = auth.uid()
-      OR (
-        status = 'approved'
-        AND public.user_has_capability(auth.uid(), 'capability::timesheet_cost_view')
-        AND EXISTS (
-          SELECT 1
-          FROM public.timesheet_entries e
-          WHERE e.timesheet_id = timesheets.id
-            AND e.project_id IS NOT NULL
-            AND public.user_can_view_project(auth.uid(), e.project_id)
-        )
-      )
+      OR public.user_can_view_approved_timesheet_for_cost(auth.uid(), id)
     )
   );
 
@@ -93,22 +144,7 @@ CREATE POLICY "read timesheet_entries" ON public.timesheet_entries
   FOR SELECT TO authenticated
   USING (
     org_id = public.get_user_org(auth.uid())
-    AND EXISTS (
-      SELECT 1 FROM public.timesheets t
-      WHERE t.id = timesheet_id
-        AND (
-          t.user_id = auth.uid()
-          OR public.has_any_admin(auth.uid())
-          OR public.is_timesheet_approver(auth.uid(), t.id)
-          OR t.manager_user_id = auth.uid()
-          OR (
-            t.status = 'approved'
-            AND public.user_has_capability(auth.uid(), 'capability::timesheet_cost_view')
-            AND timesheet_entries.project_id IS NOT NULL
-            AND public.user_can_view_project(auth.uid(), timesheet_entries.project_id)
-          )
-        )
-    )
+    AND public.user_can_read_timesheet_row(auth.uid(), timesheet_id, project_id)
   );
 
 -- ========== PM / cost viewers: update rates for resources on editable projects ==========
