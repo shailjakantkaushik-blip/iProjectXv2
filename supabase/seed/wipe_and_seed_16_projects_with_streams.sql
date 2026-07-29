@@ -1,6 +1,6 @@
 -- =========================================================================
 -- iProjectX — Wipe operational data + seed 16 projects WITH streams
--- Paste into Supabase SQL Editor and run once.
+-- Paste into Supabase SQL Editor and run once (full application demo data).
 --
 -- KEEPS
 --   organizations, profiles, user_roles, business_units,
@@ -10,25 +10,31 @@
 -- DELETES (then reseeds)
 --   timesheets / timesheet_entries / timesheet_approvals / work_item_assignees,
 --   timesheet-related notifications,
---   projects (+ cascaded children incl. project_streams),
+--   projects (+ cascaded children incl. project_streams + stage_gates),
 --   resources, resource_allocations, demand_pipeline,
 --   portfolio_scenarios / scenario_projects,
 --   financials_monthly, fy_allocations, benefits leftovers,
 --   work_items, audit_log / audit_events, project_purge_notices
 --
--- SEEDS (per organisation)
+-- SEEDS (per organisation) — completely full demo
 --   Resources synced from existing org profiles (same person as login),
 --   16 projects (always-on Core + second stream),
---   stage gates + milestones per stream, FY + monthly finance per stream,
---   resource allocations, benefits, risks, issues, actions, decisions,
+--   9 stage gates PER STREAM (with planned/actual dates + status),
+--   milestones synced to gates (+ add-on stream milestones),
+--   FY + monthly finance per stream, resource allocations,
+--   benefits, risks, issues, actions, decisions (linked to stage gates),
 --   stakeholders, status updates, documents, lessons, change requests,
---   sprints, work items (+ resource assignees), dependencies, demand pipeline,
---   portfolio scenario, project.brief + baselines,
+--   sprints, work items with stage_gate_id + resource assignees,
+--   dependencies, demand pipeline, portfolio scenario,
+--   project.brief + baselines,
 --   sample timesheets (draft / pending / approved / rejected) with
 --   billable work-item rows + non-billable custom tasks
 --
--- Requires: always-on Core streams migration (ensure_project_core_stream,
---           rollup_project_from_streams) + timesheet migrations.
+-- Expected counts per org (approx):
+--   16 projects, 32 streams, 288 stage gates (16×2×9),
+--   work items with stage_gate_id set
+--
+-- Requires: always-on Core streams + timesheet / work-item stage_gate migrations.
 -- =========================================================================
 
 BEGIN;
@@ -40,6 +46,15 @@ ALTER TABLE public.fy_allocations
 
 ALTER TABLE public.projects
   ADD COLUMN IF NOT EXISTS forecast_at_completion NUMERIC(14,2) DEFAULT 0;
+
+ALTER TABLE public.work_items
+  ADD COLUMN IF NOT EXISTS stage_gate_id uuid REFERENCES public.stage_gates(id) ON DELETE SET NULL;
+
+ALTER TABLE public.timesheet_entries
+  ADD COLUMN IF NOT EXISTS stage_gate_id uuid REFERENCES public.stage_gates(id) ON DELETE SET NULL;
+
+ALTER TABLE public.financials_monthly
+  ADD COLUMN IF NOT EXISTS opex_labor_actual NUMERIC(14,2) DEFAULT 0;
 
 -- ---------- B) Wipe operational / project data ----------
 -- Timesheets first (FKs to projects / work items / resources / users)
@@ -102,8 +117,18 @@ EXCEPTION WHEN undefined_table THEN NULL;
 END
 $wipe5$;
 
--- Cascades: project_streams, stage_gates, milestones, risks, issues,
--- actions, decisions, dependencies, change_requests, sprints, stakeholders, etc.
+-- Explicit child clears (in case cascade / orphans)
+DO $wipe_gates$
+BEGIN
+  DELETE FROM public.stage_gates;
+  DELETE FROM public.milestones;
+  DELETE FROM public.project_streams;
+EXCEPTION WHEN undefined_table THEN NULL;
+END
+$wipe_gates$;
+
+-- Cascades remaining: risks, issues, actions, decisions, dependencies,
+-- change_requests, sprints, stakeholders, etc.
 DELETE FROM public.projects;
 
 -- ---------- C) Ensure stage gate definitions (canonical 9) ----------
@@ -269,7 +294,11 @@ BEGIN
 
     res_ids := ARRAY[]::uuid[];
     -- Resources = org members (same person). No fictional sample people.
-    PERFORM public.sync_org_resources_from_profiles(r_org.id);
+    BEGIN
+      PERFORM public.sync_org_resources_from_profiles(r_org.id);
+    EXCEPTION WHEN undefined_function THEN
+      RAISE NOTICE 'sync_org_resources_from_profiles missing — continuing without auto-sync';
+    END;
     SELECT coalesce(array_agg(r.id ORDER BY r.name), ARRAY[]::uuid[])
     INTO res_ids
     FROM public.resources r
@@ -439,20 +468,31 @@ BEGIN
           ELSIF j = g_idx THEN g_status := 'In Review';
           ELSE g_status := 'Pending';
           END IF;
-          -- Alt stream slightly lags Core
+          -- Spread 9 gates evenly across the stream schedule window
           INSERT INTO public.stage_gates (
             org_id, project_id, stream_id, gate_name, planned_date, actual_date, status, approver, notes
           ) VALUES (
             r_org.id, p_id, sid, gate_names[j],
-            s_start + ((j - 1) * 45) + CASE WHEN sid = alt_id THEN 7 ELSE 0 END,
+            (s_start + ((s_end - s_start) * (j - 1) / GREATEST(array_length(gate_names, 1) - 1, 1)))::date
+              + CASE WHEN sid = alt_id THEN 7 ELSE 0 END,
             CASE WHEN g_status = 'Approved'
-              THEN s_start + ((j - 1) * 45) + CASE WHEN sid = alt_id THEN 10 ELSE 3 END
+              THEN (s_start + ((s_end - s_start) * (j - 1) / GREATEST(array_length(gate_names, 1) - 1, 1)))::date
+                + CASE WHEN sid = alt_id THEN 10 ELSE 3 END
               ELSE NULL END,
             g_status,
             sponsors[i],
             CASE WHEN sid = core_id THEN 'Core stream gate' ELSE alt_names[i] || ' stream gate' END
           );
         END LOOP;
+
+        -- Auto-synced milestones from gates inherit stream_id (trigger may omit it)
+        UPDATE public.milestones m
+        SET stream_id = g.stream_id
+        FROM public.stage_gates g
+        WHERE m.stage_gate_id = g.id
+          AND g.project_id = p_id
+          AND g.stream_id = sid
+          AND (m.stream_id IS DISTINCT FROM g.stream_id);
 
         INSERT INTO public.milestones (
           org_id, project_id, stream_id, name, planned_date, actual_date, status, owner, notes
@@ -586,12 +626,32 @@ BEGIN
         (r_org.id, p_id, 'Publish status pack', 'Monthly status for steering', 'Sam Rivera', CURRENT_DATE + 3, 'In Progress', 'Medium');
 
       INSERT INTO public.decisions (
-        org_id, project_id, title, description, decision_date, decided_by, rationale, impact, status
-      ) VALUES
-        (r_org.id, p_id, 'Adopt dual-stream delivery', 'Core + ' || alt_names[i] || ' streams approved', starts[i] + 20, sponsors[i],
-         'Clear ownership of dates, gates and finance per stream', 'Enables rollup timelines and PvA by stream', 'Approved'),
-        (r_org.id, p_id, 'Hybrid delivery method', 'Confirm ' || methods[i]::text || ' approach', starts[i] + 30, 'Sam Rivera',
-         'Aligns cadence with dependencies', 'Sprint + stage-gate hybrid where needed', 'Approved');
+        org_id, project_id, stage_gate_id, title, description, decision_date, decided_by, rationale, impact, status
+      )
+      SELECT
+        r_org.id, p_id,
+        (SELECT sg.id FROM public.stage_gates sg
+         WHERE sg.project_id = p_id AND sg.stream_id = core_id AND sg.status = 'In Review'
+         ORDER BY sg.planned_date LIMIT 1),
+        'Adopt dual-stream delivery',
+        'Core + ' || alt_names[i] || ' streams approved',
+        starts[i] + 20, sponsors[i],
+        'Clear ownership of dates, gates and finance per stream',
+        'Enables rollup timelines and PvA by stream',
+        'Approved'
+      UNION ALL
+      SELECT
+        r_org.id, p_id,
+        (SELECT sg.id FROM public.stage_gates sg
+         WHERE sg.project_id = p_id AND sg.stream_id = core_id
+           AND sg.gate_name = 'Business Case / Full Funding'
+         ORDER BY sg.planned_date LIMIT 1),
+        'Hybrid delivery method',
+        'Confirm ' || methods[i]::text || ' approach',
+        starts[i] + 30, 'Sam Rivera',
+        'Aligns cadence with dependencies',
+        'Sprint + stage-gate hybrid where needed',
+        'Approved';
 
       INSERT INTO public.stakeholders (
         org_id, project_id, name, role, email, influence, interest, engagement_strategy
@@ -1031,13 +1091,24 @@ END $$;
 
 COMMIT;
 
--- Optional verification:
--- SELECT o.name, count(p.*) projects FROM organizations o LEFT JOIN projects p ON p.org_id = o.id GROUP BY 1;
--- SELECT count(*) FROM resources;
--- SELECT count(*) FROM work_items;
--- SELECT count(*) FROM work_item_assignees;
--- SELECT status, count(*) FROM timesheets GROUP BY 1 ORDER BY 1;
--- SELECT billable, count(*), round(sum(hours_mon+hours_tue+hours_wed+hours_thu+hours_fri+hours_sat+hours_sun),1) hrs
---   FROM timesheet_entries GROUP BY 1;
--- SELECT p.project_code, s.name, s.code, s.is_default, s.budget
---   FROM projects p JOIN project_streams s ON s.project_id = p.id ORDER BY 1, s.sort_order;
+-- Verification (run after commit — expect ~16 projects/org, 32 streams, 288 gates):
+SELECT o.name AS org,
+       (SELECT count(*) FROM public.projects p WHERE p.org_id = o.id) AS projects,
+       (SELECT count(*) FROM public.project_streams s
+         JOIN public.projects p ON p.id = s.project_id WHERE p.org_id = o.id) AS streams,
+       (SELECT count(*) FROM public.stage_gates g WHERE g.org_id = o.id) AS stage_gates,
+       (SELECT count(*) FROM public.stage_gates g WHERE g.org_id = o.id AND g.stream_id IS NOT NULL) AS gates_on_streams,
+       (SELECT count(*) FROM public.work_items w WHERE w.org_id = o.id) AS work_items,
+       (SELECT count(*) FROM public.work_items w WHERE w.org_id = o.id AND w.stage_gate_id IS NOT NULL) AS work_items_with_gate,
+       (SELECT count(*) FROM public.resources r WHERE r.org_id = o.id) AS resources,
+       (SELECT count(*) FROM public.timesheets t WHERE t.org_id = o.id) AS timesheets
+FROM public.organizations o
+ORDER BY 1;
+
+-- Sample gate check (should list Core + alt for each project):
+-- SELECT p.project_code, s.name AS stream, g.gate_name, g.status, g.planned_date
+-- FROM public.stage_gates g
+-- JOIN public.projects p ON p.id = g.project_id
+-- LEFT JOIN public.project_streams s ON s.id = g.stream_id
+-- ORDER BY p.project_code, s.sort_order, g.planned_date
+-- LIMIT 40;
