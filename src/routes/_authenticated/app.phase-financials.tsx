@@ -527,17 +527,8 @@ function PhaseFinancialsPage() {
           onClear={phaseTable.clearAll}
           placeholder="Search phase register…"
         />
-        <div className="st-table-wrap">
-          <table className="st-table table-fixed min-w-[52rem]">
-            <colgroup>
-              <col className="w-[22%]" />
-              <col className="w-[10%]" />
-              <col className="w-[12%]" />
-              <col className="w-[12%]" />
-              <col className="w-[12%]" />
-              <col className="w-[16%]" />
-              <col className="w-[16%]" />
-            </colgroup>
+        <div className="st-table-wrap overflow-x-auto">
+          <table className="st-table !w-max min-w-full text-xs">
             <thead>
               <tr>
                 {phaseColumns.map((col) => (
@@ -550,7 +541,11 @@ function PhaseFinancialsPage() {
                     sortDir={phaseTable.sortDir}
                     onToggleSort={phaseTable.toggleSort}
                     align={col.key === "stage" ? "left" : "right"}
-                    className={col.key === "stage" ? "" : "text-right"}
+                    className={
+                      col.key === "stage"
+                        ? "min-w-[8rem] whitespace-nowrap"
+                        : "st-num whitespace-nowrap"
+                    }
                   />
                 ))}
               </tr>
@@ -575,7 +570,7 @@ function PhaseFinancialsPage() {
                       }
                       if (col.key === "count") {
                         return (
-                          <td key={col.key} className="text-right tabular-nums whitespace-nowrap">
+                          <td key={col.key} className="st-num text-right tabular-nums whitespace-nowrap">
                             {r.count}
                           </td>
                         );
@@ -585,7 +580,7 @@ function PhaseFinancialsPage() {
                           <td
                             key={col.key}
                             className={
-                              "text-right tabular-nums whitespace-nowrap " +
+                              "st-num text-right tabular-nums whitespace-nowrap " +
                               (r.variance < 0 ? "text-red-600" : "text-emerald-700")
                             }
                           >
@@ -606,7 +601,7 @@ function PhaseFinancialsPage() {
                                   ? r.fteActual
                                   : r.remaining;
                       return (
-                        <td key={col.key} className="text-right tabular-nums whitespace-nowrap">
+                        <td key={col.key} className="st-num text-right tabular-nums whitespace-nowrap">
                           {fmtM(amount)}
                         </td>
                       );
@@ -630,16 +625,8 @@ function PhaseFinancialsPage() {
           onClear={detailTable.clearAll}
           placeholder="Search project / stream / stage…"
         />
-        <div className="st-table-wrap">
-          <table className="st-table table-fixed min-w-[48rem]">
-            <colgroup>
-              <col className="w-[22%]" />
-              <col className="w-[18%]" />
-              <col className="w-[20%]" />
-              <col className="w-[13%]" />
-              <col className="w-[13%]" />
-              <col className="w-[14%]" />
-            </colgroup>
+        <div className="st-table-wrap overflow-x-auto">
+          <table className="st-table !w-max min-w-full text-xs">
             <thead>
               <tr>
                 {detailColumns.map((col) => (
@@ -658,8 +645,10 @@ function PhaseFinancialsPage() {
                     }
                     className={
                       ["planned", "forecast", "actual", "ftePlan", "fteActual"].includes(col.key)
-                        ? "text-right"
-                        : ""
+                        ? "st-num whitespace-nowrap"
+                        : col.key === "project" || col.key === "stream"
+                          ? "min-w-[7rem] whitespace-nowrap"
+                          : "whitespace-nowrap"
                     }
                   />
                 ))}
@@ -708,7 +697,7 @@ function PhaseFinancialsPage() {
                                 ? r.fteActual
                                 : r.actual;
                       return (
-                        <td key={col.key} className="text-right tabular-nums whitespace-nowrap">
+                        <td key={col.key} className="st-num text-right tabular-nums whitespace-nowrap">
                           {fmtM(amount)}
                         </td>
                       );
