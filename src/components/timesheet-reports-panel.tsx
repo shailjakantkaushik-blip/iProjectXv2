@@ -359,15 +359,28 @@ export function TimesheetReportsPanel({ orgId, orgName, members, projects }: Pro
           <SectionFrame>
             <SectionTitle>Team utilisation</SectionTitle>
             <div className="overflow-x-auto">
-              <table className="st-table text-xs">
+              {/*
+                st-table forces thead th text-align:left; numeric headers need inline
+                style so values and labels share the same alignment.
+              */}
+              <table className="st-table w-full table-fixed text-xs">
+                <colgroup>
+                  <col className="w-[18%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[28%]" />
+                </colgroup>
                 <thead>
                   <tr>
                     <th>Person</th>
-                    <th className="text-right">Capacity</th>
-                    <th className="text-right">Total</th>
-                    <th className="text-right">Billable</th>
-                    <th className="text-right">Non-billable</th>
-                    <th className="text-right">Utilisation</th>
+                    <th style={{ textAlign: "right" }}>Capacity</th>
+                    <th style={{ textAlign: "right" }}>Total</th>
+                    <th style={{ textAlign: "right" }}>Billable</th>
+                    <th style={{ textAlign: "right" }}>Non-billable</th>
+                    <th style={{ textAlign: "right" }}>Utilisation</th>
                     <th>Status</th>
                   </tr>
                 </thead>
@@ -382,11 +395,22 @@ export function TimesheetReportsPanel({ orgId, orgName, members, projects }: Pro
                     utilisation.map((r) => (
                       <tr key={r.user_id}>
                         <td className="font-medium">{r.name}</td>
-                        <td className="text-right tabular-nums">{r.capacity}</td>
-                        <td className="text-right tabular-nums">{r.total_hours}</td>
-                        <td className="text-right tabular-nums">{r.billable_hours}</td>
-                        <td className="text-right tabular-nums">{r.non_billable_hours}</td>
-                        <td className="text-right tabular-nums font-semibold">
+                        <td className="tabular-nums whitespace-nowrap" style={{ textAlign: "right" }}>
+                          {r.capacity}
+                        </td>
+                        <td className="tabular-nums whitespace-nowrap" style={{ textAlign: "right" }}>
+                          {r.total_hours}
+                        </td>
+                        <td className="tabular-nums whitespace-nowrap" style={{ textAlign: "right" }}>
+                          {r.billable_hours}
+                        </td>
+                        <td className="tabular-nums whitespace-nowrap" style={{ textAlign: "right" }}>
+                          {r.non_billable_hours}
+                        </td>
+                        <td
+                          className="tabular-nums font-semibold whitespace-nowrap"
+                          style={{ textAlign: "right" }}
+                        >
                           {r.utilisation_pct}%
                         </td>
                         <td className="text-muted-foreground">{r.status_summary}</td>
@@ -401,15 +425,23 @@ export function TimesheetReportsPanel({ orgId, orgName, members, projects }: Pro
           <SectionFrame>
             <SectionTitle>Project effort</SectionTitle>
             <div className="overflow-x-auto">
-              <table className="st-table text-xs">
+              <table className="st-table w-full table-fixed text-xs">
+                <colgroup>
+                  <col className="w-[34%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[16%]" />
+                </colgroup>
                 <thead>
                   <tr>
                     <th>Project</th>
-                    <th className="text-right">Billable</th>
-                    <th className="text-right">Non-billable</th>
-                    <th className="text-right">Total</th>
-                    <th className="text-right">People</th>
-                    <th className="text-right">Labor cost</th>
+                    <th style={{ textAlign: "right" }}>Billable</th>
+                    <th style={{ textAlign: "right" }}>Non-billable</th>
+                    <th style={{ textAlign: "right" }}>Total</th>
+                    <th style={{ textAlign: "right" }}>People</th>
+                    <th style={{ textAlign: "right" }}>Labor cost</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -423,11 +455,24 @@ export function TimesheetReportsPanel({ orgId, orgName, members, projects }: Pro
                     projectEffort.map((r) => (
                       <tr key={r.project_id}>
                         <td className="font-medium">{r.project_name}</td>
-                        <td className="text-right tabular-nums">{r.billable_hours}</td>
-                        <td className="text-right tabular-nums">{r.non_billable_hours}</td>
-                        <td className="text-right tabular-nums font-semibold">{r.total_hours}</td>
-                        <td className="text-right tabular-nums">{r.people}</td>
-                        <td className="text-right tabular-nums">{r.labor_cost}</td>
+                        <td className="tabular-nums whitespace-nowrap" style={{ textAlign: "right" }}>
+                          {r.billable_hours}
+                        </td>
+                        <td className="tabular-nums whitespace-nowrap" style={{ textAlign: "right" }}>
+                          {r.non_billable_hours}
+                        </td>
+                        <td
+                          className="tabular-nums font-semibold whitespace-nowrap"
+                          style={{ textAlign: "right" }}
+                        >
+                          {r.total_hours}
+                        </td>
+                        <td className="tabular-nums whitespace-nowrap" style={{ textAlign: "right" }}>
+                          {r.people}
+                        </td>
+                        <td className="tabular-nums whitespace-nowrap" style={{ textAlign: "right" }}>
+                          {r.labor_cost}
+                        </td>
                       </tr>
                     ))
                   )}
