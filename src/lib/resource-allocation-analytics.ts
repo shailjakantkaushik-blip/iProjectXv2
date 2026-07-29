@@ -23,6 +23,8 @@ export type TimesheetEffortRow = {
   stream_id?: string | null;
   stage_gate_id?: string | null;
   period_month: string; // YYYY-MM-01 from week_start
+  /** Original timesheet week start (YYYY-MM-DD) when available — for period filters. */
+  week_start?: string | null;
   hours: number;
   labor_cost: number;
   billable?: boolean;

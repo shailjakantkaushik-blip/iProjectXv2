@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -33,6 +33,29 @@ const STATUS_COLOR = {
   Unplanned: "text-violet-600",
 } as const;
 
+/** YYYY-MM from period_month / week_start. */
+function monthKey(v: string | null | undefined): string {
+  const m = normMonth(v);
+  return m ? m.slice(0, 7) : "";
+}
+
+function formatMonthLabel(ym: string): string {
+  if (!/^\d{4}-\d{2}$/.test(ym)) return ym;
+  const [y, mo] = ym.split("-").map(Number);
+  return new Date(y, mo - 1, 1).toLocaleDateString(undefined, {
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function inMonthRange(period: string | null | undefined, from: string, to: string): boolean {
+  const m = monthKey(period);
+  if (!m) return from === "all" && to === "all";
+  if (from !== "all" && m < from) return false;
+  if (to !== "all" && m > to) return false;
+  return true;
+}
+
 type Props = {
   mode: "pva" | "cost";
   projects: Array<{
@@ -52,6 +75,9 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
   const [grain, setGrain] = useState<PvaGrain>(mode === "cost" ? "resource" : "stage_gate");
   const [projectFilter, setProjectFilter] = useState("all");
   const [resourceFilter, setResourceFilter] = useState("all");
+  const [monthFrom, setMonthFrom] = useState("all");
+  const [monthTo, setMonthTo] = useState("all");
+  const [periodReady, setPeriodReady] = useState(false);
 
   const visibleProjectIds = useMemo(() => new Set(projects.map((p) => p.id)), [projects]);
 
@@ -99,12 +125,14 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
       if (e2) throw e2;
       return ((entries ?? []) as any[]).map((e) => {
         const ts = sheetById.get(e.timesheet_id) as any;
+        const weekStart = ts?.week_start ? String(ts.week_start).slice(0, 10) : null;
         return {
           resource_id: ts?.resource_id ?? null,
           project_id: e.project_id,
           stream_id: e.stream_id,
           stage_gate_id: e.stage_gate_id,
-          period_month: normMonth(ts?.week_start),
+          period_month: normMonth(weekStart),
+          week_start: weekStart,
           hours: entryHours(e),
           labor_cost: Number(e.labor_cost) || 0,
           billable: e.billable !== false,
@@ -113,6 +141,29 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
     },
     enabled: !!organization,
   });
+
+  const monthOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const a of allocations) {
+      const m = monthKey(a.period_month);
+      if (m) s.add(m);
+    }
+    for (const a of actualRows) {
+      const m = monthKey(a.period_month || a.week_start);
+      if (m) s.add(m);
+    }
+    return Array.from(s).sort();
+  }, [allocations, actualRows]);
+
+  // Default period: last 6 months with data (or all if fewer)
+  useEffect(() => {
+    if (periodReady || monthOptions.length === 0) return;
+    const from = monthOptions[Math.max(0, monthOptions.length - 6)];
+    const to = monthOptions[monthOptions.length - 1];
+    setMonthFrom(from);
+    setMonthTo(to);
+    setPeriodReady(true);
+  }, [monthOptions, periodReady]);
 
   const projectsById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
   const projectsOrdered = useMemo(() => [...projects].sort(compareProjectsByCodeName), [projects]);
@@ -162,17 +213,19 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
     return scopedPlans.filter((a: AllocationPlanRow) => {
       if (projectFilter !== "all" && a.project_id !== projectFilter) return false;
       if (resourceFilter !== "all" && a.resource_id !== resourceFilter) return false;
+      if (!inMonthRange(a.period_month, monthFrom, monthTo)) return false;
       return true;
     });
-  }, [scopedPlans, projectFilter, resourceFilter]);
+  }, [scopedPlans, projectFilter, resourceFilter, monthFrom, monthTo]);
 
   const filteredActuals = useMemo(() => {
     return scopedActuals.filter((a: TimesheetEffortRow) => {
       if (projectFilter !== "all" && a.project_id !== projectFilter) return false;
       if (resourceFilter !== "all" && a.resource_id !== resourceFilter) return false;
+      if (!inMonthRange(a.period_month || a.week_start, monthFrom, monthTo)) return false;
       return true;
     });
-  }, [scopedActuals, projectFilter, resourceFilter]);
+  }, [scopedActuals, projectFilter, resourceFilter, monthFrom, monthTo]);
 
   const rows = useMemo(
     () =>
@@ -202,6 +255,13 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
   const totAct = rows.reduce((s, r) => s + r.actual_hours, 0);
   const totCost = rows.reduce((s, r) => s + r.labor_cost, 0);
 
+  const periodLabel =
+    monthFrom === "all" && monthTo === "all"
+      ? "All months"
+      : `${monthFrom === "all" ? "…" : formatMonthLabel(monthFrom)} → ${
+          monthTo === "all" ? "…" : formatMonthLabel(monthTo)
+        }`;
+
   if (mode === "cost" && !canViewCost) {
     return (
       <SectionFrame>
@@ -223,55 +283,109 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
           </SectionTitle>
           <p className="text-xs text-muted-foreground">
             {mode === "cost"
-              ? "Labor cost from approved timesheets. Group by resource, project, stream, stage gate, program, portfolio, or month. Scoped to projects you can view."
+              ? "Labor cost from approved timesheets. Filter by period, project, and resource; group by resource, project, stream, stage gate, program, portfolio, or month."
               : "Planned FTE from resource allocations vs actual hours on approved timesheets (work items stamp stream + stage gate)."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Select value={projectFilter} onValueChange={setProjectFilter}>
-            <SelectTrigger className="h-9 w-44">
-              <SelectValue placeholder="Project" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All projects</SelectItem>
-              {projectsOrdered.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.project_code ? `${p.project_code} — ${p.name}` : p.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={resourceFilter} onValueChange={setResourceFilter}>
-            <SelectTrigger className="h-9 w-44">
-              <SelectValue placeholder="Resource" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All resources</SelectItem>
-              {resourcesOrdered.map((r) => (
-                <SelectItem key={r.id} value={r.id}>
-                  {r.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={grain} onValueChange={(v) => setGrain(v as PvaGrain)}>
-            <SelectTrigger className="h-9 w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="resource">By resource</SelectItem>
-              <SelectItem value="project">By project</SelectItem>
-              <SelectItem value="stream">By stream</SelectItem>
-              <SelectItem value="stage_gate">By stage gate</SelectItem>
-              <SelectItem value="program">By program</SelectItem>
-              <SelectItem value="portfolio">By portfolio</SelectItem>
-              <SelectItem value="month">By month</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-medium text-muted-foreground">From month</span>
+            <Select
+              value={monthFrom}
+              onValueChange={(v) => {
+                setMonthFrom(v);
+                if (v !== "all" && monthTo !== "all" && v > monthTo) setMonthTo(v);
+              }}
+            >
+              <SelectTrigger className="h-9 w-40">
+                <SelectValue placeholder="From" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                {monthOptions.map((m) => (
+                  <SelectItem key={m} value={m}>
+                    {formatMonthLabel(m)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-medium text-muted-foreground">To month</span>
+            <Select
+              value={monthTo}
+              onValueChange={(v) => {
+                setMonthTo(v);
+                if (v !== "all" && monthFrom !== "all" && v < monthFrom) setMonthFrom(v);
+              }}
+            >
+              <SelectTrigger className="h-9 w-40">
+                <SelectValue placeholder="To" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                {monthOptions.map((m) => (
+                  <SelectItem key={m} value={m}>
+                    {formatMonthLabel(m)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-medium text-muted-foreground">Project</span>
+            <Select value={projectFilter} onValueChange={setProjectFilter}>
+              <SelectTrigger className="h-9 w-44">
+                <SelectValue placeholder="Project" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All projects</SelectItem>
+                {projectsOrdered.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.project_code ? `${p.project_code} — ${p.name}` : p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-medium text-muted-foreground">Resource</span>
+            <Select value={resourceFilter} onValueChange={setResourceFilter}>
+              <SelectTrigger className="h-9 w-44">
+                <SelectValue placeholder="Resource" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All resources</SelectItem>
+                {resourcesOrdered.map((r) => (
+                  <SelectItem key={r.id} value={r.id}>
+                    {r.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-medium text-muted-foreground">Group by</span>
+            <Select value={grain} onValueChange={(v) => setGrain(v as PvaGrain)}>
+              <SelectTrigger className="h-9 w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="resource">By resource</SelectItem>
+                <SelectItem value="project">By project</SelectItem>
+                <SelectItem value="stream">By stream</SelectItem>
+                <SelectItem value="stage_gate">By stage gate</SelectItem>
+                <SelectItem value="program">By program</SelectItem>
+                <SelectItem value="portfolio">By portfolio</SelectItem>
+                <SelectItem value="month">By month</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
-      <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <KpiCard label="Period" value={periodLabel} accent="#8b5cf6" />
         <KpiCard label="Planned hours" value={totPlan.toFixed(1)} accent="#3b82f6" />
         <KpiCard label="Actual hours" value={totAct.toFixed(1)} accent="#0ea5e9" />
         <KpiCard
@@ -282,7 +396,7 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
         {mode === "cost" || canViewCost ? (
           <KpiCard label="FTE labor cost" value={money(totCost)} accent="#f59e0b" />
         ) : (
-          <KpiCard label="Rows" value={String(rows.length)} accent="#8b5cf6" />
+          <KpiCard label="Rows" value={String(rows.length)} accent="#64748b" />
         )}
       </div>
 
@@ -317,7 +431,7 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
                   colSpan={mode === "cost" || canViewCost ? 8 : 7}
                   className="py-6 text-center text-muted-foreground"
                 >
-                  No allocation or timesheet data for this view.
+                  No allocation or timesheet data for this period.
                 </td>
               </tr>
             ) : (
