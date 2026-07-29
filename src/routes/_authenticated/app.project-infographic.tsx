@@ -4,7 +4,6 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   PROJECT_DETAIL_SELECT,
-  STAGE_GATES_SELECT,
   RESOURCE_ALLOCATIONS_SELECT,
   RESOURCES_SELECT,
   FINANCIALS_MONTHLY_SELECT,
@@ -13,6 +12,7 @@ import {
   ISSUES_SELECT,
   MILESTONES_SELECT,
 } from "@/lib/query-selects";
+import { fetchStageGates } from "@/lib/stage-gates";
 import { useAuth } from "@/lib/auth-context";
 import { SectionFrame, SectionTitle, PageHeading, RagChip, KpiCard } from "@/components/streamlit";
 import {
@@ -324,14 +324,10 @@ function InfographicPage() {
 
   const { data: gates = [] } = useQuery({
     queryKey: ["stage_gates", project?.id],
-    queryFn: async () =>
-      (
-        await supabase
-          .from("stage_gates")
-          .select(STAGE_GATES_SELECT as "*")
-          .eq("project_id", project.id)
-          .order("planned_date")
-      ).data ?? [],
+    queryFn: async () => {
+      const all = await fetchStageGates();
+      return all.filter((g) => g.project_id === project.id);
+    },
     enabled: !!project,
   });
 
