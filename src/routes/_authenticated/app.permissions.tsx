@@ -10,6 +10,7 @@ import {
   EDITABLE_TABLES,
   PAGES,
   capabilityKey,
+  defaultCapabilityAllowed,
   pageKey,
   useRolePermissions,
 } from "@/lib/permissions";
@@ -115,7 +116,7 @@ function PermissionsPage() {
   const capabilityChecked = (role: string, capId: string) => {
     const key = capabilityKey(capId);
     const cur = map.get(`${role}::${key}`);
-    if (!cur) return role === "admin" || role === "org_admin";
+    if (!cur) return defaultCapabilityAllowed(capId, [role]);
     return cur.can_edit;
   };
 

@@ -46,7 +46,7 @@ export const CAPABILITIES: {
     id: "timesheet_cost_view",
     label: "Timesheet / resource cost view",
     description:
-      "View FTE labor cost from approved timesheets on Resources and the Timesheets Cost / Reports tabs",
+      "View FTE labor cost (Cost quick view, Org reporting) and access Resource setup rates. Default: Org Admin + Project Manager. Data is limited to projects the role can view.",
   },
 ];
 
@@ -179,8 +179,18 @@ export function useTablePermission(tableName: string) {
 /**
  * Org-admin-configurable capabilities (Data Editor, template upload, …).
  * Stored as capability::<id> in role_table_permissions (uses can_edit as "allowed").
- * Default when unconfigured: admin + org_admin allowed; other roles denied.
+ * Default when unconfigured: see defaultCapabilityAllowed().
  */
+export function defaultCapabilityAllowed(capabilityId: string, roles: string[]): boolean {
+  const isAdmin = roles.some((r) => r === "admin" || r === "org_admin");
+  if (isAdmin) return true;
+  // Cost / resource setup / org reporting — org admin + PM by default
+  if (capabilityId === "timesheet_cost_view") {
+    return roles.includes("pm");
+  }
+  return false;
+}
+
 export function useCapabilityPermission(capabilityId: string): {
   canEdit: boolean;
   isReady: boolean;
@@ -188,10 +198,12 @@ export function useCapabilityPermission(capabilityId: string): {
   const { roles } = useAuth();
   const { data: rows = [], isSuccess } = useRolePermissions();
   const key = capabilityKey(capabilityId);
-  const isAdmin = roles.some((r) => r === "admin" || r === "org_admin");
   const relevant = rows.filter((r) => roles.includes(r.role as any) && r.table_name === key);
   if (relevant.length === 0) {
-    return { canEdit: isAdmin, isReady: isSuccess || roles.length === 0 };
+    return {
+      canEdit: defaultCapabilityAllowed(capabilityId, roles),
+      isReady: isSuccess || roles.length === 0,
+    };
   }
   return {
     canEdit: relevant.some((r) => r.can_edit),

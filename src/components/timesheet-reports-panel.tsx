@@ -28,13 +28,22 @@ type Props = {
   orgName?: string | null;
   members: OrgMember[];
   projects: Array<{ id: string; name: string }>;
+  /** When false, labor cost columns are hidden (capability gated). */
+  showCost?: boolean;
 };
 
-export function TimesheetReportsPanel({ orgId, orgName, members, projects }: Props) {
+export function TimesheetReportsPanel({
+  orgId,
+  orgName,
+  members,
+  projects,
+  showCost = true,
+}: Props) {
   const qc = useQueryClient();
   const thisWeek = weekStartMonday();
   const [fromWeek, setFromWeek] = useState(() => addDays(thisWeek, -21));
   const [toWeek, setToWeek] = useState(thisWeek);
+  const [viewBy, setViewBy] = useState<"resource" | "project">("resource");
 
   const weekStarts = useMemo(() => weeksInRange(fromWeek, toWeek), [fromWeek, toWeek]);
   const weekLabel =
@@ -44,6 +53,7 @@ export function TimesheetReportsPanel({ orgId, orgName, members, projects }: Pro
 
   const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
   const projectById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
+  const visibleProjectIds = useMemo(() => new Set(projects.map((p) => p.id)), [projects]);
 
   const { data: resources = [], isLoading: resourcesLoading } = useQuery({
     queryKey: ["resources", orgId, "timesheet-reports"],
@@ -136,6 +146,15 @@ export function TimesheetReportsPanel({ orgId, orgName, members, projects }: Pro
     enabled: !!orgId,
   });
 
+  const scopedEntries = useMemo(
+    () =>
+      entries.filter((e) => {
+        if (!e.project_id) return true;
+        return visibleProjectIds.has(e.project_id);
+      }),
+    [entries, visibleProjectIds],
+  );
+
   const nameOf = (id: string) => {
     const m = memberById.get(id);
     return m ? memberLabel(m) : id.slice(0, 8);
@@ -145,36 +164,36 @@ export function TimesheetReportsPanel({ orgId, orgName, members, projects }: Pro
     () =>
       buildUtilisationRows({
         sheets,
-        entries,
+        entries: scopedEntries,
         resources,
         weekStarts,
         memberName: nameOf,
       }),
-    [sheets, entries, resources, weekStarts, memberById],
+    [sheets, scopedEntries, resources, weekStarts, memberById],
   );
 
   const projectEffort = useMemo(
     () =>
       buildProjectEffortRows({
         sheets,
-        entries,
+        entries: scopedEntries,
         weekStarts,
         projectName: (id) => (id ? projectById.get(id)?.name || id : "(None)"),
       }),
-    [sheets, entries, weekStarts, projectById],
+    [sheets, scopedEntries, weekStarts, projectById],
   );
 
   const details = useMemo(
     () =>
       buildDetailRows({
         sheets,
-        entries,
+        entries: scopedEntries,
         weekStarts,
         memberName: nameOf,
         projectName: (id) => (id ? projectById.get(id)?.name || id : ""),
         workItemTitle: (id) => (id ? workById.get(id)?.title || id : ""),
       }),
-    [sheets, entries, weekStarts, memberById, projectById, workById],
+    [sheets, scopedEntries, weekStarts, memberById, projectById, workById],
   );
 
   const billable = useMemo(() => billableSummary(utilisation), [utilisation]);
@@ -282,9 +301,34 @@ export function TimesheetReportsPanel({ orgId, orgName, members, projects }: Pro
       <SectionFrame>
         <SectionTitle>Organisation reporting</SectionTitle>
         <p className="mb-3 text-sm text-muted-foreground">
-          Team utilisation, billable vs non-billable hours, and project effort for the selected
-          weeks. Exports support payroll, invoicing, and project reporting.
+          Team utilisation by resource, billable vs non-billable hours, and project effort for the
+          selected weeks. Scoped to projects you can view. Exports support payroll, invoicing, and
+          project reporting.
         </p>
+        <div className="mb-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className={`rounded-md border px-3 py-1.5 text-xs font-semibold ${
+              viewBy === "resource"
+                ? "border-sky-300 bg-sky-50 text-sky-800"
+                : "border-border bg-surface text-foreground"
+            }`}
+            onClick={() => setViewBy("resource")}
+          >
+            By resource
+          </button>
+          <button
+            type="button"
+            className={`rounded-md border px-3 py-1.5 text-xs font-semibold ${
+              viewBy === "project"
+                ? "border-sky-300 bg-sky-50 text-sky-800"
+                : "border-border bg-surface text-foreground"
+            }`}
+            onClick={() => setViewBy("project")}
+          >
+            By project
+          </button>
+        </div>
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-xs">
             <span className="mb-1 block text-muted-foreground">From week (Mon)</span>
@@ -357,12 +401,11 @@ export function TimesheetReportsPanel({ orgId, orgName, members, projects }: Pro
           </div>
 
           <SectionFrame>
-            <SectionTitle>Team utilisation</SectionTitle>
+            <SectionTitle>
+              {viewBy === "resource" ? "Team utilisation (by resource)" : "Project effort"}
+            </SectionTitle>
             <div className="overflow-x-auto">
-              {/*
-                st-table forces thead th text-align:left; numeric headers need inline
-                style so values and labels share the same alignment.
-              */}
+              {viewBy === "resource" ? (
               <table className="st-table w-full table-fixed text-xs">
                 <colgroup>
                   <col className="w-[18%]" />
@@ -371,6 +414,7 @@ export function TimesheetReportsPanel({ orgId, orgName, members, projects }: Pro
                   <col className="w-[10%]" />
                   <col className="w-[12%]" />
                   <col className="w-[12%]" />
+                  {showCost ? <col className="w-[12%]" /> : null}
                   <col className="w-[28%]" />
                 </colgroup>
                 <thead>
@@ -381,13 +425,14 @@ export function TimesheetReportsPanel({ orgId, orgName, members, projects }: Pro
                     <th style={{ textAlign: "right" }}>Billable</th>
                     <th style={{ textAlign: "right" }}>Non-billable</th>
                     <th style={{ textAlign: "right" }}>Utilisation</th>
+                    {showCost ? <th style={{ textAlign: "right" }}>Labor cost</th> : null}
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {utilisation.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="text-muted-foreground">
+                      <td colSpan={showCost ? 8 : 7} className="text-muted-foreground">
                         No linked resources or timesheet data in this period.
                       </td>
                     </tr>
@@ -413,18 +458,18 @@ export function TimesheetReportsPanel({ orgId, orgName, members, projects }: Pro
                         >
                           {r.utilisation_pct}%
                         </td>
+                        {showCost ? (
+                          <td className="tabular-nums whitespace-nowrap" style={{ textAlign: "right" }}>
+                            {r.labor_cost}
+                          </td>
+                        ) : null}
                         <td className="text-muted-foreground">{r.status_summary}</td>
                       </tr>
                     ))
                   )}
                 </tbody>
               </table>
-            </div>
-          </SectionFrame>
-
-          <SectionFrame>
-            <SectionTitle>Project effort</SectionTitle>
-            <div className="overflow-x-auto">
+              ) : (
               <table className="st-table w-full table-fixed text-xs">
                 <colgroup>
                   <col className="w-[34%]" />
@@ -432,7 +477,7 @@ export function TimesheetReportsPanel({ orgId, orgName, members, projects }: Pro
                   <col className="w-[14%]" />
                   <col className="w-[12%]" />
                   <col className="w-[12%]" />
-                  <col className="w-[16%]" />
+                  {showCost ? <col className="w-[16%]" /> : null}
                 </colgroup>
                 <thead>
                   <tr>
@@ -441,13 +486,13 @@ export function TimesheetReportsPanel({ orgId, orgName, members, projects }: Pro
                     <th style={{ textAlign: "right" }}>Non-billable</th>
                     <th style={{ textAlign: "right" }}>Total</th>
                     <th style={{ textAlign: "right" }}>People</th>
-                    <th style={{ textAlign: "right" }}>Labor cost</th>
+                    {showCost ? <th style={{ textAlign: "right" }}>Labor cost</th> : null}
                   </tr>
                 </thead>
                 <tbody>
                   {projectEffort.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-muted-foreground">
+                      <td colSpan={showCost ? 6 : 5} className="text-muted-foreground">
                         No project hours in this period.
                       </td>
                     </tr>
@@ -470,14 +515,17 @@ export function TimesheetReportsPanel({ orgId, orgName, members, projects }: Pro
                         <td className="tabular-nums whitespace-nowrap" style={{ textAlign: "right" }}>
                           {r.people}
                         </td>
-                        <td className="tabular-nums whitespace-nowrap" style={{ textAlign: "right" }}>
-                          {r.labor_cost}
-                        </td>
+                        {showCost ? (
+                          <td className="tabular-nums whitespace-nowrap" style={{ textAlign: "right" }}>
+                            {r.labor_cost}
+                          </td>
+                        ) : null}
                       </tr>
                     ))
                   )}
                 </tbody>
               </table>
+              )}
             </div>
           </SectionFrame>
         </>

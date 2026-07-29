@@ -49,8 +49,11 @@ type Props = {
 export function ResourceAnalyticsPanels({ mode, projects, resources, allocations }: Props) {
   const { organization } = useAuth();
   const { canEdit: canViewCost } = useCapabilityPermission("timesheet_cost_view");
-  const [grain, setGrain] = useState<PvaGrain>(mode === "cost" ? "project" : "stage_gate");
+  const [grain, setGrain] = useState<PvaGrain>(mode === "cost" ? "resource" : "stage_gate");
   const [projectFilter, setProjectFilter] = useState("all");
+  const [resourceFilter, setResourceFilter] = useState("all");
+
+  const visibleProjectIds = useMemo(() => new Set(projects.map((p) => p.id)), [projects]);
 
   const { data: streams = [] } = useQuery({
     queryKey: ["project_streams", organization?.id, "res-analytics"],
@@ -113,6 +116,10 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
 
   const projectsById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
   const projectsOrdered = useMemo(() => [...projects].sort(compareProjectsByCodeName), [projects]);
+  const resourcesOrdered = useMemo(
+    () => [...resources].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })),
+    [resources],
+  );
   const resourceNames = useMemo(
     () => new Map(resources.map((r) => [r.id, r.name])),
     [resources],
@@ -132,16 +139,40 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
     return m;
   }, [gates]);
 
+  /** Scope to projects the caller can see (RLS / project visibility). */
+  const scopedPlans = useMemo(
+    () =>
+      allocations.filter(
+        (a: AllocationPlanRow) => !a.project_id || visibleProjectIds.has(a.project_id),
+      ),
+    [allocations, visibleProjectIds],
+  );
+
+  const scopedActuals = useMemo(
+    () =>
+      actualRows.filter((a: TimesheetEffortRow) => {
+        if (a.billable === false) return false;
+        if (!a.project_id) return grain === "resource" || grain === "month";
+        return visibleProjectIds.has(a.project_id);
+      }),
+    [actualRows, visibleProjectIds, grain],
+  );
+
   const filteredPlans = useMemo(() => {
-    if (projectFilter === "all") return allocations;
-    return allocations.filter((a: AllocationPlanRow) => a.project_id === projectFilter);
-  }, [allocations, projectFilter]);
+    return scopedPlans.filter((a: AllocationPlanRow) => {
+      if (projectFilter !== "all" && a.project_id !== projectFilter) return false;
+      if (resourceFilter !== "all" && a.resource_id !== resourceFilter) return false;
+      return true;
+    });
+  }, [scopedPlans, projectFilter, resourceFilter]);
 
   const filteredActuals = useMemo(() => {
-    const billable = actualRows.filter((a: TimesheetEffortRow) => a.billable !== false);
-    if (projectFilter === "all") return billable;
-    return billable.filter((a: TimesheetEffortRow) => a.project_id === projectFilter);
-  }, [actualRows, projectFilter]);
+    return scopedActuals.filter((a: TimesheetEffortRow) => {
+      if (projectFilter !== "all" && a.project_id !== projectFilter) return false;
+      if (resourceFilter !== "all" && a.resource_id !== resourceFilter) return false;
+      return true;
+    });
+  }, [scopedActuals, projectFilter, resourceFilter]);
 
   const rows = useMemo(
     () =>
@@ -177,7 +208,7 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
         <SectionTitle>Resource cost (FTE actual)</SectionTitle>
         <p className="text-sm text-muted-foreground">
           Cost visibility is limited to roles enabled by your organisation admin (Permissions →
-          capability “Timesheet / resource cost view”).
+          capability “Timesheet / resource cost view”). Default roles: Org Admin and Project Manager.
         </p>
       </SectionFrame>
     );
@@ -192,7 +223,7 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
           </SectionTitle>
           <p className="text-xs text-muted-foreground">
             {mode === "cost"
-              ? "Labor cost from approved timesheets, rolled by project / stream / stage gate / program / portfolio."
+              ? "Labor cost from approved timesheets. Group by resource, project, stream, stage gate, program, portfolio, or month. Scoped to projects you can view."
               : "Planned FTE from resource allocations vs actual hours on approved timesheets (work items stamp stream + stage gate)."}
           </p>
         </div>
@@ -206,6 +237,19 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
               {projectsOrdered.map((p) => (
                 <SelectItem key={p.id} value={p.id}>
                   {p.project_code ? `${p.project_code} — ${p.name}` : p.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={resourceFilter} onValueChange={setResourceFilter}>
+            <SelectTrigger className="h-9 w-44">
+              <SelectValue placeholder="Resource" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All resources</SelectItem>
+              {resourcesOrdered.map((r) => (
+                <SelectItem key={r.id} value={r.id}>
+                  {r.name}
                 </SelectItem>
               ))}
             </SelectContent>

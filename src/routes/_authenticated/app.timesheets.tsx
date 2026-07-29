@@ -156,14 +156,18 @@ function TimesheetsPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const qc = useQueryClient();
-  // Resource setup — org admins only. Cost / reports — capability::timesheet_cost_view.
-  const canManageSetup = roles.some((r) => r === "admin" || r === "org_admin");
+  // Cost / reports / resource setup — capability::timesheet_cost_view (default: org admin + PM).
+  // Full sync + link-user on setup remains org admin only.
+  const isOrgAdmin = roles.some((r) => r === "admin" || r === "org_admin");
+  const isPm = roles.includes("pm");
   const { canEdit: canViewCost } = useCapabilityPermission("timesheet_cost_view");
+  const canAccessSetup = canViewCost && (isOrgAdmin || isPm);
+  const canEditAllResources = isOrgAdmin;
   const setupOnlyTabs: TimesheetTab[] = ["setup"];
   const costTabs: TimesheetTab[] = ["cost", "reports"];
 
   const initialTab =
-    search.tab && setupOnlyTabs.includes(search.tab) && !canManageSetup
+    search.tab && setupOnlyTabs.includes(search.tab) && !canAccessSetup
       ? "mine"
       : search.tab && costTabs.includes(search.tab) && !canViewCost
         ? "mine"
@@ -173,7 +177,7 @@ function TimesheetsPage() {
   const [customTaskDraft, setCustomTaskDraft] = useState("");
 
   useEffect(() => {
-    if (search.tab && setupOnlyTabs.includes(search.tab) && !canManageSetup) {
+    if (search.tab && setupOnlyTabs.includes(search.tab) && !canAccessSetup) {
       setTab("mine");
       navigate({ search: {}, replace: true });
       return;
@@ -184,10 +188,10 @@ function TimesheetsPage() {
       return;
     }
     if (search.tab) setTab(search.tab);
-  }, [search.tab, canManageSetup, canViewCost, navigate]);
+  }, [search.tab, canAccessSetup, canViewCost, navigate]);
 
   const setTabNav = (t: TimesheetTab) => {
-    if (setupOnlyTabs.includes(t) && !canManageSetup) return;
+    if (setupOnlyTabs.includes(t) && !canAccessSetup) return;
     if (costTabs.includes(t) && !canViewCost) return;
     setTab(t);
     navigate({ search: { tab: t === "mine" ? undefined : t } });
@@ -225,6 +229,39 @@ function TimesheetsPage() {
     },
     enabled: !!orgId,
   });
+
+  /** Projects the user can edit (PM ownership / grants) — used to scope setup for PMs. */
+  const { data: editableProjectIds = [] } = useQuery({
+    queryKey: ["projects", orgId, "pm-editable-ids"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("projects").select("id,pm_user_id");
+      if (error) throw error;
+      const rows = (data ?? []) as { id: string; pm_user_id: string | null }[];
+      if (isOrgAdmin) return rows.map((p) => p.id);
+      return rows.filter((p) => p.pm_user_id === userId).map((p) => p.id);
+    },
+    enabled: !!orgId && canAccessSetup,
+  });
+
+  const { data: setupAllocations = [] } = useQuery({
+    queryKey: ["resource_allocations", orgId, "setup-scope"],
+    queryFn: async () => {
+      if (!editableProjectIds.length) return [] as { resource_id: string; project_id: string }[];
+      const { data, error } = await supabase
+        .from("resource_allocations")
+        .select("resource_id,project_id")
+        .in("project_id", editableProjectIds);
+      if (error) throw error;
+      return (data ?? []) as { resource_id: string; project_id: string }[];
+    },
+    enabled: !!orgId && canAccessSetup && !canEditAllResources,
+  });
+
+  const setupResources = useMemo(() => {
+    if (canEditAllResources) return resources;
+    const allowed = new Set(setupAllocations.map((a) => a.resource_id));
+    return resources.filter((r) => allowed.has(r.id));
+  }, [resources, setupAllocations, canEditAllResources]);
 
   const myResource = useMemo(
     () => resources.find((r) => r.user_id === userId) || null,
@@ -689,7 +726,7 @@ function TimesheetsPage() {
                       ["reports", "Org reporting"],
                     ] as const)
                   : []),
-                ...(canManageSetup ? ([["setup", "Resource setup"]] as const) : []),
+                ...(canAccessSetup ? ([["setup", "Resource setup"]] as const) : []),
               ] as const
             ).map(([key, label]) => (
               <button
@@ -747,7 +784,7 @@ function TimesheetsPage() {
             {!myResource && (
               <p className="mt-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
                 Your login is not linked to a resource. Ask an org admin to open{" "}
-                {canManageSetup ? (
+                {canAccessSetup ? (
                   <button
                     type="button"
                     className="underline font-semibold"
@@ -1111,31 +1148,55 @@ function TimesheetsPage() {
           orgId={orgId}
           orgName={organization?.name}
           members={members}
-          projects={projects.map((p: any) => ({ id: p.id, name: p.name || p.id }))}
+          projects={projects.map((p: any) => ({
+            id: p.id,
+            name: p.project_code ? `${p.project_code} — ${p.name}` : p.name || p.id,
+          }))}
+          showCost={canViewCost}
         />
       )}
 
-      {tab === "setup" && canManageSetup && (
+      {tab === "setup" && canAccessSetup && (
         <SectionFrame>
-          <SectionTitle>Resource setup (org admin)</SectionTitle>
+          <SectionTitle>
+            Resource setup {canEditAllResources ? "(org admin)" : "(your project team)"}
+          </SectionTitle>
           <p className="mb-3 text-sm text-muted-foreground">
-            Each org member is the same person as their resource (auto-synced). Set hourly cost and
-            Resource Manager here. Billable timesheet hours × rate add to{" "}
-            <strong>OPEX Labor / FTE</strong> and total OpEx actual for the work item&apos;s project
-            / stream (other OpEx can still be entered separately).
+            {canEditAllResources ? (
+              <>
+                Each org member is the same person as their resource (auto-synced). Set hourly cost and
+                Resource Manager here. Billable timesheet hours × rate add to{" "}
+                <strong>OPEX Labor / FTE</strong> and total OpEx actual for the work item&apos;s project
+                / stream (other OpEx can still be entered separately).
+              </>
+            ) : (
+              <>
+                Project Managers can set hourly cost and Resource Manager for people allocated to
+                projects they manage. Org-wide sync and user linking stay with Org Admins. Cost figures
+                respect project visibility / permissions.
+              </>
+            )}
           </p>
-          <div className="mb-3 flex flex-wrap gap-2" data-export-hide>
-            <button
-              type="button"
-              className="st-btn-secondary text-xs"
-              disabled={syncResources.isPending}
-              onClick={() => syncResources.mutate()}
-            >
-              {syncResources.isPending ? "Syncing…" : "Sync members → resources"}
-            </button>
-          </div>
+          {canEditAllResources && (
+            <div className="mb-3 flex flex-wrap gap-2" data-export-hide>
+              <button
+                type="button"
+                className="st-btn-secondary text-xs"
+                disabled={syncResources.isPending}
+                onClick={() => syncResources.mutate()}
+              >
+                {syncResources.isPending ? "Syncing…" : "Sync members → resources"}
+              </button>
+            </div>
+          )}
           {resourcesLoading ? (
             <PageLoading label="Loading resources…" fullScreen={false} />
+          ) : setupResources.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {canEditAllResources
+                ? "No resources yet. Sync members to create them."
+                : "No resources allocated to your projects yet."}
+            </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="st-table text-xs">
@@ -1149,14 +1210,20 @@ function TimesheetsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {resources.map((r) => (
+                  {setupResources.map((r) => (
                     <ResourceSetupRow
                       key={r.id}
                       resource={r}
                       members={members}
                       saving={patchResource.isPending}
+                      allowLinkUser={canEditAllResources}
                       onSave={(user_id, manager_user_id, cost_rate) =>
-                        patchResource.mutate({ id: r.id, user_id, manager_user_id, cost_rate })
+                        patchResource.mutate({
+                          id: r.id,
+                          user_id: canEditAllResources ? user_id : r.user_id,
+                          manager_user_id,
+                          cost_rate,
+                        })
                       }
                     />
                   ))}
@@ -1213,11 +1280,14 @@ function ResourceSetupRow({
   resource,
   members,
   saving,
+  allowLinkUser = true,
   onSave,
 }: {
   resource: ResourceRow;
   members: OrgMember[];
   saving: boolean;
+  /** Org admins can re-link login users; PMs keep the existing link. */
+  allowLinkUser?: boolean;
   onSave: (userId: string | null, managerId: string | null, costRate: number | null) => void;
 }) {
   const [userId, setUserId] = useState(resource.user_id || "");
@@ -1234,9 +1304,13 @@ function ResourceSetupRow({
 
   const nextRate = costRate === "" ? null : Number(costRate);
   const dirty =
-    (userId || null) !== (resource.user_id || null) ||
+    (allowLinkUser && (userId || null) !== (resource.user_id || null)) ||
     (managerId || null) !== (resource.manager_user_id || null) ||
     (nextRate ?? null) !== (resource.cost_rate ?? null);
+
+  const linkedLabel = resource.user_id
+    ? memberLabel(members.find((m) => m.id === resource.user_id) || { id: resource.user_id, full_name: null, email: null })
+    : "— None —";
 
   return (
     <tr>
@@ -1245,18 +1319,22 @@ function ResourceSetupRow({
         <div className="text-[10px] text-muted-foreground">{resource.email || "—"}</div>
       </td>
       <td>
-        <select
-          className="st-input !py-0.5 !text-xs min-w-[10rem]"
-          value={userId}
-          onChange={(e) => setUserId(e.target.value)}
-        >
-          <option value="">— None —</option>
-          {members.map((m) => (
-            <option key={m.id} value={m.id}>
-              {memberLabel(m)}
-            </option>
-          ))}
-        </select>
+        {allowLinkUser ? (
+          <select
+            className="st-input !py-0.5 !text-xs min-w-[10rem]"
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
+          >
+            <option value="">— None —</option>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>
+                {memberLabel(m)}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className="text-xs text-muted-foreground">{linkedLabel}</span>
+        )}
       </td>
       <td>
         <select
@@ -1289,7 +1367,11 @@ function ResourceSetupRow({
           className="st-btn-primary !py-1 !text-xs"
           disabled={!dirty || saving || (nextRate != null && !Number.isFinite(nextRate))}
           onClick={() =>
-            onSave(userId || null, managerId || null, nextRate != null && Number.isFinite(nextRate) ? nextRate : null)
+            onSave(
+              allowLinkUser ? userId || null : resource.user_id,
+              managerId || null,
+              nextRate != null && Number.isFinite(nextRate) ? nextRate : null,
+            )
           }
         >
           Save

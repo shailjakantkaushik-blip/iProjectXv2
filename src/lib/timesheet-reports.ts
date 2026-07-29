@@ -56,6 +56,7 @@ export type UtilisationRow = {
   billable_pct: number;
   weeks: number;
   status_summary: string;
+  labor_cost: number;
 };
 
 export type ProjectEffortRow = {
@@ -89,6 +90,7 @@ export function buildUtilisationRows(opts: {
       total: number;
       billable: number;
       nonBillable: number;
+      cost: number;
       weeks: Set<string>;
       statuses: Set<string>;
     }
@@ -100,6 +102,7 @@ export function buildUtilisationRows(opts: {
         total: 0,
         billable: 0,
         nonBillable: 0,
+        cost: 0,
         weeks: new Set(),
         statuses: new Set(),
       });
@@ -123,6 +126,7 @@ export function buildUtilisationRows(opts: {
     u.total += h;
     if (e.billable !== false) u.billable += h;
     else u.nonBillable += h;
+    u.cost += Number(e.labor_cost) || 0;
     u.weeks.add(s.week_start);
     u.statuses.add(normalizeTimesheetStatus(s.status));
   }
@@ -151,6 +155,7 @@ export function buildUtilisationRows(opts: {
         billable_pct: round1(billable_pct),
         weeks: u.weeks.size,
         status_summary: status_summary || "No timesheet",
+        labor_cost: round2(u.cost),
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
