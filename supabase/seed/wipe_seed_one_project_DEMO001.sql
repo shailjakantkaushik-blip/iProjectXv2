@@ -621,10 +621,10 @@ BEGIN
 
       DELETE FROM public.timesheet_entries WHERE timesheet_id = sheet_id;
       INSERT INTO public.timesheet_entries (
-        timesheet_id, project_id, work_item_id, stream_id, stage_gate_id, billable,
+        org_id, timesheet_id, project_id, work_item_id, stream_id, stage_gate_id, billable,
         hours_mon, hours_tue, hours_wed, hours_thu, hours_fri, hours_sat, hours_sun, notes
       ) VALUES (
-        sheet_id, p_id, wi1, core_id, build_core, true,
+        r_org.id, sheet_id, p_id, wi1, core_id, build_core, true,
         8, 8, 8, 8, 8, 0, 0, 'Build week — 40h @ $100 = $4,000 labor'
       );
 
