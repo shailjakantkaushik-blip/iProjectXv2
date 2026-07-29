@@ -83,3 +83,19 @@ export function canEditTimesheet(status?: string | null) {
   const s = normalizeTimesheetStatus(status);
   return s === "draft" || s === "rejected";
 }
+
+export function canWithdrawTimesheet(status?: string | null) {
+  const s = normalizeTimesheetStatus(status);
+  return s === "pending_pm" || s === "pending_rm";
+}
+
+export function canReopenTimesheet(status?: string | null) {
+  return normalizeTimesheetStatus(status) === "approved";
+}
+
+export const APPROVAL_DECISION_LABEL: Record<string, string> = {
+  pending: "Pending",
+  approved: "Approved",
+  rejected: "Rejected",
+  superseded: "Superseded",
+};

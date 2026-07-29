@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -10,9 +10,15 @@ import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/s
 import { PageExport } from "@/components/page-export";
 import { PageLoading } from "@/components/page-loading";
 import { memberLabel, type OrgMember } from "@/lib/decision-approval";
+import { TimesheetReportsPanel } from "@/components/timesheet-reports-panel";
+import { TimesheetApprovalsPanel } from "@/components/timesheet-approvals-panel";
+import { ResourceAnalyticsPanels } from "@/components/resource-analytics-panels";
+import { useCapabilityPermission } from "@/lib/permissions";
+import { RESOURCE_ALLOCATIONS_SELECT, RESOURCES_SELECT } from "@/lib/query-selects";
 import {
   addDays,
   canEditTimesheet,
+  canWithdrawTimesheet,
   DAY_KEYS,
   DAY_LABELS,
   entryWeekTotal,
@@ -24,10 +30,6 @@ import {
   type DayKey,
   type TimesheetStatus,
 } from "@/lib/timesheet";
-import { TimesheetReportsPanel } from "@/components/timesheet-reports-panel";
-import { ResourceAnalyticsPanels } from "@/components/resource-analytics-panels";
-import { useCapabilityPermission } from "@/lib/permissions";
-import { RESOURCE_ALLOCATIONS_SELECT, RESOURCES_SELECT } from "@/lib/query-selects";
 
 type TimesheetTab = "mine" | "approvals" | "cost" | "reports" | "setup";
 type TimesheetsSearch = { tab?: TimesheetTab };
@@ -57,6 +59,7 @@ type Timesheet = {
   notes: string | null;
   submitted_at: string | null;
   rejection_reason: string | null;
+  reopen_reason?: string | null;
 };
 
 type Entry = {
@@ -368,44 +371,6 @@ function TimesheetsPage() {
     enabled: !!orgId && approvalSheetIds.length > 0,
   });
 
-  const { data: approvalEntries = [] } = useQuery({
-    queryKey: ["timesheet_entries", "approvals", approvalSheetIds.join(",")],
-    queryFn: async () => {
-      if (approvalSheetIds.length === 0) return [] as Entry[];
-      const joined = await supabase
-        .from("timesheet_entries" as any)
-        .select(
-          "id,timesheet_id,project_id,work_item_id,billable,custom_task,hours_mon,hours_tue,hours_wed,hours_thu,hours_fri,hours_sat,hours_sun,notes,labor_cost,work_items(id,title,wbs_code),projects(id,name,project_code)",
-        )
-        .in("timesheet_id", approvalSheetIds);
-      if (!joined.error) return (joined.data ?? []) as unknown as Entry[];
-
-      // Fallback if embed relationship is unavailable in schema cache
-      const { data, error } = await supabase
-        .from("timesheet_entries" as any)
-        .select("*")
-        .in("timesheet_id", approvalSheetIds);
-      if (error) throw error;
-      const rows = (data ?? []) as unknown as Entry[];
-      const wiIds = [...new Set(rows.map((r) => r.work_item_id).filter(Boolean))] as string[];
-      if (wiIds.length === 0) return rows;
-      const { data: wis } = await supabase
-        .from("work_items" as any)
-        .select("id,title,wbs_code")
-        .in("id", wiIds);
-      const byId = new Map(
-        ((wis ?? []) as unknown as { id: string; title: string | null; wbs_code: string | null }[]).map(
-          (w) => [w.id, w],
-        ),
-      );
-      return rows.map((r) => ({
-        ...r,
-        work_items: r.work_item_id ? byId.get(r.work_item_id) || null : null,
-      }));
-    },
-    enabled: approvalSheetIds.length > 0,
-  });
-
   const projectById = useMemo(() => new Map(projects.map((p: any) => [p.id, p])), [projects]);
   const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
   const workById = useMemo(() => new Map(workItems.map((w) => [w.id, w])), [workItems]);
@@ -629,26 +594,17 @@ function TimesheetsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const act = useMutation({
-    mutationFn: async ({
-      approvalId,
-      decision,
-      comment,
-    }: {
-      approvalId: string;
-      decision: "approved" | "rejected";
-      comment?: string;
-    }) => {
-      const { error } = await supabase.rpc("act_on_timesheet_approval" as any, {
-        _approval_id: approvalId,
-        _decision: decision,
-        _comment: comment || null,
+  const withdraw = useMutation({
+    mutationFn: async () => {
+      if (!sheet?.id) throw new Error("No timesheet");
+      const { error } = await supabase.rpc("withdraw_timesheet" as any, {
+        _timesheet_id: sheet.id,
       } as never);
       if (error) throw error;
     },
-    onSuccess: (_d, v) => {
+    onSuccess: () => {
       invalidate();
-      toast.success(v.decision === "approved" ? "Approved" : "Rejected");
+      toast.success("Timesheet withdrawn to draft");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -1029,114 +985,57 @@ function TimesheetsPage() {
                 </p>
               </div>
             )}
+            {!editable && sheet && canWithdrawTimesheet(sheet.status) && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="st-btn-secondary"
+                  disabled={withdraw.isPending}
+                  onClick={() => {
+                    if (
+                      !confirm(
+                        "Withdraw this timesheet from approval and return it to draft?",
+                      )
+                    ) {
+                      return;
+                    }
+                    withdraw.mutate();
+                  }}
+                >
+                  {withdraw.isPending ? "Withdrawing…" : "Withdraw to draft"}
+                </button>
+                <p className="w-full text-[11px] text-muted-foreground">
+                  Withdraw cancels pending approval steps so you can edit hours and resubmit.
+                </p>
+              </div>
+            )}
+            {sheet?.reopen_reason && status === "draft" && (
+              <p className="mt-3 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                Reopened by an approver
+                {sheet.reopen_reason ? `: ${sheet.reopen_reason}` : "."} Edit and resubmit when ready.
+              </p>
+            )}
           </SectionFrame>
         </>
       )}
 
-      {tab === "approvals" && (
-        <SectionFrame>
-          <SectionTitle>Awaiting your action</SectionTitle>
-          {pendingForMe.length === 0 ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">
-              No timesheets waiting for you.
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {pendingForMe.map((a) => {
-                const s = sheetById.get(a.timesheet_id);
-                if (!s) return null;
-                const owner = memberById.get(s.user_id);
-                const lines = approvalEntries.filter((e) => e.timesheet_id === s.id);
-                const total = lines.reduce((sum, e) => sum + entryWeekTotal(e), 0);
-                return (
-                  <div
-                    key={a.id}
-                    className="rounded-lg border border-border bg-surface/60 p-4 space-y-3"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <div className="text-sm font-semibold">
-                          {memberLabel(
-                            owner || { id: s.user_id, full_name: null, email: null },
-                          )}{" "}
-                          · {formatWeekRange(s.week_start)}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          Step:{" "}
-                          {a.step === "pm"
-                            ? `Project Manager${
-                                a.project_id
-                                  ? ` · ${(projectById.get(a.project_id) as any)?.project_code || ""}`
-                                  : ""
-                              }`
-                            : "Resource Manager"}{" "}
-                          · {total.toFixed(1)}h
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white"
-                          disabled={act.isPending}
-                          onClick={() =>
-                            act.mutate({ approvalId: a.id, decision: "approved" })
-                          }
-                        >
-                          <Check className="h-3.5 w-3.5" /> Approve
-                        </button>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 rounded-md bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white"
-                          disabled={act.isPending}
-                          onClick={() => {
-                            const comment = window.prompt("Rejection reason (optional)") || undefined;
-                            act.mutate({ approvalId: a.id, decision: "rejected", comment });
-                          }}
-                        >
-                          <X className="h-3.5 w-3.5" /> Reject
-                        </button>
-                      </div>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="st-table text-xs">
-                        <thead>
-                          <tr>
-                            <th>Project / task</th>
-                            {DAY_LABELS.map((d) => (
-                              <th key={d} className="text-center">
-                                {d}
-                              </th>
-                            ))}
-                            <th className="text-right">Total</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {lines.map((e) => {
-                            return (
-                              <tr key={e.id}>
-                                <td>
-                                  {projectTaskLabel(e, workById, projectById as Map<string, any>)}
-                                </td>
-                                {DAY_KEYS.map((dk) => (
-                                  <td key={dk} className="text-center tabular-nums">
-                                    {Number(e[dk]) || "·"}
-                                  </td>
-                                ))}
-                                <td className="text-right tabular-nums font-medium">
-                                  {entryWeekTotal(e).toFixed(1)}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </SectionFrame>
+      {tab === "approvals" && orgId && userId && (
+        <TimesheetApprovalsPanel
+          orgId={orgId}
+          userId={userId}
+          members={members}
+          projects={projects as any}
+          resources={resources.map((r) => ({
+            id: r.id,
+            name: r.name,
+            user_id: r.user_id,
+          }))}
+          workItems={workItems.map((w) => ({
+            id: w.id,
+            title: w.title,
+            wbs_code: w.wbs_code,
+          }))}
+        />
       )}
 
       {tab === "cost" && canViewCost && orgId && (
