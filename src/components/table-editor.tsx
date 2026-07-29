@@ -51,7 +51,7 @@ export function TableEditor({ def }: { def: TableDef }) {
         await Promise.all([
           supabase.from("projects").select("id,project_code,name").eq("org_id", organization!.id),
           supabase.from("business_units").select("id,code,name").eq("org_id", organization!.id),
-          supabase.from("resources").select("id,name").eq("org_id", organization!.id),
+          supabase.from("resources").select("id,name,email,user_id").eq("org_id", organization!.id),
           supabase.from("project_streams").select("id,code,name,project_id,is_default").eq("org_id", organization!.id),
           supabase
             .from("stage_gates")
@@ -66,9 +66,9 @@ export function TableEditor({ def }: { def: TableDef }) {
       const busById = new Map((bus ?? []).map((b) => [b.id, b.code || b.name]));
       const busByCode = new Map<string, string>();
       (bus ?? []).forEach((b) => { if (b.code) busByCode.set(b.code, b.id); });
-      const resourcesById = new Map((resources ?? []).map((r) => [r.id, r.name]));
+      const resourcesById = new Map((resources ?? []).map((r: any) => [r.id, r.name]));
       const resourcesByName = new Map<string, string>();
-      (resources ?? []).forEach((r) => { if (r.name) resourcesByName.set(r.name, r.id); });
+      (resources ?? []).forEach((r: any) => { if (r.name) resourcesByName.set(r.name, r.id); });
       const streamsById = new Map((streams ?? []).map((s: any) => [s.id, s.code || s.name || s.id]));
       const streamsByCode = new Map<string, string>();
       const defaultStreamByProject = new Map<string, string>();
@@ -93,17 +93,38 @@ export function TableEditor({ def }: { def: TableDef }) {
       const usersById = new Map<string, string>();
       const usersByLabel = new Map<string, string>();
       const userOptions: { label: string; value: string }[] = [];
+      const addUser = (id: string | null | undefined, labelRaw: string) => {
+        if (!id) return;
+        const label = labelRaw.trim() || "Unknown user";
+        // Prefer profile names; don't overwrite a good label with a weaker one.
+        if (!usersById.has(id) || usersById.get(id) === "Unknown user") {
+          usersById.set(id, label);
+        }
+        usersByLabel.set(label.toLowerCase(), id);
+      };
       (profiles ?? []).forEach((p: any) => {
         const label =
           String(p.full_name || "").trim() ||
           String(p.email || "").trim() ||
           "Unknown user";
-        usersById.set(p.id, label);
-        userOptions.push({ label, value: p.id });
+        addUser(p.id, label);
         if (p.email) usersByLabel.set(String(p.email).trim().toLowerCase(), p.id);
         if (p.full_name) usersByLabel.set(String(p.full_name).trim().toLowerCase(), p.id);
-        usersByLabel.set(label.toLowerCase(), p.id);
       });
+      // Fallback: resource rows already link logins — use resource name when profile is missing.
+      (resources ?? []).forEach((r: any) => {
+        if (!r.user_id) return;
+        const label =
+          String(r.name || "").trim() ||
+          String(r.email || "").trim() ||
+          "Unknown user";
+        addUser(r.user_id, label);
+        if (r.email) usersByLabel.set(String(r.email).trim().toLowerCase(), r.user_id);
+        if (r.name) usersByLabel.set(String(r.name).trim().toLowerCase(), r.user_id);
+      });
+      for (const [id, label] of usersById) {
+        userOptions.push({ label, value: id });
+      }
       userOptions.sort((a, b) => a.label.localeCompare(b.label));
       return {
         projectsById,
@@ -307,6 +328,7 @@ function CellRenderer({
   }
   if (field.fk === "user") {
     const options = [{ label: "— None —", value: "" }, ...(lookups?.userOptions ?? [])];
+    // Always resolve to a human label — never render a raw auth UUID in the grid.
     return (
       <EditableCell
         table={def.key}
@@ -315,9 +337,12 @@ function CellRenderer({
         value={v ?? ""}
         type="select"
         options={options}
-        display={(val) =>
-          val ? lookups?.usersById.get(String(val)) || "—" : <span className="text-muted-foreground">—</span>
-        }
+        display={(val) => {
+          if (!val) return <span className="text-muted-foreground">—</span>;
+          const resolved = lookups?.usersById.get(String(val));
+          if (resolved) return resolved;
+          return <span className="text-muted-foreground">Unknown user</span>;
+        }}
         forceEditable={forceEditable}
       />
     );
