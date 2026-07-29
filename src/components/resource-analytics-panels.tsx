@@ -18,6 +18,12 @@ import {
   type PvaGrain,
   type TimesheetEffortRow,
 } from "@/lib/resource-allocation-analytics";
+import {
+  buildWorkItemDemandSlices,
+  type WorkItemAssigneeLink,
+  type WorkItemDemandSlice,
+  type WorkItemPlanInput,
+} from "@/lib/work-item-fte-plan";
 import { useCapabilityPermission } from "@/lib/permissions";
 import { formatStreamLabel } from "@/lib/project-streams";
 import { compareProjectsByCodeName } from "@/lib/project-options";
@@ -65,7 +71,13 @@ type Props = {
     program?: string | null;
     portfolio?: string | null;
   }>;
-  resources: Array<{ id: string; name: string; capacity_hours_week?: number | null }>;
+  resources: Array<{
+    id: string;
+    name: string;
+    capacity_hours_week?: number | null;
+    cost_rate?: number | null;
+    user_id?: string | null;
+  }>;
   allocations: AllocationPlanRow[];
 };
 
@@ -74,11 +86,14 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
   const { canEdit: canViewCost } = useCapabilityPermission("timesheet_cost_view");
   const [grain, setGrain] = useState<PvaGrain>(mode === "cost" ? "resource" : "stage_gate");
   const [projectFilter, setProjectFilter] = useState("all");
+  const [streamFilter, setStreamFilter] = useState("all");
+  const [gateFilter, setGateFilter] = useState("all");
   const [resourceFilter, setResourceFilter] = useState("all");
   const [monthFrom, setMonthFrom] = useState("all");
   const [monthTo, setMonthTo] = useState("all");
   const [periodReady, setPeriodReady] = useState(false);
 
+  const showCost = mode === "cost" || canViewCost;
   const visibleProjectIds = useMemo(() => new Set(projects.map((p) => p.id)), [projects]);
 
   const { data: streams = [] } = useQuery({
@@ -102,6 +117,30 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
           .select("id,project_id,stream_id,gate_name,planned_date")
           .order("planned_date")
       ).data ?? [],
+    enabled: !!organization,
+  });
+
+  const { data: workItems = [] } = useQuery({
+    queryKey: ["work_items", organization?.id, "res-analytics"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("work_items" as any)
+        .select(
+          "id,project_id,stream_id,stage_gate_id,estimate_hours,planned_start,planned_end,status,owner_user_id",
+        );
+      return (data ?? []) as unknown as WorkItemPlanInput[];
+    },
+    enabled: !!organization,
+  });
+
+  const { data: workItemAssignees = [] } = useQuery({
+    queryKey: ["work_item_assignees", organization?.id, "res-analytics"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("work_item_assignees" as any)
+        .select("work_item_id,resource_id");
+      return (data ?? []) as unknown as WorkItemAssigneeLink[];
+    },
     enabled: !!organization,
   });
 
@@ -142,6 +181,16 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
     enabled: !!organization,
   });
 
+  const demandSlices = useMemo(
+    () =>
+      buildWorkItemDemandSlices({
+        workItems,
+        assignees: workItemAssignees,
+        resources,
+      }),
+    [workItems, workItemAssignees, resources],
+  );
+
   const monthOptions = useMemo(() => {
     const s = new Set<string>();
     for (const a of allocations) {
@@ -152,8 +201,12 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
       const m = monthKey(a.period_month || a.week_start);
       if (m) s.add(m);
     }
+    for (const d of demandSlices) {
+      const m = monthKey(d.period_month);
+      if (m) s.add(m);
+    }
     return Array.from(s).sort();
-  }, [allocations, actualRows]);
+  }, [allocations, actualRows, demandSlices]);
 
   // Default period: last 6 months with data (or all if fewer)
   useEffect(() => {
@@ -190,6 +243,31 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
     return m;
   }, [gates]);
 
+  const streamsForFilter = useMemo(() => {
+    const list = (streams as any[]).filter(
+      (s) =>
+        visibleProjectIds.has(s.project_id) &&
+        (projectFilter === "all" || s.project_id === projectFilter),
+    );
+    return list.sort((a, b) =>
+      formatStreamLabel(a).localeCompare(formatStreamLabel(b), undefined, { sensitivity: "base" }),
+    );
+  }, [streams, visibleProjectIds, projectFilter]);
+
+  const gatesForFilter = useMemo(() => {
+    const list = (gates as any[]).filter((g) => {
+      if (!visibleProjectIds.has(g.project_id)) return false;
+      if (projectFilter !== "all" && g.project_id !== projectFilter) return false;
+      if (streamFilter !== "all" && (g.stream_id || null) !== streamFilter) return false;
+      return true;
+    });
+    return list.sort((a, b) =>
+      String(a.gate_name || "").localeCompare(String(b.gate_name || ""), undefined, {
+        sensitivity: "base",
+      }),
+    );
+  }, [gates, visibleProjectIds, projectFilter, streamFilter]);
+
   /** Scope to projects the caller can see (RLS / project visibility). */
   const scopedPlans = useMemo(
     () =>
@@ -209,23 +287,47 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
     [actualRows, visibleProjectIds, grain],
   );
 
+  const scopedDemand = useMemo(
+    () =>
+      demandSlices.filter((d: WorkItemDemandSlice) => {
+        if (!d.project_id) return grain === "resource" || grain === "month";
+        return visibleProjectIds.has(d.project_id);
+      }),
+    [demandSlices, visibleProjectIds, grain],
+  );
+
   const filteredPlans = useMemo(() => {
     return scopedPlans.filter((a: AllocationPlanRow) => {
       if (projectFilter !== "all" && a.project_id !== projectFilter) return false;
+      if (streamFilter !== "all" && (a.stream_id || null) !== streamFilter) return false;
+      if (gateFilter !== "all" && (a.stage_gate_id || null) !== gateFilter) return false;
       if (resourceFilter !== "all" && a.resource_id !== resourceFilter) return false;
       if (!inMonthRange(a.period_month, monthFrom, monthTo)) return false;
       return true;
     });
-  }, [scopedPlans, projectFilter, resourceFilter, monthFrom, monthTo]);
+  }, [scopedPlans, projectFilter, streamFilter, gateFilter, resourceFilter, monthFrom, monthTo]);
 
   const filteredActuals = useMemo(() => {
     return scopedActuals.filter((a: TimesheetEffortRow) => {
       if (projectFilter !== "all" && a.project_id !== projectFilter) return false;
+      if (streamFilter !== "all" && (a.stream_id || null) !== streamFilter) return false;
+      if (gateFilter !== "all" && (a.stage_gate_id || null) !== gateFilter) return false;
       if (resourceFilter !== "all" && a.resource_id !== resourceFilter) return false;
       if (!inMonthRange(a.period_month || a.week_start, monthFrom, monthTo)) return false;
       return true;
     });
-  }, [scopedActuals, projectFilter, resourceFilter, monthFrom, monthTo]);
+  }, [scopedActuals, projectFilter, streamFilter, gateFilter, resourceFilter, monthFrom, monthTo]);
+
+  const filteredDemand = useMemo(() => {
+    return scopedDemand.filter((d: WorkItemDemandSlice) => {
+      if (projectFilter !== "all" && d.project_id !== projectFilter) return false;
+      if (streamFilter !== "all" && (d.stream_id || null) !== streamFilter) return false;
+      if (gateFilter !== "all" && (d.stage_gate_id || null) !== gateFilter) return false;
+      if (resourceFilter !== "all" && d.resource_id !== resourceFilter) return false;
+      if (!inMonthRange(d.period_month, monthFrom, monthTo)) return false;
+      return true;
+    });
+  }, [scopedDemand, projectFilter, streamFilter, gateFilter, resourceFilter, monthFrom, monthTo]);
 
   const rows = useMemo(
     () =>
@@ -233,6 +335,7 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
         grain,
         plans: filteredPlans,
         actuals: filteredActuals,
+        demand: filteredDemand,
         projectsById,
         resourceNames,
         streamLabels,
@@ -243,6 +346,7 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
       grain,
       filteredPlans,
       filteredActuals,
+      filteredDemand,
       projectsById,
       resourceNames,
       streamLabels,
@@ -251,9 +355,11 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
     ],
   );
 
-  const totPlan = rows.reduce((s, r) => s + r.planned_hours, 0);
+  const totAlloc = rows.reduce((s, r) => s + r.planned_hours, 0);
+  const totDemand = rows.reduce((s, r) => s + r.demand_hours, 0);
   const totAct = rows.reduce((s, r) => s + r.actual_hours, 0);
-  const totCost = rows.reduce((s, r) => s + r.labor_cost, 0);
+  const totPlanFte = rows.reduce((s, r) => s + r.planned_labor_cost, 0);
+  const totActualFte = rows.reduce((s, r) => s + r.labor_cost, 0);
 
   const periodLabel =
     monthFrom === "all" && monthTo === "all"
@@ -261,6 +367,17 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
       : `${monthFrom === "all" ? "…" : formatMonthLabel(monthFrom)} → ${
           monthTo === "all" ? "…" : formatMonthLabel(monthTo)
         }`;
+
+  const onProjectChange = (v: string) => {
+    setProjectFilter(v);
+    setStreamFilter("all");
+    setGateFilter("all");
+  };
+
+  const onStreamChange = (v: string) => {
+    setStreamFilter(v);
+    setGateFilter("all");
+  };
 
   if (mode === "cost" && !canViewCost) {
     return (
@@ -274,17 +391,22 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
     );
   }
 
+  const emptyColSpan = showCost ? 10 : 8;
+
   return (
     <SectionFrame>
       <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
         <div>
           <SectionTitle>
-            {mode === "cost" ? "FTE actual cost (from timesheets)" : "Planned vs actual allocation"}
+            {mode === "cost"
+              ? "FTE cost: allocation, work-item demand & timesheets"
+              : "Allocation vs work-item demand vs actual"}
           </SectionTitle>
           <p className="text-xs text-muted-foreground">
-            {mode === "cost"
-              ? "Labor cost from approved timesheets. Filter by period, project, and resource; group by resource, project, stream, stage gate, program, portfolio, or month."
-              : "Planned FTE from resource allocations vs actual hours on approved timesheets (work items stamp stream + stage gate)."}
+            Alloc hours from resource allocations. Demand hours and Plan FTE $ from work-item planned
+            hours × resource cost rates. Actual hours and Actual FTE $ from approved timesheets
+            (feeds incurred labor). Filter by period, project, stream, stage gate, and resource;
+            group by resource, project, stream, stage gate, program, portfolio, or month.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -334,7 +456,7 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
           </div>
           <div className="flex flex-col gap-0.5">
             <span className="text-[10px] font-medium text-muted-foreground">Project</span>
-            <Select value={projectFilter} onValueChange={setProjectFilter}>
+            <Select value={projectFilter} onValueChange={onProjectChange}>
               <SelectTrigger className="h-9 w-44">
                 <SelectValue placeholder="Project" />
               </SelectTrigger>
@@ -343,6 +465,38 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
                 {projectsOrdered.map((p) => (
                   <SelectItem key={p.id} value={p.id}>
                     {p.project_code ? `${p.project_code} — ${p.name}` : p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-medium text-muted-foreground">Stream</span>
+            <Select value={streamFilter} onValueChange={onStreamChange}>
+              <SelectTrigger className="h-9 w-40">
+                <SelectValue placeholder="Stream" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All streams</SelectItem>
+                {streamsForFilter.map((s: any) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {formatStreamLabel(s)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-medium text-muted-foreground">Stage gate</span>
+            <Select value={gateFilter} onValueChange={setGateFilter}>
+              <SelectTrigger className="h-9 w-44">
+                <SelectValue placeholder="Stage gate" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All gates</SelectItem>
+                {gatesForFilter.map((g: any) => (
+                  <SelectItem key={g.id} value={g.id}>
+                    {g.gate_name || "Gate"}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -384,54 +538,56 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
         </div>
       </div>
 
-      <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <div
+        className={`mb-3 grid grid-cols-2 gap-3 ${
+          canViewCost ? "sm:grid-cols-3 lg:grid-cols-6" : "sm:grid-cols-4"
+        }`}
+      >
         <KpiCard label="Period" value={periodLabel} accent="#8b5cf6" />
-        <KpiCard label="Planned hours" value={totPlan.toFixed(1)} accent="#3b82f6" />
-        <KpiCard label="Actual hours" value={totAct.toFixed(1)} accent="#0ea5e9" />
-        <KpiCard
-          label="Variance (plan − act)"
-          value={(totPlan - totAct).toFixed(1)}
-          accent={totPlan - totAct < 0 ? "#ef4444" : "#22c55e"}
-        />
-        {mode === "cost" || canViewCost ? (
-          <KpiCard label="FTE labor cost" value={money(totCost)} accent="#f59e0b" />
-        ) : (
-          <KpiCard label="Rows" value={String(rows.length)} accent="#64748b" />
-        )}
+        <KpiCard label="Alloc plan h" value={totAlloc.toFixed(1)} accent="#3b82f6" />
+        <KpiCard label="WI demand h" value={totDemand.toFixed(1)} accent="#6366f1" />
+        <KpiCard label="Actual h" value={totAct.toFixed(1)} accent="#0ea5e9" />
+        {canViewCost ? (
+          <>
+            <KpiCard label="Plan FTE $" value={money(totPlanFte)} accent="#f59e0b" />
+            <KpiCard label="Actual FTE $" value={money(totActualFte)} accent="#ea580c" />
+          </>
+        ) : null}
       </div>
 
       <div className="max-h-[480px] overflow-auto">
         <table className="st-table w-full table-fixed text-sm">
           <colgroup>
-            <col className="w-[28%]" />
-            <col className="w-[10%]" />
-            <col className="w-[10%]" />
-            <col className="w-[10%]" />
-            <col className="w-[10%]" />
-            <col className="w-[10%]" />
-            <col className="w-[12%]" />
-            {(mode === "cost" || canViewCost) && <col className="w-[10%]" />}
+            <col className="w-[22%]" />
+            <col className="w-[8%]" />
+            <col className="w-[8%]" />
+            <col className="w-[8%]" />
+            <col className="w-[8%]" />
+            <col className="w-[8%]" />
+            <col className="w-[7%]" />
+            <col className="w-[9%]" />
+            {showCost && <col className="w-[11%]" />}
+            {showCost && <col className="w-[11%]" />}
           </colgroup>
           <thead className="sticky top-0 z-[1] bg-[#f1f3f6]">
             <tr>
               <th>Dimension</th>
-              <th className="st-num">Plan h</th>
-              <th className="st-num">Plan %</th>
+              <th className="st-num">Alloc h</th>
+              <th className="st-num">Demand h</th>
+              <th className="st-num">Gap h</th>
               <th className="st-num">Actual h</th>
               <th className="st-num">Var h</th>
-              <th className="st-num">Util %</th>
+              <th className="st-num">Util%</th>
               <th>Status</th>
-              {(mode === "cost" || canViewCost) && <th className="st-num">Labor $</th>}
+              {showCost && <th className="st-num">Plan FTE $</th>}
+              {showCost && <th className="st-num">Actual FTE $</th>}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td
-                  colSpan={mode === "cost" || canViewCost ? 8 : 7}
-                  className="py-6 text-center text-muted-foreground"
-                >
-                  No allocation or timesheet data for this period.
+                <td colSpan={emptyColSpan} className="py-6 text-center text-muted-foreground">
+                  No allocation, work-item demand, or timesheet data for this period.
                 </td>
               </tr>
             ) : (
@@ -439,16 +595,16 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
                 <tr key={r.key}>
                   <td className="font-medium">{r.label}</td>
                   <td className="st-num">{r.planned_hours.toFixed(1)}</td>
-                  <td className="st-num">{r.planned_percent.toFixed(0)}%</td>
+                  <td className="st-num">{r.demand_hours.toFixed(1)}</td>
+                  <td className="st-num">{r.demand_gap_hours.toFixed(1)}</td>
                   <td className="st-num">{r.actual_hours.toFixed(1)}</td>
                   <td className="st-num">{r.variance_hours.toFixed(1)}</td>
                   <td className="st-num">
                     {r.utilization_pct == null ? "—" : `${r.utilization_pct}%`}
                   </td>
                   <td className={STATUS_COLOR[r.status]}>{r.status}</td>
-                  {(mode === "cost" || canViewCost) && (
-                    <td className="st-num">{money(r.labor_cost)}</td>
-                  )}
+                  {showCost && <td className="st-num">{money(r.planned_labor_cost)}</td>}
+                  {showCost && <td className="st-num">{money(r.labor_cost)}</td>}
                 </tr>
               ))
             )}
