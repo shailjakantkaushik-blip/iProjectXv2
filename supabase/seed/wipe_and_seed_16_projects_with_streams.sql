@@ -666,12 +666,30 @@ BEGIN
       SELECT id INTO ms_id FROM public.milestones WHERE project_id = p_id AND stream_id = core_id ORDER BY planned_date LIMIT 1;
 
       INSERT INTO public.work_items (
-        org_id, project_id, wbs_code, title, description, status, priority, owner,
+        org_id, project_id, stream_id, wbs_code, title, description, status, priority, owner,
         percent_complete, planned_start, planned_end, estimate_hours, actual_hours, milestone_id, sort_order
       ) VALUES
-        (r_org.id, p_id, '1.0', 'Core discovery pack', 'Discovery artefacts for Core stream', 'Done', 'High', 'Alex Morgan', 100, starts[i], starts[i] + 30, 80, 76, ms_id, 1),
-        (r_org.id, p_id, '2.0', alt_names[i] || ' build backlog', 'Backlog refinement for secondary stream', 'In Progress', 'High', 'Jordan Lee', 45, starts[i] + 21, ends[i] - 60, 200, 90, NULL, 2),
-        (r_org.id, p_id, '3.0', 'UAT preparation', 'Cross-stream UAT scripts and data', 'To Do', 'Medium', 'Casey Brooks', 10, ends[i] - 60, ends[i] - 30, 120, 8, NULL, 3);
+        (r_org.id, p_id, core_id, '1.0', 'Core discovery pack', 'Discovery artefacts for Core stream', 'Done', 'High', 'Alex Morgan', 100, starts[i], starts[i] + 30, 80, 76, ms_id, 1),
+        (r_org.id, p_id, alt_id, '2.0', alt_names[i] || ' build backlog', 'Backlog refinement for secondary stream', 'In Progress', 'High', 'Jordan Lee', 45, starts[i] + 21, ends[i] - 60, 200, 90, NULL, 2),
+        (r_org.id, p_id, core_id, '3.0', 'UAT preparation', 'Cross-stream UAT scripts and data', 'To Do', 'Medium', 'Casey Brooks', 10, ends[i] - 60, ends[i] - 30, 120, 8, NULL, 3);
+
+      -- Link each work item to a stream stage gate (phase) for labor cost attribution
+      UPDATE public.work_items wi
+      SET stage_gate_id = (
+        SELECT sg.id
+        FROM public.stage_gates sg
+        WHERE sg.project_id = wi.project_id
+          AND sg.stream_id = wi.stream_id
+        ORDER BY
+          CASE sg.status
+            WHEN 'In Review' THEN 0
+            WHEN 'Pending' THEN 1
+            ELSE 2
+          END,
+          sg.planned_date NULLS LAST
+        LIMIT 1
+      )
+      WHERE wi.project_id = p_id;
 
       IF i > 1 THEN
         SELECT id INTO prev_p FROM public.projects

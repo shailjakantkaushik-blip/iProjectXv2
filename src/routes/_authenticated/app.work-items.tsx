@@ -49,6 +49,26 @@ function WorkItemsPage() {
     enabled: !!orgId,
   });
 
+  const { data: stageGates = [] } = useQuery({
+    queryKey: ["stage_gates", orgId, "work-items"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("stage_gates")
+        .select("id,project_id,stream_id,gate_name,planned_date,status")
+        .order("planned_date");
+      if (error) throw error;
+      return (data ?? []) as Array<{
+        id: string;
+        project_id: string;
+        stream_id: string | null;
+        gate_name: string;
+        planned_date: string | null;
+        status: string | null;
+      }>;
+    },
+    enabled: !!orgId,
+  });
+
   const { data: resources = [] } = useQuery({
     queryKey: ["resources", orgId, "work-items"],
     queryFn: async () => {
@@ -142,9 +162,12 @@ function WorkItemsPage() {
     [streams],
   );
 
+  const gateById = useMemo(() => new Map(stageGates.map((g) => [g.id, g])), [stageGates]);
+
   const [form, setForm] = useState({
     project_id: "",
     stream_id: "",
+    stage_gate_id: "",
     title: "",
     status: "To Do",
     priority: "Medium",
@@ -158,6 +181,14 @@ function WorkItemsPage() {
   });
 
   const formStreams = streamsByProject.get(form.project_id) || [];
+
+  const formGates = useMemo(() => {
+    return stageGates.filter((g) => {
+      if (g.project_id !== form.project_id) return false;
+      if (form.stream_id) return !g.stream_id || g.stream_id === form.stream_id;
+      return true;
+    });
+  }, [stageGates, form.project_id, form.stream_id]);
 
   const visibleBase = useMemo(() => {
     if (!mineOnly) return items;
@@ -189,6 +220,11 @@ function WorkItemsPage() {
       },
       { key: "wbs_code", label: "WBS" },
       { key: "title", label: "Title" },
+      {
+        key: "stage_gate",
+        label: "Stage gate",
+        getValue: (i) => (i.stage_gate_id ? gateById.get(i.stage_gate_id)?.gate_name || "" : ""),
+      },
       { key: "status", label: "Status" },
       { key: "percent_complete", label: "%" },
       { key: "owner", label: "Owner" },
@@ -202,7 +238,7 @@ function WorkItemsPage() {
       },
       { key: "planned_end", label: "End" },
     ],
-    [projectById, streamById, assigneesByWorkItem, resourceById],
+    [projectById, streamById, assigneesByWorkItem, resourceById, gateById],
   );
 
   const table = useColumnarTable(visibleBase, columns);
@@ -243,6 +279,7 @@ function WorkItemsPage() {
           planned_end: form.planned_end || null,
           percent_complete: Number(form.percent_complete) || 0,
           wbs_code: form.wbs_code || null,
+          stage_gate_id: form.stage_gate_id || null,
         } as never)
         .select("id")
         .single();
@@ -272,6 +309,7 @@ function WorkItemsPage() {
         planned_start: "",
         planned_end: "",
         assignee_ids: [],
+        stage_gate_id: "",
       }));
     },
     onError: (e: Error) => toast.error(e.message),
@@ -349,7 +387,7 @@ function WorkItemsPage() {
     <PageExport name="Work_Items" title="Work Items">
       <PageHeading
         title="Work Items"
-        subtitle="WBS / tasks across projects and streams — owners, dates, and progress"
+        subtitle="WBS / tasks across projects and streams — stage gates attribute labor cost to phases"
         actions={
           <button
             type="button"
@@ -386,7 +424,7 @@ function WorkItemsPage() {
                 const pid = e.target.value;
                 const nextStreams = streamsByProject.get(pid) || [];
                 const def = nextStreams.find((s) => s.is_default) || nextStreams[0];
-                return { ...f, project_id: pid, stream_id: def?.id || "" };
+                return { ...f, project_id: pid, stream_id: def?.id || "", stage_gate_id: "" };
               })
             }
           >
@@ -400,13 +438,31 @@ function WorkItemsPage() {
           <select
             className="st-input"
             value={form.stream_id}
-            onChange={(e) => setForm((f) => ({ ...f, stream_id: e.target.value }))}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, stream_id: e.target.value, stage_gate_id: "" }))
+            }
             disabled={!form.project_id}
           >
             <option value="">— Stream (auto Core) —</option>
             {formStreams.map((s: any) => (
               <option key={s.id} value={s.id}>
                 {formatStreamLabel(s)}
+              </option>
+            ))}
+          </select>
+          <select
+            className="st-input"
+            value={form.stage_gate_id}
+            onChange={(e) => setForm((f) => ({ ...f, stage_gate_id: e.target.value }))}
+            disabled={!form.project_id}
+          >
+            <option value="">— Stage gate / phase —</option>
+            {formGates.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.gate_name}
+                {g.stream_id && streamById.get(g.stream_id)
+                  ? ` · ${formatStreamLabel(streamById.get(g.stream_id))}`
+                  : ""}
               </option>
             ))}
           </select>
@@ -480,7 +536,8 @@ function WorkItemsPage() {
         </div>
         <p className="mt-2 text-[11px] text-muted-foreground">
           Assign resources so timesheet placeholders appear for their linked logins. Stream defaults
-          to the project&apos;s Core stream.
+          to the project&apos;s Core stream. Pick a stage gate so approved billable hours attribute to
+          that phase/stream for cost reporting.
         </p>
       </SectionFrame>
 
@@ -532,12 +589,18 @@ function WorkItemsPage() {
                         <select
                           className="st-input !py-0.5 !text-xs font-mono"
                           value={i.stream_id || ""}
-                          onChange={(e) =>
-                            patch.mutate({
-                              id: i.id,
-                              updates: { stream_id: e.target.value || null },
-                            })
-                          }
+                          onChange={(e) => {
+                            const stream_id = e.target.value || null;
+                            const updates: Record<string, unknown> = { stream_id };
+                            const gate = i.stage_gate_id ? gateById.get(i.stage_gate_id) : null;
+                            if (
+                              !stream_id ||
+                              (gate?.stream_id && gate.stream_id !== stream_id)
+                            ) {
+                              updates.stage_gate_id = null;
+                            }
+                            patch.mutate({ id: i.id, updates });
+                          }}
                         >
                           <option value="">—</option>
                           {itemStreams.map((s: any) => (
@@ -554,6 +617,32 @@ function WorkItemsPage() {
                       </td>
                       <td className="text-xs font-mono">{i.wbs_code || "—"}</td>
                       <td className="min-w-[12rem]">{i.title}</td>
+                      <td>
+                        <select
+                          className="st-input !py-0.5 !text-xs"
+                          value={i.stage_gate_id || ""}
+                          onChange={(e) =>
+                            patch.mutate({
+                              id: i.id,
+                              updates: { stage_gate_id: e.target.value || null },
+                            })
+                          }
+                        >
+                          <option value="">— None —</option>
+                          {stageGates
+                            .filter((g) => {
+                              if (g.project_id !== i.project_id) return false;
+                              if (i.stream_id) return !g.stream_id || g.stream_id === i.stream_id;
+                              return true;
+                            })
+                            .map((g) => (
+                              <option key={g.id} value={g.id}>
+                                {g.gate_name}
+                                {g.planned_date ? ` (${g.planned_date})` : ""}
+                              </option>
+                            ))}
+                        </select>
+                      </td>
                       <td>
                         <select
                           className="st-input !py-0.5 !text-xs"

@@ -662,8 +662,7 @@ export function PortfolioTimeline({
   const { organization } = useAuth();
   const fyStartMonth = organization?.fy_start_month || 4;
   const bounds = useMemo(() => computeTimelineBounds(projects, fy, fyStartMonth), [projects, fy, fyStartMonth]);
-  // Key gates by stream when present so stream lanes get their own markers;
-  // project_id bucket holds null-stream_id gates for Core merge.
+  // Stream lanes own their gates (keyed by stream_id). Project rollup shows none.
   const gatesByLane = useMemo(() => {
     const m = new Map<string, any[]>();
     gates.forEach((g: any) => {

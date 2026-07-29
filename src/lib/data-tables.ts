@@ -515,10 +515,11 @@ export const TABLES: TableDef[] = [
     matchOn: ["project_code", "stream_code", "wbs_code", "title"],
     orderBy: "sort_order",
     description:
-      "WBS / tasks. Set stream_code when the project has streams — blanks autopopulate to the Core stream when streams are enabled.",
+      "WBS / tasks. Set stream_code when the project has streams — blanks autopopulate to the Core stream when streams are enabled. stage_gate_id links the task to a stream phase for cost attribution.",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
       { key: "stream_id", label: "Stream", type: "text", fk: "stream" },
+      { key: "stage_gate_id", label: "Stage Gate", type: "text" },
       { key: "wbs_code", label: "WBS", type: "text" },
       { key: "title", label: "Title", type: "text", required: true },
       { key: "status", label: "Status", type: "select", options: ["To Do", "In Progress", "Blocked", "Done", "Cancelled"] },

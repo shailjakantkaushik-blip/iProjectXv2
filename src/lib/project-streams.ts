@@ -234,9 +234,7 @@ export function expandProjectsToTimelineLanes(
 
     const multi = projectStreams.length > 1;
     for (const s of projectStreams) {
-      const streamGates = (opts?.gates || []).filter(
-        (g) => g.stream_id === s.id || (!g.stream_id && g.project_id === p.id && s.is_default),
-      );
+      const streamGates = (opts?.gates || []).filter((g) => g.stream_id === s.id);
       const phase = opts?.resolvePhase?.(p, streamGates) ?? p.current_phase;
       const lane = streamToTimelineLane(p, s, phase);
       // Single Core without project rollup: project-first label, keep stream code identity.
@@ -314,9 +312,8 @@ export function groupGatesByLane<T extends { project_id: string; stream_id?: str
 }
 
 /**
- * Gates for a timeline lane. Matches expandProjectsToTimelineLanes:
- * stream-owned gates plus project-level (null stream_id) gates on Core.
- * Project rollup lanes intentionally show no diamonds.
+ * Gates for a timeline lane — stream lanes only.
+ * Project rollup / bare project rows intentionally show no gate diamonds.
  */
 export function gatesForTimelineLane<T extends { id?: string; project_id: string; stream_id?: string | null }>(
   lane: {
@@ -330,32 +327,9 @@ export function gatesForTimelineLane<T extends { id?: string; project_id: string
   gatesByLane: Map<string, T[]>,
 ): T[] {
   if (lane.is_project_rollup) return [];
-  const projectId = lane.project_id || lane.id;
   const streamId = lane.stream_id || (lane.is_stream_lane ? lane.id : null);
-
-  const merge = (a: T[], b: T[]) => {
-    if (!a.length) return b;
-    if (!b.length) return a;
-    const seen = new Set<string>();
-    const out: T[] = [];
-    for (const g of [...a, ...b]) {
-      const id = g.id;
-      if (id) {
-        if (seen.has(id)) continue;
-        seen.add(id);
-      }
-      out.push(g);
-    }
-    return out;
-  };
-
-  if (streamId) {
-    const owned = gatesByLane.get(streamId) || [];
-    const projectLevel =
-      lane.is_default && projectId ? gatesByLane.get(projectId) || [] : [];
-    return merge(owned, projectLevel);
-  }
-  return projectId ? gatesByLane.get(projectId) || [] : [];
+  if (!streamId) return [];
+  return gatesByLane.get(streamId) || [];
 }
 
 export async function fetchProjectStreams(projectId: string) {

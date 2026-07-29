@@ -185,6 +185,7 @@ export const WORK_ITEMS_SELECT = [
   "id",
   "project_id",
   "stream_id",
+  "stage_gate_id",
   "parent_id",
   "title",
   "status",
