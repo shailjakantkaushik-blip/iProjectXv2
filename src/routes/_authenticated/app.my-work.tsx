@@ -70,9 +70,24 @@ function MyWorkPage() {
     enabled: !!userId,
   });
 
+  const { data: timesheetApprovals = [] } = useQuery({
+    queryKey: ["timesheet_approvals", orgId, userId, "my-work"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("timesheet_approvals" as any)
+        .select("id,timesheet_id,step,status")
+        .eq("approver_user_id", userId!)
+        .eq("status", "pending");
+      if (error) return [];
+      return (data ?? []) as unknown as { id: string; timesheet_id: string; step: string; status: string }[];
+    },
+    enabled: !!orgId && !!userId,
+  });
+
   const projectById = new Map(projects.map((p: any) => [p.id, p]));
 
   const awaitingDecisions = decisions.filter((d: any) => canActOnDecision(d, userId));
+  const awaitingTimesheets = timesheetApprovals.length;
   const myActions = actions.filter(
     (a: any) =>
       a.status !== "Closed" &&
@@ -117,11 +132,20 @@ function MyWorkPage() {
       <SectionFrame>
         <SectionTitle>Command queue</SectionTitle>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <KpiCard label="Approvals waiting" value={awaitingDecisions.length} />
+          <KpiCard label="Approvals waiting" value={awaitingDecisions.length + awaitingTimesheets} />
           <KpiCard label="My open actions" value={myActions.length} />
           <KpiCard label="My work items" value={myWork.length} />
           <KpiCard label="Unread alerts" value={notifications.length} />
         </div>
+        {awaitingTimesheets > 0 && (
+          <p className="mt-3 text-xs text-muted-foreground">
+            Including{" "}
+            <Link to="/app/timesheets" search={{ tab: "approvals" }} className="font-semibold text-primary hover:underline">
+              {awaitingTimesheets} timesheet approval{awaitingTimesheets === 1 ? "" : "s"}
+            </Link>
+            .
+          </p>
+        )}
       </SectionFrame>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

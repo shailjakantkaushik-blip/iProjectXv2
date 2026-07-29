@@ -66,6 +66,7 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
       { to: "/app/governance-channels", label: "Governance Channel", icon: "Radio" },
       { to: "/app/dependencies", label: "Dependencies", icon: "GitBranch" },
       { to: "/app/resources", label: "Resources", icon: "Users" },
+      { to: "/app/timesheets", label: "Timesheets", icon: "Clock" },
       { to: "/app/risk-roadmap", label: "Risk Roadmap", icon: "Route" },
     ],
   },

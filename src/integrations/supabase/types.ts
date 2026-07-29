@@ -1790,12 +1790,14 @@ export type Database = {
           email: string | null
           id: string
           location: string | null
+          manager_user_id: string | null
           name: string
           org_id: string
           role: string | null
           skills: string | null
           status: string | null
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           bu_id?: string | null
@@ -1805,12 +1807,14 @@ export type Database = {
           email?: string | null
           id?: string
           location?: string | null
+          manager_user_id?: string | null
           name: string
           org_id: string
           role?: string | null
           skills?: string | null
           status?: string | null
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           bu_id?: string | null
@@ -1820,12 +1824,14 @@ export type Database = {
           email?: string | null
           id?: string
           location?: string | null
+          manager_user_id?: string | null
           name?: string
           org_id?: string
           role?: string | null
           skills?: string | null
           status?: string | null
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: [
           {

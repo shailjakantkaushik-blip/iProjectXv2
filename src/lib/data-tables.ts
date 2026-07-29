@@ -438,6 +438,8 @@ export const TABLES: TableDef[] = [
       { key: "cost_rate", label: "Cost Rate", type: "number" },
       { key: "location", label: "Location", type: "text" },
       { key: "status", label: "Status", type: "select", options: ["Active", "Inactive"] },
+      { key: "user_id", label: "Linked User ID", type: "text" },
+      { key: "manager_user_id", label: "Manager User ID", type: "text" },
     ],
   },
   {

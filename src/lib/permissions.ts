@@ -75,6 +75,7 @@ export const PAGES: { path: string; label: string; group: string }[] = [
   { path: "/app/governance-channels", label: "Governance Channel", group: "Delivery" },
   { path: "/app/dependencies", label: "Dependencies", group: "Delivery" },
   { path: "/app/resources", label: "Resources", group: "Delivery" },
+  { path: "/app/timesheets", label: "Timesheets", group: "Delivery" },
   { path: "/app/risk-roadmap", label: "Risk Roadmap", group: "Delivery" },
   { path: "/app/financials", label: "Financials", group: "Financials" },
   { path: "/app/fy-allocation", label: "FY Allocation", group: "Financials" },

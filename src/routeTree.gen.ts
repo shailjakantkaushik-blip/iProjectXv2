@@ -74,6 +74,7 @@ import { Route as AuthenticatedAppStakeholdersRouteImport } from './routes/_auth
 import { Route as AuthenticatedAppSupportRouteImport } from './routes/_authenticated/app.support'
 import { Route as AuthenticatedAppTeamRouteImport } from './routes/_authenticated/app.team'
 import { Route as AuthenticatedAppTimelineRouteImport } from './routes/_authenticated/app.timeline'
+import { Route as AuthenticatedAppTimesheetsRouteImport } from './routes/_authenticated/app.timesheets'
 import { Route as AuthenticatedAppWorkItemsRouteImport } from './routes/_authenticated/app.work-items'
 import { Route as AuthenticatedPlatformBrandingRouteImport } from './routes/_authenticated/platform.branding'
 import { Route as AuthenticatedPlatformEoiRouteImport } from './routes/_authenticated/platform.eoi'
@@ -466,6 +467,12 @@ const AuthenticatedAppTimelineRoute =
     path: '/timeline',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
+const AuthenticatedAppTimesheetsRoute =
+  AuthenticatedAppTimesheetsRouteImport.update({
+    id: '/timesheets',
+    path: '/timesheets',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
 const AuthenticatedAppWorkItemsRoute =
   AuthenticatedAppWorkItemsRouteImport.update({
     id: '/work-items',
@@ -680,6 +687,7 @@ export interface FileRoutesByFullPath {
   '/app/support': typeof AuthenticatedAppSupportRoute
   '/app/team': typeof AuthenticatedAppTeamRoute
   '/app/timeline': typeof AuthenticatedAppTimelineRoute
+  '/app/timesheets': typeof AuthenticatedAppTimesheetsRoute
   '/app/work-items': typeof AuthenticatedAppWorkItemsRoute
   '/platform/branding': typeof AuthenticatedPlatformBrandingRoute
   '/platform/eoi': typeof AuthenticatedPlatformEoiRoute
@@ -770,6 +778,7 @@ export interface FileRoutesByTo {
   '/app/support': typeof AuthenticatedAppSupportRoute
   '/app/team': typeof AuthenticatedAppTeamRoute
   '/app/timeline': typeof AuthenticatedAppTimelineRoute
+  '/app/timesheets': typeof AuthenticatedAppTimesheetsRoute
   '/app/work-items': typeof AuthenticatedAppWorkItemsRoute
   '/platform/branding': typeof AuthenticatedPlatformBrandingRoute
   '/platform/eoi': typeof AuthenticatedPlatformEoiRoute
@@ -863,6 +872,7 @@ export interface FileRoutesById {
   '/_authenticated/app/support': typeof AuthenticatedAppSupportRoute
   '/_authenticated/app/team': typeof AuthenticatedAppTeamRoute
   '/_authenticated/app/timeline': typeof AuthenticatedAppTimelineRoute
+  '/_authenticated/app/timesheets': typeof AuthenticatedAppTimesheetsRoute
   '/_authenticated/app/work-items': typeof AuthenticatedAppWorkItemsRoute
   '/_authenticated/platform/branding': typeof AuthenticatedPlatformBrandingRoute
   '/_authenticated/platform/eoi': typeof AuthenticatedPlatformEoiRoute
@@ -956,6 +966,7 @@ export interface FileRouteTypes {
     | '/app/support'
     | '/app/team'
     | '/app/timeline'
+    | '/app/timesheets'
     | '/app/work-items'
     | '/platform/branding'
     | '/platform/eoi'
@@ -1046,6 +1057,7 @@ export interface FileRouteTypes {
     | '/app/support'
     | '/app/team'
     | '/app/timeline'
+    | '/app/timesheets'
     | '/app/work-items'
     | '/platform/branding'
     | '/platform/eoi'
@@ -1138,6 +1150,7 @@ export interface FileRouteTypes {
     | '/_authenticated/app/support'
     | '/_authenticated/app/team'
     | '/_authenticated/app/timeline'
+    | '/_authenticated/app/timesheets'
     | '/_authenticated/app/work-items'
     | '/_authenticated/platform/branding'
     | '/_authenticated/platform/eoi'
@@ -1636,6 +1649,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppTimelineRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
+    '/_authenticated/app/timesheets': {
+      id: '/_authenticated/app/timesheets'
+      path: '/timesheets'
+      fullPath: '/app/timesheets'
+      preLoaderRoute: typeof AuthenticatedAppTimesheetsRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
     '/_authenticated/app/work-items': {
       id: '/_authenticated/app/work-items'
       path: '/work-items'
@@ -1884,6 +1904,7 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppSupportRoute: typeof AuthenticatedAppSupportRoute
   AuthenticatedAppTeamRoute: typeof AuthenticatedAppTeamRoute
   AuthenticatedAppTimelineRoute: typeof AuthenticatedAppTimelineRoute
+  AuthenticatedAppTimesheetsRoute: typeof AuthenticatedAppTimesheetsRoute
   AuthenticatedAppWorkItemsRoute: typeof AuthenticatedAppWorkItemsRoute
   AuthenticatedAppIndexRoute: typeof AuthenticatedAppIndexRoute
   AuthenticatedAppInvoiceIdRoute: typeof AuthenticatedAppInvoiceIdRoute
@@ -1948,6 +1969,7 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppSupportRoute: AuthenticatedAppSupportRoute,
   AuthenticatedAppTeamRoute: AuthenticatedAppTeamRoute,
   AuthenticatedAppTimelineRoute: AuthenticatedAppTimelineRoute,
+  AuthenticatedAppTimesheetsRoute: AuthenticatedAppTimesheetsRoute,
   AuthenticatedAppWorkItemsRoute: AuthenticatedAppWorkItemsRoute,
   AuthenticatedAppIndexRoute: AuthenticatedAppIndexRoute,
   AuthenticatedAppInvoiceIdRoute: AuthenticatedAppInvoiceIdRoute,

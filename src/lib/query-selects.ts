@@ -50,6 +50,8 @@ export const RESOURCES_SELECT = [
   "cost_rate",
   "location",
   "status",
+  "user_id",
+  "manager_user_id",
 ].join(",");
 
 export const RESOURCE_ALLOCATIONS_SELECT = [
