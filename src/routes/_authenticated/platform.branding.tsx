@@ -37,6 +37,7 @@ import {
   type LandingConfig,
 } from "@/lib/landing-config";
 import { Switch } from "@/components/ui/switch";
+import { OrgByodPanel } from "@/components/org-byod-panel";
 
 export const Route = createFileRoute("/_authenticated/platform/branding")({
   beforeLoad: () => {
@@ -130,9 +131,10 @@ function PlatformBrandingPage() {
           <Palette className="h-7 w-7" /> White Label & Branding
         </h1>
         <p className="text-sm text-muted-foreground">
-          Manage display name, logo, colour palette, style themes, and per-org SSO for each
-          organisation (platform admin only). Style themes change UI chrome — sections, buttons,
-          navigation shape, and motion — without changing colour palettes.
+          Manage display name, logo, colour palette, style themes, per-org SSO, and optional
+          customer-hosted database (BYOD) for each organisation (platform admin only). Style themes
+          change UI chrome — sections, buttons, navigation shape, and motion — without changing
+          colour palettes.
         </p>
       </div>
 
@@ -204,11 +206,18 @@ function PlatformBrandingPage() {
         </Card>
 
         {selected && (
-          <BrandingEditor
-            key={selected.id}
-            org={selected}
-            onSaved={() => qc.invalidateQueries({ queryKey: ["platform-orgs-branding"] })}
-          />
+          <div className="space-y-4">
+            <BrandingEditor
+              key={selected.id}
+              org={selected}
+              onSaved={() => qc.invalidateQueries({ queryKey: ["platform-orgs-branding"] })}
+            />
+            <OrgByodPanel
+              key={`byod-${selected.id}`}
+              orgId={selected.id}
+              orgName={selected.brand_name || selected.name}
+            />
+          </div>
         )}
       </div>
     </div>

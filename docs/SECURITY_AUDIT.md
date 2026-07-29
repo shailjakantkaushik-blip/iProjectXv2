@@ -8,6 +8,16 @@
 
 ---
 
+## BYOD secrets (2026-07-29)
+
+- Customer DB service-role secrets encrypted with `BYOD_SECRETS_KEK` (AES-256-GCM) in `org_byod_connections`
+- No authenticated RLS policies on ciphertext table — platform_admin manages via service-role server functions only
+- UI is write-only (paste/replace/clear); plaintext never returned after save
+- Default orgs unaffected (`organizations.byod_active = false`)
+- See [`BYOD.md`](./BYOD.md)
+
+---
+
 ## Post-incident re-audit — org white-label login (2026-07-26)
 
 ### Incident

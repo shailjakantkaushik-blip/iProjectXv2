@@ -724,6 +724,15 @@ export function AppShell({ children }: { children: ReactNode }) {
       )}
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {organization?.byod_active ? (
+          <div
+            className="shrink-0 border-b border-sky-200 bg-sky-50 px-3 py-1.5 text-[11px] text-sky-900 print:hidden sm:px-4 lg:px-6"
+            role="status"
+          >
+            Customer-hosted database is active for this organisation. Auth and platform
+            controls remain on iProjectX.
+          </div>
+        ) : null}
         <header className="shell-header relative z-30 flex shrink-0 items-center gap-2 border-b border-border/50 bg-background px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] print:hidden sm:gap-3 sm:px-4 lg:px-6">
           <SoftUpdatingBar />
           <button

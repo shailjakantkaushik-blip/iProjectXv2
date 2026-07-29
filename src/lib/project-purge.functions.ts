@@ -156,6 +156,7 @@ export const listPlatformPurgeOverview = createServerFn({ method: "GET" })
   .handler(async ({ context }): Promise<PurgeOrgSummary[]> => {
     await assertPlatformAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { resolveOrgDataClient } = await import("@/lib/byod.server");
 
     const { data: orgs, error } = await supabaseAdmin
       .from("organizations")
@@ -165,7 +166,8 @@ export const listPlatformPurgeOverview = createServerFn({ method: "GET" })
 
     const out: PurgeOrgSummary[] = [];
     for (const org of orgs ?? []) {
-      const candidates = await loadCandidatesForOrg(supabaseAdmin, org.id);
+      const { client: dataClient } = await resolveOrgDataClient(org.id);
+      const candidates = await loadCandidatesForOrg(dataClient, org.id);
       if (candidates.length === 0) {
         const notice = await latestPendingNotice(supabaseAdmin, org.id);
         if (!notice) continue;
@@ -214,6 +216,7 @@ export const listOrgPurgeOverview = createServerFn({ method: "GET" })
 
       await assertOrgAdminForOrg(context.supabase, context.userId, profile.org_id);
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { resolveOrgDataClient } = await import("@/lib/byod.server");
 
       const { data: org, error: oErr } = await supabaseAdmin
         .from("organizations")
@@ -222,7 +225,8 @@ export const listOrgPurgeOverview = createServerFn({ method: "GET" })
         .single();
       if (oErr) throw new Error(oErr.message);
 
-      const candidates = await loadCandidatesForOrg(supabaseAdmin, profile.org_id);
+      const { client: dataClient } = await resolveOrgDataClient(profile.org_id);
+      const candidates = await loadCandidatesForOrg(dataClient, profile.org_id);
       const pending_notice = await latestPendingNotice(supabaseAdmin, profile.org_id);
 
       const { data: notices, error: nErr } = await supabaseAdmin
@@ -258,6 +262,7 @@ export const createPurgeNotice = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertOrgAdminForOrg(context.supabase, context.userId, data.org_id);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { resolveOrgDataClient } = await import("@/lib/byod.server");
 
     const roles = await loadCallerRoles(context.supabase, context.userId);
     const isPlatform = roles.some((r) => r.role === "platform_admin");
@@ -270,7 +275,8 @@ export const createPurgeNotice = createServerFn({ method: "POST" })
       );
     }
 
-    const candidates = await loadCandidatesForOrg(supabaseAdmin, data.org_id);
+    const { client: dataClient } = await resolveOrgDataClient(data.org_id);
+    const candidates = await loadCandidatesForOrg(dataClient, data.org_id);
     if (candidates.length === 0) {
       throw new Error("No closed projects older than 1 year to purge in this organisation.");
     }
@@ -363,6 +369,7 @@ export const executeProjectPurge = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const auth = await assertOrgAdminForOrg(context.supabase, context.userId, data.org_id);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { resolveOrgDataClient } = await import("@/lib/byod.server");
     const roles = await loadCallerRoles(context.supabase, context.userId);
     const isPlatform = roles.some((r) => r.role === "platform_admin");
 
@@ -383,7 +390,9 @@ export const executeProjectPurge = createServerFn({ method: "POST" })
     }
     // Org admins can purge anytime (with confirm) for their org
 
-    const candidates = await loadCandidatesForOrg(supabaseAdmin, data.org_id);
+    // Tenant project rows live on customer DB when BYOD is active.
+    const { client: dataClient } = await resolveOrgDataClient(data.org_id);
+    const candidates = await loadCandidatesForOrg(dataClient, data.org_id);
     let ids = candidates.map((c) => c.id);
     if (data.project_ids?.length) {
       const allow = new Set(ids);
@@ -394,7 +403,7 @@ export const executeProjectPurge = createServerFn({ method: "POST" })
     // Snapshot for audit before delete
     const snapshot = candidates.filter((c) => ids.includes(c.id));
 
-    const { error: delErr } = await supabaseAdmin.from("projects").delete().in("id", ids);
+    const { error: delErr } = await dataClient.from("projects").delete().in("id", ids);
     if (delErr) throw new Error(delErr.message);
 
     if (pending) {
