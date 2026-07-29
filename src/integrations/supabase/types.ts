@@ -1929,7 +1929,7 @@ export type Database = {
           created_at: string
           id: string
           org_id: string
-          role: Database["public"]["Enums"]["app_role"]
+          role: string
           table_name: string
           updated_at: string
         }
@@ -1939,7 +1939,7 @@ export type Database = {
           created_at?: string
           id?: string
           org_id: string
-          role: Database["public"]["Enums"]["app_role"]
+          role: string
           table_name: string
           updated_at?: string
         }
@@ -1949,7 +1949,7 @@ export type Database = {
           created_at?: string
           id?: string
           org_id?: string
-          role?: Database["public"]["Enums"]["app_role"]
+          role?: string
           table_name?: string
           updated_at?: string
         }
@@ -2390,7 +2390,7 @@ export type Database = {
           created_at: string
           id: string
           org_id: string
-          role: Database["public"]["Enums"]["app_role"]
+          role: string
           user_id: string
         }
         Insert: {
@@ -2398,7 +2398,7 @@ export type Database = {
           created_at?: string
           id?: string
           org_id: string
-          role: Database["public"]["Enums"]["app_role"]
+          role: string
           user_id: string
         }
         Update: {
@@ -2406,7 +2406,7 @@ export type Database = {
           created_at?: string
           id?: string
           org_id?: string
-          role?: Database["public"]["Enums"]["app_role"]
+          role?: string
           user_id?: string
         }
         Relationships: [
@@ -2471,7 +2471,7 @@ export type Database = {
       get_user_org: { Args: { _user_id: string }; Returns: string }
       has_any_admin: { Args: { _user_id: string }; Returns: boolean }
       has_role: {
-        Args: {
+        Args: { _role: string; _user_id: string } | {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
