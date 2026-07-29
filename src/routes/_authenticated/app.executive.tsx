@@ -18,7 +18,7 @@ import { RAG_COLORS, PRIORITY_COLORS, CHART_SERIES } from "@/lib/chart-theme";
 import { PageLoading } from "@/components/page-loading";
 import { QueryErrorPanel } from "@/components/query-error-panel";
 import { SoftUpdatingLabel } from "@/components/soft-updating";
-import { isColdLoading } from "@/lib/query-ui";
+import { isColdLoading, queryErrorMessage } from "@/lib/query-ui";
 import {
   matchPhase,
   normLabel,
@@ -47,6 +47,7 @@ import { unwrapList } from "@/lib/query";
 import {
   PROJECT_PORTFOLIO_SELECT,
   FINANCIALS_MONTHLY_SELECT,
+  FINANCIALS_MONTHLY_SELECT_MIN,
   STAGE_GATE_DEFINITIONS_SELECT,
 } from "@/lib/query-selects";
 import { fetchStageGates } from "@/lib/stage-gates";
@@ -130,12 +131,27 @@ function ExecutiveDashboard() {
 
   const monthlyQ = useQuery({
     queryKey: ["financials_monthly", organization?.id],
-    queryFn: async () =>
-      unwrapList(
-        await supabase
-          .from("financials_monthly")
-          .select(FINANCIALS_MONTHLY_SELECT as "*"),
-      ),
+    queryFn: async () => {
+      const full = await supabase
+        .from("financials_monthly")
+        .select(FINANCIALS_MONTHLY_SELECT as "*");
+      if (!full.error) return full.data ?? [];
+      const min = await supabase
+        .from("financials_monthly")
+        .select(FINANCIALS_MONTHLY_SELECT_MIN as "*");
+      if (!min.error) return min.data ?? [];
+      const star = await supabase.from("financials_monthly").select("*");
+      if (star.error) {
+        throw new Error(
+          [
+            `financials_monthly: ${queryErrorMessage(full.error)}`,
+            `fallback: ${queryErrorMessage(min.error)}`,
+            `*: ${queryErrorMessage(star.error)}`,
+          ].join("\n"),
+        );
+      }
+      return star.data ?? [];
+    },
     enabled: !!organization,
   });
 
@@ -145,17 +161,26 @@ function ExecutiveDashboard() {
   const gateDefs = gateDefsQ.data ?? [];
   const monthly = monthlyQ.data ?? [];
   // Cold load only — keep the dashboard visible while background refetch runs.
-  // Wait for projects + gates + streams so stream-lane diamonds match on first paint.
+  // Projects + streams are required for the shell; gates/monthly degrade softly.
   const showColdLoad =
-    isColdLoading(projectsQ) || isColdLoading(gatesQ) || isColdLoading(streamsQ);
+    isColdLoading(projectsQ) || isColdLoading(streamsQ);
   const softUpdating =
     projectsQ.isFetching ||
     gatesQ.isFetching ||
     streamsQ.isFetching ||
     gateDefsQ.isFetching ||
     monthlyQ.isFetching;
-  const loadError =
-    projectsQ.error || gatesQ.error || streamsQ.error || gateDefsQ.error || monthlyQ.error;
+  const loadError = projectsQ.error || streamsQ.error;
+  const softWarning =
+    monthlyQ.error || gatesQ.error || gateDefsQ.error
+      ? [
+          monthlyQ.error ? `Financials: ${queryErrorMessage(monthlyQ.error)}` : null,
+          gatesQ.error ? `Stage gates: ${queryErrorMessage(gatesQ.error)}` : null,
+          gateDefsQ.error ? `Gate definitions: ${queryErrorMessage(gateDefsQ.error)}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n")
+      : null;
 
   const retryAll = () => {
     void qc.invalidateQueries({ queryKey: ["projects", organization?.id] });
@@ -612,13 +637,35 @@ function ExecutiveDashboard() {
         <QueryErrorPanel
           className="mb-4"
           title="Executive data failed to load"
-          message={
-            loadError instanceof Error
-              ? loadError.message
-              : "A temporary issue interrupted loading. Retry to refresh portfolio data."
-          }
+          message={queryErrorMessage(
+            loadError,
+            "A temporary issue interrupted loading. Retry to refresh portfolio data.",
+          )}
           onRetry={retryAll}
         />
+      )}
+      {softWarning && !loadError && (
+        <div
+          role="status"
+          className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold">Some portfolio panels could not refresh</p>
+              <p className="mt-1 whitespace-pre-wrap break-words text-xs opacity-90">{softWarning}</p>
+              <p className="mt-2 text-xs opacity-80">
+                If this mentions a missing column or schema cache, run pending migrations in Supabase, then use Reload schema.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={retryAll}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium hover:bg-muted"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
       )}
       <SectionFrame className="section-frame--filters" exportable={false}>
         <div className="mb-3 page-heading text-base font-semibold">Portfolio filters</div>
