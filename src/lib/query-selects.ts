@@ -50,6 +50,11 @@ export const RESOURCES_SELECT = [
   "cost_rate",
   "location",
   "status",
+].join(",");
+
+/** Extended resource fields for timesheets (requires timesheets migration). */
+export const RESOURCES_TIMESHEET_SELECT = [
+  RESOURCES_SELECT,
   "user_id",
   "manager_user_id",
 ].join(",");

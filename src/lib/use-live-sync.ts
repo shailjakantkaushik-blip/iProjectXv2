@@ -25,6 +25,8 @@ const TABLE_QUERY_KEYS: Record<string, string[]> = {
   timesheets: ["timesheets"],
   timesheet_entries: ["timesheet_entries", "timesheets"],
   timesheet_approvals: ["timesheet_approvals", "timesheets"],
+  // work_item_assignees: only invalidate when that page is open — avoid boot fan-out
+  // before the timesheets migration is applied on every environment.
   work_item_assignees: ["work_item_assignees", "work_items"],
   sprints: ["sprints"],
   status_updates: ["status_updates"],
@@ -53,7 +55,15 @@ const HIGH_CHURN = new Set([
 ]);
 
 /** Realtime tables we listen to (exclude notifications — handled by the bell). */
-const TABLES = Object.keys(TABLE_QUERY_KEYS).filter((t) => t !== "notifications");
+const REALTIME_OPTIONAL = new Set([
+  "timesheets",
+  "timesheet_entries",
+  "timesheet_approvals",
+  "work_item_assignees",
+]);
+const TABLES = Object.keys(TABLE_QUERY_KEYS).filter(
+  (t) => t !== "notifications" && !REALTIME_OPTIONAL.has(t),
+);
 
 const BC_NAME = "pmo-data-sync";
 const DEBOUNCE_MS = 800;

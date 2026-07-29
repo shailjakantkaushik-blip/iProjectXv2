@@ -143,6 +143,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         supabase.from("user_roles").select("role,org_id").eq("user_id", userId),
       ]);
 
+      // Transient PostgREST / schema-cache errors must not wipe chrome or hang the gate.
+      if (profileRes.error) {
+        console.warn("[auth] profile load failed:", profileRes.error.message);
+        return;
+      }
+
       const row = (profileRes.data as ProfileRow | null) ?? null;
       const nextProfile: Profile | null = row
         ? {
@@ -154,9 +160,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             is_active: row.is_active,
           }
         : null;
-      const nextOrg = orgFromEmbed(row);
+
+      let nextOrg = orgFromEmbed(row);
+      // Embed can be null after schema reloads / RLS edge cases — fetch org directly.
+      if (nextProfile?.org_id && !nextOrg) {
+        const { data: orgRow, error: orgErr } = await supabase
+          .from("organizations")
+          .select(
+            "id,name,slug,plan,brand_name,logo_url,primary_color,accent_color,fy_start_month,byod_active,ui_config",
+          )
+          .eq("id", nextProfile.org_id)
+          .maybeSingle();
+        if (!orgErr && orgRow) {
+          nextOrg = orgRow as Organization;
+        } else if (orgErr) {
+          console.warn("[auth] organization load failed:", orgErr.message);
+        }
+      }
+
       // Only home-org roles + global platform_admin — ignore foreign-org leftovers.
-      const nextRoles = (rolesRes.data ?? [])
+      const nextRoles = (rolesRes.error ? [] : (rolesRes.data ?? []))
         .filter((r: { role: string; org_id: string | null }) => {
           if (r.role === "platform_admin") return true;
           if (!nextProfile?.org_id) return false;
@@ -177,6 +200,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           roles: nextRoles,
         });
       } else {
+        // Only clear when the server confirmed there is no profile row.
         clearCachedAuthChrome();
       }
     })();
