@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Zap, Minus, Plus, Filter, RotateCcw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { PROJECT_PORTFOLIO_SELECT, STAGE_GATES_SELECT } from "@/lib/query-selects";
+import { PROJECT_PORTFOLIO_SELECT } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
 import { PortfolioTimeline } from "@/components/portfolio-timeline";
@@ -17,6 +17,7 @@ import {
   expandProjectsToTimelineLanes,
   fetchOrgStreams,
 } from "@/lib/project-streams";
+import { fetchStageGates } from "@/lib/stage-gates";
 
 export const Route = createFileRoute("/_authenticated/app/timeline")({
   component: TimelinePage,
@@ -58,7 +59,7 @@ function TimelinePage() {
 
   const { data: gates = [] } = useQuery({
     queryKey: ["stage_gates", organization?.id],
-    queryFn: async () => (await supabase.from("stage_gates").select(STAGE_GATES_SELECT as "*")).data ?? [],
+    queryFn: fetchStageGates,
     enabled: !!organization,
   });
 

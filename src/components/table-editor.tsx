@@ -23,6 +23,10 @@ interface LookupMaps {
   streamsByCode: Map<string, string>;
   /** project_id → default stream id (Core) for autopopulate */
   defaultStreamByProject: Map<string, string>;
+  /** stage_gate id → "Gate · stream · date" */
+  gatesById: Map<string, string>;
+  /** label → stage_gate id (best-effort import) */
+  gatesByLabel: Map<string, string>;
 }
 
 export function TableEditor({ def }: { def: TableDef }) {
@@ -37,12 +41,18 @@ export function TableEditor({ def }: { def: TableDef }) {
     queryKey: ["editor-lookups", organization?.id],
     enabled: !!organization,
     queryFn: async (): Promise<LookupMaps> => {
-      const [{ data: projects }, { data: bus }, { data: resources }, { data: streams }] = await Promise.all([
-        supabase.from("projects").select("id,project_code,name").eq("org_id", organization!.id),
-        supabase.from("business_units").select("id,code,name").eq("org_id", organization!.id),
-        supabase.from("resources").select("id,name").eq("org_id", organization!.id),
-        supabase.from("project_streams").select("id,code,name,project_id,is_default").eq("org_id", organization!.id),
-      ]);
+      const [{ data: projects }, { data: bus }, { data: resources }, { data: streams }, gatesRes] =
+        await Promise.all([
+          supabase.from("projects").select("id,project_code,name").eq("org_id", organization!.id),
+          supabase.from("business_units").select("id,code,name").eq("org_id", organization!.id),
+          supabase.from("resources").select("id,name").eq("org_id", organization!.id),
+          supabase.from("project_streams").select("id,code,name,project_id,is_default").eq("org_id", organization!.id),
+          supabase
+            .from("stage_gates")
+            .select("id,project_id,stream_id,gate_name,planned_date,status")
+            .eq("org_id", organization!.id)
+            .order("planned_date"),
+        ]);
       const projectsById = new Map((projects ?? []).map((p) => [p.id, p.project_code || p.name]));
       const projectsByCode = new Map<string, string>();
       (projects ?? []).forEach((p) => { if (p.project_code) projectsByCode.set(p.project_code, p.id); });
@@ -60,6 +70,21 @@ export function TableEditor({ def }: { def: TableDef }) {
         if (s.name) streamsByCode.set(String(s.name).trim(), s.id);
         if (s.is_default) defaultStreamByProject.set(s.project_id, s.id);
       });
+      const gatesById = new Map<string, string>();
+      const gatesByLabel = new Map<string, string>();
+      (gatesRes.data ?? []).forEach((g: any) => {
+        const streamLbl = g.stream_id ? streamsById.get(g.stream_id) : null;
+        const label = [
+          g.gate_name || "Gate",
+          streamLbl,
+          g.planned_date ? String(g.planned_date).slice(0, 10) : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        gatesById.set(g.id, label);
+        if (label) gatesByLabel.set(label, g.id);
+        if (g.gate_name) gatesByLabel.set(String(g.gate_name).trim(), g.id);
+      });
       return {
         projectsById,
         projectsByCode,
@@ -70,6 +95,8 @@ export function TableEditor({ def }: { def: TableDef }) {
         streamsById,
         streamsByCode,
         defaultStreamByProject,
+        gatesById,
+        gatesByLabel,
       };
     },
   });
@@ -105,6 +132,7 @@ export function TableEditor({ def }: { def: TableDef }) {
           if (f.fk === "project") return lookups?.projectsById.get(String(v)) ?? v;
           if (f.fk === "bu") return lookups?.busById.get(String(v)) ?? v;
           if (f.fk === "stream") return lookups?.streamsById.get(String(v)) ?? v;
+          if (f.fk === "stage_gate") return lookups?.gatesById.get(String(v)) ?? v;
           if (f.key === "resource_id") return lookups?.resourcesById.get(String(v)) ?? v;
           return v;
         },
@@ -242,6 +270,10 @@ function CellRenderer({
   if (field.fk === "project") return <span className="font-mono">{lookups?.projectsById.get(String(v)) ?? "—"}</span>;
   if (field.fk === "bu") return <span>{lookups?.busById.get(String(v)) ?? "—"}</span>;
   if (field.fk === "stream") return <span className="font-mono">{lookups?.streamsById.get(String(v)) ?? "—"}</span>;
+  if (field.fk === "stage_gate") {
+    const label = v ? lookups?.gatesById.get(String(v)) : null;
+    return <span title={v ? String(v) : undefined}>{label || (v ? String(v).slice(0, 8) + "…" : "—")}</span>;
+  }
   if (field.key === "resource_id") return <span>{lookups?.resourcesById.get(String(v)) ?? "—"}</span>;
 
   const type = field.type === "textarea" ? "text" : field.type === "select" ? "select" : field.type === "number" ? "number" : field.type === "date" ? "date" : "text";
@@ -288,6 +320,10 @@ function AddRowForm({ def, lookups, orgId, onDone }: { def: TableDef; lookups: L
           const id = lookups.streamsByCode.get(v);
           if (!id) throw new Error(`Unknown stream code: ${v}`);
           payload[f.key] = id;
+        } else if (f.fk === "stage_gate") {
+          const resolved = lookups.gatesByLabel.get(v) || (lookups.gatesById.has(v) ? v : null);
+          if (!resolved) throw new Error(`Unknown stage gate: ${v}`);
+          payload[f.key] = resolved;
         } else if (f.key === "resource_id") {
           const id = lookups.resourcesByName.get(v);
           if (!id) throw new Error(`Unknown resource: ${v}`);
@@ -334,6 +370,7 @@ function AddRowForm({ def, lookups, orgId, onDone }: { def: TableDef; lookups: L
               {f.fk === "project" && <span className="ml-1 normal-case text-muted-foreground">(project_code)</span>}
               {f.fk === "bu" && <span className="ml-1 normal-case text-muted-foreground">(bu_code)</span>}
               {f.fk === "stream" && <span className="ml-1 normal-case text-muted-foreground">(stream_code)</span>}
+              {f.fk === "stage_gate" && <span className="ml-1 normal-case text-muted-foreground">(gate name)</span>}
               {f.key === "resource_id" && <span className="ml-1 normal-case text-muted-foreground">(name)</span>}
             </label>
             {f.type === "select" && f.options ? (

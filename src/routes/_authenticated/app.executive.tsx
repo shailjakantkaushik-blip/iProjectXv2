@@ -48,8 +48,8 @@ import {
   PROJECT_PORTFOLIO_SELECT,
   FINANCIALS_MONTHLY_SELECT,
   STAGE_GATE_DEFINITIONS_SELECT,
-  STAGE_GATES_SELECT,
 } from "@/lib/query-selects";
+import { fetchStageGates } from "@/lib/stage-gates";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
@@ -104,10 +104,7 @@ function ExecutiveDashboard() {
     // Must include stream_id — shared cache key with other pages; omitting it
     // hides diamonds on stream lanes until a hard reload.
     queryKey: ["stage_gates", organization?.id],
-    queryFn: async () =>
-      unwrapList(
-        await supabase.from("stage_gates").select(STAGE_GATES_SELECT as "*").order("planned_date"),
-      ),
+    queryFn: fetchStageGates,
     enabled: !!organization,
   });
 

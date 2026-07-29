@@ -9,7 +9,8 @@ import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/s
 import { PageExport } from "@/components/page-export";
 import { PageLoading } from "@/components/page-loading";
 import { fetchOrgStreams, formatProjectStreamRef, formatStreamLabel } from "@/lib/project-streams";
-import { STAGE_GATES_SELECT } from "@/lib/query-selects";
+import { fetchStageGates } from "@/lib/stage-gates";
+import { WORK_ITEMS_SELECT } from "@/lib/query-selects";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
@@ -50,24 +51,9 @@ function WorkItemsPage() {
     enabled: !!orgId,
   });
 
-  const { data: stageGates = [] } = useQuery({
-    // Shared cache with Timeline / Executive so stream_id is always present
+  const { data: stageGates = [], error: gatesError, isError: gatesIsError } = useQuery({
     queryKey: ["stage_gates", orgId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("stage_gates")
-        .select(STAGE_GATES_SELECT as "*")
-        .order("planned_date");
-      if (error) throw error;
-      return (data ?? []) as Array<{
-        id: string;
-        project_id: string;
-        stream_id: string | null;
-        gate_name: string;
-        planned_date: string | null;
-        status: string | null;
-      }>;
-    },
+    queryFn: fetchStageGates,
     enabled: !!orgId,
   });
 
@@ -77,7 +63,6 @@ function WorkItemsPage() {
       const forProject = stageGates.filter((g) => g.project_id === projectId);
       if (!streamId) return forProject;
       const forStream = forProject.filter((g) => !g.stream_id || g.stream_id === streamId);
-      // Never leave the dropdown empty when the project has gates
       return forStream.length ? forStream : forProject;
     },
     [stageGates],
@@ -106,16 +91,27 @@ function WorkItemsPage() {
     [resources],
   );
 
+  // Distinct key from Data Editor (`["work_items", orgId]`) so column shapes don't collide.
   const itemsQ = useQuery({
-    queryKey: ["work_items", orgId],
+    queryKey: ["work_items", orgId, "register"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      if (!orgId) return [];
+      const primary = await supabase
         .from("work_items" as any)
-        .select("*")
+        .select(WORK_ITEMS_SELECT as "*")
+        .eq("org_id", orgId)
         .order("sort_order")
         .order("planned_end");
-      if (error) throw error;
-      return (data ?? []) as any[];
+      if (!primary.error) return (primary.data ?? []) as any[];
+
+      // Fallback: broader select if schema cache lags behind WORK_ITEMS_SELECT
+      const fallback = await supabase
+        .from("work_items" as any)
+        .select("*")
+        .eq("org_id", orgId)
+        .order("sort_order");
+      if (fallback.error) throw fallback.error;
+      return (fallback.data ?? []) as any[];
     },
     enabled: !!orgId,
   });
@@ -555,6 +551,37 @@ function WorkItemsPage() {
 
       <SectionFrame>
         <SectionTitle>{mineOnly ? "My work items" : "Work register"}</SectionTitle>
+        {itemsQ.isError ? (
+          <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+            Failed to load work items: {(itemsQ.error as Error)?.message || "Unknown error"}
+            <button
+              type="button"
+              className="ml-2 underline"
+              onClick={() => void itemsQ.refetch()}
+            >
+              Retry
+            </button>
+          </div>
+        ) : null}
+        {gatesIsError ? (
+          <div className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+            Stage gates failed to load: {(gatesError as Error)?.message || "Unknown error"}. Dropdowns
+            will be empty until this succeeds (often fixed by Reload schema in Supabase).
+            <button
+              type="button"
+              className="ml-2 underline"
+              onClick={() => void qc.invalidateQueries({ queryKey: ["stage_gates", orgId] })}
+            >
+              Retry
+            </button>
+          </div>
+        ) : null}
+        {!gatesIsError && stageGates.length === 0 ? (
+          <div className="mb-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
+            No stage gates found for this organisation. Re-run the wipe-and-seed SQL (or create gates on
+            each stream) so Work Items and timelines can show phases.
+          </div>
+        ) : null}
         <ColumnarToolbar
           globalQ={table.globalQ}
           onGlobalQ={table.setGlobalQ}

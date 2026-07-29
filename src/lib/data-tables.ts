@@ -11,7 +11,7 @@ export interface FieldDef {
   options?: string[];
   required?: boolean;
   // In export/import, replace a UUID FK with a human-readable code column.
-  fk?: "project" | "bu" | "stream";
+  fk?: "project" | "bu" | "stream" | "stage_gate";
   // Show in list/editor tables (default true)
   hidden?: boolean;
   // Width hint for the editor grid
@@ -519,7 +519,7 @@ export const TABLES: TableDef[] = [
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
       { key: "stream_id", label: "Stream", type: "text", fk: "stream" },
-      { key: "stage_gate_id", label: "Stage Gate", type: "text" },
+      { key: "stage_gate_id", label: "Stage Gate", type: "text", fk: "stage_gate" },
       { key: "wbs_code", label: "WBS", type: "text" },
       { key: "title", label: "Title", type: "text", required: true },
       { key: "status", label: "Status", type: "select", options: ["To Do", "In Progress", "Blocked", "Done", "Cancelled"] },

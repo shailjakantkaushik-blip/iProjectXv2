@@ -183,16 +183,20 @@ export const NOTIFICATIONS_SELECT =
 
 export const WORK_ITEMS_SELECT = [
   "id",
+  "org_id",
   "project_id",
   "stream_id",
   "stage_gate_id",
   "parent_id",
+  "wbs_code",
   "title",
   "status",
   "priority",
   "owner",
   "owner_user_id",
   "percent_complete",
+  "planned_start",
   "planned_end",
   "actual_end",
+  "sort_order",
 ].join(",");
