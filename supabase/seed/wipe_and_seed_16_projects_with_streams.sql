@@ -8,6 +8,8 @@
 --   billing_plans, stage_gate_definitions, governance_channels
 --
 -- DELETES (then reseeds)
+--   timesheets / timesheet_entries / timesheet_approvals / work_item_assignees,
+--   timesheet-related notifications,
 --   projects (+ cascaded children incl. project_streams),
 --   resources, resource_allocations, demand_pipeline,
 --   portfolio_scenarios / scenario_projects,
@@ -15,15 +17,18 @@
 --   work_items, audit_log / audit_events, project_purge_notices
 --
 -- SEEDS (per organisation)
---   8 resources, 16 projects (always-on Core + second stream),
+--   8 resources (linked to org logins when available),
+--   16 projects (always-on Core + second stream),
 --   stage gates + milestones per stream, FY + monthly finance per stream,
 --   resource allocations, benefits, risks, issues, actions, decisions,
 --   stakeholders, status updates, documents, lessons, change requests,
---   sprints, work items, dependencies, demand pipeline, portfolio scenario,
---   project.brief (Section 1 + 2) + baselines
+--   sprints, work items (+ assignees), dependencies, demand pipeline,
+--   portfolio scenario, project.brief + baselines,
+--   sample timesheets (draft / pending / approved / rejected) with
+--   billable + non-billable entries and approval rows
 --
 -- Requires: always-on Core streams migration (ensure_project_core_stream,
---           rollup_project_from_streams).
+--           rollup_project_from_streams) + timesheet migrations.
 -- =========================================================================
 
 BEGIN;
@@ -37,6 +42,20 @@ ALTER TABLE public.projects
   ADD COLUMN IF NOT EXISTS forecast_at_completion NUMERIC(14,2) DEFAULT 0;
 
 -- ---------- B) Wipe operational / project data ----------
+-- Timesheets first (FKs to projects / work items / resources / users)
+DO $wipe_ts$
+BEGIN
+  DELETE FROM public.timesheet_approvals;
+  DELETE FROM public.timesheet_entries;
+  DELETE FROM public.timesheets;
+  DELETE FROM public.work_item_assignees;
+EXCEPTION WHEN undefined_table THEN NULL;
+END
+$wipe_ts$;
+
+DELETE FROM public.notifications
+WHERE kind ILIKE 'timesheet%' OR kind IN ('timesheet_missing', 'timesheet_approval_reminder');
+
 DELETE FROM public.resource_allocations;
 DELETE FROM public.resources;
 DELETE FROM public.demand_pipeline;
@@ -722,14 +741,277 @@ BEGIN
   END LOOP;
 END $$;
 
+-- ---------- E) Link resources to logins + seed timesheets / assignees ----------
+DO $$
+DECLARE
+  r_org RECORD;
+  member_ids uuid[];
+  mgr_uid uuid;
+  pm_uid uuid;
+  res RECORD;
+  idx int;
+  n_members int;
+  week0 date;
+  weeks date[];
+  w date;
+  wi_ids uuid[];
+  wi uuid;
+  p_id uuid;
+  sheet_id uuid;
+  st text;
+  u_idx int;
+  w_idx int;
+  hours_base numeric;
+BEGIN
+  -- Monday of current week (ISO)
+  week0 := CURRENT_DATE - ((EXTRACT(ISODOW FROM CURRENT_DATE)::int) - 1);
+  weeks := ARRAY[
+    week0,
+    week0 - 7,
+    week0 - 14,
+    week0 - 21
+  ];
+
+  FOR r_org IN SELECT id FROM public.organizations LOOP
+    SELECT array_agg(p.id ORDER BY COALESCE(p.full_name, p.email, p.id::text))
+    INTO member_ids
+    FROM public.profiles p
+    WHERE p.org_id = r_org.id;
+
+    n_members := COALESCE(array_length(member_ids, 1), 0);
+    IF n_members = 0 THEN
+      RAISE NOTICE 'Org % has no profiles — skipping timesheet link/seed', r_org.id;
+      CONTINUE;
+    END IF;
+
+    SELECT ur.user_id INTO mgr_uid
+    FROM public.user_roles ur
+    WHERE ur.org_id = r_org.id
+      AND ur.role IN ('admin', 'org_admin')
+    ORDER BY ur.role
+    LIMIT 1;
+    mgr_uid := COALESCE(mgr_uid, member_ids[1]);
+    pm_uid := COALESCE(member_ids[LEAST(2, n_members)], member_ids[1]);
+
+    -- Link one resource per org member (unique resources.user_id per org)
+    idx := 0;
+    FOR res IN
+      SELECT id FROM public.resources
+      WHERE org_id = r_org.id
+      ORDER BY name
+    LOOP
+      idx := idx + 1;
+      EXIT WHEN idx > n_members;
+      UPDATE public.resources
+      SET
+        user_id = member_ids[idx],
+        manager_user_id = mgr_uid
+      WHERE id = res.id;
+    END LOOP;
+
+    -- Nominate PMs on projects (rotate members)
+    idx := 0;
+    FOR p_id IN
+      SELECT id FROM public.projects WHERE org_id = r_org.id ORDER BY project_code
+    LOOP
+      idx := idx + 1;
+      UPDATE public.projects
+      SET pm_user_id = member_ids[((idx - 1) % n_members) + 1]
+      WHERE id = p_id;
+    END LOOP;
+
+    -- Assign work items to linked users (owner_user_id + assignees)
+    idx := 0;
+    FOR wi IN
+      SELECT id FROM public.work_items WHERE org_id = r_org.id ORDER BY project_id, sort_order, wbs_code
+    LOOP
+      idx := idx + 1;
+      UPDATE public.work_items
+      SET owner_user_id = member_ids[((idx - 1) % n_members) + 1]
+      WHERE id = wi;
+
+      INSERT INTO public.work_item_assignees (org_id, work_item_id, user_id)
+      VALUES (r_org.id, wi, member_ids[((idx - 1) % n_members) + 1])
+      ON CONFLICT (work_item_id, user_id) DO NOTHING;
+
+      -- Second assignee for variety when multiple members exist
+      IF n_members > 1 THEN
+        INSERT INTO public.work_item_assignees (org_id, work_item_id, user_id)
+        VALUES (
+          r_org.id,
+          wi,
+          member_ids[((idx) % n_members) + 1]
+        )
+        ON CONFLICT (work_item_id, user_id) DO NOTHING;
+      END IF;
+    END LOOP;
+
+    -- Timesheets for each linked resource/user across 4 weeks
+    u_idx := 0;
+    FOR res IN
+      SELECT r.id AS resource_id, r.user_id, r.manager_user_id, r.cost_rate
+      FROM public.resources r
+      WHERE r.org_id = r_org.id AND r.user_id IS NOT NULL
+      ORDER BY r.name
+    LOOP
+      u_idx := u_idx + 1;
+
+      FOR w_idx IN 1..4 LOOP
+        w := weeks[w_idx];
+
+        -- Mix of statuses for demo reporting / approvals
+        st := CASE
+          WHEN w_idx = 1 THEN CASE WHEN u_idx % 3 = 0 THEN 'pending_pm' WHEN u_idx % 3 = 1 THEN 'draft' ELSE 'pending_rm' END
+          WHEN w_idx = 2 THEN CASE WHEN u_idx % 4 = 0 THEN 'rejected' ELSE 'approved' END
+          WHEN w_idx = 3 THEN 'approved'
+          ELSE 'approved'
+        END;
+
+        INSERT INTO public.timesheets (
+          org_id, user_id, resource_id, week_start, status, manager_user_id,
+          notes, submitted_at, rejected_at, rejected_by, rejection_reason
+        ) VALUES (
+          r_org.id,
+          res.user_id,
+          res.resource_id,
+          w,
+          st,
+          COALESCE(res.manager_user_id, mgr_uid),
+          'Sample seeded timesheet',
+          CASE WHEN st = 'draft' THEN NULL ELSE (w + 5)::timestamptz END,
+          CASE WHEN st = 'rejected' THEN (w + 6)::timestamptz ELSE NULL END,
+          CASE WHEN st = 'rejected' THEN COALESCE(res.manager_user_id, mgr_uid) ELSE NULL END,
+          CASE WHEN st = 'rejected' THEN 'Please correct Friday hours and resubmit' ELSE NULL END
+        )
+        ON CONFLICT (org_id, user_id, week_start) DO UPDATE
+        SET status = EXCLUDED.status,
+            resource_id = EXCLUDED.resource_id,
+            manager_user_id = EXCLUDED.manager_user_id,
+            notes = EXCLUDED.notes,
+            submitted_at = EXCLUDED.submitted_at,
+            rejected_at = EXCLUDED.rejected_at,
+            rejected_by = EXCLUDED.rejected_by,
+            rejection_reason = EXCLUDED.rejection_reason
+        RETURNING id INTO sheet_id;
+
+        DELETE FROM public.timesheet_approvals WHERE timesheet_id = sheet_id;
+        DELETE FROM public.timesheet_entries WHERE timesheet_id = sheet_id;
+
+        -- Up to 2 billable work items assigned to this user
+        SELECT array_agg(x.work_item_id)
+        INTO wi_ids
+        FROM (
+          SELECT a.work_item_id
+          FROM public.work_item_assignees a
+          JOIN public.work_items wi2 ON wi2.id = a.work_item_id
+          WHERE a.org_id = r_org.id AND a.user_id = res.user_id
+          ORDER BY wi2.project_id, wi2.sort_order
+          LIMIT 2
+        ) x;
+
+        IF wi_ids IS NULL OR array_length(wi_ids, 1) IS NULL THEN
+          -- Fallback: any work items in org
+          SELECT array_agg(x.id) INTO wi_ids
+          FROM (
+            SELECT wi2.id
+            FROM public.work_items wi2
+            WHERE wi2.org_id = r_org.id
+            ORDER BY wi2.project_id
+            LIMIT 2
+          ) x;
+        END IF;
+
+        hours_base := 4 + ((u_idx + w_idx) % 4);
+
+        IF wi_ids IS NOT NULL THEN
+          FOREACH wi IN ARRAY wi_ids LOOP
+            SELECT project_id INTO p_id FROM public.work_items WHERE id = wi;
+            INSERT INTO public.timesheet_entries (
+              org_id, timesheet_id, project_id, work_item_id, billable, custom_task,
+              hours_mon, hours_tue, hours_wed, hours_thu, hours_fri,
+              hours_sat, hours_sun, notes, hourly_rate, labor_cost
+            ) VALUES (
+              r_org.id, sheet_id, p_id, wi, true, NULL,
+              hours_base, hours_base, hours_base - 1, hours_base, hours_base - 0.5,
+              0, 0,
+              'Billable delivery',
+              res.cost_rate,
+              CASE WHEN st = 'approved' THEN
+                round((hours_base * 4 + (hours_base - 1) + (hours_base - 0.5)) * COALESCE(res.cost_rate, 0), 2)
+              ELSE 0 END
+            );
+          END LOOP;
+        END IF;
+
+        -- Non-billable admin/training row
+        INSERT INTO public.timesheet_entries (
+          org_id, timesheet_id, project_id, work_item_id, billable, custom_task,
+          hours_mon, hours_tue, hours_wed, hours_thu, hours_fri,
+          hours_sat, hours_sun, notes, hourly_rate, labor_cost
+        ) VALUES (
+          r_org.id, sheet_id, NULL, NULL, false, 'Training / admin',
+          0, 0, 1, 0, 0.5,
+          0, 0,
+          'Non-billable',
+          res.cost_rate,
+          0
+        );
+
+        -- Approval rows matching status
+        IF st IN ('pending_pm', 'pending_rm', 'approved', 'rejected') AND wi_ids IS NOT NULL THEN
+          FOREACH wi IN ARRAY wi_ids LOOP
+            SELECT project_id INTO p_id FROM public.work_items WHERE id = wi;
+            INSERT INTO public.timesheet_approvals (
+              org_id, timesheet_id, step, project_id, approver_user_id, status, comment, acted_at
+            ) VALUES (
+              r_org.id, sheet_id, 'pm', p_id,
+              COALESCE((SELECT pm_user_id FROM public.projects WHERE id = p_id), pm_uid),
+              CASE
+                WHEN st = 'pending_pm' THEN 'pending'
+                WHEN st = 'rejected' AND w_idx = 2 AND u_idx % 4 = 0 THEN 'rejected'
+                ELSE 'approved'
+              END,
+              CASE WHEN st = 'rejected' THEN 'Hours look high vs plan' ELSE NULL END,
+              CASE WHEN st = 'pending_pm' THEN NULL ELSE (w + 6)::timestamptz END
+            )
+            ON CONFLICT (timesheet_id, step, project_id) DO NOTHING;
+          END LOOP;
+        END IF;
+
+        IF st IN ('pending_rm', 'approved') THEN
+          INSERT INTO public.timesheet_approvals (
+            org_id, timesheet_id, step, project_id, approver_user_id, status, comment, acted_at
+          ) VALUES (
+            r_org.id, sheet_id, 'rm', NULL,
+            COALESCE(res.manager_user_id, mgr_uid),
+            CASE WHEN st = 'pending_rm' THEN 'pending' ELSE 'approved' END,
+            NULL,
+            CASE WHEN st = 'pending_rm' THEN NULL ELSE (w + 7)::timestamptz END
+          )
+          ON CONFLICT DO NOTHING;
+        END IF;
+
+        -- Roll labor into financials for approved sheets
+        IF st = 'approved' THEN
+          BEGIN
+            PERFORM public.apply_timesheet_labor_cost(sheet_id);
+          EXCEPTION WHEN undefined_function THEN NULL;
+          END;
+        END IF;
+      END LOOP;
+    END LOOP;
+  END LOOP;
+END $$;
+
 COMMIT;
 
 -- Optional verification:
 -- SELECT o.name, count(p.*) projects FROM organizations o LEFT JOIN projects p ON p.org_id = o.id GROUP BY 1;
+-- SELECT count(*) FROM resources;
+-- SELECT count(*) FROM work_items;
+-- SELECT count(*) FROM work_item_assignees;
+-- SELECT status, count(*) FROM timesheets GROUP BY 1 ORDER BY 1;
+-- SELECT billable, count(*), round(sum(hours_mon+hours_tue+hours_wed+hours_thu+hours_fri+hours_sat+hours_sun),1) hrs
+--   FROM timesheet_entries GROUP BY 1;
 -- SELECT p.project_code, s.name, s.code, s.is_default, s.budget
 --   FROM projects p JOIN project_streams s ON s.project_id = p.id ORDER BY 1, s.sort_order;
--- SELECT count(*) gates FROM stage_gates;
--- SELECT count(*) milestones FROM milestones;
--- SELECT count(*) fy FROM fy_allocations;
--- SELECT count(*) monthly FROM financials_monthly;
--- SELECT count(*) alloc FROM resource_allocations;
