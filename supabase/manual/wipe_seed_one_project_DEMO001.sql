@@ -454,17 +454,17 @@ BEGIN
     -- Resource allocations (Build gate, last 3 months of past window: Jan–Mar 2026 relative… use Oct–Dec 2025)
     -- Oct/Nov/Dec 2025 = months 7–9 of schedule — use months that are "past": Apr–Sep.
     -- Allocate Jul/Aug/Sep 2025 (months 4–6) for clear verification.
-    FOR m IN SELECT * FROM (VALUES
-      (DATE '2025-07-01'), (DATE '2025-08-01'), (DATE '2025-09-01')
-    ) AS t(d)
+    FOR m IN
+      SELECT d::date AS d FROM (VALUES
+        ('2025-07-01'), ('2025-08-01'), ('2025-09-01')
+      ) AS t(d)
     LOOP
       INSERT INTO public.resource_allocations (
         org_id, project_id, stream_id, stage_gate_id, resource_id, period_month,
         allocation_percent, allocated_hours, role_on_project
       ) VALUES
-        (r_org.id, p_id, core_id, build_core, rid_alex, m, 50, 80, 'Developer'),
-        (r_org.id, p_id, alt_id, build_alt, rid_sam, m, 25, 40, 'QA Lead')
-      ON CONFLICT DO NOTHING;
+        (r_org.id, p_id, core_id, build_core, rid_alex, m.d, 50, 80, 'Developer'),
+        (r_org.id, p_id, alt_id, build_alt, rid_sam, m.d, 25, 40, 'QA Lead');
     END LOOP;
 
     -- Work items (planned hours feed demand + planned FTE $)
@@ -614,8 +614,13 @@ BEGIN
       ) VALUES (
         r_org.id, uid_alex, rid_alex, week0, 'approved', uid_sam
       )
-      ON CONFLICT (org_id, user_id, week_start) DO UPDATE SET status = 'approved'
       RETURNING id INTO sheet_id;
+
+      IF sheet_id IS NULL THEN
+        SELECT id INTO sheet_id FROM public.timesheets
+        WHERE org_id = r_org.id AND user_id = uid_alex AND week_start = week0;
+        UPDATE public.timesheets SET status = 'approved', resource_id = rid_alex WHERE id = sheet_id;
+      END IF;
 
       DELETE FROM public.timesheet_entries WHERE timesheet_id = sheet_id;
       INSERT INTO public.timesheet_entries (
