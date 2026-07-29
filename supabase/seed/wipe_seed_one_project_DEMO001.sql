@@ -597,7 +597,7 @@ BEGIN
       estimated_roi, strategic_alignment, complexity, status, submitted_date
     ) VALUES (
       r_org.id, r_bu, 'Follow-on analytics pack', 'CDO',
-      'Pipeline idea linked to DEMO-001 outcomes', 500000, 900000, 80, 'High', 'Medium',
+      'Pipeline idea linked to DEMO-001 outcomes', 500000, 900000, 80, 5, 3,
       'Under Review', DATE '2025-09-01'
     );
 
