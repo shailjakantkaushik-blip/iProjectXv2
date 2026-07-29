@@ -363,6 +363,24 @@ export function monthlyTriple(rows: MonthlyFinanceRow[]) {
   };
 }
 
+/**
+ * Attribute monthly cashflow into stage gates by planned-date windows.
+ * Keys are trimmed gate/stage names. Used by Phase Financials + Project Infographic.
+ */
+export function phaseSpendByStage(
+  gates: StageGateLike[],
+  rows: MonthlyFinanceRow[],
+  orgPhases: string[],
+): Map<string, { planned: number; actual: number; forecast: number }> {
+  const out = new Map<string, { planned: number; actual: number; forecast: number }>();
+  for (const w of phaseWindowsFromGates(gates, orgPhases)) {
+    const key = (w.stage || "").trim();
+    if (!key) continue;
+    out.set(key, monthlyTriple(monthlyInWindow(rows, w)));
+  }
+  return out;
+}
+
 /** Which FY a calendar month belongs to (label). */
 export function fyLabelForMonth(
   periodMonth: string,
