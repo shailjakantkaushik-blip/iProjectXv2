@@ -42,6 +42,12 @@ export const CAPABILITIES: {
     label: "Upload template / workbook",
     description: "Upload Excel workbooks on Data Editor and import project templates",
   },
+  {
+    id: "timesheet_cost_view",
+    label: "Timesheet / resource cost view",
+    description:
+      "View FTE labor cost from approved timesheets on Resources and the Timesheets Cost / Reports tabs",
+  },
 ];
 
 export function capabilityKey(id: string) {

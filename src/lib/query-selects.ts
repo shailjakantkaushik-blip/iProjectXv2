@@ -35,12 +35,13 @@ export const FINANCIALS_MONTHLY_SELECT = [
   "opex_planned",
   "opex_actual",
   "opex_labor_actual",
+  "opex_other_actual",
   "opex_forecast",
   "benefits_planned",
   "benefits_actual",
 ].join(",");
 
-/** Fallback when schema cache lags behind opex_labor_actual migration. */
+/** Fallback when schema cache lags behind opex_labor_actual / opex_other_actual. */
 export const FINANCIALS_MONTHLY_SELECT_MIN = [
   "id",
   "project_id",
@@ -80,6 +81,7 @@ export const RESOURCE_ALLOCATIONS_SELECT = [
   "id",
   "project_id",
   "stream_id",
+  "stage_gate_id",
   "resource_id",
   "period_month",
   "allocation_percent",

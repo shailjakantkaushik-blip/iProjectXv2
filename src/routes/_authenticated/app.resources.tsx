@@ -28,6 +28,8 @@ import {
   Cell,
 } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { ResourceAnalyticsPanels } from "@/components/resource-analytics-panels";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/app/resources")({
   component: ResourcesPage,
@@ -44,10 +46,22 @@ type Allocation = {
   id: string;
   resource_id: string;
   project_id: string;
+  stream_id?: string | null;
+  stage_gate_id?: string | null;
   period_month: string;
   allocation_percent: number | null;
+  allocated_hours?: number | null;
+  role_on_project?: string | null;
 };
-type Project = { id: string; name: string; project_code?: string | null };
+type Project = {
+  id: string;
+  name: string;
+  project_code?: string | null;
+  program?: string | null;
+  portfolio?: string | null;
+};
+
+type ResTab = "utilisation" | "pva" | "cost";
 
 const STATUS_COLOR = { Over: "#dc2626", Optimal: "#16a34a", Under: "#f59e0b" } as const;
 type Status = keyof typeof STATUS_COLOR;
@@ -101,6 +115,7 @@ function heatColor(pct: number): string {
 
 function ResourcesPage() {
   const { organization } = useAuth();
+  const [tab, setTab] = useState<ResTab>("utilisation");
 
   const { data: resourcesAll = [] } = useQuery({
     queryKey: ["resources", organization?.id],
@@ -114,10 +129,12 @@ function ResourcesPage() {
     enabled: !!organization,
   });
   const { data: projects = [] } = useQuery({
-    queryKey: ["projects-r", organization?.id],
+    queryKey: ["projects", organization?.id, "resources"],
     queryFn: async () =>
-      ((await supabase.from("projects").select("id,name,project_code").order("project_code")).data as Project[]) ??
-      [],
+      ((await supabase
+        .from("projects")
+        .select("id,name,project_code,program,portfolio")
+        .order("project_code")).data as Project[]) ?? [],
     enabled: !!organization,
   });
 
@@ -352,7 +369,49 @@ function ResourcesPage() {
   return (
     <PageExport name="Resource_Capacity" title="Resource Capacity & Skill Intelligence">
       <PageHeading icon="👥">Resource Capacity & Skill Intelligence</PageHeading>
+      <div className="mb-3 flex flex-wrap gap-2">
+        {(
+          [
+            ["utilisation", "Utilisation"],
+            ["pva", "Planned vs actual"],
+            ["cost", "FTE cost"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setTab(id)}
+            className={cn(
+              "rounded-md border px-3 py-1.5 text-xs font-medium",
+              tab === id
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border bg-surface hover:bg-muted",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
+      {tab === "pva" ? (
+        <ResourceAnalyticsPanels
+          mode="pva"
+          projects={projects}
+          resources={resourcesAll}
+          allocations={allocationsAll}
+        />
+      ) : null}
+      {tab === "cost" ? (
+        <ResourceAnalyticsPanels
+          mode="cost"
+          projects={projects}
+          resources={resourcesAll}
+          allocations={allocationsAll}
+        />
+      ) : null}
+
+      {tab === "utilisation" ? (
+        <>
       <SectionFrame>
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 items-end">
           <div>
@@ -799,6 +858,8 @@ function ResourcesPage() {
           </table>
         </div>
       </SectionFrame>
+        </>
+      ) : null}
     </PageExport>
   );
 }
