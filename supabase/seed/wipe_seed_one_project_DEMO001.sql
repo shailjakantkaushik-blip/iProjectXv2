@@ -602,38 +602,42 @@ BEGIN
     );
 
     -- Sample approved timesheet (actual FTE) — only if Alex has a login
-    IF uid_alex IS NOT NULL THEN
-      week0 := DATE '2025-09-01'; -- Monday-ish; normalize in app as needed
-      -- snap to Monday
-      week0 := week0 - ((EXTRACT(ISODOW FROM week0)::int - 1));
-      INSERT INTO public.timesheets (
-        org_id, user_id, resource_id, week_start, status, manager_user_id
-      ) VALUES (
-        r_org.id, uid_alex, rid_alex, week0, 'approved', uid_sam
-      )
-      RETURNING id INTO sheet_id;
+    BEGIN
+      IF uid_alex IS NOT NULL THEN
+        week0 := DATE '2025-09-01'; -- Monday-ish; normalize in app as needed
+        -- snap to Monday
+        week0 := week0 - ((EXTRACT(ISODOW FROM week0)::int - 1));
+        INSERT INTO public.timesheets (
+          org_id, user_id, resource_id, week_start, status, manager_user_id
+        ) VALUES (
+          r_org.id, uid_alex, rid_alex, week0, 'approved', uid_sam
+        )
+        RETURNING id INTO sheet_id;
 
-      IF sheet_id IS NULL THEN
-        SELECT id INTO sheet_id FROM public.timesheets
-        WHERE org_id = r_org.id AND user_id = uid_alex AND week_start = week0;
-        UPDATE public.timesheets SET status = 'approved', resource_id = rid_alex WHERE id = sheet_id;
+        IF sheet_id IS NULL THEN
+          SELECT id INTO sheet_id FROM public.timesheets
+          WHERE org_id = r_org.id AND user_id = uid_alex AND week_start = week0;
+          UPDATE public.timesheets SET status = 'approved', resource_id = rid_alex WHERE id = sheet_id;
+        END IF;
+
+        DELETE FROM public.timesheet_entries WHERE timesheet_id = sheet_id;
+        INSERT INTO public.timesheet_entries (
+          org_id, timesheet_id, project_id, work_item_id, stream_id, stage_gate_id, billable,
+          hours_mon, hours_tue, hours_wed, hours_thu, hours_fri, hours_sat, hours_sun, notes
+        ) VALUES (
+          r_org.id, sheet_id, p_id, wi1, core_id, build_core, true,
+          8, 8, 8, 8, 8, 0, 0, 'Build week — 40h @ $100 = $4,000 labor'
+        );
+
+        BEGIN
+          PERFORM public.apply_timesheet_labor_cost(sheet_id);
+        EXCEPTION WHEN undefined_function THEN
+          UPDATE public.timesheet_entries SET hourly_rate = 100, labor_cost = 4000 WHERE timesheet_id = sheet_id;
+        END;
       END IF;
-
-      DELETE FROM public.timesheet_entries WHERE timesheet_id = sheet_id;
-      INSERT INTO public.timesheet_entries (
-        org_id, timesheet_id, project_id, work_item_id, stream_id, stage_gate_id, billable,
-        hours_mon, hours_tue, hours_wed, hours_thu, hours_fri, hours_sat, hours_sun, notes
-      ) VALUES (
-        r_org.id, sheet_id, p_id, wi1, core_id, build_core, true,
-        8, 8, 8, 8, 8, 0, 0, 'Build week — 40h @ $100 = $4,000 labor'
-      );
-
-      BEGIN
-        PERFORM public.apply_timesheet_labor_cost(sheet_id);
-      EXCEPTION WHEN undefined_function THEN
-        UPDATE public.timesheet_entries SET hourly_rate = 100, labor_cost = 4000 WHERE timesheet_id = sheet_id;
-      END;
-    END IF;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE NOTICE 'Timesheet seed skipped for org %: %', r_org.id, SQLERRM;
+    END;
 
     BEGIN
       PERFORM public.rollup_project_from_streams(p_id);
