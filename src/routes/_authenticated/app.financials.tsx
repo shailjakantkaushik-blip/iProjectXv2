@@ -52,6 +52,7 @@ import {
   syncOrgIncurredFromMonthly,
   type MonthlyFinanceRow,
 } from "@/lib/finance-lifecycle";
+import { syncOpexLaborPlannedFromWorkItems } from "@/lib/sync-opex-labor-planned";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
@@ -81,6 +82,7 @@ function FinancialsPage() {
   const qc = useQueryClient();
   const [filters, setFilters] = useState<PortfolioFilterState>(emptyFilters);
   const [syncing, setSyncing] = useState(false);
+  const [syncingFtePlan, setSyncingFtePlan] = useState(false);
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
@@ -300,6 +302,30 @@ function FinancialsPage() {
       setSyncing(false);
     }
   };
+
+  const syncFtePlan = async () => {
+    if (!organization?.id) return;
+    setSyncingFtePlan(true);
+    try {
+      const r = await syncOpexLaborPlannedFromWorkItems(organization.id);
+      toast.success(
+        `Synced planned FTE $${r.plannedTotal.toLocaleString()} across ${r.monthsUpserted} month rows from work items.`,
+      );
+      void qc.invalidateQueries({ queryKey: ["financials_monthly"] });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Sync failed";
+      toast.error(
+        /opex_labor_planned|column/i.test(msg)
+          ? "Paste supabase/manual/opex_labor_planned_from_work_items.sql in Supabase, Reload schema, then retry."
+          : msg,
+      );
+    } finally {
+      setSyncingFtePlan(false);
+    }
+  };
+
+  const fteLaborPlanned = mFiltered.reduce((s, m) => s + Number(m.opex_labor_planned || 0), 0);
+  const fteLaborActual = mFiltered.reduce((s, m) => s + Number(m.opex_labor_actual || 0), 0);
   // Portfolio benefit/cost ratio (not EVM CPI). Per-project helper used in table contexts.
   const benefitCostRatio =
     totalIncurred > 0
@@ -340,15 +366,24 @@ function FinancialsPage() {
       .values(),
   );
 
-  // Monthly cashflow (planned vs actual) + cumulative
+  // Monthly cashflow (planned vs actual) + cumulative + FTE labor
   const monthlyAgg = useMemo(() => {
     const map = new Map<string, any>();
     for (const m of mFiltered) {
       const key = String(m.period_month).slice(0, 7);
-      const row = map.get(key) || { month: key, planned: 0, actual: 0, forecast: 0 };
+      const row = map.get(key) || {
+        month: key,
+        planned: 0,
+        actual: 0,
+        forecast: 0,
+        ftePlan: 0,
+        fteActual: 0,
+      };
       row.planned += Number(m.capex_planned || 0) + Number(m.opex_planned || 0);
       row.actual += Number(m.capex_actual || 0) + Number(m.opex_actual || 0);
       row.forecast += Number(m.capex_forecast || 0) + Number(m.opex_forecast || 0);
+      row.ftePlan += Number(m.opex_labor_planned || 0);
+      row.fteActual += Number(m.opex_labor_actual || 0);
       map.set(key, row);
     }
     const rows = Array.from(map.values()).sort((a, b) => a.month.localeCompare(b.month));
@@ -394,8 +429,9 @@ function FinancialsPage() {
         <p className="max-w-3xl text-sm text-muted-foreground">
           <strong>Plan</strong> comes from FY Allocation (cascaded to monthly planned).{" "}
           <strong>Actual</strong> is captured each month after kickoff.{" "}
-          <strong>Forecast</strong> is the live outlook. Compare them below; project CapEx/OpEx
-          incurred can be synced from monthly actuals.
+          <strong>Forecast</strong> is the live outlook.{" "}
+          <strong>Planned FTE $</strong> comes from work-item planned hours × rates;{" "}
+          <strong>Actual FTE $</strong> from approved timesheets (feeds OpEx incurred).
           {phaseScoped ? (
             <>
               {" "}
@@ -404,9 +440,19 @@ function FinancialsPage() {
             </>
           ) : null}
         </p>
-        <Button variant="outline" size="sm" disabled={syncing || !organization} onClick={syncIncurred}>
-          {syncing ? "Syncing…" : "Sync incurred from actuals"}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={syncingFtePlan || !organization}
+            onClick={syncFtePlan}
+          >
+            {syncingFtePlan ? "Syncing…" : "Sync planned FTE from work items"}
+          </Button>
+          <Button variant="outline" size="sm" disabled={syncing || !organization} onClick={syncIncurred}>
+            {syncing ? "Syncing…" : "Sync incurred from actuals"}
+          </Button>
+        </div>
       </div>
       <PortfolioFilters
         projects={projects}
@@ -482,13 +528,15 @@ function FinancialsPage() {
 
       <SectionFrame>
         <SectionTitle>Approved funding vs incurred (project register)</SectionTitle>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
           <KpiCard label="CAPEX Approved" value={money(capexApproved)} accent="#1d4ed8" />
           <KpiCard label="CAPEX Incurred" value={money(capexIncurred)} accent="#3b82f6" />
           <KpiCard label="OPEX Approved" value={money(opexApproved)} accent="#15803d" />
           <KpiCard label="OPEX Incurred" value={money(opexIncurred)} accent="#22c55e" />
           <KpiCard label="Total Budget" value={money(totalBudget)} accent="#8b5cf6" />
           <KpiCard label="Total Incurred" value={money(totalIncurred)} accent="#f59e0b" />
+          <KpiCard label="Planned FTE $" value={money(fteLaborPlanned)} accent="#6366f1" />
+          <KpiCard label="Actual FTE $" value={money(fteLaborActual)} accent="#ea580c" />
           <KpiCard
             label="Spend %"
             value={`${spendPct.toFixed(1)}%`}
@@ -503,9 +551,10 @@ function FinancialsPage() {
         </div>
         {!phaseScoped ? (
           <p className="mt-2 text-xs text-muted-foreground">
-            Incurred OpEx includes <strong>FTE labor</strong> from approved timesheets plus{" "}
-            <strong>other OpEx</strong> (vendors / licenses). Labor is stored as{" "}
-            <code>opex_labor_actual</code>; other as <code>opex_other_actual</code>.
+            Incurred OpEx includes <strong>Actual FTE</strong> from approved timesheets (
+            <code>opex_labor_actual</code>) plus other OpEx. <strong>Planned FTE</strong> (
+            <code>opex_labor_planned</code>) is synced from work-item planned hours × rates and does
+            not overwrite FY OpEx budget.
           </p>
         ) : null}
       </SectionFrame>
@@ -589,6 +638,8 @@ function FinancialsPage() {
                     <th className="st-num">Planned</th>
                     <th className="st-num">Actual</th>
                     <th className="st-num">Forecast</th>
+                    <th className="st-num">FTE plan</th>
+                    <th className="st-num">FTE actual</th>
                     <th className="st-num">Cum. planned</th>
                     <th className="st-num">Cum. actual</th>
                   </tr>
@@ -608,6 +659,8 @@ function FinancialsPage() {
                       <td className="st-num">{money(r.planned)}</td>
                       <td className="st-num">{money(r.actual)}</td>
                       <td className="st-num">{money(r.forecast)}</td>
+                      <td className="st-num">{money(r.ftePlan)}</td>
+                      <td className="st-num">{money(r.fteActual)}</td>
                       <td className="st-num">{money(r.cumPlanned)}</td>
                       <td className="st-num">{money(r.cumActual)}</td>
                     </tr>

@@ -888,6 +888,14 @@ function InfographicPage() {
   );
   const incurred =
     Number(project.capex_incurred || 0) + Number(project.opex_incurred || 0);
+  const ftePlan = (monthly as any[]).reduce(
+    (s, m) => s + Number(m.opex_labor_planned || 0),
+    0,
+  );
+  const fteActual = (monthly as any[]).reduce(
+    (s, m) => s + Number(m.opex_labor_actual || 0),
+    0,
+  );
   const forecast = Number(
     project.forecast ||
       project.forecast_at_completion ||
@@ -1168,6 +1176,27 @@ function InfographicPage() {
               label="Spend vs Approved Budget"
               color={finHealthPct > 1 ? "#ef4444" : finHealthPct > 0.9 ? "#f59e0b" : "#22c55e"}
             />
+            <div className="mt-2 grid grid-cols-2 gap-2 px-1">
+              <div className="rounded bg-slate-50 px-2 py-1.5 text-center">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  Planned FTE
+                </div>
+                <div className="text-sm font-semibold tabular-nums text-indigo-700">
+                  {money(ftePlan)}
+                </div>
+              </div>
+              <div className="rounded bg-slate-50 px-2 py-1.5 text-center">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  Actual FTE
+                </div>
+                <div className="text-sm font-semibold tabular-nums text-amber-700">
+                  {money(fteActual)}
+                </div>
+              </div>
+            </div>
+            <p className="mt-1 px-1 text-[10px] text-muted-foreground">
+              Planned FTE from work-item hours × rates; actual FTE from timesheets (in incurred).
+            </p>
           </div>
         </div>
       </SectionFrame>

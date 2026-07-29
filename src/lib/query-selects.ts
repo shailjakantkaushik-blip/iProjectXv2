@@ -34,6 +34,7 @@ export const FINANCIALS_MONTHLY_SELECT = [
   "capex_forecast",
   "opex_planned",
   "opex_actual",
+  "opex_labor_planned",
   "opex_labor_actual",
   "opex_other_actual",
   "opex_forecast",
@@ -68,12 +69,12 @@ export const RESOURCES_SELECT = [
   "cost_rate",
   "location",
   "status",
+  "user_id",
 ].join(",");
 
 /** Extended resource fields for timesheets (requires timesheets migration). */
 export const RESOURCES_TIMESHEET_SELECT = [
   RESOURCES_SELECT,
-  "user_id",
   "manager_user_id",
 ].join(",");
 
@@ -216,5 +217,7 @@ export const WORK_ITEMS_SELECT = [
   "planned_start",
   "planned_end",
   "actual_end",
+  "estimate_hours",
+  "actual_hours",
   "sort_order",
 ].join(",");

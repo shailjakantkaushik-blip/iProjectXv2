@@ -37,6 +37,9 @@ export type MonthlyFinanceRow = {
   opex_planned?: number | null;
   opex_actual?: number | null;
   opex_forecast?: number | null;
+  opex_labor_planned?: number | null;
+  opex_labor_actual?: number | null;
+  opex_other_actual?: number | null;
   benefits_planned?: number | null;
   benefits_actual?: number | null;
 };
