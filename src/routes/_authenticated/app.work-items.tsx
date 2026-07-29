@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
@@ -9,6 +9,7 @@ import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/s
 import { PageExport } from "@/components/page-export";
 import { PageLoading } from "@/components/page-loading";
 import { fetchOrgStreams, formatProjectStreamRef, formatStreamLabel } from "@/lib/project-streams";
+import { STAGE_GATES_SELECT } from "@/lib/query-selects";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
@@ -50,11 +51,12 @@ function WorkItemsPage() {
   });
 
   const { data: stageGates = [] } = useQuery({
-    queryKey: ["stage_gates", orgId, "work-items"],
+    // Shared cache with Timeline / Executive so stream_id is always present
+    queryKey: ["stage_gates", orgId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("stage_gates")
-        .select("id,project_id,stream_id,gate_name,planned_date,status")
+        .select(STAGE_GATES_SELECT as "*")
         .order("planned_date");
       if (error) throw error;
       return (data ?? []) as Array<{
@@ -68,6 +70,18 @@ function WorkItemsPage() {
     },
     enabled: !!orgId,
   });
+
+  const gatesForWorkItem = useCallback(
+    (projectId: string | null | undefined, streamId: string | null | undefined) => {
+      if (!projectId) return [] as typeof stageGates;
+      const forProject = stageGates.filter((g) => g.project_id === projectId);
+      if (!streamId) return forProject;
+      const forStream = forProject.filter((g) => !g.stream_id || g.stream_id === streamId);
+      // Never leave the dropdown empty when the project has gates
+      return forStream.length ? forStream : forProject;
+    },
+    [stageGates],
+  );
 
   const { data: resources = [] } = useQuery({
     queryKey: ["resources", orgId, "work-items"],
@@ -182,13 +196,10 @@ function WorkItemsPage() {
 
   const formStreams = streamsByProject.get(form.project_id) || [];
 
-  const formGates = useMemo(() => {
-    return stageGates.filter((g) => {
-      if (g.project_id !== form.project_id) return false;
-      if (form.stream_id) return !g.stream_id || g.stream_id === form.stream_id;
-      return true;
-    });
-  }, [stageGates, form.project_id, form.stream_id]);
+  const formGates = useMemo(
+    () => gatesForWorkItem(form.project_id, form.stream_id || null),
+    [gatesForWorkItem, form.project_id, form.stream_id],
+  );
 
   const visibleBase = useMemo(() => {
     if (!mineOnly) return items;
@@ -460,6 +471,7 @@ function WorkItemsPage() {
             {formGates.map((g) => (
               <option key={g.id} value={g.id}>
                 {g.gate_name}
+                {g.planned_date ? ` · ${g.planned_date}` : ""}
                 {g.stream_id && streamById.get(g.stream_id)
                   ? ` · ${formatStreamLabel(streamById.get(g.stream_id))}`
                   : ""}
@@ -629,13 +641,7 @@ function WorkItemsPage() {
                           }
                         >
                           <option value="">— None —</option>
-                          {stageGates
-                            .filter((g) => {
-                              if (g.project_id !== i.project_id) return false;
-                              if (i.stream_id) return !g.stream_id || g.stream_id === i.stream_id;
-                              return true;
-                            })
-                            .map((g) => (
+                          {gatesForWorkItem(i.project_id, i.stream_id).map((g) => (
                               <option key={g.id} value={g.id}>
                                 {g.gate_name}
                                 {g.planned_date ? ` (${g.planned_date})` : ""}
