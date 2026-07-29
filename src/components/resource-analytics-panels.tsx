@@ -243,6 +243,21 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
     return m;
   }, [gates]);
 
+  /** gate_name → all stage_gate ids with that name in the current project/stream scope */
+  const gateIdsByName = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const g of gates as any[]) {
+      if (!visibleProjectIds.has(g.project_id)) continue;
+      if (projectFilter !== "all" && g.project_id !== projectFilter) continue;
+      if (streamFilter !== "all" && (g.stream_id || null) !== streamFilter) continue;
+      const name = String(g.gate_name || "Gate").trim() || "Gate";
+      const list = m.get(name) || [];
+      list.push(g.id);
+      m.set(name, list);
+    }
+    return m;
+  }, [gates, visibleProjectIds, projectFilter, streamFilter]);
+
   const streamsForFilter = useMemo(() => {
     const list = (streams as any[]).filter(
       (s) =>
@@ -254,19 +269,26 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
     );
   }, [streams, visibleProjectIds, projectFilter]);
 
+  /** Unique stage gate names for the filter (dual-stream projects otherwise repeat Build, etc.). */
   const gatesForFilter = useMemo(() => {
-    const list = (gates as any[]).filter((g) => {
-      if (!visibleProjectIds.has(g.project_id)) return false;
-      if (projectFilter !== "all" && g.project_id !== projectFilter) return false;
-      if (streamFilter !== "all" && (g.stream_id || null) !== streamFilter) return false;
-      return true;
-    });
-    return list.sort((a, b) =>
-      String(a.gate_name || "").localeCompare(String(b.gate_name || ""), undefined, {
-        sensitivity: "base",
-      }),
+    return [...gateIdsByName.keys()].sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" }),
     );
-  }, [gates, visibleProjectIds, projectFilter, streamFilter]);
+  }, [gateIdsByName]);
+
+  /** Ids that match the selected unique gate name (all streams / projects with that phase). */
+  const selectedGateIds = useMemo(() => {
+    if (gateFilter === "all") return null as Set<string> | null;
+    return new Set(gateIdsByName.get(gateFilter) || []);
+  }, [gateFilter, gateIdsByName]);
+
+  const matchesGateFilter = (stageGateId: string | null | undefined) => {
+    if (!selectedGateIds) return true;
+    if (!stageGateId) return false;
+    if (selectedGateIds.has(stageGateId)) return true;
+    // Safety: also match by label if id set was empty/stale
+    return gateLabels.get(stageGateId) === gateFilter;
+  };
 
   /** Scope to projects the caller can see (RLS / project visibility). */
   const scopedPlans = useMemo(
@@ -300,34 +322,34 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
     return scopedPlans.filter((a: AllocationPlanRow) => {
       if (projectFilter !== "all" && a.project_id !== projectFilter) return false;
       if (streamFilter !== "all" && (a.stream_id || null) !== streamFilter) return false;
-      if (gateFilter !== "all" && (a.stage_gate_id || null) !== gateFilter) return false;
+      if (!matchesGateFilter(a.stage_gate_id)) return false;
       if (resourceFilter !== "all" && a.resource_id !== resourceFilter) return false;
       if (!inMonthRange(a.period_month, monthFrom, monthTo)) return false;
       return true;
     });
-  }, [scopedPlans, projectFilter, streamFilter, gateFilter, resourceFilter, monthFrom, monthTo]);
+  }, [scopedPlans, projectFilter, streamFilter, resourceFilter, monthFrom, monthTo, selectedGateIds, gateFilter, gateLabels]);
 
   const filteredActuals = useMemo(() => {
     return scopedActuals.filter((a: TimesheetEffortRow) => {
       if (projectFilter !== "all" && a.project_id !== projectFilter) return false;
       if (streamFilter !== "all" && (a.stream_id || null) !== streamFilter) return false;
-      if (gateFilter !== "all" && (a.stage_gate_id || null) !== gateFilter) return false;
+      if (!matchesGateFilter(a.stage_gate_id)) return false;
       if (resourceFilter !== "all" && a.resource_id !== resourceFilter) return false;
       if (!inMonthRange(a.period_month || a.week_start, monthFrom, monthTo)) return false;
       return true;
     });
-  }, [scopedActuals, projectFilter, streamFilter, gateFilter, resourceFilter, monthFrom, monthTo]);
+  }, [scopedActuals, projectFilter, streamFilter, resourceFilter, monthFrom, monthTo, selectedGateIds, gateFilter, gateLabels]);
 
   const filteredDemand = useMemo(() => {
     return scopedDemand.filter((d: WorkItemDemandSlice) => {
       if (projectFilter !== "all" && d.project_id !== projectFilter) return false;
       if (streamFilter !== "all" && (d.stream_id || null) !== streamFilter) return false;
-      if (gateFilter !== "all" && (d.stage_gate_id || null) !== gateFilter) return false;
+      if (!matchesGateFilter(d.stage_gate_id)) return false;
       if (resourceFilter !== "all" && d.resource_id !== resourceFilter) return false;
       if (!inMonthRange(d.period_month, monthFrom, monthTo)) return false;
       return true;
     });
-  }, [scopedDemand, projectFilter, streamFilter, gateFilter, resourceFilter, monthFrom, monthTo]);
+  }, [scopedDemand, projectFilter, streamFilter, resourceFilter, monthFrom, monthTo, selectedGateIds, gateFilter, gateLabels]);
 
   const rows = useMemo(
     () =>
@@ -494,9 +516,9 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All gates</SelectItem>
-                {gatesForFilter.map((g: any) => (
-                  <SelectItem key={g.id} value={g.id}>
-                    {g.gate_name || "Gate"}
+                {gatesForFilter.map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {name}
                   </SelectItem>
                 ))}
               </SelectContent>
