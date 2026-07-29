@@ -24,14 +24,16 @@ import {
   type DayKey,
   type TimesheetStatus,
 } from "@/lib/timesheet";
+import { TimesheetReportsPanel } from "@/components/timesheet-reports-panel";
 
-type TimesheetsSearch = { tab?: "mine" | "approvals" | "setup" };
+type TimesheetTab = "mine" | "approvals" | "reports" | "setup";
+type TimesheetsSearch = { tab?: TimesheetTab };
 
 export const Route = createFileRoute("/_authenticated/app/timesheets")({
   validateSearch: (s: Record<string, unknown>): TimesheetsSearch => ({
     tab:
-      s.tab === "approvals" || s.tab === "setup" || s.tab === "mine"
-        ? (s.tab as TimesheetsSearch["tab"])
+      s.tab === "approvals" || s.tab === "setup" || s.tab === "mine" || s.tab === "reports"
+        ? (s.tab as TimesheetTab)
         : undefined,
   }),
   component: TimesheetsPage,
@@ -117,17 +119,20 @@ function TimesheetsPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const qc = useQueryClient();
-  // Resource setup (link user + manager + hourly cost) — org admins only
+  // Resource setup + org reporting — org admins only
   const canManageSetup = roles.some((r) => r === "admin" || r === "org_admin");
+  const adminOnlyTabs: TimesheetTab[] = ["setup", "reports"];
 
   const initialTab =
-    search.tab === "setup" && !canManageSetup ? "mine" : search.tab || "mine";
-  const [tab, setTab] = useState<"mine" | "approvals" | "setup">(initialTab);
+    search.tab && adminOnlyTabs.includes(search.tab) && !canManageSetup
+      ? "mine"
+      : search.tab || "mine";
+  const [tab, setTab] = useState<TimesheetTab>(initialTab);
   const [weekStart, setWeekStart] = useState(() => weekStartMonday());
   const [customTaskDraft, setCustomTaskDraft] = useState("");
 
   useEffect(() => {
-    if (search.tab === "setup" && !canManageSetup) {
+    if (search.tab && adminOnlyTabs.includes(search.tab) && !canManageSetup) {
       setTab("mine");
       navigate({ search: {}, replace: true });
       return;
@@ -135,8 +140,8 @@ function TimesheetsPage() {
     if (search.tab) setTab(search.tab);
   }, [search.tab, canManageSetup, navigate]);
 
-  const setTabNav = (t: "mine" | "approvals" | "setup") => {
-    if (t === "setup" && !canManageSetup) return;
+  const setTabNav = (t: TimesheetTab) => {
+    if (adminOnlyTabs.includes(t) && !canManageSetup) return;
     setTab(t);
     navigate({ search: { tab: t === "mine" ? undefined : t } });
   };
@@ -588,7 +593,12 @@ function TimesheetsPage() {
               [
                 ["mine", "My timesheet"],
                 ["approvals", `Approvals${pendingForMe.length ? ` (${pendingForMe.length})` : ""}`],
-                ...(canManageSetup ? ([["setup", "Resource setup"]] as const) : []),
+                ...(canManageSetup
+                  ? ([
+                      ["reports", "Org reporting"],
+                      ["setup", "Resource setup"],
+                    ] as const)
+                  : []),
               ] as const
             ).map(([key, label]) => (
               <button
@@ -995,6 +1005,15 @@ function TimesheetsPage() {
             </div>
           )}
         </SectionFrame>
+      )}
+
+      {tab === "reports" && canManageSetup && orgId && (
+        <TimesheetReportsPanel
+          orgId={orgId}
+          orgName={organization?.name}
+          members={members}
+          projects={projects.map((p: any) => ({ id: p.id, name: p.name || p.id }))}
+        />
       )}
 
       {tab === "setup" && canManageSetup && (
