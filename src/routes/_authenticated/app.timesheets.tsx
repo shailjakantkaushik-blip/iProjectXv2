@@ -824,9 +824,9 @@ function TimesheetsPage() {
                     <tr>
                       <th>Type</th>
                       <th>Project / task</th>
-                      <th className="text-right">Week plan</th>
+                      <th className="text-right whitespace-nowrap">Week plan</th>
                       {DAY_LABELS.map((d) => (
-                        <th key={d} className="w-14 text-center">
+                        <th key={d} className="min-w-[3.75rem] text-center">
                           {d}
                         </th>
                       ))}
@@ -915,28 +915,39 @@ function TimesheetsPage() {
                           {DAY_KEYS.map((dk, dayIdx) => {
                             const isWeekday = dayIdx < 5;
                             const dayPlanned = dayPlan[dk] || 0;
+                            const hoursVal = Number(row[dk]) || 0;
                             return (
-                              <td key={dk} className="align-top">
+                              <td key={dk} className="align-top px-0.5">
                                 <input
                                   type="number"
                                   min={0}
                                   max={24}
                                   step={0.25}
+                                  inputMode="decimal"
                                   disabled={!editable}
                                   title={
                                     row.billable && isWeekday && dayPlanned > 0
                                       ? `Work item week plan ≈ ${dayPlanned}h this day`
                                       : undefined
                                   }
-                                  className="st-input !w-14 !py-0.5 !px-1 text-center"
-                                  value={row[dk] || ""}
+                                  className="st-input st-input-hours"
+                                  value={hoursVal > 0 ? hoursVal : ""}
                                   onChange={(e) => {
-                                    const v = e.target.value === "" ? 0 : Number(e.target.value);
+                                    const raw = e.target.value;
+                                    if (raw === "") {
+                                      setDraftRows((prev) => ({
+                                        ...prev,
+                                        [rowKey]: { ...prev[rowKey], [dk]: 0 },
+                                      }));
+                                      return;
+                                    }
+                                    const v = Number(raw);
+                                    if (!Number.isFinite(v)) return;
                                     setDraftRows((prev) => ({
                                       ...prev,
                                       [rowKey]: {
                                         ...prev[rowKey],
-                                        [dk]: Number.isFinite(v) ? v : 0,
+                                        [dk]: Math.min(24, Math.max(0, v)),
                                       },
                                     }));
                                   }}
