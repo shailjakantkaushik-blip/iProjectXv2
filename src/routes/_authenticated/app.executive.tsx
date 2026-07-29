@@ -148,8 +148,9 @@ function ExecutiveDashboard() {
   const gateDefs = gateDefsQ.data ?? [];
   const monthly = monthlyQ.data ?? [];
   // Cold load only — keep the dashboard visible while background refetch runs.
-  // Wait for projects + gates so timeline diamonds are not missing on first paint.
-  const showColdLoad = isColdLoading(projectsQ) || isColdLoading(gatesQ);
+  // Wait for projects + gates + streams so stream-lane diamonds match on first paint.
+  const showColdLoad =
+    isColdLoading(projectsQ) || isColdLoading(gatesQ) || isColdLoading(streamsQ);
   const softUpdating =
     projectsQ.isFetching ||
     gatesQ.isFetching ||
@@ -1359,7 +1360,11 @@ function GanttGroup({
                       <span className={`text-[10px] tabular-nums ${overBudget ? "text-red-600 font-semibold" : "text-muted-foreground"}`}>{pct}%</span>
                     </div>
                   </div>
-                  <div className="relative h-10 flex-1 rounded bg-muted/30">
+                  <div
+                    className={`relative ${showPvA ? "h-14" : "h-10"} flex-1 rounded bg-muted/30 ${
+                      showGates ? "overflow-visible" : ""
+                    }`}
+                  >
                     {/* month gridlines with stronger FY dividers */}
                     <div className="pointer-events-none absolute inset-0 grid" style={{ gridTemplateColumns: `repeat(${monthCount}, minmax(34px, 1fr))` }}>
                       {months.map((m, i) => {

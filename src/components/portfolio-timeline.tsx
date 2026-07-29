@@ -428,7 +428,11 @@ export function GanttGroup({
                       <span className={`text-[10px] tabular-nums ${overBudget ? "text-red-600 font-semibold" : "text-muted-foreground"}`}>{pct}%</span>
                     </div>
                   </div>
-                  <div className={`relative ${showPlannedVsActual ? "h-14" : "h-10"} flex-1 rounded bg-muted/30`}>
+                  <div
+                    className={`relative ${showPlannedVsActual ? "h-14" : "h-10"} flex-1 rounded bg-muted/30 ${
+                      effectiveShowGates ? "overflow-visible" : "overflow-hidden"
+                    }`}
+                  >
                     <div className="pointer-events-none absolute inset-0 grid" style={{ gridTemplateColumns: `repeat(${monthCount}, minmax(34px, 1fr))` }}>
                       {months.map((m, i) => {
                         const prev = months[i - 1];
