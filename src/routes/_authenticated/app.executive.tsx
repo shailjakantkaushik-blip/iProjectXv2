@@ -98,7 +98,13 @@ function ExecutiveDashboard() {
     queryKey: ["projects", organization?.id],
     queryFn: async () => {
       try {
-        return unwrapList(await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*"));
+        return unwrapList(
+          await supabase
+            .from("projects")
+            .select(PROJECT_PORTFOLIO_SELECT as "*")
+            .order("project_code")
+            .order("name"),
+        );
       } catch (err) {
         logQueryError("executive.projects", err);
         throw new Error(queryErrorMessage(err));

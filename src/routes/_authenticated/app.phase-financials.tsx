@@ -70,7 +70,12 @@ function PhaseFinancialsPage() {
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
-    queryFn: async () => (await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*")).data ?? [],
+    queryFn: async () =>
+      (await supabase
+        .from("projects")
+        .select(PROJECT_PORTFOLIO_SELECT as "*")
+        .order("project_code")
+        .order("name")).data ?? [],
     enabled: !!organization,
   });
 

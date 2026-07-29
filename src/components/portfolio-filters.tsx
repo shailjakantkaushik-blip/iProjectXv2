@@ -1,5 +1,6 @@
 import { useMemo, useState, useRef, useEffect, useCallback, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
+import { compareProjectsByCodeName } from "@/lib/project-options";
 
 export type PortfolioFilterState = {
   portfolio: string;
@@ -140,8 +141,9 @@ export function ProjectPicker({
 
   const items = useMemo(() => {
     const s = q.toLowerCase();
-    return projects
+    return [...projects]
       .filter((p) => !s || `${p.project_code ?? ""} ${p.name ?? ""}`.toLowerCase().includes(s))
+      .sort(compareProjectsByCodeName)
       .slice(0, 300);
   }, [projects, q]);
 
@@ -391,9 +393,20 @@ export function PortfolioFilters({
   );
   const phases = useMemo(() => {
     if (phaseOptions?.length) {
-      return Array.from(new Set(phaseOptions.filter(Boolean)));
+      // Preserve configured stage-gate order (do not alphabetise).
+      const seen = new Set<string>();
+      const ordered: string[] = [];
+      for (const name of phaseOptions) {
+        const label = (name || "").trim();
+        if (!label || seen.has(label)) continue;
+        seen.add(label);
+        ordered.push(label);
+      }
+      return ordered;
     }
-    return Array.from(new Set(projects.map((p) => p.current_phase || "—"))).sort();
+    return Array.from(new Set(projects.map((p) => p.current_phase || "—")))
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
   }, [projects, phaseOptions]);
 
   const set = (k: keyof PortfolioFilterState, v: any) => onChange({ ...value, [k]: v });

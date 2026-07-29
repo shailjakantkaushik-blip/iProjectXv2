@@ -28,6 +28,7 @@ import {
   Cell,
 } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { compareProjectsByCodeName } from "@/lib/project-options";
 import { ResourceAnalyticsPanels } from "@/components/resource-analytics-panels";
 import { cn } from "@/lib/utils";
 
@@ -134,7 +135,8 @@ function ResourcesPage() {
       ((await supabase
         .from("projects")
         .select("id,name,project_code,program,portfolio")
-        .order("project_code")).data as Project[]) ?? [],
+        .order("project_code")
+        .order("name")).data as Project[]) ?? [],
     enabled: !!organization,
   });
 
@@ -148,6 +150,7 @@ function ResourcesPage() {
   const [monthTo, setMonthTo] = useState<string>("all");
 
   const projByIdAll = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
+  const projectsOrdered = useMemo(() => [...projects].sort(compareProjectsByCodeName), [projects]);
   const resByIdAll = useMemo(() => new Map(resourcesAll.map((r) => [r.id, r])), [resourcesAll]);
 
   const roleOptions = useMemo(
@@ -463,7 +466,7 @@ function ResourcesPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All projects</SelectItem>
-                {projects.map((p) => (
+                {projectsOrdered.map((p) => (
                   <SelectItem key={p.id} value={p.id}>
                     {p.project_code ? `${p.project_code} — ${p.name}` : p.name}
                   </SelectItem>

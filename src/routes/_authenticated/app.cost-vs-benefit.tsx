@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { PROJECT_PORTFOLIO_SELECT } from "@/lib/query-selects";
+import { PROJECT_PORTFOLIO_SELECT, STAGE_GATE_DEFINITIONS_SELECT } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -50,9 +50,31 @@ function CostVsBenefitPage() {
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
-    queryFn: async () => (await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*")).data ?? [],
+    queryFn: async () =>
+      (await supabase
+        .from("projects")
+        .select(PROJECT_PORTFOLIO_SELECT as "*")
+        .order("project_code")
+        .order("name")).data ?? [],
     enabled: !!organization,
   });
+  const { data: gateDefs = [] } = useQuery({
+    queryKey: ["stage_gate_definitions", organization?.id],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("stage_gate_definitions")
+          .select(STAGE_GATE_DEFINITIONS_SELECT as "*")
+          .eq("org_id", organization!.id)
+          .eq("is_active", true)
+          .order("sort_order", { ascending: true })
+      ).data ?? [],
+    enabled: !!organization,
+  });
+  const orgPhases = useMemo(
+    () => (gateDefs as { gate_name?: string }[]).map((g) => g.gate_name).filter(Boolean) as string[],
+    [gateDefs],
+  );
 
   const filtered = useMemo(() => applyFilters(projects, filters), [projects, filters]);
 
@@ -114,7 +136,13 @@ function CostVsBenefitPage() {
   return (
     <PageExport name="Cost_vs_Benefit" title="Cost vs Benefit">
       <PageHeading icon="⚖️">Cost vs Benefit</PageHeading>
-      <PortfolioFilters projects={projects} value={filters} onChange={setFilters} />
+      <PortfolioFilters
+        projects={projects}
+        value={filters}
+        onChange={setFilters}
+        phaseOptions={orgPhases}
+        phaseAllLabel="All stages"
+      />
 
       <SectionFrame>
         <SectionTitle>Portfolio Value KPIs</SectionTitle>

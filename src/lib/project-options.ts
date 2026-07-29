@@ -11,6 +11,25 @@ import { supabase } from "@/integrations/supabase/client";
 export const PROJECT_OPTIONS_SELECT =
   "id,name,project_code,program,sponsor,rag,status,updated_at" as const;
 
+export type ProjectOptionLike = {
+  project_code?: string | null;
+  name?: string | null;
+};
+
+/** Stable project dropdown order: code (numeric-aware), then name. */
+export function compareProjectsByCodeName(a: ProjectOptionLike, b: ProjectOptionLike) {
+  const code = String(a.project_code || "").localeCompare(String(b.project_code || ""), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+  if (code !== 0) return code;
+  return String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base" });
+}
+
+export function sortProjectsByCodeName<T extends ProjectOptionLike>(projects: T[]): T[] {
+  return [...projects].sort(compareProjectsByCodeName);
+}
+
 export function projectOptionsQueryKey(orgId: string | null | undefined) {
   return ["projects", orgId, "options"] as const;
 }
@@ -19,6 +38,7 @@ export async function fetchProjectOptions() {
   const { data, error } = await supabase
     .from("projects")
     .select(PROJECT_OPTIONS_SELECT)
+    .order("project_code")
     .order("name");
   if (error) throw error;
   return data ?? [];

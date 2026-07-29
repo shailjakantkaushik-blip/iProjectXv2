@@ -94,11 +94,18 @@ function TimelinePage() {
   // ---------- Filters ----------
   const programs = useMemo(() => uniqueSorted(projects.map((p: any) => p.program)), [projects]);
   const sponsors = useMemo(() => uniqueSorted(projects.map((p: any) => p.sponsor)), [projects]);
-  const phases = useMemo(
-    () => uniqueSorted(projects.map((p: any) => projectPhase(p))),
+  const phases = useMemo(() => {
+    const present = new Set(
+      projects.map((p: any) => projectPhase(p)).filter((v): v is string => !!v && v.trim() !== ""),
+    );
+    // Prefer org stage-gate definition order; append any unmatched labels alphabetically.
+    const ordered = orgPhases.filter((name) => present.has(name));
+    const extras = Array.from(present)
+      .filter((name) => !orgPhases.includes(name))
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    return [...ordered, ...extras];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projects, gatesByProject, orgPhases],
-  );
+  }, [projects, gatesByProject, orgPhases]);
 
   const fyStartMonth = organization?.fy_start_month || 4;
   // FY options derived from planned/actual dates

@@ -3,13 +3,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
+import { fetchProjectOptions, projectOptionsQueryKey, compareProjectsByCodeName } from "@/lib/project-options";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import { PageLoading } from "@/components/page-loading";
 import { fetchOrgStreams, formatProjectStreamRef, formatStreamLabel } from "@/lib/project-streams";
 import { fetchStageGates } from "@/lib/stage-gates";
+import { sortGatesByOrgOrder } from "@/lib/project-phase";
 import { WORK_ITEMS_SELECT } from "@/lib/query-selects";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
@@ -57,16 +58,41 @@ function WorkItemsPage() {
     enabled: !!orgId,
   });
 
+  const { data: gateDefs = [] } = useQuery({
+    queryKey: ["stage_gate_definitions", orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("stage_gate_definitions")
+        .select("gate_name,sort_order")
+        .eq("org_id", orgId!)
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true });
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!orgId,
+  });
+
+  const orgPhases = useMemo(
+    () => (gateDefs as { gate_name?: string }[]).map((d) => d.gate_name).filter(Boolean) as string[],
+    [gateDefs],
+  );
+
   const gatesForWorkItem = useCallback(
     (projectId: string | null | undefined, streamId: string | null | undefined) => {
       if (!projectId) return [] as typeof stageGates;
       const forProject = stageGates.filter((g) => g.project_id === projectId);
-      if (!streamId) return forProject;
-      const forStream = forProject.filter((g) => !g.stream_id || g.stream_id === streamId);
-      return forStream.length ? forStream : forProject;
+      const scoped = (() => {
+        if (!streamId) return forProject;
+        const forStream = forProject.filter((g) => !g.stream_id || g.stream_id === streamId);
+        return forStream.length ? forStream : forProject;
+      })();
+      return sortGatesByOrgOrder(scoped, orgPhases) as typeof stageGates;
     },
-    [stageGates],
+    [stageGates, orgPhases],
   );
+
+  const projectsOrdered = useMemo(() => [...projects].sort(compareProjectsByCodeName), [projects]);
 
   const { data: resources = [] } = useQuery({
     queryKey: ["resources", orgId, "work-items"],
@@ -436,7 +462,7 @@ function WorkItemsPage() {
             }
           >
             <option value="">— Project —</option>
-            {projects.map((p: any) => (
+            {projectsOrdered.map((p: any) => (
               <option key={p.id} value={p.id}>
                 {p.project_code} · {p.name}
               </option>

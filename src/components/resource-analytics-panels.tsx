@@ -20,6 +20,7 @@ import {
 } from "@/lib/resource-allocation-analytics";
 import { useCapabilityPermission } from "@/lib/permissions";
 import { formatStreamLabel } from "@/lib/project-streams";
+import { compareProjectsByCodeName } from "@/lib/project-options";
 
 const money = (n: number) =>
   "$" +
@@ -111,6 +112,7 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
   });
 
   const projectsById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
+  const projectsOrdered = useMemo(() => [...projects].sort(compareProjectsByCodeName), [projects]);
   const resourceNames = useMemo(
     () => new Map(resources.map((r) => [r.id, r.name])),
     [resources],
@@ -201,7 +203,7 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All projects</SelectItem>
-              {projects.map((p) => (
+              {projectsOrdered.map((p) => (
                 <SelectItem key={p.id} value={p.id}>
                   {p.project_code ? `${p.project_code} — ${p.name}` : p.name}
                 </SelectItem>

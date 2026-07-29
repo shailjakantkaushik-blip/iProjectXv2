@@ -3,7 +3,8 @@ import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Check, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
+import { fetchProjectOptions, projectOptionsQueryKey, compareProjectsByCodeName } from "@/lib/project-options";
+import { sortGatesByOrgOrder } from "@/lib/project-phase";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -73,9 +74,25 @@ function DecisionsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("stage_gates")
-        .select("id,project_id,stream_id,gate_name,status,planned_date");
+        .select("id,project_id,stream_id,gate_name,status,planned_date")
+        .order("planned_date");
       if (error) throw error;
       return data;
+    },
+    enabled: !!orgId,
+  });
+
+  const { data: gateDefs = [] } = useQuery({
+    queryKey: ["stage_gate_definitions", orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("stage_gate_definitions")
+        .select("gate_name,sort_order")
+        .eq("org_id", orgId!)
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true });
+      if (error) throw error;
+      return data ?? [];
     },
     enabled: !!orgId,
   });
@@ -94,6 +111,11 @@ function DecisionsPage() {
   });
 
   const projectById = useMemo(() => new Map(projects.map((p: any) => [p.id, p])), [projects]);
+  const projectsOrdered = useMemo(() => [...projects].sort(compareProjectsByCodeName), [projects]);
+  const orgPhases = useMemo(
+    () => (gateDefs as any[]).map((d) => d.gate_name).filter(Boolean),
+    [gateDefs],
+  );
   const gateById = useMemo(() => new Map(gates.map((g: any) => [g.id, g])), [gates]);
   const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
 
@@ -208,7 +230,14 @@ function DecisionsPage() {
     });
   };
 
-  const gatesForProject = gates.filter((g: any) => g.project_id === form.project_id);
+  const gatesForProject = useMemo(
+    () =>
+      sortGatesByOrgOrder(
+        (gates as any[]).filter((g) => g.project_id === form.project_id),
+        orgPhases,
+      ),
+    [gates, form.project_id, orgPhases],
+  );
 
   const visibleDecisions = useMemo(() => {
     if (!awaitingOnly || !userId) return decisions;
@@ -351,7 +380,7 @@ function DecisionsPage() {
             required
           >
             <option value="">— Project —</option>
-            {projects.map((p: any) => (
+            {projectsOrdered.map((p: any) => (
               <option key={p.id} value={p.id}>
                 {p.project_code} · {p.name}
               </option>
