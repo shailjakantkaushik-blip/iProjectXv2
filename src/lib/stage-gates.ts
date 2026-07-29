@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { STAGE_GATES_SELECT } from "@/lib/query-selects";
-import { queryErrorMessage } from "@/lib/query-ui";
+import { logQueryError, queryErrorMessage } from "@/lib/query-ui";
 
 export type StageGateRow = {
   id: string;
@@ -28,21 +28,20 @@ export async function fetchStageGates(): Promise<StageGateRow[]> {
     .order("planned_date");
   if (!primary.error) return (primary.data ?? []) as StageGateRow[];
 
+  logQueryError("stage_gates.select", primary.error);
+
   const fallback = await supabase
     .from("stage_gates")
     .select(MINIMAL_GATES)
     .order("planned_date");
   if (!fallback.error) return (fallback.data ?? []) as StageGateRow[];
 
+  logQueryError("stage_gates.select.min", fallback.error);
+
   const star = await supabase.from("stage_gates").select("*").order("planned_date");
   if (star.error) {
-    throw new Error(
-      [
-        `stage_gates: ${queryErrorMessage(primary.error)}`,
-        `fallback: ${queryErrorMessage(fallback.error)}`,
-        `*: ${queryErrorMessage(star.error)}`,
-      ].join("\n"),
-    );
+    logQueryError("stage_gates.select.*", star.error);
+    throw new Error(queryErrorMessage(star.error));
   }
   return (star.data ?? []) as StageGateRow[];
 }
