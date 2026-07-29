@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { STAGE_GATES_SELECT } from "@/lib/query-selects";
+import { queryErrorMessage } from "@/lib/query-ui";
 
 export type StageGateRow = {
   id: string;
@@ -13,9 +14,12 @@ export type StageGateRow = {
   notes?: string | null;
 };
 
+const MINIMAL_GATES =
+  "id,project_id,stream_id,gate_name,planned_date,actual_date,status" as const;
+
 /**
  * Load stage gates with a resilient select — if the full column list fails
- * (schema cache lag), fall back to the minimal columns needed for timelines.
+ * (schema cache lag), fall back to minimal columns, then `*`.
  */
 export async function fetchStageGates(): Promise<StageGateRow[]> {
   const primary = await supabase
@@ -26,10 +30,21 @@ export async function fetchStageGates(): Promise<StageGateRow[]> {
 
   const fallback = await supabase
     .from("stage_gates")
-    .select("id,project_id,stream_id,gate_name,planned_date,actual_date,status")
+    .select(MINIMAL_GATES)
     .order("planned_date");
-  if (fallback.error) throw fallback.error;
-  return (fallback.data ?? []) as StageGateRow[];
+  if (!fallback.error) return (fallback.data ?? []) as StageGateRow[];
+
+  const star = await supabase.from("stage_gates").select("*").order("planned_date");
+  if (star.error) {
+    throw new Error(
+      [
+        `stage_gates: ${queryErrorMessage(primary.error)}`,
+        `fallback: ${queryErrorMessage(fallback.error)}`,
+        `*: ${queryErrorMessage(star.error)}`,
+      ].join("\n"),
+    );
+  }
+  return (star.data ?? []) as StageGateRow[];
 }
 
 /** Human label for data editor / dropdowns. */

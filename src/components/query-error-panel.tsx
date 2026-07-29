@@ -34,7 +34,12 @@ export function QueryErrorPanel({
           <div className={cn("font-semibold text-foreground", compact ? "text-xs" : "text-sm")}>
             {title}
           </div>
-          <p className={cn("text-muted-foreground", compact ? "text-[11px]" : "text-xs")}>
+          <p
+            className={cn(
+              "whitespace-pre-wrap break-words text-muted-foreground",
+              compact ? "text-[11px]" : "text-xs",
+            )}
+          >
             {message}
           </p>
         </div>
