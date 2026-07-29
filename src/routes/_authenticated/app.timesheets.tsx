@@ -68,6 +68,9 @@ type Entry = {
   hours_sun: number;
   notes: string | null;
   labor_cost?: number | null;
+  /** Joined when loading approval rows */
+  work_items?: { id: string; title: string | null; wbs_code: string | null } | null;
+  projects?: { id: string; name: string | null; project_code: string | null } | null;
 };
 
 type Approval = {
@@ -110,6 +113,33 @@ function emptyHours(): Record<DayKey, number> {
     hours_sat: 0,
     hours_sun: 0,
   };
+}
+
+function workItemTitle(
+  e: Pick<Entry, "work_item_id" | "work_items" | "custom_task" | "billable">,
+  workById: Map<string, WorkItem>,
+): string {
+  if (e.billable === false) return e.custom_task?.trim() || "Custom task";
+  const joined = e.work_items?.title?.trim();
+  if (joined) return joined;
+  const wi = e.work_item_id ? workById.get(e.work_item_id) : null;
+  if (wi?.title?.trim()) return wi.title.trim();
+  if (wi?.wbs_code) return `WBS ${wi.wbs_code}`;
+  if (e.work_items?.wbs_code) return `WBS ${e.work_items.wbs_code}`;
+  return "Work item";
+}
+
+function projectTaskLabel(
+  e: Entry,
+  workById: Map<string, WorkItem>,
+  projectById: Map<string, { id: string; name?: string | null; project_code?: string | null }>,
+): string {
+  if (e.billable === false) return `Non-billable · ${workItemTitle(e, workById)}`;
+  const proj =
+    e.projects ||
+    (e.project_id ? projectById.get(e.project_id) : null);
+  const code = (proj as any)?.project_code || (proj as any)?.name || "—";
+  return `${code} · ${workItemTitle(e, workById)}`;
 }
 
 function TimesheetsPage() {
@@ -202,8 +232,7 @@ function TimesheetsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("work_items" as any)
-        .select("id,project_id,title,status,wbs_code,owner_user_id")
-        .neq("status", "Cancelled");
+        .select("id,project_id,title,status,wbs_code,owner_user_id");
       if (error) throw error;
       return (data ?? []) as unknown as WorkItem[];
     },
@@ -215,8 +244,8 @@ function TimesheetsPage() {
     // Also include owner_user_id matches (legacy / before assignee backfill)
     return workItems.filter(
       (w) =>
-        ids.has(w.id) ||
-        w.owner_user_id === userId,
+        w.status !== "Cancelled" &&
+        (ids.has(w.id) || w.owner_user_id === userId),
     );
   }, [assignees, workItems, userId]);
 
@@ -286,12 +315,36 @@ function TimesheetsPage() {
     queryKey: ["timesheet_entries", "approvals", approvalSheetIds.join(",")],
     queryFn: async () => {
       if (approvalSheetIds.length === 0) return [] as Entry[];
+      const joined = await supabase
+        .from("timesheet_entries" as any)
+        .select(
+          "id,timesheet_id,project_id,work_item_id,billable,custom_task,hours_mon,hours_tue,hours_wed,hours_thu,hours_fri,hours_sat,hours_sun,notes,labor_cost,work_items(id,title,wbs_code),projects(id,name,project_code)",
+        )
+        .in("timesheet_id", approvalSheetIds);
+      if (!joined.error) return (joined.data ?? []) as unknown as Entry[];
+
+      // Fallback if embed relationship is unavailable in schema cache
       const { data, error } = await supabase
         .from("timesheet_entries" as any)
         .select("*")
         .in("timesheet_id", approvalSheetIds);
       if (error) throw error;
-      return (data ?? []) as unknown as Entry[];
+      const rows = (data ?? []) as unknown as Entry[];
+      const wiIds = [...new Set(rows.map((r) => r.work_item_id).filter(Boolean))] as string[];
+      if (wiIds.length === 0) return rows;
+      const { data: wis } = await supabase
+        .from("work_items" as any)
+        .select("id,title,wbs_code")
+        .in("id", wiIds);
+      const byId = new Map(
+        ((wis ?? []) as unknown as { id: string; title: string | null; wbs_code: string | null }[]).map(
+          (w) => [w.id, w],
+        ),
+      );
+      return rows.map((r) => ({
+        ...r,
+        work_items: r.work_item_id ? byId.get(r.work_item_id) || null : null,
+      }));
     },
     enabled: approvalSheetIds.length > 0,
   });
@@ -761,7 +814,15 @@ function TimesheetsPage() {
                                 <div className="font-medium">
                                   {(proj as any)?.project_code || "—"} ·{" "}
                                   {wi?.wbs_code ? `${wi.wbs_code} · ` : ""}
-                                  {wi?.title || row.work_item_id?.slice(0, 8)}
+                                  {workItemTitle(
+                                    {
+                                      billable: true,
+                                      work_item_id: row.work_item_id,
+                                      custom_task: row.custom_task,
+                                      work_items: null,
+                                    },
+                                    workById,
+                                  )}
                                 </div>
                                 {wi?.status ? (
                                   <div className="text-[10px] text-muted-foreground">{wi.status}</div>
@@ -976,14 +1037,10 @@ function TimesheetsPage() {
                         </thead>
                         <tbody>
                           {lines.map((e) => {
-                            const wi = e.work_item_id ? workById.get(e.work_item_id) : null;
-                            const proj = e.project_id ? projectById.get(e.project_id) : null;
                             return (
                               <tr key={e.id}>
-                                <td colSpan={2}>
-                                  {e.billable === false
-                                    ? `Non-billable · ${e.custom_task || "Task"}`
-                                    : `${(proj as any)?.project_code || "—"} · ${wi?.title || (e.work_item_id || "").slice(0, 8)}`}
+                                <td>
+                                  {projectTaskLabel(e, workById, projectById as Map<string, any>)}
                                 </td>
                                 {DAY_KEYS.map((dk) => (
                                   <td key={dk} className="text-center tabular-nums">
