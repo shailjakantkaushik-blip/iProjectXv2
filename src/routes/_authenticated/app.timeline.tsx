@@ -7,6 +7,7 @@ import { PROJECT_PORTFOLIO_SELECT, STAGE_GATES_SELECT } from "@/lib/query-select
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
 import { PortfolioTimeline } from "@/components/portfolio-timeline";
+import { ProjectPicker } from "@/components/portfolio-filters";
 import { toast } from "sonner";
 import {
   groupGatesByProject,
@@ -120,8 +121,6 @@ function TimelinePage() {
   const [fSchedule, setFSchedule] = useState("All"); // On Track | Delayed | Ahead
   const [fSearch, setFSearch] = useState("");
   const [fPids, setFPids] = useState<string[]>([]);   // multi-select of project ids
-  const [pidsOpen, setPidsOpen] = useState(false);
-  const [pidsSearch, setPidsSearch] = useState("");
   const [showGates, setShowGates] = useState(true);
   const [showProjectTimeline, setShowProjectTimeline] = useState(false);
 
@@ -156,7 +155,7 @@ function TimelinePage() {
   const resetFilters = () => {
     setFFy("All"); setFProgram("All"); setFSponsor("All"); setFPhase("All");
     setFRag("All"); setFPriority("All"); setFMethod("All"); setFSchedule("All"); setFSearch("");
-    setFPids([]); setPidsSearch("");
+    setFPids([]);
   };
 
   // ---------- Combined planned + actual dataset (stream lanes when enabled) ----------
@@ -261,18 +260,6 @@ function TimelinePage() {
     </label>
   );
 
-  const projectOptions = useMemo(() => {
-    const q = pidsSearch.trim().toLowerCase();
-    return projects
-      .map((p: any) => ({ id: p.id, code: p.project_code || "", name: p.name || "" }))
-      .filter((p) => !q || `${p.code} ${p.name}`.toLowerCase().includes(q))
-      .sort((a, b) => (a.code || a.name).localeCompare(b.code || b.name));
-  }, [projects, pidsSearch]);
-
-  const togglePid = (id: string) => {
-    setFPids((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
-  };
-
   return (
     <div>
       <PageHeading icon="🗓️">Portfolio Timeline</PageHeading>
@@ -282,7 +269,7 @@ function TimelinePage() {
       </div>
 
       {/* Filters bar */}
-      <SectionFrame>
+      <SectionFrame className="section-frame--filters">
         <div className="mb-2 flex items-center justify-between pr-10">
           <SectionTitle>
             <span className="inline-flex items-center gap-2"><Filter className="h-4 w-4" /> Filters</span>
@@ -308,42 +295,11 @@ function TimelinePage() {
           </label>
         </div>
 
-        {/* Project multi-select */}
-        <div className="mt-3">
-          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Projects</div>
-          <div className="relative">
-            <button type="button" onClick={() => setPidsOpen((o) => !o)}
-              className="flex w-full items-center justify-between rounded-md border border-input bg-background px-2 py-1.5 text-left text-sm hover:bg-muted">
-              <span className="truncate">
-                {fPids.length === 0 ? "All projects" : `${fPids.length} project${fPids.length > 1 ? "s" : ""} selected`}
-              </span>
-              <span className="text-xs text-muted-foreground">{pidsOpen ? "▲" : "▼"}</span>
-            </button>
-            {pidsOpen && (
-              <div className="absolute z-30 mt-1 w-full rounded-md border border-border bg-popover shadow-lg">
-                <div className="flex items-center gap-2 border-b border-border p-2">
-                  <input value={pidsSearch} onChange={(e) => setPidsSearch(e.target.value)}
-                    placeholder="Search projects…"
-                    className="flex-1 rounded border border-input bg-background px-2 py-1 text-xs" />
-                  <button onClick={() => setFPids(projectOptions.map((p) => p.id))}
-                    className="rounded border border-input bg-background px-2 py-1 text-[11px] hover:bg-muted">All</button>
-                  <button onClick={() => setFPids([])}
-                    className="rounded border border-input bg-background px-2 py-1 text-[11px] hover:bg-muted">None</button>
-                </div>
-                <div className="max-h-60 overflow-y-auto p-1">
-                  {projectOptions.length === 0 && (
-                    <div className="py-3 text-center text-xs text-muted-foreground">No matches</div>
-                  )}
-                  {projectOptions.map((p) => (
-                    <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-xs hover:bg-muted">
-                      <input type="checkbox" checked={fPids.includes(p.id)} onChange={() => togglePid(p.id)} />
-                      <span className="font-mono text-[11px] text-muted-foreground">{p.code || "—"}</span>
-                      <span className="truncate text-foreground">{p.name}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
+        {/* Project multi-select — portaled so it is not clipped by section scroll */}
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <div>
+            <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Projects</div>
+            <ProjectPicker projects={projects} selected={fPids} onChange={setFPids} />
           </div>
         </div>
 

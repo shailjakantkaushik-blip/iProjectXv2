@@ -135,11 +135,13 @@ export function computeTimelineBounds(
 }
 
 export function GanttGroup({
-  title, items, bounds, gatesByLane, collapsed, onToggle, showPlannedVsActual = false, showGates,
+  title, items, bounds, gates, collapsed, onToggle, showPlannedVsActual = false, showGates,
   showProjectTimeline, onShowProjectTimelineChange,
 }: {
   title: string; items: any[]; bounds: TimelineBounds;
-  gatesByLane: Map<string, any[]>; collapsed: boolean; onToggle: () => void;
+  /** Flat stage_gates rows — filtered per stream lane like project infographic. */
+  gates: any[];
+  collapsed: boolean; onToggle: () => void;
   showPlannedVsActual?: boolean;
   showGates?: boolean;
   /** Controlled: show project rollup lane checkbox (parent expands lanes). */
@@ -328,10 +330,9 @@ export function GanttGroup({
               // Project rollup: schedule completion (dark fill + %). Streams keep budget util overlay.
               const schedPct = scheduleCompletionPct(primaryS, primaryE);
               const doneColor = darkenHex(color, 0.4);
-              // Lane key: stream id for stream lanes; project id for rollup / fallback.
               // Project rollup intentionally omits stream-scoped gates (those sit on stream lanes).
               const projGates = (
-                p.is_project_rollup ? [] : gatesForTimelineLane(p, gatesByLane)
+                p.is_project_rollup ? [] : gatesForTimelineLane(p, gates)
               )
                 .filter((g: any) => g.planned_date || g.actual_date)
                 .slice()
@@ -666,17 +667,6 @@ export function PortfolioTimeline({
   const { organization } = useAuth();
   const fyStartMonth = organization?.fy_start_month || 4;
   const bounds = useMemo(() => computeTimelineBounds(projects, fy, fyStartMonth), [projects, fy, fyStartMonth]);
-  // Stream lanes own their gates (keyed by stream_id). Project rollup shows none.
-  const gatesByLane = useMemo(() => {
-    const m = new Map<string, any[]>();
-    gates.forEach((g: any) => {
-      const laneKey = g.stream_id || g.project_id;
-      if (!laneKey) return;
-      if (!m.has(laneKey)) m.set(laneKey, []);
-      m.get(laneKey)!.push(g);
-    });
-    return m;
-  }, [gates]);
   const [collapsed, setCollapsed] = useState(false);
   const items = projects.filter((p: any) => p.start_date && p.end_date);
   if (items.length === 0) {
@@ -693,7 +683,7 @@ export function PortfolioTimeline({
         title={groupTitle}
         items={items}
         bounds={bounds}
-        gatesByLane={gatesByLane}
+        gates={gates}
         collapsed={collapsed}
         onToggle={() => setCollapsed((c) => !c)}
         showPlannedVsActual={showPlannedVsActual}

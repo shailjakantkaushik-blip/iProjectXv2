@@ -81,6 +81,8 @@ export function streamToTimelineLane(
     stream_id: s.id,
     project_id: project.id,
     is_stream_lane: true as const,
+    // Explicit — needed for null-stream_id gate fallback on Core
+    is_default: Boolean(s.is_default),
     name: `${project.name || "Project"} · ${s.name}`,
     stream_name: s.name as string | null,
     stream_code: streamCode,
@@ -314,9 +316,10 @@ export function groupGatesByLane<T extends { project_id: string; stream_id?: str
 }
 
 /**
- * Gates for a timeline lane. Matches expandProjectsToTimelineLanes / infographic:
- * stream-owned gates, plus project-level (null stream_id) gates on Core.
- * Project rollup lanes intentionally show no diamonds.
+ * Gates for a timeline lane — same rules as project infographic stream sections:
+ * - stream-owned gates (stream_id match)
+ * - project-level gates (null stream_id) on Core / default stream only
+ * - project rollup lanes: no diamonds
  */
 export function gatesForTimelineLane<T extends { id?: string; project_id: string; stream_id?: string | null }>(
   lane: {
@@ -327,37 +330,31 @@ export function gatesForTimelineLane<T extends { id?: string; project_id: string
     is_stream_lane?: boolean;
     is_default?: boolean | null;
   },
-  gatesByLane: Map<string, T[]>,
+  gatesInput: Map<string, T[]> | T[],
 ): T[] {
   if (lane.is_project_rollup) return [];
-  const projectId = lane.project_id || (!lane.is_stream_lane ? lane.id : null);
-  const streamId = lane.stream_id || (lane.is_stream_lane ? lane.id : null);
 
-  const merge = (a: T[], b: T[]) => {
-    if (!a.length) return b;
-    if (!b.length) return a;
-    const seen = new Set<string>();
-    const out: T[] = [];
-    for (const g of [...a, ...b]) {
-      const id = g.id;
-      if (id) {
-        if (seen.has(id)) continue;
-        seen.add(id);
-      }
-      out.push(g);
-    }
-    return out;
-  };
+  const gates: T[] = Array.isArray(gatesInput)
+    ? gatesInput
+    : Array.from(gatesInput.values()).flat();
+
+  const projectId = lane.project_id || (!lane.is_stream_lane ? lane.id : null) || null;
+  const streamId = lane.stream_id || (lane.is_stream_lane ? lane.id : null) || null;
+  const isDefault = Boolean(lane.is_default);
 
   if (streamId) {
-    const owned = gatesByLane.get(streamId) || [];
-    // Legacy / schema-cache rows may omit stream_id — show those on Core only.
-    const projectLevel =
-      lane.is_default && projectId ? gatesByLane.get(projectId) || [] : [];
-    return merge(owned, projectLevel);
+    return gates.filter((g) => {
+      if (g.stream_id === streamId) return true;
+      // Legacy / missing stream_id → Core stream only (matches infographic)
+      if (!g.stream_id && isDefault && (!projectId || g.project_id === projectId)) return true;
+      return false;
+    });
   }
-  // Bare project lane (no streams yet)
-  return projectId ? gatesByLane.get(projectId) || [] : [];
+
+  if (projectId) {
+    return gates.filter((g) => g.project_id === projectId);
+  }
+  return [];
 }
 
 export async function fetchProjectStreams(projectId: string) {

@@ -68,12 +68,14 @@ export function ProjectPicker({
     const el = triggerRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    const width = Math.max(r.width, 288);
-    const gap = 4;
-    const spaceBelow = window.innerHeight - r.bottom - gap - 12;
-    const spaceAbove = r.top - gap - 12;
-    const openUp = spaceBelow < 220 && spaceAbove > spaceBelow;
-    const maxHeight = Math.min(320, Math.max(160, openUp ? spaceAbove : spaceBelow));
+    const width = Math.max(r.width, 320);
+    const gap = 6;
+    const spaceBelow = window.innerHeight - r.bottom - gap - 16;
+    const spaceAbove = r.top - gap - 16;
+    // Prefer opening downward unless clearly cramped
+    const openUp = spaceBelow < 260 && spaceAbove > spaceBelow;
+    const available = openUp ? spaceAbove : spaceBelow;
+    const maxHeight = Math.min(440, Math.max(240, available));
     let left = r.left;
     if (left + width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - width - 8);
     if (left < 8) left = 8;
@@ -165,15 +167,15 @@ export function ProjectPicker({
             Clear
           </button>
         </div>
-        <div className="overflow-auto" style={{ maxHeight: Math.max(80, pos.maxHeight - 88) }}>
+        <div className="overflow-y-auto overscroll-contain" style={{ maxHeight: Math.max(120, pos.maxHeight - 96) }}>
           {items.map((p) => (
             <label
               key={p.id}
-              className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-[12px] hover:bg-muted"
+              className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 text-[12px] hover:bg-muted"
             >
               <input type="checkbox" checked={selected.includes(p.id)} onChange={() => toggle(p.id)} />
-              <span className="font-mono text-[10px] text-muted-foreground">{p.project_code}</span>
-              <span className="truncate">{p.name}</span>
+              <span className="shrink-0 font-mono text-[10px] text-muted-foreground">{p.project_code}</span>
+              <span className="min-w-0 truncate">{p.name}</span>
             </label>
           ))}
           {items.length === 0 && (

@@ -89,7 +89,7 @@ function ExecutiveDashboard() {
   type TimelineView = "Portfolio" | "Program" | "Health" | "Priority" | "Theme" | "Sponsor" | "Status";
   const [timelineView, setTimelineView] = useState<TimelineView>("Program");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [showProjectTimeline, setShowProjectTimeline] = useState(true);
+  const [showProjectTimeline, setShowProjectTimeline] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
 
@@ -384,23 +384,12 @@ function ExecutiveDashboard() {
     return fromDefs.length > 0 ? fromDefs : PHASES;
   }, [gateDefs]);
 
-  // Project-level gates (kanban / register). Timeline uses lane-keyed map below.
+  // Project-level gates (kanban / register). Timeline filters flat gates per lane.
   const gatesByProject = useMemo(() => {
     const m = new Map<string, any[]>();
     gates.forEach((g: any) => {
       if (!m.has(g.project_id)) m.set(g.project_id, []);
       m.get(g.project_id)!.push(g);
-    });
-    return m;
-  }, [gates]);
-
-  // Stream lanes own their gates; non-stream projects key by project_id.
-  const gatesByLane = useMemo(() => {
-    const m = new Map<string, any[]>();
-    gates.forEach((g: any) => {
-      const laneKey = g.stream_id || g.project_id;
-      if (!m.has(laneKey)) m.set(laneKey, []);
-      m.get(laneKey)!.push(g);
     });
     return m;
   }, [gates]);
@@ -915,7 +904,7 @@ function ExecutiveDashboard() {
                     title={groupName}
                     items={items}
                     bounds={groupBounds}
-                    gatesByLane={gatesByLane}
+                    gates={gates as any[]}
                     orgPhases={orgPhases}
                     collapsed={!!collapsed[groupName]}
                     onToggle={() => toggleCollapse(groupName)}
@@ -1092,11 +1081,11 @@ type TimelineBounds = {
 };
 
 function GanttGroup({
-  title, items, bounds, gatesByLane, orgPhases = [], collapsed, onToggle,
+  title, items, bounds, gates, orgPhases = [], collapsed, onToggle,
   showProjectTimeline, onShowProjectTimelineChange,
 }: {
   title: string; items: any[]; bounds: TimelineBounds;
-  gatesByLane: Map<string, any[]>; orgPhases?: string[]; collapsed: boolean; onToggle: () => void;
+  gates: any[]; orgPhases?: string[]; collapsed: boolean; onToggle: () => void;
   showProjectTimeline?: boolean;
   onShowProjectTimelineChange?: (v: boolean) => void;
 }) {
@@ -1104,12 +1093,10 @@ function GanttGroup({
   const [showGates, setShowGates] = useState(true);
   const [showPvA, setShowPvA] = useState(false);
 
-  const laneKeyOf = (p: any) =>
-    p.is_project_rollup ? (p.project_id || p.id) : (p.stream_id || p.project_id || p.id);
   const phaseOf = (p: any) =>
     p.is_project_rollup
       ? (p.current_phase || null)
-      : resolveStageShared(p, gatesForTimelineLane(p, gatesByLane), orgPhases);
+      : resolveStageShared(p, gatesForTimelineLane(p, gates), orgPhases);
   const { start: rangeStart, totalMs, months, fyGroups } = bounds;
   const monthShort = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const now = new Date();
@@ -1279,7 +1266,7 @@ function GanttGroup({
               const overBudget = incurred > budget && budget > 0;
               const schedPct = scheduleCompletionPct(s, e);
               const doneColor = darkenHex(color, 0.4);
-              const projGates = gatesForTimelineLane(p, gatesByLane)
+              const projGates = gatesForTimelineLane(p, gates)
                 .filter((g: any) => g.planned_date || g.actual_date)
                 .sort(
                   (a: any, b: any) =>
