@@ -2,7 +2,12 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { PROJECT_PORTFOLIO_SELECT, FINANCIALS_MONTHLY_SELECT } from "@/lib/query-selects";
+import {
+  PROJECT_PORTFOLIO_SELECT,
+  FINANCIALS_MONTHLY_SELECT,
+  STAGE_GATES_SELECT,
+  STAGE_GATE_DEFINITIONS_SELECT,
+} from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -38,6 +43,8 @@ import {
   projectRealisedRoi,
 } from "@/lib/project-finance";
 import {
+  monthlyRowsForPhaseFilter,
+  monthlyTriple,
   sumMonthlyActual,
   sumMonthlyForecast,
   sumMonthlyPlanned,
@@ -56,6 +63,18 @@ const money = (n: number) =>
   "$" +
   new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 }).format(n || 0);
 
+const DEFAULT_STAGES = [
+  "Discovery",
+  "Business Case / Seed Funding",
+  "Design",
+  "Business Case / Full Funding",
+  "Build",
+  "Testing",
+  "Deployment",
+  "Handover",
+  "Benefit Realisation",
+];
+
 function FinancialsPage() {
   const { organization } = useAuth();
   const qc = useQueryClient();
@@ -73,13 +92,99 @@ function FinancialsPage() {
       (await supabase.from("financials_monthly").select(FINANCIALS_MONTHLY_SELECT as "*").order("period_month")).data ?? [],
     enabled: !!organization,
   });
+  const { data: gateDefs = [] } = useQuery({
+    queryKey: ["stage_gate_definitions", organization?.id],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("stage_gate_definitions")
+          .select(STAGE_GATE_DEFINITIONS_SELECT as "*")
+          .eq("org_id", organization!.id)
+          .eq("is_active", true)
+          .order("sort_order", { ascending: true })
+      ).data ?? [],
+    enabled: !!organization,
+  });
+  const { data: gates = [] } = useQuery({
+    queryKey: ["stage_gates", organization?.id],
+    queryFn: async () => (await supabase.from("stage_gates").select(STAGE_GATES_SELECT as "*")).data ?? [],
+    enabled: !!organization,
+  });
 
-  const filtered = useMemo(() => applyFilters(projects, filters), [projects, filters]);
-  const ids = useMemo(() => new Set(filtered.map((p: any) => p.id)), [filtered]);
-  const mFiltered = useMemo(
-    () => monthly.filter((m: any) => ids.has(m.project_id)) as MonthlyFinanceRow[],
-    [monthly, ids],
+  const orgPhases = useMemo(() => {
+    const configured = gateDefs.map((g: any) => g.gate_name).filter(Boolean);
+    return configured.length ? configured : DEFAULT_STAGES;
+  }, [gateDefs]);
+
+  const baseFiltered = useMemo(
+    () => applyFilters(projects, filters, { phaseMode: "ignore" }),
+    [projects, filters],
   );
+
+  const phaseScopedMonthlyByProject = useMemo(() => {
+    const map = new Map<string, MonthlyFinanceRow[]>();
+    for (const p of baseFiltered as any[]) {
+      const projectGates = (gates as any[]).filter((g) => g.project_id === p.id);
+      const projectMonthly = (monthly as MonthlyFinanceRow[]).filter((m) => m.project_id === p.id);
+      if (filters.phase === "All") {
+        map.set(p.id, projectMonthly);
+        continue;
+      }
+
+      const streamIds = new Set<string | null>();
+      for (const g of projectGates) streamIds.add(g.stream_id ?? null);
+      for (const m of projectMonthly) streamIds.add(m.stream_id ?? null);
+      if (streamIds.size === 0) streamIds.add(null);
+
+      const seen = new Set<string>();
+      const out: MonthlyFinanceRow[] = [];
+      for (const sid of streamIds) {
+        const gs = projectGates.filter((g) => (g.stream_id ?? null) === sid);
+        const rows = projectMonthly.filter((m) => (m.stream_id ?? null) === sid);
+        // Default-stream fallback: project-level gates (null stream_id) when lane has none.
+        const gateRows =
+          gs.length > 0
+            ? gs
+            : projectGates.filter((g) => !g.stream_id);
+        const scoped = monthlyRowsForPhaseFilter(rows, gateRows, orgPhases, filters.phase);
+        for (const row of scoped) {
+          const key = `${row.stream_id ?? ""}|${String(row.period_month).slice(0, 10)}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          out.push(row);
+        }
+      }
+      map.set(p.id, out);
+    }
+    return map;
+  }, [baseFiltered, monthly, gates, orgPhases, filters.phase]);
+
+  const filtered = useMemo(() => {
+    if (filters.phase === "All") return baseFiltered;
+    return baseFiltered.filter((p: any) => (phaseScopedMonthlyByProject.get(p.id) || []).length > 0);
+  }, [baseFiltered, filters.phase, phaseScopedMonthlyByProject]);
+
+  const ids = useMemo(() => new Set(filtered.map((p: any) => p.id)), [filtered]);
+  const mFiltered = useMemo(() => {
+    if (filters.phase === "All") {
+      return monthly.filter((m: any) => ids.has(m.project_id)) as MonthlyFinanceRow[];
+    }
+    const out: MonthlyFinanceRow[] = [];
+    for (const id of ids) {
+      out.push(...(phaseScopedMonthlyByProject.get(id) || []));
+    }
+    return out;
+  }, [monthly, ids, filters.phase, phaseScopedMonthlyByProject]);
+
+  const phaseTripleByProject = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof monthlyTriple>>();
+    for (const p of filtered as any[]) {
+      map.set(p.id, monthlyTriple(phaseScopedMonthlyByProject.get(p.id) || []));
+    }
+    return map;
+  }, [filtered, phaseScopedMonthlyByProject]);
+
+  const phaseScoped = filters.phase !== "All";
 
   const financeColumns: ColumnarColumn<any>[] = useMemo(
     () => [
@@ -88,58 +193,79 @@ function FinancialsPage() {
       { key: "program", label: "Program" },
       {
         key: "budget",
-        label: "Budget",
-        getValue: (p) => projectApprovedFunding(p),
+        label: phaseScoped ? "Phase Planned" : "Budget",
+        getValue: (p) =>
+          phaseScoped ? phaseTripleByProject.get(p.id)?.planned ?? 0 : projectApprovedFunding(p),
       },
       {
         key: "capex_approved",
         label: "CAPEX Appr.",
-        getValue: (p) => Number(p.capex_approved || 0),
+        getValue: (p) => (phaseScoped ? 0 : Number(p.capex_approved || 0)),
       },
       {
         key: "capex_incurred",
-        label: "CAPEX Incd.",
-        getValue: (p) => Number(p.capex_incurred || 0),
+        label: phaseScoped ? "Phase Actual" : "CAPEX Incd.",
+        getValue: (p) =>
+          phaseScoped
+            ? phaseTripleByProject.get(p.id)?.actual ?? 0
+            : Number(p.capex_incurred || 0),
       },
       {
         key: "opex_approved",
         label: "OPEX Appr.",
-        getValue: (p) => Number(p.opex_approved || 0),
+        getValue: (p) => (phaseScoped ? 0 : Number(p.opex_approved || 0)),
       },
       {
         key: "opex_incurred",
-        label: "OPEX Incd.",
-        getValue: (p) => Number(p.opex_incurred || 0),
+        label: phaseScoped ? "Phase Forecast" : "OPEX Incd.",
+        getValue: (p) =>
+          phaseScoped
+            ? phaseTripleByProject.get(p.id)?.forecast ?? 0
+            : Number(p.opex_incurred || 0),
       },
       {
         key: "benefits",
         label: "Benefits",
-        getValue: (p) => projectBenefitsRealised(p),
+        getValue: (p) => (phaseScoped ? 0 : projectBenefitsRealised(p)),
       },
       {
         key: "variance",
         label: "Variance",
-        getValue: (p) => projectApprovedFunding(p) - projectIncurred(p),
+        getValue: (p) => {
+          if (phaseScoped) {
+            const t = phaseTripleByProject.get(p.id);
+            return (t?.planned ?? 0) - (t?.actual ?? 0);
+          }
+          return projectApprovedFunding(p) - projectIncurred(p);
+        },
       },
       {
         key: "roi",
         label: "ROI %",
-        getValue: (p) => projectRealisedRoi(p),
+        getValue: (p) => (phaseScoped ? 0 : projectRealisedRoi(p)),
       },
     ],
-    [],
+    [phaseScoped, phaseTripleByProject],
   );
   const financeTable = useColumnarTable(filtered, financeColumns);
 
   const sum = (k: string) => filtered.reduce((s, p: any) => s + Number(p[k] || 0), 0);
-  const capexApproved = sum("capex_approved");
-  const capexIncurred = sum("capex_incurred");
-  const opexApproved = sum("opex_approved");
-  const opexIncurred = sum("opex_incurred");
-  const totalBudget = filtered.reduce((s, p: any) => s + projectApprovedFunding(p), 0);
-  const benefitsRealised = filtered.reduce((s, p: any) => s + projectBenefitsRealised(p), 0);
-  const totalApproved = filtered.reduce((s, p: any) => s + projectApprovedFunding(p), 0);
-  const totalIncurred = filtered.reduce((s, p: any) => s + projectIncurred(p), 0);
+  const capexApproved = phaseScoped ? 0 : sum("capex_approved");
+  const capexIncurred = phaseScoped
+    ? filtered.reduce((s, p: any) => s + (phaseTripleByProject.get(p.id)?.actual ?? 0), 0)
+    : sum("capex_incurred");
+  const opexApproved = phaseScoped ? 0 : sum("opex_approved");
+  const opexIncurred = phaseScoped ? 0 : sum("opex_incurred");
+  const totalBudget = phaseScoped
+    ? filtered.reduce((s, p: any) => s + (phaseTripleByProject.get(p.id)?.planned ?? 0), 0)
+    : filtered.reduce((s, p: any) => s + projectApprovedFunding(p), 0);
+  const benefitsRealised = phaseScoped
+    ? 0
+    : filtered.reduce((s, p: any) => s + projectBenefitsRealised(p), 0);
+  const totalApproved = totalBudget;
+  const totalIncurred = phaseScoped
+    ? filtered.reduce((s, p: any) => s + (phaseTripleByProject.get(p.id)?.actual ?? 0), 0)
+    : filtered.reduce((s, p: any) => s + projectIncurred(p), 0);
   const spendPct = totalApproved > 0 ? (totalIncurred / totalApproved) * 100 : 0;
   const variance = totalApproved - totalIncurred;
 
@@ -168,7 +294,7 @@ function FinancialsPage() {
   const benefitCostRatio =
     totalIncurred > 0
       ? benefitsRealised / totalIncurred
-      : filtered.length
+      : !phaseScoped && filtered.length
         ? filtered.reduce((s, p: any) => s + projectBenefitCostRatio(p), 0) / filtered.length
         : 0;
 
@@ -185,11 +311,19 @@ function FinancialsPage() {
           budget: 0,
           benefits: 0,
         };
-        cur.capex += Number(p.capex_approved || 0);
-        cur.opex += Number(p.opex_approved || 0);
-        cur.incurred += projectIncurred(p);
-        cur.budget += projectApprovedFunding(p);
-        cur.benefits += projectBenefitsRealised(p);
+        if (phaseScoped) {
+          const t = phaseTripleByProject.get(p.id);
+          cur.capex += t?.planned ?? 0;
+          cur.opex += 0;
+          cur.incurred += t?.actual ?? 0;
+          cur.budget += t?.planned ?? 0;
+        } else {
+          cur.capex += Number(p.capex_approved || 0);
+          cur.opex += Number(p.opex_approved || 0);
+          cur.incurred += projectIncurred(p);
+          cur.budget += projectApprovedFunding(p);
+          cur.benefits += projectBenefitsRealised(p);
+        }
         m.set(k, cur);
         return m;
       }, new Map())
@@ -219,11 +353,21 @@ function FinancialsPage() {
 
   // Top 10 variance (approved funding − incurred)
   const varianceTop = [...filtered]
-    .map((p: any) => ({
-      code: p.project_code,
-      name: p.name,
-      variance: projectApprovedFunding(p) - projectIncurred(p),
-    }))
+    .map((p: any) => {
+      if (phaseScoped) {
+        const t = phaseTripleByProject.get(p.id);
+        return {
+          code: p.project_code,
+          name: p.name,
+          variance: (t?.planned ?? 0) - (t?.actual ?? 0),
+        };
+      }
+      return {
+        code: p.project_code,
+        name: p.name,
+        variance: projectApprovedFunding(p) - projectIncurred(p),
+      };
+    })
     .sort((a, b) => a.variance - b.variance)
     .slice(0, 10);
 
@@ -236,12 +380,25 @@ function FinancialsPage() {
           <strong>Actual</strong> is captured each month after kickoff.{" "}
           <strong>Forecast</strong> is the live outlook. Compare them below; project CapEx/OpEx
           incurred can be synced from monthly actuals.
+          {phaseScoped ? (
+            <>
+              {" "}
+              Phase filter uses each project’s stage-gate <strong>date window</strong> (not only
+              current phase).
+            </>
+          ) : null}
         </p>
         <Button variant="outline" size="sm" disabled={syncing || !organization} onClick={syncIncurred}>
           {syncing ? "Syncing…" : "Sync incurred from actuals"}
         </Button>
       </div>
-      <PortfolioFilters projects={projects} value={filters} onChange={setFilters} />
+      <PortfolioFilters
+        projects={projects}
+        value={filters}
+        onChange={setFilters}
+        phaseOptions={orgPhases}
+        phaseAllLabel="All phase windows"
+      />
 
       <SectionFrame>
         <SectionTitle>Plan vs Actual vs Forecast (monthly cashflow)</SectionTitle>

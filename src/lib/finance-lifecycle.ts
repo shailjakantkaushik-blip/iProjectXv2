@@ -20,7 +20,7 @@ import {
   type ProjectFinanceLike,
 } from "@/lib/project-finance";
 import type { StageGateLike } from "@/lib/project-phase";
-import { sortGatesByOrgOrder } from "@/lib/project-phase";
+import { matchPhase, normLabel, sortGatesByOrgOrder } from "@/lib/project-phase";
 
 const num = (v: unknown) => {
   const n = Number(v);
@@ -279,6 +279,53 @@ export function monthlyInWindow(
     if (!window.start && !window.end) return true;
     return true;
   });
+}
+
+/** True when a stage/gate label matches the selected portfolio phase filter. */
+export function stageMatchesPhaseFilter(
+  stage: string | null | undefined,
+  phaseFilter: string,
+  orgPhases: string[] = [],
+): boolean {
+  if (!phaseFilter || phaseFilter === "All") return true;
+  if (!stage) return false;
+  const target = matchPhase(phaseFilter, orgPhases) ?? phaseFilter;
+  const mapped = matchPhase(stage, orgPhases) ?? stage;
+  return normLabel(mapped) === normLabel(target) || normLabel(stage) === normLabel(phaseFilter);
+}
+
+/** Windows whose stage matches the selected phase filter. */
+export function phaseWindowsForFilter(
+  gates: StageGateLike[],
+  orgPhases: string[],
+  phaseFilter: string,
+): PhaseWindow[] {
+  const windows = phaseWindowsFromGates(gates, orgPhases);
+  if (!phaseFilter || phaseFilter === "All") return windows;
+  return windows.filter((w) => stageMatchesPhaseFilter(w.stage, phaseFilter, orgPhases));
+}
+
+/** Monthly cashflow rows that fall inside the selected phase's gate date window(s). */
+export function monthlyRowsForPhaseFilter(
+  rows: MonthlyFinanceRow[],
+  gates: StageGateLike[],
+  orgPhases: string[],
+  phaseFilter: string,
+): MonthlyFinanceRow[] {
+  if (!phaseFilter || phaseFilter === "All") return rows;
+  const windows = phaseWindowsForFilter(gates, orgPhases, phaseFilter);
+  if (!windows.length) return [];
+  const seen = new Set<string>();
+  const out: MonthlyFinanceRow[] = [];
+  for (const w of windows) {
+    for (const row of monthlyInWindow(rows, w)) {
+      const key = `${row.project_id}|${row.stream_id ?? ""}|${monthKey(row.period_month)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(row);
+    }
+  }
+  return out;
 }
 
 /** Aggregate plan/actual/forecast for a set of monthly rows. */

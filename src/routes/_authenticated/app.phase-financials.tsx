@@ -37,6 +37,7 @@ import {
   monthlyInWindow,
   monthlyTriple,
   phaseWindowsFromGates,
+  stageMatchesPhaseFilter,
   type MonthlyFinanceRow,
 } from "@/lib/finance-lifecycle";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
@@ -106,7 +107,10 @@ function PhaseFinancialsPage() {
     enabled: !!organization,
   });
 
-  const filtered = useMemo(() => applyFilters(projects, filters), [projects, filters]);
+  const filtered = useMemo(
+    () => applyFilters(projects, filters, { phaseMode: "ignore" }),
+    [projects, filters],
+  );
   const filteredIds = useMemo(() => new Set(filtered.map((p: any) => p.id)), [filtered]);
 
   const orgPhases = useMemo(() => {
@@ -154,7 +158,7 @@ function PhaseFinancialsPage() {
     forecast: number;
   };
 
-  const laneSpendRows = useMemo(() => {
+  const laneSpendRowsAll = useMemo(() => {
     const out: LaneSpend[] = [];
 
     const attributeLane = (
@@ -215,16 +219,28 @@ function PhaseFinancialsPage() {
     return out;
   }, [filtered, orgPhases, gatesByProject, monthlyByLane, streamsByProject, gates]);
 
+  /** Phase filter scopes attributed spend rows (gate windows), not projects.current_phase. */
+  const laneSpendRows = useMemo(() => {
+    if (filters.phase === "All") return laneSpendRowsAll;
+    return laneSpendRowsAll.filter((r) =>
+      stageMatchesPhaseFilter(r.stage, filters.phase, orgPhases),
+    );
+  }, [laneSpendRowsAll, filters.phase, orgPhases]);
+
   /**
    * True phase spend: for each org stage, sum monthly planned/actual/forecast
    * whose period falls in that gate's date window (across filtered project/stream lanes).
    */
   const byPhase = useMemo(() => {
+    const stages =
+      filters.phase === "All"
+        ? orgPhases
+        : orgPhases.filter((s) => stageMatchesPhaseFilter(s, filters.phase, orgPhases));
     const acc = new Map<
       string,
       { stage: string; planned: number; actual: number; forecast: number; count: number }
     >();
-    for (const stage of orgPhases) {
+    for (const stage of stages) {
       acc.set(stage, { stage, planned: 0, actual: 0, forecast: 0, count: 0 });
     }
     for (const row of laneSpendRows) {
@@ -242,7 +258,7 @@ function PhaseFinancialsPage() {
       acc.set(row.stage, cur);
     }
 
-    return orgPhases
+    return stages
       .map((stage) => {
         const r = acc.get(stage) || {
           stage,
@@ -259,14 +275,14 @@ function PhaseFinancialsPage() {
       })
       .concat(
         Array.from(acc.values())
-          .filter((r) => !orgPhases.includes(r.stage))
+          .filter((r) => !stages.includes(r.stage))
           .map((r) => ({
             ...r,
             variance: r.planned - r.actual,
             remaining: Math.max(0, r.planned - r.actual),
           })),
       );
-  }, [laneSpendRows, orgPhases]);
+  }, [laneSpendRows, orgPhases, filters.phase]);
 
   const detailColumns: ColumnarColumn<(typeof laneSpendRows)[number]>[] = useMemo(
     () => [
@@ -349,9 +365,16 @@ function PhaseFinancialsPage() {
       <PageHeading icon="💠">Phase Financials</PageHeading>
       <div className="text-sm text-muted-foreground mb-3">
         Planned vs actual vs forecast spend inside each stage-gate date window (from monthly
-        cashflow), attributed per project stream when streams are configured.
+        cashflow), attributed per project stream when streams are configured. The phase filter
+        scopes spend to that gate window — not only projects whose current phase matches.
       </div>
-      <PortfolioFilters projects={projects} value={filters} onChange={setFilters} />
+      <PortfolioFilters
+        projects={projects}
+        value={filters}
+        onChange={setFilters}
+        phaseOptions={orgPhases}
+        phaseAllLabel="All phase windows"
+      />
 
       <SectionFrame>
         <SectionTitle>Phase KPIs (Plan vs Actual)</SectionTitle>
