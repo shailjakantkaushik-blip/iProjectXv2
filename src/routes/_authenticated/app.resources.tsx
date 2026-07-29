@@ -42,6 +42,8 @@ type Resource = {
   role?: string | null;
   skills?: string | null;
   capacity_hours_week?: number | null;
+  cost_rate?: number | null;
+  user_id?: string | null;
 };
 type Allocation = {
   id: string;

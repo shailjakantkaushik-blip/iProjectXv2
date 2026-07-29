@@ -1,9 +1,11 @@
 /**
  * Resource allocation planned vs actual + timesheet labor cost rollups.
- * Planned: resource_allocations (project / stream / stage_gate / month)
- * Actual hours: approved timesheet_entries (via work item / stamped stream+gate)
- * Actual cost: timesheet_entries.labor_cost (FTE)
+ * Allocated plan hours: resource_allocations (project / stream / stage_gate / month)
+ * Work-item demand hours + planned FTE $: from work_items.estimate_hours × rates
+ * Actual hours / Actual FTE $: approved timesheet_entries
  */
+
+import type { WorkItemDemandSlice } from "@/lib/work-item-fte-plan";
 
 export type AllocationPlanRow = {
   id?: string;
@@ -57,13 +59,21 @@ export type AllocationPvaRow = {
   program?: string | null;
   portfolio?: string | null;
   period_month?: string | null;
+  /** Hours from resource_allocations. */
   planned_hours: number;
   planned_percent: number;
+  /** Hours demanded by work-item planned hours. */
+  demand_hours: number;
   actual_hours: number;
   variance_hours: number;
+  /** Allocated plan − work-item demand. */
+  demand_gap_hours: number;
   utilization_pct: number | null;
   status: "Over" | "Optimal" | "Under" | "Unplanned";
+  /** Actual FTE $ from timesheets. */
   labor_cost: number;
+  /** Planned FTE $ from work items × rates. */
+  planned_labor_cost: number;
 };
 
 const num = (v: unknown) => {
@@ -79,7 +89,11 @@ export function normMonth(v: string | null | undefined): string {
   return `${m[1]}-${m[2]}-01`;
 }
 
-export function allocationStatus(plannedPct: number, actualHours: number, plannedHours: number): AllocationPvaRow["status"] {
+export function allocationStatus(
+  plannedPct: number,
+  actualHours: number,
+  plannedHours: number,
+): AllocationPvaRow["status"] {
   if (plannedHours <= 0 && actualHours > 0) return "Unplanned";
   const pct = plannedHours > 0 ? (actualHours / plannedHours) * 100 : plannedPct;
   if (pct > 110 || plannedPct > 100) return "Over";
@@ -87,11 +101,41 @@ export function allocationStatus(plannedPct: number, actualHours: number, planne
   return "Under";
 }
 
-function hoursFromAllocation(a: AllocationPlanRow, capacityHoursWeek = 40): number {
+/** Planned hours from an allocation row (explicit hours, else % of monthly FTE). */
+export function hoursFromAllocation(a: AllocationPlanRow, capacityHoursWeek = 40): number {
   const explicit = num(a.allocated_hours);
   if (explicit > 0) return explicit;
   // ~4.33 weeks/month × weekly capacity × allocation %
   return Math.round(((capacityHoursWeek * 4.33 * num(a.allocation_percent)) / 100) * 100) / 100;
+}
+
+/**
+ * Sum planned resource-allocation hours for a project / stream / stage-gate lane.
+ * When `periodMonth` is set (YYYY-MM-01), only that month is included.
+ */
+export function sumLaneAllocatedHours(
+  plans: AllocationPlanRow[],
+  opts: {
+    projectId: string;
+    streamId?: string | null;
+    stageGateId?: string | null;
+    periodMonth?: string | null;
+  },
+): number {
+  const month = opts.periodMonth ? normMonth(opts.periodMonth) : null;
+  return plans.reduce((sum, a) => {
+    if (a.project_id !== opts.projectId) return sum;
+    const aStream = a.stream_id || null;
+    const wantStream = opts.streamId || null;
+    if (wantStream && aStream !== wantStream) return sum;
+    if (!wantStream && aStream) return sum;
+    const aGate = a.stage_gate_id || null;
+    const wantGate = opts.stageGateId || null;
+    if (wantGate && aGate !== wantGate) return sum;
+    if (!wantGate && aGate) return sum;
+    if (month && normMonth(a.period_month) !== month) return sum;
+    return sum + hoursFromAllocation(a);
+  }, 0);
 }
 
 type Agg = {
@@ -106,8 +150,10 @@ type Agg = {
   period_month?: string | null;
   planned_hours: number;
   planned_percent: number;
+  demand_hours: number;
   actual_hours: number;
   labor_cost: number;
+  planned_labor_cost: number;
 };
 
 function grainKey(
@@ -144,6 +190,8 @@ export function buildAllocationPva(opts: {
   grain: PvaGrain;
   plans: AllocationPlanRow[];
   actuals: TimesheetEffortRow[];
+  /** Work-item demand + planned FTE $ (optional). */
+  demand?: WorkItemDemandSlice[];
   projectsById: Map<string, ProjectMeta>;
   resourceNames?: Map<string, string>;
   streamLabels?: Map<string, string>;
@@ -154,6 +202,7 @@ export function buildAllocationPva(opts: {
     grain,
     plans,
     actuals,
+    demand = [],
     projectsById,
     resourceNames,
     streamLabels,
@@ -162,7 +211,18 @@ export function buildAllocationPva(opts: {
   } = opts;
   const acc = new Map<string, Agg>();
 
-  const touch = (partial: Omit<Agg, "planned_hours" | "planned_percent" | "actual_hours" | "labor_cost"> & Partial<Agg>) => {
+  const touch = (
+    partial: Omit<
+      Agg,
+      | "planned_hours"
+      | "planned_percent"
+      | "demand_hours"
+      | "actual_hours"
+      | "labor_cost"
+      | "planned_labor_cost"
+    > &
+      Partial<Agg>,
+  ) => {
     const cur = acc.get(partial.key) || {
       key: partial.key,
       label: partial.label,
@@ -175,13 +235,17 @@ export function buildAllocationPva(opts: {
       period_month: partial.period_month ?? null,
       planned_hours: 0,
       planned_percent: 0,
+      demand_hours: 0,
       actual_hours: 0,
       labor_cost: 0,
+      planned_labor_cost: 0,
     };
     cur.planned_hours += num(partial.planned_hours);
     cur.planned_percent += num(partial.planned_percent);
+    cur.demand_hours += num(partial.demand_hours);
     cur.actual_hours += num(partial.actual_hours);
     cur.labor_cost += num(partial.labor_cost);
+    cur.planned_labor_cost += num(partial.planned_labor_cost);
     acc.set(partial.key, cur);
   };
 
@@ -223,6 +287,47 @@ export function buildAllocationPva(opts: {
       period_month: month,
       planned_hours: hoursFromAllocation(a, cap),
       planned_percent: num(a.allocation_percent),
+    });
+  }
+
+  for (const d of demand) {
+    if (!d.project_id && grain !== "resource" && grain !== "month") continue;
+    const p = d.project_id ? projectsById.get(d.project_id) : undefined;
+    const month = normMonth(d.period_month);
+    const key = grainKey(grain, {
+      resourceId: d.resource_id,
+      projectId: d.project_id,
+      streamId: d.stream_id,
+      stageGateId: d.stage_gate_id,
+      program: p?.program,
+      portfolio: p?.portfolio,
+      month,
+    });
+    const label = labelFor(grain, {
+      resourceId: d.resource_id,
+      projectId: d.project_id,
+      streamId: d.stream_id,
+      stageGateId: d.stage_gate_id,
+      program: p?.program,
+      portfolio: p?.portfolio,
+      month,
+      projectsById,
+      resourceNames,
+      streamLabels,
+      gateLabels,
+    });
+    touch({
+      key,
+      label,
+      resource_id: d.resource_id,
+      project_id: d.project_id,
+      stream_id: d.stream_id,
+      stage_gate_id: d.stage_gate_id,
+      program: p?.program,
+      portfolio: p?.portfolio,
+      period_month: month,
+      demand_hours: num(d.demand_hours),
+      planned_labor_cost: num(d.planned_labor_cost),
     });
   }
 
@@ -270,6 +375,7 @@ export function buildAllocationPva(opts: {
   return Array.from(acc.values())
     .map((r) => {
       const variance = Math.round((r.planned_hours - r.actual_hours) * 100) / 100;
+      const demandGap = Math.round((r.planned_hours - r.demand_hours) * 100) / 100;
       const util =
         r.planned_hours > 0
           ? Math.round((r.actual_hours / r.planned_hours) * 1000) / 10
@@ -278,11 +384,14 @@ export function buildAllocationPva(opts: {
         ...r,
         planned_hours: Math.round(r.planned_hours * 100) / 100,
         planned_percent: Math.round(r.planned_percent * 10) / 10,
+        demand_hours: Math.round(r.demand_hours * 100) / 100,
         actual_hours: Math.round(r.actual_hours * 100) / 100,
         variance_hours: variance,
+        demand_gap_hours: demandGap,
         utilization_pct: util,
         status: allocationStatus(r.planned_percent, r.actual_hours, r.planned_hours),
         labor_cost: Math.round(r.labor_cost * 100) / 100,
+        planned_labor_cost: Math.round(r.planned_labor_cost * 100) / 100,
       };
     })
     .sort((a, b) => a.label.localeCompare(b.label));

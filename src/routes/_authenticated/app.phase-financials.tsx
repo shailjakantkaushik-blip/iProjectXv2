@@ -161,7 +161,14 @@ function PhaseFinancialsPage() {
     planned: number;
     actual: number;
     forecast: number;
+    ftePlan: number;
+    fteActual: number;
   };
+
+  const sumFte = (rows: MonthlyFinanceRow[]) => ({
+    ftePlan: rows.reduce((s, r) => s + Number(r.opex_labor_planned || 0), 0),
+    fteActual: rows.reduce((s, r) => s + Number(r.opex_labor_actual || 0), 0),
+  });
 
   const laneSpendRowsAll = useMemo(() => {
     const out: LaneSpend[] = [];
@@ -175,7 +182,11 @@ function PhaseFinancialsPage() {
       const windows = phaseWindowsFromGates(pgates, orgPhases);
       const streamLabel = stream ? formatStreamLabel(stream) : null;
       const streamRef = stream ? formatProjectStreamRef(project, stream) : null;
-      const push = (stage: string, t: { planned: number; actual: number; forecast: number }) => {
+      const push = (
+        stage: string,
+        t: { planned: number; actual: number; forecast: number },
+        fte: { ftePlan: number; fteActual: number },
+      ) => {
         out.push({
           key: `${project.id}:${stream?.id || "proj"}:${stage}`,
           project,
@@ -185,23 +196,25 @@ function PhaseFinancialsPage() {
           planned: t.planned,
           actual: t.actual,
           forecast: t.forecast,
+          ftePlan: fte.ftePlan,
+          fteActual: fte.fteActual,
         });
       };
 
       if (!windows.length) {
         const stage = (stream?.current_phase as string) || project.current_phase || "Unassigned";
-        push(stage, monthlyTriple(rows));
+        push(stage, monthlyTriple(rows), sumFte(rows));
         return;
       }
       let attributed = false;
       for (const w of windows) {
         const inWin = monthlyInWindow(rows, w);
         if (!inWin.length) continue;
-        push(w.stage, monthlyTriple(inWin));
+        push(w.stage, monthlyTriple(inWin), sumFte(inWin));
         attributed = true;
       }
       if (!attributed && rows.length) {
-        push(windows[0]?.stage || "Unassigned", monthlyTriple(rows));
+        push(windows[0]?.stage || "Unassigned", monthlyTriple(rows), sumFte(rows));
       }
     };
 
@@ -243,10 +256,26 @@ function PhaseFinancialsPage() {
         : orgPhases.filter((s) => stageMatchesPhaseFilter(s, filters.phase, orgPhases));
     const acc = new Map<
       string,
-      { stage: string; planned: number; actual: number; forecast: number; count: number }
+      {
+        stage: string;
+        planned: number;
+        actual: number;
+        forecast: number;
+        ftePlan: number;
+        fteActual: number;
+        count: number;
+      }
     >();
     for (const stage of stages) {
-      acc.set(stage, { stage, planned: 0, actual: 0, forecast: 0, count: 0 });
+      acc.set(stage, {
+        stage,
+        planned: 0,
+        actual: 0,
+        forecast: 0,
+        ftePlan: 0,
+        fteActual: 0,
+        count: 0,
+      });
     }
     for (const row of laneSpendRows) {
       const cur = acc.get(row.stage) || {
@@ -254,11 +283,15 @@ function PhaseFinancialsPage() {
         planned: 0,
         actual: 0,
         forecast: 0,
+        ftePlan: 0,
+        fteActual: 0,
         count: 0,
       };
       cur.planned += row.planned;
       cur.actual += row.actual;
       cur.forecast += row.forecast;
+      cur.ftePlan += row.ftePlan;
+      cur.fteActual += row.fteActual;
       cur.count += 1;
       acc.set(row.stage, cur);
     }
@@ -270,6 +303,8 @@ function PhaseFinancialsPage() {
           planned: 0,
           actual: 0,
           forecast: 0,
+          ftePlan: 0,
+          fteActual: 0,
           count: 0,
         };
         return {
@@ -312,6 +347,18 @@ function PhaseFinancialsPage() {
         getValue: (r) => moneyFilterValue(r.actual),
         getSortValue: (r) => r.actual,
       },
+      {
+        key: "ftePlan",
+        label: "FTE plan",
+        getValue: (r) => moneyFilterValue(r.ftePlan),
+        getSortValue: (r) => r.ftePlan,
+      },
+      {
+        key: "fteActual",
+        label: "FTE actual",
+        getValue: (r) => moneyFilterValue(r.fteActual),
+        getSortValue: (r) => r.fteActual,
+      },
     ],
     [],
   );
@@ -340,6 +387,18 @@ function PhaseFinancialsPage() {
         getSortValue: (r) => r.actual,
       },
       {
+        key: "ftePlan",
+        label: "FTE plan",
+        getValue: (r) => moneyFilterValue(r.ftePlan),
+        getSortValue: (r) => r.ftePlan,
+      },
+      {
+        key: "fteActual",
+        label: "FTE actual",
+        getValue: (r) => moneyFilterValue(r.fteActual),
+        getSortValue: (r) => r.fteActual,
+      },
+      {
         key: "variance",
         label: "Variance",
         getValue: (r) => moneyFilterValue(r.variance),
@@ -359,6 +418,8 @@ function PhaseFinancialsPage() {
   const totalPlanned = byPhase.reduce((s, r) => s + r.planned, 0);
   const totalActual = byPhase.reduce((s, r) => s + r.actual, 0);
   const totalForecast = byPhase.reduce((s, r) => s + r.forecast, 0);
+  const totalFtePlan = byPhase.reduce((s, r) => s + r.ftePlan, 0);
+  const totalFteActual = byPhase.reduce((s, r) => s + r.fteActual, 0);
   const consumed = totalPlanned > 0 ? (totalActual / totalPlanned) * 100 : 0;
 
   const distribution = byPhase
@@ -370,8 +431,9 @@ function PhaseFinancialsPage() {
       <PageHeading icon="💠">Phase Financials</PageHeading>
       <div className="text-sm text-muted-foreground mb-3">
         Planned vs actual vs forecast spend inside each stage-gate date window (from monthly
-        cashflow), attributed per project stream when streams are configured. The phase filter
-        scopes spend to that gate window — not only projects whose current phase matches.
+        cashflow), plus FTE plan (work items) vs FTE actual (timesheets). Attributed per project
+        stream when streams are configured. The phase filter scopes spend to that gate window —
+        not only projects whose current phase matches.
       </div>
       <PortfolioFilters
         projects={projects}
@@ -383,11 +445,13 @@ function PhaseFinancialsPage() {
 
       <SectionFrame>
         <SectionTitle>Phase KPIs (Plan vs Actual)</SectionTitle>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
           <KpiCard label="Stages" value={orgPhases.length} accent="#3b82f6" />
           <KpiCard label="Planned" value={fmtM(totalPlanned)} accent="#8b5cf6" />
           <KpiCard label="Forecast" value={fmtM(totalForecast)} accent="#06b6d4" />
           <KpiCard label="Actual" value={fmtM(totalActual)} accent="#f59e0b" />
+          <KpiCard label="FTE plan" value={fmtM(totalFtePlan)} accent="#6366f1" />
+          <KpiCard label="FTE actual" value={fmtM(totalFteActual)} accent="#ea580c" />
           <KpiCard
             label="Actual / Planned"
             value={`${consumed.toFixed(1)}%`}
@@ -536,7 +600,11 @@ function PhaseFinancialsPage() {
                             ? r.forecast
                             : col.key === "actual"
                               ? r.actual
-                              : r.remaining;
+                              : col.key === "ftePlan"
+                                ? r.ftePlan
+                                : col.key === "fteActual"
+                                  ? r.fteActual
+                                  : r.remaining;
                       return (
                         <td key={col.key} className="text-right tabular-nums whitespace-nowrap">
                           {fmtM(amount)}
@@ -583,8 +651,16 @@ function PhaseFinancialsPage() {
                     sortKey={detailTable.sortKey}
                     sortDir={detailTable.sortDir}
                     onToggleSort={detailTable.toggleSort}
-                    align={["planned", "forecast", "actual"].includes(col.key) ? "right" : "left"}
-                    className={["planned", "forecast", "actual"].includes(col.key) ? "text-right" : ""}
+                    align={
+                      ["planned", "forecast", "actual", "ftePlan", "fteActual"].includes(col.key)
+                        ? "right"
+                        : "left"
+                    }
+                    className={
+                      ["planned", "forecast", "actual", "ftePlan", "fteActual"].includes(col.key)
+                        ? "text-right"
+                        : ""
+                    }
                   />
                 ))}
               </tr>
@@ -626,7 +702,11 @@ function PhaseFinancialsPage() {
                           ? r.planned
                           : col.key === "forecast"
                             ? r.forecast
-                            : r.actual;
+                            : col.key === "ftePlan"
+                              ? r.ftePlan
+                              : col.key === "fteActual"
+                                ? r.fteActual
+                                : r.actual;
                       return (
                         <td key={col.key} className="text-right tabular-nums whitespace-nowrap">
                           {fmtM(amount)}
