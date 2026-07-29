@@ -27,6 +27,7 @@ import {
   TIMESHEET_STATUS_CLASS,
   TIMESHEET_STATUS_LABEL,
   weekStartMonday,
+  workItemWeekdayPlan,
   type DayKey,
   type TimesheetStatus,
 } from "@/lib/timesheet";
@@ -105,6 +106,8 @@ type WorkItem = {
   stage_gate_id?: string | null;
   estimate_hours?: number | null;
   actual_hours?: number | null;
+  planned_start?: string | null;
+  planned_end?: string | null;
 };
 
 type ResourceRow = {
@@ -298,7 +301,7 @@ function TimesheetsPage() {
       const { data, error } = await supabase
         .from("work_items" as any)
         .select(
-          "id,project_id,stream_id,stage_gate_id,title,status,wbs_code,owner_user_id,estimate_hours,actual_hours",
+          "id,project_id,stream_id,stage_gate_id,title,status,wbs_code,owner_user_id,estimate_hours,actual_hours,planned_start,planned_end",
         );
       if (error) throw error;
       return (data ?? []) as unknown as WorkItem[];
@@ -820,7 +823,7 @@ function TimesheetsPage() {
                     <tr>
                       <th>Type</th>
                       <th>Project / task</th>
-                      <th className="text-right">Plan</th>
+                      <th className="text-right">Week plan</th>
                       {DAY_LABELS.map((d) => (
                         <th key={d} className="w-14 text-center">
                           {d}
@@ -834,7 +837,7 @@ function TimesheetsPage() {
                     {Object.entries(draftRows).map(([rowKey, row]) => {
                       const wi = row.work_item_id ? workById.get(row.work_item_id) : null;
                       const proj = row.project_id ? projectById.get(row.project_id) : null;
-                      const planned = Number(wi?.estimate_hours) || 0;
+                      const plannedTotal = Number(wi?.estimate_hours) || 0;
                       const actualToDate = Number(wi?.actual_hours) || 0;
                       const weekHrs = entryWeekTotal(row);
                       const weekInActuals =
@@ -842,10 +845,16 @@ function TimesheetsPage() {
                       // Pending: planned − approved actuals − this week's draft (until approved)
                       const left = Math.max(
                         0,
-                        planned - actualToDate - (row.billable && !weekInActuals ? weekHrs : 0),
+                        plannedTotal - actualToDate - (row.billable && !weekInActuals ? weekHrs : 0),
                       );
-                      const weekdayPlan =
-                        planned > 0 ? Math.round((planned / 5) * 100) / 100 : 0;
+                      const { weekHours: weekPlan, perDay: dayPlan } = row.billable
+                        ? workItemWeekdayPlan({
+                            estimateHours: plannedTotal,
+                            plannedStart: wi?.planned_start,
+                            plannedEnd: wi?.planned_end,
+                            weekStart,
+                          })
+                        : { weekHours: 0, perDay: emptyHours() };
                       return (
                         <tr key={rowKey}>
                           <td className="whitespace-nowrap">
@@ -877,8 +886,8 @@ function TimesheetsPage() {
                                 </div>
                                 <div className="text-[10px] text-muted-foreground">
                                   {wi?.status ? `${wi.status}` : ""}
-                                  {planned > 0
-                                    ? `${wi?.status ? " · " : ""}Actual ${actualToDate.toFixed(1)}h of ${planned.toFixed(1)}h planned`
+                                  {plannedTotal > 0
+                                    ? `${wi?.status ? " · " : ""}Actual ${actualToDate.toFixed(1)}h of ${plannedTotal.toFixed(1)}h planned`
                                     : wi?.status
                                       ? ""
                                       : "No planned hours on work item"}
@@ -900,10 +909,11 @@ function TimesheetsPage() {
                             )}
                           </td>
                           <td className="text-right tabular-nums text-muted-foreground">
-                            {row.billable && planned > 0 ? planned.toFixed(1) : "—"}
+                            {row.billable && weekPlan > 0 ? weekPlan.toFixed(1) : "—"}
                           </td>
                           {DAY_KEYS.map((dk, dayIdx) => {
                             const isWeekday = dayIdx < 5;
+                            const dayPlanned = dayPlan[dk] || 0;
                             return (
                               <td key={dk} className="align-top">
                                 <input
@@ -913,8 +923,8 @@ function TimesheetsPage() {
                                   step={0.25}
                                   disabled={!editable}
                                   title={
-                                    row.billable && isWeekday && weekdayPlan > 0
-                                      ? `Work item plan ≈ ${weekdayPlan}h/weekday`
+                                    row.billable && isWeekday && dayPlanned > 0
+                                      ? `Work item week plan ≈ ${dayPlanned}h this day`
                                       : undefined
                                   }
                                   className="st-input !w-14 !py-0.5 !px-1 text-center"
@@ -930,9 +940,9 @@ function TimesheetsPage() {
                                     }));
                                   }}
                                 />
-                                {row.billable && isWeekday && weekdayPlan > 0 ? (
+                                {row.billable && isWeekday && dayPlanned > 0 ? (
                                   <div className="mt-0.5 text-center text-[9px] tabular-nums text-muted-foreground">
-                                    plan {weekdayPlan}
+                                    plan {dayPlanned}
                                   </div>
                                 ) : null}
                               </td>
@@ -942,7 +952,7 @@ function TimesheetsPage() {
                             {weekHrs.toFixed(1)}
                           </td>
                           <td className="text-right tabular-nums text-muted-foreground">
-                            {row.billable && planned > 0 ? left.toFixed(1) : "—"}
+                            {row.billable && plannedTotal > 0 ? left.toFixed(1) : "—"}
                           </td>
                         </tr>
                       );

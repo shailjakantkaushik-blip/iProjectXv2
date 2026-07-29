@@ -451,7 +451,8 @@ export const TABLES: TableDef[] = [
     matchOn: ["project_code", "stream_code", "resource_name", "period_month"],
     orderBy: "period_month",
     description:
-      "Allocate people to a project (optional stream + stage gate). allocation_percent is % of FTE for the month; allocated_hours is planned hours.",
+      "Allocate people to a project (optional stream + stage gate). allocation_percent is % of FTE for the month; allocated_hours is planned hours. " +
+      "These hours drive Work Items → Lane allocated (planning ceiling). They do not overwrite work-item Planned h (demand).",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
       { key: "stream_id", label: "Stream", type: "text", fk: "stream" },
