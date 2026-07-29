@@ -18,7 +18,7 @@ import { RAG_COLORS, PRIORITY_COLORS, CHART_SERIES } from "@/lib/chart-theme";
 import { PageLoading } from "@/components/page-loading";
 import { QueryErrorPanel } from "@/components/query-error-panel";
 import { SoftUpdatingLabel } from "@/components/soft-updating";
-import { isColdLoading, queryErrorMessage } from "@/lib/query-ui";
+import { isColdLoading, logQueryError, queryErrorMessage } from "@/lib/query-ui";
 import {
   matchPhase,
   normLabel,
@@ -96,8 +96,14 @@ function ExecutiveDashboard() {
 
   const projectsQ = useQuery({
     queryKey: ["projects", organization?.id],
-    queryFn: async () =>
-      unwrapList(await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*")),
+    queryFn: async () => {
+      try {
+        return unwrapList(await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*"));
+      } catch (err) {
+        logQueryError("executive.projects", err);
+        throw new Error(queryErrorMessage(err));
+      }
+    },
     enabled: !!organization,
   });
 
@@ -111,21 +117,34 @@ function ExecutiveDashboard() {
 
   const streamsQ = useQuery({
     queryKey: ["project_streams", organization?.id],
-    queryFn: () => fetchOrgStreams(organization!.id),
+    queryFn: async () => {
+      try {
+        return await fetchOrgStreams(organization!.id);
+      } catch (err) {
+        logQueryError("executive.project_streams", err);
+        throw new Error(queryErrorMessage(err));
+      }
+    },
     enabled: !!organization?.id,
   });
 
   const gateDefsQ = useQuery({
     queryKey: ["stage_gate_definitions", organization?.id],
-    queryFn: async () =>
-      unwrapList(
-        await supabase
-          .from("stage_gate_definitions")
-          .select(STAGE_GATE_DEFINITIONS_SELECT as "*")
-          .eq("org_id", organization!.id)
-          .eq("is_active", true)
-          .order("sort_order", { ascending: true }),
-      ),
+    queryFn: async () => {
+      try {
+        return unwrapList(
+          await supabase
+            .from("stage_gate_definitions")
+            .select(STAGE_GATE_DEFINITIONS_SELECT as "*")
+            .eq("org_id", organization!.id)
+            .eq("is_active", true)
+            .order("sort_order", { ascending: true }),
+        );
+      } catch (err) {
+        logQueryError("executive.stage_gate_definitions", err);
+        throw new Error(queryErrorMessage(err));
+      }
+    },
     enabled: !!organization,
   });
 
@@ -136,19 +155,16 @@ function ExecutiveDashboard() {
         .from("financials_monthly")
         .select(FINANCIALS_MONTHLY_SELECT as "*");
       if (!full.error) return full.data ?? [];
+      logQueryError("financials_monthly.select", full.error);
       const min = await supabase
         .from("financials_monthly")
         .select(FINANCIALS_MONTHLY_SELECT_MIN as "*");
       if (!min.error) return min.data ?? [];
+      logQueryError("financials_monthly.select.min", min.error);
       const star = await supabase.from("financials_monthly").select("*");
       if (star.error) {
-        throw new Error(
-          [
-            `financials_monthly: ${queryErrorMessage(full.error)}`,
-            `fallback: ${queryErrorMessage(min.error)}`,
-            `*: ${queryErrorMessage(star.error)}`,
-          ].join("\n"),
-        );
+        logQueryError("financials_monthly.select.*", star.error);
+        throw new Error(queryErrorMessage(star.error));
       }
       return star.data ?? [];
     },
@@ -654,7 +670,7 @@ function ExecutiveDashboard() {
               <p className="font-semibold">Some portfolio panels could not refresh</p>
               <p className="mt-1 whitespace-pre-wrap break-words text-xs opacity-90">{softWarning}</p>
               <p className="mt-2 text-xs opacity-80">
-                If this mentions a missing column or schema cache, run pending migrations in Supabase, then use Reload schema.
+                Retry to refresh. If this keeps happening, an administrator may need to apply pending migrations and reload the Supabase schema.
               </p>
             </div>
             <button
