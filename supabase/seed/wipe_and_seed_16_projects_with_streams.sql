@@ -762,6 +762,11 @@ DECLARE
   u_idx int;
   w_idx int;
   hours_base numeric;
+  res_id_list uuid[];
+  n_res int;
+  rid1 uuid;
+  rid2 uuid;
+  owner_uid uuid;
 BEGIN
   -- Monday of current week (ISO)
   week0 := CURRENT_DATE - ((EXTRACT(ISODOW FROM CURRENT_DATE)::int) - 1);
@@ -820,31 +825,46 @@ BEGIN
       WHERE id = p_id;
     END LOOP;
 
-    -- Assign work items to linked users (owner_user_id + assignees)
+    -- Assign work items to resources (not login users)
+    SELECT array_agg(r.id ORDER BY r.name)
+    INTO res_id_list
+    FROM public.resources r
+    WHERE r.org_id = r_org.id;
+    n_res := COALESCE(array_length(res_id_list, 1), 0);
+
     idx := 0;
-    FOR wi IN
-      SELECT id FROM public.work_items WHERE org_id = r_org.id ORDER BY project_id, sort_order, wbs_code
-    LOOP
-      idx := idx + 1;
-      UPDATE public.work_items
-      SET owner_user_id = member_ids[((idx - 1) % n_members) + 1]
-      WHERE id = wi;
+    IF n_res > 0 THEN
+      FOR wi IN
+        SELECT id FROM public.work_items
+        WHERE org_id = r_org.id
+        ORDER BY project_id, sort_order, wbs_code
+      LOOP
+        idx := idx + 1;
+        rid1 := res_id_list[((idx - 1) % n_res) + 1];
+        rid2 := res_id_list[(idx % n_res) + 1];
 
-      INSERT INTO public.work_item_assignees (org_id, work_item_id, user_id)
-      VALUES (r_org.id, wi, member_ids[((idx - 1) % n_members) + 1])
-      ON CONFLICT (work_item_id, user_id) DO NOTHING;
+        SELECT user_id INTO owner_uid FROM public.resources WHERE id = rid1;
 
-      -- Second assignee for variety when multiple members exist
-      IF n_members > 1 THEN
-        INSERT INTO public.work_item_assignees (org_id, work_item_id, user_id)
-        VALUES (
-          r_org.id,
-          wi,
-          member_ids[((idx) % n_members) + 1]
-        )
-        ON CONFLICT (work_item_id, user_id) DO NOTHING;
-      END IF;
-    END LOOP;
+        UPDATE public.work_items
+        SET
+          owner_user_id = owner_uid,
+          owner = (SELECT name FROM public.resources WHERE id = rid1)
+        WHERE id = wi;
+
+        INSERT INTO public.work_item_assignees (org_id, work_item_id, resource_id, user_id)
+        VALUES (r_org.id, wi, rid1, owner_uid)
+        ON CONFLICT (work_item_id, resource_id) DO UPDATE
+          SET user_id = EXCLUDED.user_id;
+
+        IF rid2 IS DISTINCT FROM rid1 THEN
+          INSERT INTO public.work_item_assignees (org_id, work_item_id, resource_id, user_id)
+          SELECT r_org.id, wi, rid2, r.user_id
+          FROM public.resources r WHERE r.id = rid2
+          ON CONFLICT (work_item_id, resource_id) DO UPDATE
+            SET user_id = EXCLUDED.user_id;
+        END IF;
+      END LOOP;
+    END IF;
 
     -- Timesheets for each linked resource/user across 4 weeks
     u_idx := 0;
@@ -897,14 +917,14 @@ BEGIN
         DELETE FROM public.timesheet_approvals WHERE timesheet_id = sheet_id;
         DELETE FROM public.timesheet_entries WHERE timesheet_id = sheet_id;
 
-        -- Up to 2 billable work items assigned to this user
+        -- Up to 2 billable work items assigned to this resource
         SELECT array_agg(x.work_item_id)
         INTO wi_ids
         FROM (
           SELECT a.work_item_id
           FROM public.work_item_assignees a
           JOIN public.work_items wi2 ON wi2.id = a.work_item_id
-          WHERE a.org_id = r_org.id AND a.user_id = res.user_id
+          WHERE a.org_id = r_org.id AND a.resource_id = res.resource_id
           ORDER BY wi2.project_id, wi2.sort_order
           LIMIT 2
         ) x;

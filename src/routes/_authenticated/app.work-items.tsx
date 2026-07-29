@@ -12,8 +12,7 @@ import { fetchOrgStreams, formatProjectStreamRef, formatStreamLabel } from "@/li
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
-import { memberLabel, type OrgMember } from "@/lib/decision-approval";
-import { MemberMultiSelect } from "@/components/member-multi-select";
+import { ResourceMultiSelect } from "@/components/resource-multi-select";
 
 export const Route = createFileRoute("/_authenticated/app/work-items")({
   component: WorkItemsPage,
@@ -21,6 +20,15 @@ export const Route = createFileRoute("/_authenticated/app/work-items")({
 
 const STATUSES = ["To Do", "In Progress", "Blocked", "Done", "Cancelled"];
 const PRIORITIES = ["Critical", "High", "Medium", "Low"];
+
+type ResourceRow = {
+  id: string;
+  name: string;
+  email: string | null;
+  role: string | null;
+  user_id: string | null;
+  status: string | null;
+};
 
 function WorkItemsPage() {
   const { organization, session, profile } = useAuth();
@@ -41,19 +49,28 @@ function WorkItemsPage() {
     enabled: !!orgId,
   });
 
-  const { data: members = [] } = useQuery({
-    queryKey: ["org-members", orgId],
+  const { data: resources = [] } = useQuery({
+    queryKey: ["resources", orgId, "work-items"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("profiles")
-        .select("id,full_name,email")
-        .eq("org_id", orgId!)
-        .order("full_name");
+        .from("resources")
+        .select("id,name,email,role,user_id,status")
+        .order("name");
       if (error) throw error;
-      return (data ?? []) as OrgMember[];
+      return (data ?? []) as unknown as ResourceRow[];
     },
     enabled: !!orgId,
   });
+
+  const myResource = useMemo(
+    () => resources.find((r) => r.user_id === userId) || null,
+    [resources, userId],
+  );
+
+  const activeResources = useMemo(
+    () => resources.filter((r) => !r.status || /active/i.test(r.status)),
+    [resources],
+  );
 
   const itemsQ = useQuery({
     queryKey: ["work_items", orgId],
@@ -76,9 +93,14 @@ function WorkItemsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("work_item_assignees" as any)
-        .select("id,work_item_id,user_id");
+        .select("id,work_item_id,resource_id,user_id");
       if (error) throw error;
-      return (data ?? []) as unknown as { id: string; work_item_id: string; user_id: string }[];
+      return (data ?? []) as unknown as {
+        id: string;
+        work_item_id: string;
+        resource_id: string;
+        user_id: string | null;
+      }[];
     },
     enabled: !!orgId,
   });
@@ -87,14 +109,15 @@ function WorkItemsPage() {
   const assigneesByWorkItem = useMemo(() => {
     const m = new Map<string, string[]>();
     for (const a of assignees) {
+      if (!a.resource_id) continue;
       const list = m.get(a.work_item_id) || [];
-      list.push(a.user_id);
+      list.push(a.resource_id);
       m.set(a.work_item_id, list);
     }
     return m;
   }, [assignees]);
 
-  const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
+  const resourceById = useMemo(() => new Map(resources.map((r) => [r.id, r])), [resources]);
 
   const projectById = useMemo(
     () => new Map(projects.map((p: any) => [p.id, p])),
@@ -137,13 +160,16 @@ function WorkItemsPage() {
   const formStreams = streamsByProject.get(form.project_id) || [];
 
   const visibleBase = useMemo(() => {
-    if (!mineOnly || !userId) return items;
-    return items.filter(
-      (i) =>
-        i.owner_user_id === userId ||
-        (assigneesByWorkItem.get(i.id) || []).includes(userId),
-    );
-  }, [items, mineOnly, userId, assigneesByWorkItem]);
+    if (!mineOnly) return items;
+    if (!myResource?.id && !userId) return [];
+    return items.filter((i) => {
+      const team = assigneesByWorkItem.get(i.id) || [];
+      if (myResource?.id && team.includes(myResource.id)) return true;
+      // Legacy: owner_user_id still set
+      if (userId && i.owner_user_id === userId) return true;
+      return false;
+    });
+  }, [items, mineOnly, userId, myResource, assigneesByWorkItem]);
 
   const columns: ColumnarColumn<any>[] = useMemo(
     () => [
@@ -168,15 +194,15 @@ function WorkItemsPage() {
       { key: "owner", label: "Owner" },
       {
         key: "team",
-        label: "Team",
+        label: "Resources",
         getValue: (i) =>
           (assigneesByWorkItem.get(i.id) || [])
-            .map((uid) => memberLabel(memberById.get(uid) || { id: uid, full_name: null, email: null }))
+            .map((rid) => resourceById.get(rid)?.name || rid.slice(0, 8))
             .join(", "),
       },
       { key: "planned_end", label: "End" },
     ],
-    [projectById, streamById, assigneesByWorkItem, memberById],
+    [projectById, streamById, assigneesByWorkItem, resourceById],
   );
 
   const table = useColumnarTable(visibleBase, columns);
@@ -189,7 +215,19 @@ function WorkItemsPage() {
         const def = formStreams.find((s) => s.is_default) || formStreams[0];
         streamId = def?.id || null;
       }
-      const ownerUserId = form.assign_to_me ? userId : form.assignee_ids[0] || null;
+      const team = new Set(form.assignee_ids);
+      if (form.assign_to_me) {
+        if (!myResource?.id) {
+          throw new Error(
+            "Your login is not linked to a resource. Ask an admin to set this under Timesheets → Resource setup.",
+          );
+        }
+        team.add(myResource.id);
+      }
+      const primaryResourceId = [...team][0] || null;
+      const primary = primaryResourceId ? resourceById.get(primaryResourceId) : null;
+      const ownerUserId = primary?.user_id || (form.assign_to_me ? userId : null) || null;
+
       const { data, error } = await supabase
         .from("work_items" as any)
         .insert({
@@ -199,7 +237,7 @@ function WorkItemsPage() {
           title: form.title,
           status: form.status,
           priority: form.priority,
-          owner: form.owner || null,
+          owner: primary?.name || form.owner || null,
           owner_user_id: ownerUserId,
           planned_start: form.planned_start || null,
           planned_end: form.planned_end || null,
@@ -210,14 +248,12 @@ function WorkItemsPage() {
         .single();
       if (error) throw error;
       const wiId = (data as any).id as string;
-      const team = new Set(form.assignee_ids);
-      if (form.assign_to_me && userId) team.add(userId);
-      if (ownerUserId) team.add(ownerUserId);
       if (team.size) {
-        const rows = [...team].map((uid) => ({
+        const rows = [...team].map((rid) => ({
           org_id: orgId,
           work_item_id: wiId,
-          user_id: uid,
+          resource_id: rid,
+          user_id: resourceById.get(rid)?.user_id || null,
         }));
         const { error: aErr } = await supabase
           .from("work_item_assignees" as any)
@@ -242,31 +278,36 @@ function WorkItemsPage() {
   });
 
   const setAssignees = useMutation({
-    mutationFn: async ({ workItemId, userIds }: { workItemId: string; userIds: string[] }) => {
+    mutationFn: async ({
+      workItemId,
+      resourceIds,
+    }: {
+      workItemId: string;
+      resourceIds: string[];
+    }) => {
       if (!orgId) throw new Error("No org");
       const { error: delErr } = await supabase
         .from("work_item_assignees" as any)
         .delete()
         .eq("work_item_id", workItemId);
       if (delErr) throw delErr;
-      if (userIds.length) {
+      if (resourceIds.length) {
         const { error } = await supabase.from("work_item_assignees" as any).insert(
-          userIds.map((uid) => ({
+          resourceIds.map((rid) => ({
             org_id: orgId,
             work_item_id: workItemId,
-            user_id: uid,
+            resource_id: rid,
+            user_id: resourceById.get(rid)?.user_id || null,
           })) as never,
         );
         if (error) throw error;
       }
-      // Keep primary owner in sync with first assignee when present
+      const primary = resourceIds[0] ? resourceById.get(resourceIds[0]) : null;
       const { error: oErr } = await supabase
         .from("work_items" as any)
         .update({
-          owner_user_id: userIds[0] || null,
-          owner: userIds[0]
-            ? memberLabel(memberById.get(userIds[0]) || { id: userIds[0], full_name: null, email: null })
-            : null,
+          owner_user_id: primary?.user_id || null,
+          owner: primary?.name || null,
         } as never)
         .eq("id", workItemId);
       if (oErr) throw oErr;
@@ -274,7 +315,7 @@ function WorkItemsPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["work_items", orgId] });
       qc.invalidateQueries({ queryKey: ["work_item_assignees", orgId] });
-      toast.success("Team updated");
+      toast.success("Resources updated");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -408,12 +449,12 @@ function WorkItemsPage() {
             Assign to me
           </label>
           <div className="md:col-span-2">
-            <div className="mb-1 text-[11px] font-medium text-muted-foreground">Team members</div>
-            <MemberMultiSelect
-              members={members}
+            <div className="mb-1 text-[11px] font-medium text-muted-foreground">Assigned resources</div>
+            <ResourceMultiSelect
+              resources={activeResources}
               value={form.assignee_ids}
               onChange={(ids) => setForm((f) => ({ ...f, assignee_ids: ids }))}
-              placeholder="Search and select team…"
+              placeholder="Search and select resources…"
             />
           </div>
           <input
@@ -438,8 +479,8 @@ function WorkItemsPage() {
           </button>
         </div>
         <p className="mt-2 text-[11px] text-muted-foreground">
-          Assign team members so timesheet placeholders appear for them. Stream defaults to the
-          project&apos;s Core stream.
+          Assign resources so timesheet placeholders appear for their linked logins. Stream defaults
+          to the project&apos;s Core stream.
         </p>
       </SectionFrame>
 
@@ -543,13 +584,13 @@ function WorkItemsPage() {
                       </td>
                       <td className="text-xs">{i.owner || "—"}</td>
                       <td className="min-w-[14rem]">
-                        <MemberMultiSelect
-                          members={members}
+                        <ResourceMultiSelect
+                          resources={activeResources}
                           value={assigneesByWorkItem.get(i.id) || []}
                           onChange={(ids) =>
-                            setAssignees.mutate({ workItemId: i.id, userIds: ids })
+                            setAssignees.mutate({ workItemId: i.id, resourceIds: ids })
                           }
-                          placeholder="Assign team…"
+                          placeholder="Assign resources…"
                         />
                       </td>
                       <td className="text-xs whitespace-nowrap">{i.planned_end || "—"}</td>

@@ -215,16 +215,20 @@ function TimesheetsPage() {
   );
 
   const { data: assignees = [] } = useQuery({
-    queryKey: ["work_item_assignees", orgId, userId],
+    queryKey: ["work_item_assignees", orgId, myResource?.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("work_item_assignees" as any)
-        .select("work_item_id,user_id")
-        .eq("user_id", userId!);
+        .select("work_item_id,resource_id,user_id")
+        .eq("resource_id", myResource!.id);
       if (error) throw error;
-      return (data ?? []) as unknown as { work_item_id: string; user_id: string }[];
+      return (data ?? []) as unknown as {
+        work_item_id: string;
+        resource_id: string;
+        user_id: string | null;
+      }[];
     },
-    enabled: !!orgId && !!userId,
+    enabled: !!orgId && !!myResource?.id,
   });
 
   const { data: workItems = [] } = useQuery({
@@ -241,11 +245,10 @@ function TimesheetsPage() {
 
   const assignedWorkItems = useMemo(() => {
     const ids = new Set(assignees.map((a) => a.work_item_id));
-    // Also include owner_user_id matches (legacy / before assignee backfill)
     return workItems.filter(
       (w) =>
         w.status !== "Cancelled" &&
-        (ids.has(w.id) || w.owner_user_id === userId),
+        (ids.has(w.id) || (!!userId && w.owner_user_id === userId)),
     );
   }, [assignees, workItems, userId]);
 
