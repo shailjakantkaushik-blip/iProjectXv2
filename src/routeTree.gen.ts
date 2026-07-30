@@ -103,6 +103,7 @@ import { Route as AuthenticatedAppInvoiceIdRouteImport } from './routes/_authent
 import { Route as AuthenticatedAppProjectsIdRouteImport } from './routes/_authenticated/app.projects.$id'
 import { Route as AuthenticatedAppProjectsNewRouteImport } from './routes/_authenticated/app.projects.new'
 import { Route as AuthenticatedPlatformInvoiceIdRouteImport } from './routes/_authenticated/platform.invoice.$id'
+import { Route as ApiByodRestSplatRouteImport } from './routes/api/byod/rest.$'
 import { Route as ApiPublicHooksBillingRunRouteImport } from './routes/api/public/hooks/billing-run'
 
 const IndexRoute = IndexRouteImport.update({
@@ -643,6 +644,11 @@ const AuthenticatedPlatformInvoiceIdRoute =
     path: '/invoice/$id',
     getParentRoute: () => AuthenticatedPlatformRoute,
   } as any)
+const ApiByodRestSplatRoute = ApiByodRestSplatRouteImport.update({
+  id: '/api/byod/rest/$',
+  path: '/api/byod/rest/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicHooksBillingRunRoute =
   ApiPublicHooksBillingRunRouteImport.update({
     id: '/api/public/hooks/billing-run',
@@ -744,6 +750,7 @@ export interface FileRoutesByFullPath {
   '/app/projects/$id': typeof AuthenticatedAppProjectsIdRoute
   '/app/projects/new': typeof AuthenticatedAppProjectsNewRoute
   '/platform/invoice/$id': typeof AuthenticatedPlatformInvoiceIdRoute
+  '/api/byod/rest/$': typeof ApiByodRestSplatRoute
   '/api/public/hooks/billing-run': typeof ApiPublicHooksBillingRunRoute
 }
 export interface FileRoutesByTo {
@@ -839,6 +846,7 @@ export interface FileRoutesByTo {
   '/app/projects/$id': typeof AuthenticatedAppProjectsIdRoute
   '/app/projects/new': typeof AuthenticatedAppProjectsNewRoute
   '/platform/invoice/$id': typeof AuthenticatedPlatformInvoiceIdRoute
+  '/api/byod/rest/$': typeof ApiByodRestSplatRoute
   '/api/public/hooks/billing-run': typeof ApiPublicHooksBillingRunRoute
 }
 export interface FileRoutesById {
@@ -937,6 +945,7 @@ export interface FileRoutesById {
   '/_authenticated/app/projects/$id': typeof AuthenticatedAppProjectsIdRoute
   '/_authenticated/app/projects/new': typeof AuthenticatedAppProjectsNewRoute
   '/_authenticated/platform/invoice/$id': typeof AuthenticatedPlatformInvoiceIdRoute
+  '/api/byod/rest/$': typeof ApiByodRestSplatRoute
   '/api/public/hooks/billing-run': typeof ApiPublicHooksBillingRunRoute
 }
 export interface FileRouteTypes {
@@ -1035,6 +1044,7 @@ export interface FileRouteTypes {
     | '/app/projects/$id'
     | '/app/projects/new'
     | '/platform/invoice/$id'
+    | '/api/byod/rest/$'
     | '/api/public/hooks/billing-run'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -1130,6 +1140,7 @@ export interface FileRouteTypes {
     | '/app/projects/$id'
     | '/app/projects/new'
     | '/platform/invoice/$id'
+    | '/api/byod/rest/$'
     | '/api/public/hooks/billing-run'
   id:
     | '__root__'
@@ -1227,6 +1238,7 @@ export interface FileRouteTypes {
     | '/_authenticated/app/projects/$id'
     | '/_authenticated/app/projects/new'
     | '/_authenticated/platform/invoice/$id'
+    | '/api/byod/rest/$'
     | '/api/public/hooks/billing-run'
   fileRoutesById: FileRoutesById
 }
@@ -1240,6 +1252,7 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   LegalSlugRoute: typeof LegalSlugRoute
   OSlugLoginRoute: typeof OSlugLoginRoute
+  ApiByodRestSplatRoute: typeof ApiByodRestSplatRoute
   ApiPublicHooksBillingRunRoute: typeof ApiPublicHooksBillingRunRoute
 }
 
@@ -1903,6 +1916,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPlatformInvoiceIdRouteImport
       parentRoute: typeof AuthenticatedPlatformRoute
     }
+    '/api/byod/rest/$': {
+      id: '/api/byod/rest/$'
+      path: '/api/byod/rest/$'
+      fullPath: '/api/byod/rest/$'
+      preLoaderRoute: typeof ApiByodRestSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/billing-run': {
       id: '/api/public/hooks/billing-run'
       path: '/api/public/hooks/billing-run'
@@ -2143,6 +2163,7 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   LegalSlugRoute: LegalSlugRoute,
   OSlugLoginRoute: OSlugLoginRoute,
+  ApiByodRestSplatRoute: ApiByodRestSplatRoute,
   ApiPublicHooksBillingRunRoute: ApiPublicHooksBillingRunRoute,
 }
 export const routeTree = rootRouteImport

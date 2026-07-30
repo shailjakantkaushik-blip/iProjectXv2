@@ -461,7 +461,7 @@ function Page() {
           onClear={sprintTable.clearAll}
           placeholder="Search sprint history…"
         />
-        <div className="overflow-auto">
+        <div className="st-table-wrap overflow-auto">
           <table className="st-table">
             <thead>
               <tr>

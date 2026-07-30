@@ -3,6 +3,9 @@
  * Default orgs → shared iProjectX supabaseAdmin.
  * Active BYOD orgs → ephemeral client against the customer HTTPS DB API
  * (PostgREST-compatible; not limited to *.supabase.co).
+ *
+ * resolveOrgDataClient results are cached briefly to avoid decrypt + client
+ * construction on every proxied REST call.
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { decryptByodSecret } from "@/lib/byod-crypto.server";
@@ -26,6 +29,21 @@ type ByodRow = {
   notes: string | null;
   updated_at: string | null;
 };
+
+const CACHE_TTL_MS = 120_000;
+
+type CachedOrgData = {
+  expires: number;
+  result: OrgDataClientResult;
+  upstream: ByodUpstreamCredentials | null;
+};
+
+const orgDataCache = new Map<string, CachedOrgData>();
+
+export function invalidateOrgDataClientCache(orgId?: string): void {
+  if (orgId) orgDataCache.delete(orgId);
+  else orgDataCache.clear();
+}
 
 export function normalizeSupabaseUrl(url: string): string {
   const u = url.trim().replace(/\/+$/, "");
@@ -119,11 +137,14 @@ export type OrgDataClientResult = {
   orgId: string;
 };
 
-/**
- * Resolve the Supabase client for tenant business data.
- * Control-plane tables (orgs, billing, BYOD config) always stay on platform.
- */
-export async function resolveOrgDataClient(orgId: string): Promise<OrgDataClientResult> {
+/** Raw credentials for the BYOD REST proxy (no supabase-js wrapper). */
+export type ByodUpstreamCredentials = {
+  orgId: string;
+  baseUrl: string;
+  serviceRoleKey: string;
+};
+
+async function buildOrgDataResolution(orgId: string): Promise<CachedOrgData> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data: org } = await supabaseAdmin
     .from("organizations")
@@ -131,8 +152,14 @@ export async function resolveOrgDataClient(orgId: string): Promise<OrgDataClient
     .eq("id", orgId)
     .maybeSingle();
 
+  const platformResult: OrgDataClientResult = {
+    client: supabaseAdmin as unknown as SupabaseClient,
+    mode: "platform",
+    orgId,
+  };
+
   if (!(org as { byod_active?: boolean } | null)?.byod_active) {
-    return { client: supabaseAdmin as unknown as SupabaseClient, mode: "platform", orgId };
+    return { expires: Date.now() + CACHE_TTL_MS, result: platformResult, upstream: null };
   }
 
   const row = await loadByodRow(orgId);
@@ -144,12 +171,40 @@ export async function resolveOrgDataClient(orgId: string): Promise<OrgDataClient
     !row.secret_ciphertext ||
     !row.secret_nonce
   ) {
-    return { client: supabaseAdmin as unknown as SupabaseClient, mode: "platform", orgId };
+    return { expires: Date.now() + CACHE_TTL_MS, result: platformResult, upstream: null };
   }
 
   const secret = decryptByodSecret(row.secret_ciphertext, row.secret_nonce);
-  const client = createClient(normalizeSupabaseUrl(row.supabase_url), secret, {
+  const baseUrl = normalizeSupabaseUrl(row.supabase_url);
+  const client = createClient(baseUrl, secret, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  return { client, mode: "byod", orgId };
+  return {
+    expires: Date.now() + CACHE_TTL_MS,
+    result: { client, mode: "byod", orgId },
+    upstream: { orgId, baseUrl, serviceRoleKey: secret },
+  };
+}
+
+/**
+ * Resolve the Supabase client for tenant business data.
+ * Control-plane tables (orgs, billing, BYOD config) always stay on platform.
+ */
+export async function resolveOrgDataClient(orgId: string): Promise<OrgDataClientResult> {
+  const hit = orgDataCache.get(orgId);
+  if (hit && hit.expires > Date.now()) return hit.result;
+  const built = await buildOrgDataResolution(orgId);
+  orgDataCache.set(orgId, built);
+  return built.result;
+}
+
+/** Credentials for same-origin BYOD REST proxy. Null when org uses platform DB. */
+export async function resolveByodUpstream(
+  orgId: string,
+): Promise<ByodUpstreamCredentials | null> {
+  const hit = orgDataCache.get(orgId);
+  if (hit && hit.expires > Date.now()) return hit.upstream;
+  const built = await buildOrgDataResolution(orgId);
+  orgDataCache.set(orgId, built);
+  return built.upstream;
 }

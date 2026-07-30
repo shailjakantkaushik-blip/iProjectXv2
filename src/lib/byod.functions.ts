@@ -13,6 +13,7 @@ import {
   resolveOrgDataClient,
   testCustomerSupabaseConnection,
   toPublicByodStatus,
+  invalidateOrgDataClientCache,
 } from "@/lib/byod.server";
 import type { ByodPublicStatus, ByodStatus } from "@/lib/byod-types";
 
@@ -142,6 +143,8 @@ export const upsertOrgByodConnection = createServerFn({ method: "POST" })
       .upsert(row, { onConflict: "org_id" });
     if (error) throw new Error(error.message);
 
+    invalidateOrgDataClientCache(data.org_id);
+
     const { writeSecurityEvent } = await import("@/lib/security-audit");
     await writeSecurityEvent({
       orgId: data.org_id,
@@ -188,6 +191,7 @@ export const clearOrgByodSecret = createServerFn({ method: "POST" })
       .eq("org_id", data.org_id);
     if (error) throw new Error(error.message);
 
+    invalidateOrgDataClientCache(data.org_id);
     const { writeSecurityEvent } = await import("@/lib/security-audit");
     await writeSecurityEvent({
       orgId: data.org_id,
@@ -238,6 +242,8 @@ export const testOrgByodConnection = createServerFn({ method: "POST" })
       })
       .eq("org_id", data.org_id);
     if (error) throw new Error(error.message);
+
+    invalidateOrgDataClientCache(data.org_id);
 
     const { writeSecurityEvent } = await import("@/lib/security-audit");
     await writeSecurityEvent({
@@ -296,6 +302,7 @@ export const setOrgByodActiveState = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
 
     await setOrgByodActive(data.org_id, data.active);
+    invalidateOrgDataClientCache(data.org_id);
 
     const { writeSecurityEvent } = await import("@/lib/security-audit");
     await writeSecurityEvent({

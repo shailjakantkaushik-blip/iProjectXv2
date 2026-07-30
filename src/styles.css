@@ -506,6 +506,13 @@ html[data-style-theme="aurora"] .shell-root::before {
   overscroll-behavior-x: contain;
 }
 
+/* Tablet / laptop mid-widths: keep registers usable without page-level overflow */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .section-frame { padding: 14px 14px; }
+  .page-heading { font-size: 20px; }
+  .st-table thead th, .st-table tbody td { padding: 6px 9px; font-size: 12.5px; }
+}
+
 @media (max-width: 640px) {
   .section-frame { padding: 12px 12px; border-radius: 8px; }
   .page-heading { font-size: 18px; }
@@ -514,6 +521,12 @@ html[data-style-theme="aurora"] .shell-root::before {
   .st-btn-primary,
   .st-btn-primary.st-btn-inline {
     min-height: 2.5rem;
+  }
+  /* Prevent wide form grids from blowing out phone viewports */
+  .shell-main input,
+  .shell-main select,
+  .shell-main textarea {
+    max-width: 100%;
   }
 }
 

@@ -1,9 +1,11 @@
 # Access Control Policy
 
 **Effective:** 2026-07-25  
+**Updated:** 2026-07-30  
 
 ## 1. Authentication
 - Primary IdP: **Supabase Auth** (email/password; OAuth optional)  
+- **Optional per-org SSO (SAML)** via white-label branding when provisioned  
 - Sessions use **PKCE** and are stored in **sessionStorage** (not localStorage JWTs)  
 - **MFA (TOTP authenticator app) is mandatory for every user** and cannot be disabled in-app  
 - Minimum password length: **8** characters (forced change for provisioned accounts)  
@@ -12,10 +14,14 @@
 ### Supabase dashboard requirement
 Enable MFA under **Authentication → Multi-factor authentication → TOTP**. Without this, the app cannot enroll factors.
 
+### SSO
+Org SSO stores provider id + email domains only. Membership is enforced after SSO sign-in (`assertUserBelongsToOrgSlug`). Unprovisioned users are signed out.
+
 ## 2. Authorisation
-- Tenant isolation via `org_id` and Postgres **RLS**  
+- Tenant isolation via `org_id` and Postgres **RLS** on the shared data plane  
+- When **BYOD** is active, tenant REST is proxied to the customer DB with server-side org scoping  
 - Privileged server functions assert platform/org admin  
-- UI page permissions are secondary to RLS  
+- UI page permissions are secondary to RLS / proxy scope  
 
 ## 3. Joiner / Mover / Leaver
 | Event | Control |
@@ -28,4 +34,4 @@ Enable MFA under **Authentication → Multi-factor authentication → TOTP**. Wi
 Org admins should review user roles quarterly. Platform admins review `platform_admin` membership quarterly.
 
 ## 5. Service accounts
-`SUPABASE_SERVICE_ROLE_KEY` and `BILLING_CRON_SECRET` are server-only secrets; never exposed to the browser.
+`SUPABASE_SERVICE_ROLE_KEY`, `BILLING_CRON_SECRET`, and `BYOD_SECRETS_KEK` are server-only secrets; never exposed to the browser.

@@ -29,6 +29,7 @@ import {
   Shield,
   Sparkles,
   Brain,
+  Database,
 } from "lucide-react";
 import {
   DEFAULT_LANDING,
@@ -79,13 +80,13 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "iProjectX — enterprise PMO command center with MFA, multi-tenant security, and In-house AI by default — Approved Open AI model only if your organisation requests it.",
+          "iProjectX — enterprise PMO with mandatory authenticator MFA, optional SSO & BYOD, multi-tenant security, and In-house AI by default — Approved Open AI model only if your organisation requests it.",
       },
       { property: "og:title", content: "iProjectX — Enterprise PMO command center" },
       {
         property: "og:description",
         content:
-          "Live cockpit, RAID, financials, MFA, and In-house AI by default — portfolio intelligence without sending data out unless your organisation opts in.",
+          "Live cockpit, RAID, financials, MFA, optional SSO/BYOD, and In-house AI by default — portfolio intelligence without sending data out unless your organisation opts in.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -148,10 +149,14 @@ const CAP_ICONS: Record<string, any> = {
   "White-label & Themes": Palette,
   "Excel-Native": FileSpreadsheet,
   "Benefits Realisation": BadgeCheck,
+  "Optional BYOD": Database,
+  "Optional SSO": KeyRound,
 };
 
 const TRUST_STRIP_ICONS: Record<string, any> = {
   "MFA for every user": KeyRound,
+  "Optional SSO": KeyRound,
+  "Optional BYOD": Database,
   "Multi-tenant RLS": Lock,
   "In-house AI": Sparkles,
   "Admin audit trails": ScrollText,
@@ -1712,7 +1717,9 @@ function SecurityTour({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: strin
   const p = cfg.palette;
   const sec = cfg.security ?? DEFAULT_LANDING.security;
   const controls = [
-    { label: "Identity", value: "MFA required" },
+    { label: "Identity", value: "TOTP MFA required" },
+    { label: "SSO", value: "Optional SAML" },
+    { label: "Data plane", value: "Shared or BYOD" },
     { label: "Tenancy", value: "Row-level RLS" },
     { label: "Intelligence", value: "In-house AI" },
     { label: "External AI", value: "Opt-in only" },

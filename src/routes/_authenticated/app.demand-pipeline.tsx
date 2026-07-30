@@ -355,7 +355,7 @@ function DemandPipeline() {
           onClear={table.clearAll}
           placeholder="Search pipeline register…"
         />
-        <div className="overflow-x-auto">
+        <div className="st-table-wrap overflow-x-auto">
           <table className="st-table">
             <thead>
               <tr>

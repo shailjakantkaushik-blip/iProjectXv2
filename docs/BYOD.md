@@ -8,9 +8,10 @@ The runtime uses a PostgREST-compatible HTTPS API (same shape as Supabase’s RE
 
 | Plane | Location |
 |-------|----------|
-| Control plane (orgs, users, billing, white-label, BYOD config) | Always iProjectX data plane |
-| Tenant business data (projects, RAID, …) when BYOD **active** | Customer database (server-side client) |
+| Control plane (orgs, users, billing, white-label, SSO config, BYOD secrets, support, legal, security/audit) | Always iProjectX data plane |
+| Tenant business data (projects, RAID, financials, timesheets, work items, …) when BYOD **active** | Customer database via same-origin REST proxy + server `resolveOrgDataClient` |
 | Tenant business data when BYOD **off** | iProjectX data plane (unchanged) |
+| Auth (`/auth/v1`) | Always iProjectX (platform Supabase Auth) |
 
 ## Secrets
 
@@ -18,6 +19,7 @@ The runtime uses a PostgREST-compatible HTTPS API (same shape as Supabase’s RE
 - Encryption key: server env `BYOD_SECRETS_KEK` (≥32 chars, never `VITE_`)
 - Platform admin UI is **write-only** (paste / replace / clear — never view)
 - Table has **no authenticated RLS policies**; access only via service-role server functions
+- Customer service-role keys are **never** sent to the browser
 
 ## Platform admin
 
@@ -29,18 +31,41 @@ The runtime uses a PostgREST-compatible HTTPS API (same shape as Supabase’s RE
 4. **Test connection**  
 5. Toggle **Use customer DB** (requires successful test)
 
-## Runtime
+## Runtime (full app wiring)
 
-Server code should resolve the data client with:
+### Browser
+
+When `organizations.byod_active` is true for the signed-in user’s org:
+
+1. `AuthProvider` enables client routing (`setByodClientRoutingActive`)
+2. The shared `supabase` client’s `global.fetch` rewrites **tenant** `/rest/v1/{table}` calls to same-origin `/api/byod/rest/{table}`
+3. Control-plane tables and `/auth/v1/*` keep using the platform Supabase URL
+
+Table lists live in `src/lib/byod-tables.ts`.
+
+### Proxy (`/api/byod/rest/$`)
+
+1. Verifies the platform user JWT  
+2. Loads `profile.org_id` and resolves cached BYOD upstream credentials  
+3. Forwards to the customer PostgREST with the **service role** key  
+4. Forces `org_id=eq.{org}` on scoped tables (service role bypasses RLS)
+
+Upstream credentials from `resolveOrgDataClient` / `resolveByodUpstream` are cached ~120s and invalidated on BYOD save / clear / test / activate.
+
+### Server functions
 
 ```ts
 const { client, mode } = await resolveOrgDataClient(orgId);
 // mode: "platform" | "byod"
 ```
 
-Example wiring: project purge candidates/deletes.
+Example: project purge candidates/deletes.
 
-Browser queries still use the shared publishable client today for most screens. Expand `resolveOrgDataClient` usage (or a future data proxy) as customer DBs are provisioned with the iProjectX schema.
+## Performance
+
+- O(1) table allowlist check on each browser REST call (no extra RTT when BYOD is off)
+- Cached decrypt + upstream client on the server (avoids per-request KEK work)
+- Proxy only for tenant tables; auth and org chrome stay on platform
 
 ## Customer project prep
 

@@ -308,7 +308,7 @@ function StageGatesPage() {
           onClear={table.clearAll}
           placeholder="Search stage gate register…"
         />
-        <div className="overflow-x-auto">
+        <div className="st-table-wrap overflow-x-auto">
           <table className="st-table">
             <thead>
               <tr>
