@@ -174,6 +174,9 @@ export async function cascadeMonthlyFromFyPlan(opts: {
 
     const budget = fyAllocBudget(a);
     const forecast = fyAllocForecast(a);
+    const explicitCapex = num((a as any).capex);
+    const explicitOpex = num((a as any).opex);
+    const hasExplicitSplit = explicitCapex > 0 || explicitOpex > 0;
     let months = monthsForFyLabel(fy, fyStartMonth);
     if (startBound || endBound) {
       months = months.filter((m) => {
@@ -185,8 +188,20 @@ export async function cascadeMonthlyFromFyPlan(opts: {
     if (!months.length) continue;
     const bEach = budget / months.length;
     const fEach = forecast / months.length;
-    const bSplit = splitCapexOpex(bEach, project);
-    const fSplit = splitCapexOpex(fEach, project);
+    // Prefer FY row CapEx/OpEx when set; otherwise fall back to project approved mix.
+    const bSplit = hasExplicitSplit
+      ? {
+          capex: explicitCapex / months.length,
+          opex: explicitOpex / months.length,
+        }
+      : splitCapexOpex(bEach, project);
+    const fSplit = hasExplicitSplit
+      ? {
+          // Scale the same CapEx/OpEx mix onto forecast $
+          capex: budget > 0 ? (explicitCapex / budget) * fEach : 0,
+          opex: budget > 0 ? (explicitOpex / budget) * fEach : fEach,
+        }
+      : splitCapexOpex(fEach, project);
 
     for (const m of months) {
       const key = rowKey(laneStreamId, m);

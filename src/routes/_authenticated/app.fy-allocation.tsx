@@ -199,44 +199,120 @@ function AllocateTab({
   }, [alloc, fyStartMonth]);
 
   const [selectedFYs, setSelectedFYs] = useState<string[]>([]);
-  const [rows, setRows] = useState<Record<string, { bp: number; fp: number; notes: string }>>({});
+  type AllocEditRow = {
+    bp: number;
+    fp: number;
+    notes: string;
+    capex: number;
+    opex: number;
+  };
+  const [rows, setRows] = useState<Record<string, AllocEditRow>>({});
+
+  const budgetDollars = (bp: number) => (Number(bp) * totalBudget) / 100;
+  const forecastDollars = (fp: number) => (Number(fp) * totalForecast) / 100;
+
+  const rowFromBudgetPct = (bp: number, prev?: Partial<AllocEditRow>): AllocEditRow => {
+    const budgetAmt = budgetDollars(bp);
+    const split = splitCapexOpex(budgetAmt, project);
+    return {
+      bp,
+      fp: prev?.fp ?? 0,
+      notes: prev?.notes ?? "",
+      capex: split.capex,
+      opex: split.opex,
+    };
+  };
 
   useEffect(() => {
     if (!project) return;
     const existing = alloc.filter((a) => a.project_id === project.id);
     const fys = existing.length ? existing.map((a) => a.fy) : knownFYs.slice(0, 3);
     setSelectedFYs(Array.from(new Set(fys)).sort(sortFY));
-    const rec: Record<string, { bp: number; fp: number; notes: string }> = {};
+    const rec: Record<string, AllocEditRow> = {};
     for (const a of existing) {
       const bAmt = fyAllocBudget(a);
       const fAmt = fyAllocForecast(a);
+      const bp = totalBudget > 0 ? +((bAmt / totalBudget) * 100).toFixed(2) : 0;
+      const fp = totalForecast > 0 ? +((fAmt / totalForecast) * 100).toFixed(2) : 0;
+      const split = splitCapexOpex(bAmt || budgetDollars(bp), project);
+      const capex = Number(a.capex);
+      const opex = Number(a.opex);
       rec[a.fy] = {
-        bp: totalBudget > 0 ? +((bAmt / totalBudget) * 100).toFixed(2) : 0,
-        fp: totalForecast > 0 ? +((fAmt / totalForecast) * 100).toFixed(2) : 0,
+        bp,
+        fp,
         notes: "",
+        capex: Number.isFinite(capex) && (capex > 0 || opex > 0) ? capex : split.capex,
+        opex: Number.isFinite(opex) && (capex > 0 || opex > 0) ? opex : split.opex,
       };
     }
     setRows(rec);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, alloc]);
 
-  const ensureRow = (fy: string) => rows[fy] || { bp: 0, fp: 0, notes: "" };
-  const setCell = (fy: string, k: "bp" | "fp" | "notes", v: any) =>
-    setRows((r) => ({ ...r, [fy]: { ...ensureRow(fy), [k]: v } }));
+  const ensureRow = (fy: string): AllocEditRow =>
+    rows[fy] || rowFromBudgetPct(0, { fp: 0, notes: "" });
+
+  const setBudgetPct = (fy: string, bp: number) => {
+    setRows((r) => ({
+      ...r,
+      [fy]: rowFromBudgetPct(bp, ensureRow(fy)),
+    }));
+  };
+
+  const setForecastPct = (fy: string, fp: number) => {
+    setRows((r) => ({
+      ...r,
+      [fy]: { ...ensureRow(fy), fp },
+    }));
+  };
+
+  const setNotes = (fy: string, notes: string) => {
+    setRows((r) => ({
+      ...r,
+      [fy]: { ...ensureRow(fy), notes },
+    }));
+  };
+
+  /** Keep CapEx + OpEx = Budget $ for that FY when either side is edited. */
+  const setCapexOpex = (fy: string, which: "capex" | "opex", value: number) => {
+    const r = ensureRow(fy);
+    const budgetAmt = budgetDollars(r.bp);
+    const v = Math.max(0, Number(value) || 0);
+    if (which === "capex") {
+      setRows((prev) => ({
+        ...prev,
+        [fy]: {
+          ...r,
+          capex: Math.min(v, budgetAmt),
+          opex: Math.max(0, Math.round((budgetAmt - Math.min(v, budgetAmt)) * 100) / 100),
+        },
+      }));
+    } else {
+      setRows((prev) => ({
+        ...prev,
+        [fy]: {
+          ...r,
+          opex: Math.min(v, budgetAmt),
+          capex: Math.max(0, Math.round((budgetAmt - Math.min(v, budgetAmt)) * 100) / 100),
+        },
+      }));
+    }
+  };
 
   const splitEvenly = () => {
     if (!selectedFYs.length) return;
     const share = +(100 / selectedFYs.length).toFixed(2);
-    const next: typeof rows = {};
+    const next: Record<string, AllocEditRow> = {};
     selectedFYs.forEach((fy) => {
-      next[fy] = { bp: share, fp: share, notes: ensureRow(fy).notes };
+      next[fy] = rowFromBudgetPct(share, { fp: share, notes: ensureRow(fy).notes });
     });
     setRows(next);
   };
   const copyBudgetToForecast = () => {
     const next = { ...rows };
     selectedFYs.forEach((fy) => {
-      next[fy] = { ...ensureRow(fy), fp: ensureRow(fy).bp };
+      const r = ensureRow(fy);
+      next[fy] = { ...r, fp: r.bp };
     });
     setRows(next);
   };
@@ -245,13 +321,15 @@ function AllocateTab({
   const bpTotal = selectedFYs.reduce((s, fy) => s + Number(ensureRow(fy).bp || 0), 0);
   const fpTotal = selectedFYs.reduce((s, fy) => s + Number(ensureRow(fy).fp || 0), 0);
   const bAllocated = selectedFYs.reduce(
-    (s, fy) => s + (Number(ensureRow(fy).bp || 0) * totalBudget) / 100,
+    (s, fy) => s + budgetDollars(ensureRow(fy).bp),
     0,
   );
   const fAllocated = selectedFYs.reduce(
-    (s, fy) => s + (Number(ensureRow(fy).fp || 0) * totalForecast) / 100,
+    (s, fy) => s + forecastDollars(ensureRow(fy).fp),
     0,
   );
+  const capexAllocated = selectedFYs.reduce((s, fy) => s + Number(ensureRow(fy).capex || 0), 0);
+  const opexAllocated = selectedFYs.reduce((s, fy) => s + Number(ensureRow(fy).opex || 0), 0);
 
   const save = async () => {
     if (!project || !orgId) return;
@@ -263,9 +341,16 @@ function AllocateTab({
         const r = ensureRow(fy);
         const bp = Number(r.bp) || 0;
         const fp = Number(r.fp) || 0;
-        const budgetAmt = (bp * totalBudget) / 100;
-        const forecastAmt = (fp * totalForecast) / 100;
-        const { capex, opex } = splitCapexOpex(budgetAmt, project);
+        const budgetAmt = budgetDollars(bp);
+        const forecastAmt = forecastDollars(fp);
+        let capex = Number(r.capex) || 0;
+        let opex = Number(r.opex) || 0;
+        // If user cleared both, fall back to project mix split.
+        if (capex <= 0 && opex <= 0 && budgetAmt > 0) {
+          const split = splitCapexOpex(budgetAmt, project);
+          capex = split.capex;
+          opex = split.opex;
+        }
         return {
           org_id: orgId,
           project_id: project.id,
@@ -307,6 +392,9 @@ function AllocateTab({
     }
     onSaved();
   };
+
+  const projectCapex = Number(project?.capex_approved || 0);
+  const projectOpex = Number(project?.opex_approved || 0);
 
   return (
     <>
@@ -367,14 +455,32 @@ function AllocateTab({
           </div>
         </div>
 
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <KpiCard label="Total Budget" value={fmt$(totalBudget)} accent="#3b82f6" />
           <KpiCard label="Total Forecast" value={fmt$(totalForecast)} accent="#8b5cf6" />
+          <KpiCard
+            label="Project CAPEX approved"
+            value={fmt$(projectCapex)}
+            sub="Used as default CapEx mix"
+            accent="#1d4ed8"
+          />
+          <KpiCard
+            label="Project OPEX approved"
+            value={fmt$(projectOpex)}
+            sub="Used as default OpEx mix"
+            accent="#f59e0b"
+          />
         </div>
       </SectionFrame>
 
       <SectionFrame>
         <SectionTitle>Allocation table (percentages must total 100)</SectionTitle>
+        <p className="mb-2 text-[11px] text-muted-foreground">
+          Budget % phases the project total across years. CAPEX $ and OPEX $ for each FY default from
+          the project approved mix — edit them to set the CapEx/OpEx split explicitly (they always
+          add to that FY&apos;s Budget $). Cascade writes CAPEX Plan / OPEX Plan monthly from these
+          amounts.
+        </p>
         <div className="mb-2 grid grid-cols-3 gap-2">
           <button
             className="h-9 rounded-md border bg-white text-[12px] hover:bg-muted"
@@ -396,34 +502,59 @@ function AllocateTab({
           </button>
         </div>
         <div className="overflow-x-auto">
-          <table className="st-table w-full table-fixed">
-            <colgroup>
-              <col style={{ width: "110px" }} />
-              <col style={{ width: "140px" }} />
-              <col style={{ width: "140px" }} />
-              <col />
-            </colgroup>
+          <table className="st-table !w-max min-w-full text-xs">
             <thead>
               <tr>
-                <th className="text-left">FY</th>
-                <th className="text-right">Budget %</th>
-                <th className="text-right">Forecast %</th>
-                <th className="text-left">Notes</th>
+                <th className="text-left whitespace-nowrap">FY</th>
+                <th className="text-right whitespace-nowrap">Budget %</th>
+                <th className="text-right whitespace-nowrap">Budget $</th>
+                <th className="text-right whitespace-nowrap">CAPEX $</th>
+                <th className="text-right whitespace-nowrap">OPEX $</th>
+                <th className="text-right whitespace-nowrap">Forecast %</th>
+                <th className="text-right whitespace-nowrap">Forecast $</th>
+                <th className="text-left whitespace-nowrap min-w-[8rem]">Notes</th>
               </tr>
             </thead>
             <tbody>
               {selectedFYs.map((fy) => {
                 const r = ensureRow(fy);
+                const bAmt = budgetDollars(r.bp);
+                const fAmt = forecastDollars(r.fp);
                 return (
                   <tr key={fy}>
-                    <td className="font-medium text-left align-middle">{fy}</td>
+                    <td className="font-medium text-left align-middle whitespace-nowrap">{fy}</td>
                     <td className="align-middle">
                       <input
                         type="number"
                         step="0.01"
                         value={r.bp}
-                        onChange={(e) => setCell(fy, "bp", Number(e.target.value))}
-                        className="h-8 w-full rounded border bg-white px-2 text-right text-[12px]"
+                        onChange={(e) => setBudgetPct(fy, Number(e.target.value))}
+                        className="h-8 w-full min-w-[4.5rem] rounded border bg-white px-2 text-right text-[12px] tabular-nums"
+                      />
+                    </td>
+                    <td className="align-middle text-right tabular-nums whitespace-nowrap text-muted-foreground">
+                      {fmt$(bAmt)}
+                    </td>
+                    <td className="align-middle">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        value={r.capex || ""}
+                        onChange={(e) => setCapexOpex(fy, "capex", Number(e.target.value))}
+                        className="h-8 w-full min-w-[6rem] rounded border bg-white px-2 text-right text-[12px] tabular-nums"
+                        title="CapEx portion of this FY budget"
+                      />
+                    </td>
+                    <td className="align-middle">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        value={r.opex || ""}
+                        onChange={(e) => setCapexOpex(fy, "opex", Number(e.target.value))}
+                        className="h-8 w-full min-w-[6rem] rounded border bg-white px-2 text-right text-[12px] tabular-nums"
+                        title="OpEx portion of this FY budget"
                       />
                     </td>
                     <td className="align-middle">
@@ -431,16 +562,19 @@ function AllocateTab({
                         type="number"
                         step="0.01"
                         value={r.fp}
-                        onChange={(e) => setCell(fy, "fp", Number(e.target.value))}
-                        className="h-8 w-full rounded border bg-white px-2 text-right text-[12px]"
+                        onChange={(e) => setForecastPct(fy, Number(e.target.value))}
+                        className="h-8 w-full min-w-[4.5rem] rounded border bg-white px-2 text-right text-[12px] tabular-nums"
                       />
+                    </td>
+                    <td className="align-middle text-right tabular-nums whitespace-nowrap text-muted-foreground">
+                      {fmt$(fAmt)}
                     </td>
                     <td className="align-middle">
                       <input
                         type="text"
                         value={r.notes}
-                        onChange={(e) => setCell(fy, "notes", e.target.value)}
-                        className="h-8 w-full rounded border bg-white px-2 text-[12px]"
+                        onChange={(e) => setNotes(fy, e.target.value)}
+                        className="h-8 w-full min-w-[8rem] rounded border bg-white px-2 text-[12px]"
                       />
                     </td>
                   </tr>
@@ -448,7 +582,7 @@ function AllocateTab({
               })}
               {!selectedFYs.length && (
                 <tr>
-                  <td colSpan={4} className="p-4 text-center text-[12px] text-muted-foreground">
+                  <td colSpan={8} className="p-4 text-center text-[12px] text-muted-foreground">
                     Add one or more FYs above.
                   </td>
                 </tr>
@@ -457,7 +591,7 @@ function AllocateTab({
           </table>
         </div>
 
-        <div className="mt-3 grid gap-3 sm:grid-cols-4">
+        <div className="mt-3 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <KpiCard
             label="Budget % total"
             value={`${bpTotal.toFixed(1)}%`}
@@ -469,6 +603,8 @@ function AllocateTab({
             accent={Math.abs(fpTotal - 100) < 0.5 ? "#22c55e" : "#ef4444"}
           />
           <KpiCard label="Budget $ allocated" value={fmt$(bAllocated)} accent="#3b82f6" />
+          <KpiCard label="CAPEX $ allocated" value={fmt$(capexAllocated)} accent="#1d4ed8" />
+          <KpiCard label="OPEX $ allocated" value={fmt$(opexAllocated)} accent="#f59e0b" />
           <KpiCard label="Forecast $ allocated" value={fmt$(fAllocated)} accent="#8b5cf6" />
         </div>
 
