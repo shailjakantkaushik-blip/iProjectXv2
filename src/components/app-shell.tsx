@@ -66,6 +66,9 @@ import {
   ChevronDown,
   LifeBuoy,
   FileDown,
+  Activity,
+  Columns3,
+  FileSpreadsheet,
   type LucideIcon,
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -177,6 +180,9 @@ const ICON_MAP: Record<string, LucideIcon> = {
   CreditCard,
   Landmark,
   LifeBuoy,
+  Activity,
+  Columns3,
+  FileSpreadsheet,
 };
 
 function resolveIcon(name: string): LucideIcon {

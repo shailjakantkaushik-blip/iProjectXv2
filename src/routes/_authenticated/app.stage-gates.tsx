@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PROJECT_PORTFOLIO_SELECT, STAGE_GATES_SELECT, STAGE_GATE_DEFINITIONS_SELECT } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
@@ -13,6 +13,7 @@ import { fetchOrgStreams, formatProjectStreamRef, formatStreamLabel } from "@/li
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
+import { StageGateChecklistPanel } from "@/components/stage-gate-checklist-panel";
 
 export const Route = createFileRoute("/_authenticated/app/stage-gates")({
   component: StageGatesPage,
@@ -22,6 +23,7 @@ const PALETTE = CHART_SERIES;
 
 function StageGatesPage() {
   const { organization } = useAuth();
+  const [checklistGateId, setChecklistGateId] = useState("");
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
@@ -394,6 +396,39 @@ function StageGatesPage() {
             </tbody>
           </table>
         </div>
+      </SectionFrame>
+
+      <SectionFrame>
+        <SectionTitle>Gate checklist &amp; evidence</SectionTitle>
+        <select
+          className="st-input mb-3 max-w-xl"
+          value={checklistGateId}
+          onChange={(e) => setChecklistGateId(e.target.value)}
+        >
+          <option value="">— Select a stage gate —</option>
+          {gates.map((g: any) => {
+            const p = projects.find((x: any) => x.id === g.project_id) as any;
+            return (
+              <option key={g.id} value={g.id}>
+                {(p?.project_code || "?") + " · " + (g.gate_name || "Gate") + " · " + (g.status || "Pending")}
+              </option>
+            );
+          })}
+        </select>
+        {checklistGateId ? (
+          (() => {
+            const g = gates.find((x: any) => x.id === checklistGateId) as any;
+            if (!g) return null;
+            return (
+              <StageGateChecklistPanel stageGateId={g.id} gateName={g.gate_name || "Gate"} />
+            );
+          })()
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Pick a gate to complete required checklist items and attach evidence URLs / notes.
+            Collaboration threads appear under the checklist.
+          </p>
+        )}
       </SectionFrame>
     </div>
   );

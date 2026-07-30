@@ -36,6 +36,7 @@ import { Route as AuthenticatedAppDataEditorRouteImport } from './routes/_authen
 import { Route as AuthenticatedAppDecisionsRouteImport } from './routes/_authenticated/app.decisions'
 import { Route as AuthenticatedAppDemandPipelineRouteImport } from './routes/_authenticated/app.demand-pipeline'
 import { Route as AuthenticatedAppDependenciesRouteImport } from './routes/_authenticated/app.dependencies'
+import { Route as AuthenticatedAppEvmRouteImport } from './routes/_authenticated/app.evm'
 import { Route as AuthenticatedAppExecutiveRouteImport } from './routes/_authenticated/app.executive'
 import { Route as AuthenticatedAppExecutiveCockpitRouteImport } from './routes/_authenticated/app.executive-cockpit'
 import { Route as AuthenticatedAppExecutiveReportsRouteImport } from './routes/_authenticated/app.executive-reports'
@@ -61,12 +62,14 @@ import { Route as AuthenticatedAppProjectInfographicRouteImport } from './routes
 import { Route as AuthenticatedAppProjectPurgeRouteImport } from './routes/_authenticated/app.project-purge'
 import { Route as AuthenticatedAppProjectsRouteImport } from './routes/_authenticated/app.projects'
 import { Route as AuthenticatedAppReleaseRegisterRouteImport } from './routes/_authenticated/app.release-register'
+import { Route as AuthenticatedAppReportBuilderRouteImport } from './routes/_authenticated/app.report-builder'
 import { Route as AuthenticatedAppResourcesRouteImport } from './routes/_authenticated/app.resources'
 import { Route as AuthenticatedAppRiskRoadmapRouteImport } from './routes/_authenticated/app.risk-roadmap'
 import { Route as AuthenticatedAppRisksRouteImport } from './routes/_authenticated/app.risks'
 import { Route as AuthenticatedAppRoadmapAnalyticsRouteImport } from './routes/_authenticated/app.roadmap-analytics'
 import { Route as AuthenticatedAppRoadmapGovernanceRouteImport } from './routes/_authenticated/app.roadmap-governance'
 import { Route as AuthenticatedAppScenariosRouteImport } from './routes/_authenticated/app.scenarios'
+import { Route as AuthenticatedAppScheduleCpmRouteImport } from './routes/_authenticated/app.schedule-cpm'
 import { Route as AuthenticatedAppSettingsRouteImport } from './routes/_authenticated/app.settings'
 import { Route as AuthenticatedAppStageGateConfigRouteImport } from './routes/_authenticated/app.stage-gate-config'
 import { Route as AuthenticatedAppStageGatesRouteImport } from './routes/_authenticated/app.stage-gates'
@@ -75,6 +78,7 @@ import { Route as AuthenticatedAppSupportRouteImport } from './routes/_authentic
 import { Route as AuthenticatedAppTeamRouteImport } from './routes/_authenticated/app.team'
 import { Route as AuthenticatedAppTimelineRouteImport } from './routes/_authenticated/app.timeline'
 import { Route as AuthenticatedAppTimesheetsRouteImport } from './routes/_authenticated/app.timesheets'
+import { Route as AuthenticatedAppWorkBoardRouteImport } from './routes/_authenticated/app.work-board'
 import { Route as AuthenticatedAppWorkItemsRouteImport } from './routes/_authenticated/app.work-items'
 import { Route as AuthenticatedPlatformBrandingRouteImport } from './routes/_authenticated/platform.branding'
 import { Route as AuthenticatedPlatformEoiRouteImport } from './routes/_authenticated/platform.eoi'
@@ -246,6 +250,11 @@ const AuthenticatedAppDependenciesRoute =
     path: '/dependencies',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
+const AuthenticatedAppEvmRoute = AuthenticatedAppEvmRouteImport.update({
+  id: '/evm',
+  path: '/evm',
+  getParentRoute: () => AuthenticatedAppRoute,
+} as any)
 const AuthenticatedAppExecutiveRoute =
   AuthenticatedAppExecutiveRouteImport.update({
     id: '/executive',
@@ -392,6 +401,12 @@ const AuthenticatedAppReleaseRegisterRoute =
     path: '/release-register',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
+const AuthenticatedAppReportBuilderRoute =
+  AuthenticatedAppReportBuilderRouteImport.update({
+    id: '/report-builder',
+    path: '/report-builder',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
 const AuthenticatedAppResourcesRoute =
   AuthenticatedAppResourcesRouteImport.update({
     id: '/resources',
@@ -425,6 +440,12 @@ const AuthenticatedAppScenariosRoute =
   AuthenticatedAppScenariosRouteImport.update({
     id: '/scenarios',
     path: '/scenarios',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
+const AuthenticatedAppScheduleCpmRoute =
+  AuthenticatedAppScheduleCpmRouteImport.update({
+    id: '/schedule-cpm',
+    path: '/schedule-cpm',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
 const AuthenticatedAppSettingsRoute =
@@ -471,6 +492,12 @@ const AuthenticatedAppTimesheetsRoute =
   AuthenticatedAppTimesheetsRouteImport.update({
     id: '/timesheets',
     path: '/timesheets',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
+const AuthenticatedAppWorkBoardRoute =
+  AuthenticatedAppWorkBoardRouteImport.update({
+    id: '/work-board',
+    path: '/work-board',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
 const AuthenticatedAppWorkItemsRoute =
@@ -649,6 +676,7 @@ export interface FileRoutesByFullPath {
   '/app/decisions': typeof AuthenticatedAppDecisionsRoute
   '/app/demand-pipeline': typeof AuthenticatedAppDemandPipelineRoute
   '/app/dependencies': typeof AuthenticatedAppDependenciesRoute
+  '/app/evm': typeof AuthenticatedAppEvmRoute
   '/app/executive': typeof AuthenticatedAppExecutiveRoute
   '/app/executive-cockpit': typeof AuthenticatedAppExecutiveCockpitRoute
   '/app/executive-reports': typeof AuthenticatedAppExecutiveReportsRoute
@@ -674,12 +702,14 @@ export interface FileRoutesByFullPath {
   '/app/project-purge': typeof AuthenticatedAppProjectPurgeRoute
   '/app/projects': typeof AuthenticatedAppProjectsRouteWithChildren
   '/app/release-register': typeof AuthenticatedAppReleaseRegisterRoute
+  '/app/report-builder': typeof AuthenticatedAppReportBuilderRoute
   '/app/resources': typeof AuthenticatedAppResourcesRoute
   '/app/risk-roadmap': typeof AuthenticatedAppRiskRoadmapRoute
   '/app/risks': typeof AuthenticatedAppRisksRoute
   '/app/roadmap-analytics': typeof AuthenticatedAppRoadmapAnalyticsRoute
   '/app/roadmap-governance': typeof AuthenticatedAppRoadmapGovernanceRoute
   '/app/scenarios': typeof AuthenticatedAppScenariosRoute
+  '/app/schedule-cpm': typeof AuthenticatedAppScheduleCpmRoute
   '/app/settings': typeof AuthenticatedAppSettingsRoute
   '/app/stage-gate-config': typeof AuthenticatedAppStageGateConfigRoute
   '/app/stage-gates': typeof AuthenticatedAppStageGatesRoute
@@ -688,6 +718,7 @@ export interface FileRoutesByFullPath {
   '/app/team': typeof AuthenticatedAppTeamRoute
   '/app/timeline': typeof AuthenticatedAppTimelineRoute
   '/app/timesheets': typeof AuthenticatedAppTimesheetsRoute
+  '/app/work-board': typeof AuthenticatedAppWorkBoardRoute
   '/app/work-items': typeof AuthenticatedAppWorkItemsRoute
   '/platform/branding': typeof AuthenticatedPlatformBrandingRoute
   '/platform/eoi': typeof AuthenticatedPlatformEoiRoute
@@ -740,6 +771,7 @@ export interface FileRoutesByTo {
   '/app/decisions': typeof AuthenticatedAppDecisionsRoute
   '/app/demand-pipeline': typeof AuthenticatedAppDemandPipelineRoute
   '/app/dependencies': typeof AuthenticatedAppDependenciesRoute
+  '/app/evm': typeof AuthenticatedAppEvmRoute
   '/app/executive': typeof AuthenticatedAppExecutiveRoute
   '/app/executive-cockpit': typeof AuthenticatedAppExecutiveCockpitRoute
   '/app/executive-reports': typeof AuthenticatedAppExecutiveReportsRoute
@@ -765,12 +797,14 @@ export interface FileRoutesByTo {
   '/app/project-purge': typeof AuthenticatedAppProjectPurgeRoute
   '/app/projects': typeof AuthenticatedAppProjectsRouteWithChildren
   '/app/release-register': typeof AuthenticatedAppReleaseRegisterRoute
+  '/app/report-builder': typeof AuthenticatedAppReportBuilderRoute
   '/app/resources': typeof AuthenticatedAppResourcesRoute
   '/app/risk-roadmap': typeof AuthenticatedAppRiskRoadmapRoute
   '/app/risks': typeof AuthenticatedAppRisksRoute
   '/app/roadmap-analytics': typeof AuthenticatedAppRoadmapAnalyticsRoute
   '/app/roadmap-governance': typeof AuthenticatedAppRoadmapGovernanceRoute
   '/app/scenarios': typeof AuthenticatedAppScenariosRoute
+  '/app/schedule-cpm': typeof AuthenticatedAppScheduleCpmRoute
   '/app/settings': typeof AuthenticatedAppSettingsRoute
   '/app/stage-gate-config': typeof AuthenticatedAppStageGateConfigRoute
   '/app/stage-gates': typeof AuthenticatedAppStageGatesRoute
@@ -779,6 +813,7 @@ export interface FileRoutesByTo {
   '/app/team': typeof AuthenticatedAppTeamRoute
   '/app/timeline': typeof AuthenticatedAppTimelineRoute
   '/app/timesheets': typeof AuthenticatedAppTimesheetsRoute
+  '/app/work-board': typeof AuthenticatedAppWorkBoardRoute
   '/app/work-items': typeof AuthenticatedAppWorkItemsRoute
   '/platform/branding': typeof AuthenticatedPlatformBrandingRoute
   '/platform/eoi': typeof AuthenticatedPlatformEoiRoute
@@ -834,6 +869,7 @@ export interface FileRoutesById {
   '/_authenticated/app/decisions': typeof AuthenticatedAppDecisionsRoute
   '/_authenticated/app/demand-pipeline': typeof AuthenticatedAppDemandPipelineRoute
   '/_authenticated/app/dependencies': typeof AuthenticatedAppDependenciesRoute
+  '/_authenticated/app/evm': typeof AuthenticatedAppEvmRoute
   '/_authenticated/app/executive': typeof AuthenticatedAppExecutiveRoute
   '/_authenticated/app/executive-cockpit': typeof AuthenticatedAppExecutiveCockpitRoute
   '/_authenticated/app/executive-reports': typeof AuthenticatedAppExecutiveReportsRoute
@@ -859,12 +895,14 @@ export interface FileRoutesById {
   '/_authenticated/app/project-purge': typeof AuthenticatedAppProjectPurgeRoute
   '/_authenticated/app/projects': typeof AuthenticatedAppProjectsRouteWithChildren
   '/_authenticated/app/release-register': typeof AuthenticatedAppReleaseRegisterRoute
+  '/_authenticated/app/report-builder': typeof AuthenticatedAppReportBuilderRoute
   '/_authenticated/app/resources': typeof AuthenticatedAppResourcesRoute
   '/_authenticated/app/risk-roadmap': typeof AuthenticatedAppRiskRoadmapRoute
   '/_authenticated/app/risks': typeof AuthenticatedAppRisksRoute
   '/_authenticated/app/roadmap-analytics': typeof AuthenticatedAppRoadmapAnalyticsRoute
   '/_authenticated/app/roadmap-governance': typeof AuthenticatedAppRoadmapGovernanceRoute
   '/_authenticated/app/scenarios': typeof AuthenticatedAppScenariosRoute
+  '/_authenticated/app/schedule-cpm': typeof AuthenticatedAppScheduleCpmRoute
   '/_authenticated/app/settings': typeof AuthenticatedAppSettingsRoute
   '/_authenticated/app/stage-gate-config': typeof AuthenticatedAppStageGateConfigRoute
   '/_authenticated/app/stage-gates': typeof AuthenticatedAppStageGatesRoute
@@ -873,6 +911,7 @@ export interface FileRoutesById {
   '/_authenticated/app/team': typeof AuthenticatedAppTeamRoute
   '/_authenticated/app/timeline': typeof AuthenticatedAppTimelineRoute
   '/_authenticated/app/timesheets': typeof AuthenticatedAppTimesheetsRoute
+  '/_authenticated/app/work-board': typeof AuthenticatedAppWorkBoardRoute
   '/_authenticated/app/work-items': typeof AuthenticatedAppWorkItemsRoute
   '/_authenticated/platform/branding': typeof AuthenticatedPlatformBrandingRoute
   '/_authenticated/platform/eoi': typeof AuthenticatedPlatformEoiRoute
@@ -928,6 +967,7 @@ export interface FileRouteTypes {
     | '/app/decisions'
     | '/app/demand-pipeline'
     | '/app/dependencies'
+    | '/app/evm'
     | '/app/executive'
     | '/app/executive-cockpit'
     | '/app/executive-reports'
@@ -953,12 +993,14 @@ export interface FileRouteTypes {
     | '/app/project-purge'
     | '/app/projects'
     | '/app/release-register'
+    | '/app/report-builder'
     | '/app/resources'
     | '/app/risk-roadmap'
     | '/app/risks'
     | '/app/roadmap-analytics'
     | '/app/roadmap-governance'
     | '/app/scenarios'
+    | '/app/schedule-cpm'
     | '/app/settings'
     | '/app/stage-gate-config'
     | '/app/stage-gates'
@@ -967,6 +1009,7 @@ export interface FileRouteTypes {
     | '/app/team'
     | '/app/timeline'
     | '/app/timesheets'
+    | '/app/work-board'
     | '/app/work-items'
     | '/platform/branding'
     | '/platform/eoi'
@@ -1019,6 +1062,7 @@ export interface FileRouteTypes {
     | '/app/decisions'
     | '/app/demand-pipeline'
     | '/app/dependencies'
+    | '/app/evm'
     | '/app/executive'
     | '/app/executive-cockpit'
     | '/app/executive-reports'
@@ -1044,12 +1088,14 @@ export interface FileRouteTypes {
     | '/app/project-purge'
     | '/app/projects'
     | '/app/release-register'
+    | '/app/report-builder'
     | '/app/resources'
     | '/app/risk-roadmap'
     | '/app/risks'
     | '/app/roadmap-analytics'
     | '/app/roadmap-governance'
     | '/app/scenarios'
+    | '/app/schedule-cpm'
     | '/app/settings'
     | '/app/stage-gate-config'
     | '/app/stage-gates'
@@ -1058,6 +1104,7 @@ export interface FileRouteTypes {
     | '/app/team'
     | '/app/timeline'
     | '/app/timesheets'
+    | '/app/work-board'
     | '/app/work-items'
     | '/platform/branding'
     | '/platform/eoi'
@@ -1112,6 +1159,7 @@ export interface FileRouteTypes {
     | '/_authenticated/app/decisions'
     | '/_authenticated/app/demand-pipeline'
     | '/_authenticated/app/dependencies'
+    | '/_authenticated/app/evm'
     | '/_authenticated/app/executive'
     | '/_authenticated/app/executive-cockpit'
     | '/_authenticated/app/executive-reports'
@@ -1137,12 +1185,14 @@ export interface FileRouteTypes {
     | '/_authenticated/app/project-purge'
     | '/_authenticated/app/projects'
     | '/_authenticated/app/release-register'
+    | '/_authenticated/app/report-builder'
     | '/_authenticated/app/resources'
     | '/_authenticated/app/risk-roadmap'
     | '/_authenticated/app/risks'
     | '/_authenticated/app/roadmap-analytics'
     | '/_authenticated/app/roadmap-governance'
     | '/_authenticated/app/scenarios'
+    | '/_authenticated/app/schedule-cpm'
     | '/_authenticated/app/settings'
     | '/_authenticated/app/stage-gate-config'
     | '/_authenticated/app/stage-gates'
@@ -1151,6 +1201,7 @@ export interface FileRouteTypes {
     | '/_authenticated/app/team'
     | '/_authenticated/app/timeline'
     | '/_authenticated/app/timesheets'
+    | '/_authenticated/app/work-board'
     | '/_authenticated/app/work-items'
     | '/_authenticated/platform/branding'
     | '/_authenticated/platform/eoi'
@@ -1383,6 +1434,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppDependenciesRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
+    '/_authenticated/app/evm': {
+      id: '/_authenticated/app/evm'
+      path: '/evm'
+      fullPath: '/app/evm'
+      preLoaderRoute: typeof AuthenticatedAppEvmRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
     '/_authenticated/app/executive': {
       id: '/_authenticated/app/executive'
       path: '/executive'
@@ -1558,6 +1616,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppReleaseRegisterRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
+    '/_authenticated/app/report-builder': {
+      id: '/_authenticated/app/report-builder'
+      path: '/report-builder'
+      fullPath: '/app/report-builder'
+      preLoaderRoute: typeof AuthenticatedAppReportBuilderRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
     '/_authenticated/app/resources': {
       id: '/_authenticated/app/resources'
       path: '/resources'
@@ -1598,6 +1663,13 @@ declare module '@tanstack/react-router' {
       path: '/scenarios'
       fullPath: '/app/scenarios'
       preLoaderRoute: typeof AuthenticatedAppScenariosRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/app/schedule-cpm': {
+      id: '/_authenticated/app/schedule-cpm'
+      path: '/schedule-cpm'
+      fullPath: '/app/schedule-cpm'
+      preLoaderRoute: typeof AuthenticatedAppScheduleCpmRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
     '/_authenticated/app/settings': {
@@ -1654,6 +1726,13 @@ declare module '@tanstack/react-router' {
       path: '/timesheets'
       fullPath: '/app/timesheets'
       preLoaderRoute: typeof AuthenticatedAppTimesheetsRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/app/work-board': {
+      id: '/_authenticated/app/work-board'
+      path: '/work-board'
+      fullPath: '/app/work-board'
+      preLoaderRoute: typeof AuthenticatedAppWorkBoardRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
     '/_authenticated/app/work-items': {
@@ -1866,6 +1945,7 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppDecisionsRoute: typeof AuthenticatedAppDecisionsRoute
   AuthenticatedAppDemandPipelineRoute: typeof AuthenticatedAppDemandPipelineRoute
   AuthenticatedAppDependenciesRoute: typeof AuthenticatedAppDependenciesRoute
+  AuthenticatedAppEvmRoute: typeof AuthenticatedAppEvmRoute
   AuthenticatedAppExecutiveRoute: typeof AuthenticatedAppExecutiveRoute
   AuthenticatedAppExecutiveCockpitRoute: typeof AuthenticatedAppExecutiveCockpitRoute
   AuthenticatedAppExecutiveReportsRoute: typeof AuthenticatedAppExecutiveReportsRoute
@@ -1891,12 +1971,14 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppProjectPurgeRoute: typeof AuthenticatedAppProjectPurgeRoute
   AuthenticatedAppProjectsRoute: typeof AuthenticatedAppProjectsRouteWithChildren
   AuthenticatedAppReleaseRegisterRoute: typeof AuthenticatedAppReleaseRegisterRoute
+  AuthenticatedAppReportBuilderRoute: typeof AuthenticatedAppReportBuilderRoute
   AuthenticatedAppResourcesRoute: typeof AuthenticatedAppResourcesRoute
   AuthenticatedAppRiskRoadmapRoute: typeof AuthenticatedAppRiskRoadmapRoute
   AuthenticatedAppRisksRoute: typeof AuthenticatedAppRisksRoute
   AuthenticatedAppRoadmapAnalyticsRoute: typeof AuthenticatedAppRoadmapAnalyticsRoute
   AuthenticatedAppRoadmapGovernanceRoute: typeof AuthenticatedAppRoadmapGovernanceRoute
   AuthenticatedAppScenariosRoute: typeof AuthenticatedAppScenariosRoute
+  AuthenticatedAppScheduleCpmRoute: typeof AuthenticatedAppScheduleCpmRoute
   AuthenticatedAppSettingsRoute: typeof AuthenticatedAppSettingsRoute
   AuthenticatedAppStageGateConfigRoute: typeof AuthenticatedAppStageGateConfigRoute
   AuthenticatedAppStageGatesRoute: typeof AuthenticatedAppStageGatesRoute
@@ -1905,6 +1987,7 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppTeamRoute: typeof AuthenticatedAppTeamRoute
   AuthenticatedAppTimelineRoute: typeof AuthenticatedAppTimelineRoute
   AuthenticatedAppTimesheetsRoute: typeof AuthenticatedAppTimesheetsRoute
+  AuthenticatedAppWorkBoardRoute: typeof AuthenticatedAppWorkBoardRoute
   AuthenticatedAppWorkItemsRoute: typeof AuthenticatedAppWorkItemsRoute
   AuthenticatedAppIndexRoute: typeof AuthenticatedAppIndexRoute
   AuthenticatedAppInvoiceIdRoute: typeof AuthenticatedAppInvoiceIdRoute
@@ -1926,6 +2009,7 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppDecisionsRoute: AuthenticatedAppDecisionsRoute,
   AuthenticatedAppDemandPipelineRoute: AuthenticatedAppDemandPipelineRoute,
   AuthenticatedAppDependenciesRoute: AuthenticatedAppDependenciesRoute,
+  AuthenticatedAppEvmRoute: AuthenticatedAppEvmRoute,
   AuthenticatedAppExecutiveRoute: AuthenticatedAppExecutiveRoute,
   AuthenticatedAppExecutiveCockpitRoute: AuthenticatedAppExecutiveCockpitRoute,
   AuthenticatedAppExecutiveReportsRoute: AuthenticatedAppExecutiveReportsRoute,
@@ -1955,6 +2039,7 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppProjectPurgeRoute: AuthenticatedAppProjectPurgeRoute,
   AuthenticatedAppProjectsRoute: AuthenticatedAppProjectsRouteWithChildren,
   AuthenticatedAppReleaseRegisterRoute: AuthenticatedAppReleaseRegisterRoute,
+  AuthenticatedAppReportBuilderRoute: AuthenticatedAppReportBuilderRoute,
   AuthenticatedAppResourcesRoute: AuthenticatedAppResourcesRoute,
   AuthenticatedAppRiskRoadmapRoute: AuthenticatedAppRiskRoadmapRoute,
   AuthenticatedAppRisksRoute: AuthenticatedAppRisksRoute,
@@ -1962,6 +2047,7 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppRoadmapGovernanceRoute:
     AuthenticatedAppRoadmapGovernanceRoute,
   AuthenticatedAppScenariosRoute: AuthenticatedAppScenariosRoute,
+  AuthenticatedAppScheduleCpmRoute: AuthenticatedAppScheduleCpmRoute,
   AuthenticatedAppSettingsRoute: AuthenticatedAppSettingsRoute,
   AuthenticatedAppStageGateConfigRoute: AuthenticatedAppStageGateConfigRoute,
   AuthenticatedAppStageGatesRoute: AuthenticatedAppStageGatesRoute,
@@ -1970,6 +2056,7 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppTeamRoute: AuthenticatedAppTeamRoute,
   AuthenticatedAppTimelineRoute: AuthenticatedAppTimelineRoute,
   AuthenticatedAppTimesheetsRoute: AuthenticatedAppTimesheetsRoute,
+  AuthenticatedAppWorkBoardRoute: AuthenticatedAppWorkBoardRoute,
   AuthenticatedAppWorkItemsRoute: AuthenticatedAppWorkItemsRoute,
   AuthenticatedAppIndexRoute: AuthenticatedAppIndexRoute,
   AuthenticatedAppInvoiceIdRoute: AuthenticatedAppInvoiceIdRoute,

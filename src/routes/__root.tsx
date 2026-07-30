@@ -22,6 +22,7 @@ import { StyleThemeProvider } from "@/components/style-theme-provider";
 import { LANDING_CONFIG_CACHE_KEY } from "@/lib/landing-config";
 import { DEFAULT_FAVICON_HREF, getFaviconBootScript } from "@/lib/favicon";
 import { FaviconSync } from "@/components/favicon-sync";
+import { PwaRegister } from "@/components/pwa-register";
 import {
   alreadyAutoRecoveredThisSession,
   clearChunkReloadMarker,
@@ -203,6 +204,7 @@ function RootComponent() {
           <OrgThemeProvider>
             <StyleThemeProvider>
               <FaviconSync />
+              <PwaRegister />
               <Outlet />
               <Toaster richColors closeButton />
             </StyleThemeProvider>

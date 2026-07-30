@@ -1,8 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth, isAdmin } from "@/lib/auth-context";
 import { SectionFrame, SectionTitle, PageHeading, KpiCard } from "@/components/streamlit";
 import {
   BarChart,
@@ -52,8 +53,13 @@ function money(n: number) {
 }
 
 function DemandPipeline() {
-  const { organization } = useAuth();
+  const { organization, session, roles } = useAuth();
+  const orgId = organization?.id;
+  const userId = session?.user?.id;
+  const canConvert = isAdmin(roles);
+  const qc = useQueryClient();
   const [statusF, setStatusF] = useState("All");
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const { data: ideas = [] } = useQuery({
     queryKey: ["demand_pipeline", organization?.id],
@@ -65,6 +71,69 @@ function DemandPipeline() {
           .order("submitted_date", { ascending: false })
       ).data ?? [],
     enabled: !!organization,
+  });
+
+  const convert = useMutation({
+    mutationFn: async (idea: any) => {
+      if (!orgId) throw new Error("No organisation");
+      if (idea.project_id) throw new Error("Already converted to a project");
+      const baseCode = String(idea.idea_name || "IDEA")
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, "")
+        .slice(0, 8);
+      const code = `DM-${baseCode || "NEW"}-${String(idea.id).slice(0, 4).toUpperCase()}`;
+      const cost = Number(idea.estimated_cost) || 0;
+      const benefit = Number(idea.estimated_benefit) || 0;
+      const { data: proj, error } = await supabase
+        .from("projects")
+        .insert({
+          org_id: orgId,
+          project_code: code,
+          name: idea.idea_name || "Converted demand",
+          sponsor: idea.sponsor || null,
+          status: "Not Started",
+          rag: "Green",
+          priority: "Medium",
+          delivery_method: "Hybrid",
+          budget: cost || null,
+          capex_approved: cost ? Math.round(cost * 0.6) : null,
+          opex_approved: cost ? Math.round(cost * 0.4) : null,
+          benefits_target: benefit || null,
+          roi_percent: Number(idea.estimated_roi) || null,
+          portfolio: "Business Strategic",
+        } as never)
+        .select("id,project_code")
+        .single();
+      if (error) throw error;
+      const projectId = (proj as any).id as string;
+      const { error: uErr } = await supabase
+        .from("demand_pipeline")
+        .update({
+          project_id: projectId,
+          status: "Approved",
+          converted_at: new Date().toISOString(),
+          converted_by: userId || null,
+        } as never)
+        .eq("id", idea.id);
+      if (uErr) {
+        // Column may not exist yet — still leave project created; surface SQL hint
+        if (/converted_at|project_id|schema cache|does not exist/i.test(uErr.message)) {
+          throw new Error(
+            `Project ${ (proj as any).project_code } created, but demand link failed — run ppm_platform_depth.sql then retry link. (${uErr.message})`,
+          );
+        }
+        throw uErr;
+      }
+      return proj as { id: string; project_code: string };
+    },
+    onMutate: (idea) => setBusyId(idea.id),
+    onSettled: () => setBusyId(null),
+    onSuccess: (proj) => {
+      qc.invalidateQueries({ queryKey: ["demand_pipeline", orgId] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      toast.success(`Created project ${proj.project_code}`);
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const filtered = useMemo(
@@ -83,6 +152,11 @@ function DemandPipeline() {
       { key: "strategic_alignment", label: "Align" },
       { key: "complexity", label: "Complex" },
       { key: "submitted_date", label: "Submitted" },
+      {
+        key: "project",
+        label: "Project",
+        getValue: (i) => (i.project_id ? "linked" : ""),
+      },
     ],
     [],
   );
@@ -130,21 +204,26 @@ function DemandPipeline() {
       <PageHeading
         icon="📥"
         title="Demand Pipeline"
-        subtitle="Ideas & business cases moving from intake to approval."
+        subtitle="Ideas & business cases — promote approved demand into a project register entry."
         actions={
-          <Select value={statusF} onValueChange={setStatusF}>
-            <SelectTrigger className="w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="All">All statuses</SelectItem>
-              {STAGES.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link to="/app/work-board" className="text-xs text-sky-700 hover:underline">
+              Work board
+            </Link>
+            <Select value={statusF} onValueChange={setStatusF}>
+              <SelectTrigger className="w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="All">All statuses</SelectItem>
+                {STAGES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         }
       />
 
@@ -351,6 +430,37 @@ function DemandPipeline() {
                     <td className="text-right tabular-nums">{i.complexity || "—"}/5</td>
                     <td>
                       {i.submitted_date ? new Date(i.submitted_date).toLocaleDateString() : "—"}
+                    </td>
+                    <td className="whitespace-nowrap">
+                      {i.project_id ? (
+                        <Link
+                          to="/app/projects/$id"
+                          params={{ id: i.project_id }}
+                          className="text-xs font-semibold text-sky-700 hover:underline"
+                        >
+                          Open project
+                        </Link>
+                      ) : canConvert ? (
+                        <button
+                          type="button"
+                          className="text-xs font-semibold text-emerald-700 hover:underline disabled:opacity-50"
+                          disabled={busyId === i.id || convert.isPending}
+                          onClick={() => {
+                            if (
+                              !confirm(
+                                `Create a project from “${i.idea_name}” and mark this idea Approved?`,
+                              )
+                            ) {
+                              return;
+                            }
+                            convert.mutate(i);
+                          }}
+                        >
+                          {busyId === i.id ? "Converting…" : "→ Project"}
+                        </button>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground">Ask admin</span>
+                      )}
                     </td>
                   </tr>
                 ))

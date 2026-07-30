@@ -1,0 +1,237 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/lib/auth-context";
+import { EntityComments } from "@/components/entity-comments";
+
+type ChecklistItem = {
+  id: string;
+  gate_name: string;
+  title: string;
+  description: string | null;
+  required: boolean;
+  sort_order: number;
+};
+
+type ChecklistResponse = {
+  id: string;
+  stage_gate_id: string;
+  checklist_item_id: string;
+  completed: boolean;
+  evidence_url: string | null;
+  evidence_notes: string | null;
+};
+
+/** Checklist + evidence for one stage gate instance. */
+export function StageGateChecklistPanel({
+  stageGateId,
+  gateName,
+}: {
+  stageGateId: string;
+  gateName: string;
+}) {
+  const { organization, session } = useAuth();
+  const orgId = organization?.id;
+  const userId = session?.user?.id;
+  const qc = useQueryClient();
+  const [notesDraft, setNotesDraft] = useState<Record<string, string>>({});
+  const [urlDraft, setUrlDraft] = useState<Record<string, string>>({});
+
+  const itemsQ = useQuery({
+    queryKey: ["stage_gate_checklist_items", orgId, gateName],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("stage_gate_checklist_items" as any)
+        .select("id,gate_name,title,description,required,sort_order")
+        .eq("org_id", orgId!)
+        .eq("gate_name", gateName)
+        .order("sort_order");
+      if (error) throw error;
+      return (data ?? []) as unknown as ChecklistItem[];
+    },
+    enabled: !!orgId && !!gateName,
+  });
+
+  const respQ = useQuery({
+    queryKey: ["stage_gate_checklist_responses", orgId, stageGateId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("stage_gate_checklist_responses" as any)
+        .select("id,stage_gate_id,checklist_item_id,completed,evidence_url,evidence_notes")
+        .eq("stage_gate_id", stageGateId);
+      if (error) throw error;
+      return (data ?? []) as unknown as ChecklistResponse[];
+    },
+    enabled: !!orgId && !!stageGateId,
+  });
+
+  const respByItem = useMemo(() => {
+    const m = new Map<string, ChecklistResponse>();
+    for (const r of respQ.data ?? []) m.set(r.checklist_item_id, r);
+    return m;
+  }, [respQ.data]);
+
+  const items = itemsQ.data ?? [];
+  const done = items.filter((i) => respByItem.get(i.id)?.completed).length;
+  const requiredMissing = items.filter(
+    (i) => i.required && !respByItem.get(i.id)?.completed,
+  ).length;
+
+  const upsert = useMutation({
+    mutationFn: async (opts: {
+      itemId: string;
+      completed: boolean;
+      evidence_url?: string;
+      evidence_notes?: string;
+    }) => {
+      if (!orgId) throw new Error("No org");
+      const existing = respByItem.get(opts.itemId);
+      const payload = {
+        org_id: orgId,
+        stage_gate_id: stageGateId,
+        checklist_item_id: opts.itemId,
+        completed: opts.completed,
+        evidence_url: opts.evidence_url ?? existing?.evidence_url ?? null,
+        evidence_notes: opts.evidence_notes ?? existing?.evidence_notes ?? null,
+        completed_by: opts.completed ? userId || null : null,
+        completed_at: opts.completed ? new Date().toISOString() : null,
+        updated_at: new Date().toISOString(),
+      };
+      if (existing?.id) {
+        const { error } = await supabase
+          .from("stage_gate_checklist_responses" as any)
+          .update(payload as never)
+          .eq("id", existing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("stage_gate_checklist_responses" as any)
+          .insert(payload as never);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ["stage_gate_checklist_responses", orgId, stageGateId],
+      });
+    },
+    onError: (e: Error) => {
+      if (/checklist|schema cache|does not exist/i.test(e.message)) {
+        toast.error("Run ppm_platform_depth.sql in Supabase, then Reload schema");
+      } else toast.error(e.message);
+    },
+  });
+
+  if (itemsQ.isError || respQ.isError) {
+    return (
+      <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+        Gate checklists need <code>ppm_platform_depth.sql</code> applied (Reload schema after).
+      </p>
+    );
+  }
+
+  if (!items.length && !itemsQ.isLoading) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        No checklist template for gate “{gateName}”. Admins can add rows in Data Editor / SQL
+        (<code>stage_gate_checklist_items</code>).
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3 text-xs">
+        <span className="font-semibold">
+          {done}/{items.length} complete
+        </span>
+        {requiredMissing > 0 ? (
+          <span className="rounded bg-amber-100 px-2 py-0.5 font-semibold text-amber-900">
+            {requiredMissing} required open
+          </span>
+        ) : (
+          <span className="rounded bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800">
+            Required items done
+          </span>
+        )}
+      </div>
+      <ul className="space-y-2">
+        {items.map((item) => {
+          const resp = respByItem.get(item.id);
+          const completed = !!resp?.completed;
+          return (
+            <li
+              key={item.id}
+              className="rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+            >
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={completed}
+                  onChange={(e) =>
+                    upsert.mutate({
+                      itemId: item.id,
+                      completed: e.target.checked,
+                      evidence_url: urlDraft[item.id] ?? resp?.evidence_url ?? undefined,
+                      evidence_notes: notesDraft[item.id] ?? resp?.evidence_notes ?? undefined,
+                    })
+                  }
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="font-medium">
+                    {item.title}
+                    {item.required ? (
+                      <span className="ml-1 text-[10px] text-rose-600">required</span>
+                    ) : null}
+                  </span>
+                  {item.description ? (
+                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                      {item.description}
+                    </span>
+                  ) : null}
+                </span>
+              </label>
+              <div className="mt-2 grid grid-cols-1 gap-1.5 md:grid-cols-2">
+                <input
+                  className="st-input !h-8 !text-xs"
+                  placeholder="Evidence URL (SharePoint / Drive…)"
+                  defaultValue={resp?.evidence_url || ""}
+                  onChange={(e) =>
+                    setUrlDraft((d) => ({ ...d, [item.id]: e.target.value }))
+                  }
+                  onBlur={() =>
+                    upsert.mutate({
+                      itemId: item.id,
+                      completed,
+                      evidence_url: urlDraft[item.id] ?? resp?.evidence_url ?? "",
+                      evidence_notes: notesDraft[item.id] ?? resp?.evidence_notes ?? undefined,
+                    })
+                  }
+                />
+                <input
+                  className="st-input !h-8 !text-xs"
+                  placeholder="Evidence notes"
+                  defaultValue={resp?.evidence_notes || ""}
+                  onChange={(e) =>
+                    setNotesDraft((d) => ({ ...d, [item.id]: e.target.value }))
+                  }
+                  onBlur={() =>
+                    upsert.mutate({
+                      itemId: item.id,
+                      completed,
+                      evidence_url: urlDraft[item.id] ?? resp?.evidence_url ?? undefined,
+                      evidence_notes: notesDraft[item.id] ?? resp?.evidence_notes ?? "",
+                    })
+                  }
+                />
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      <EntityComments entityType="stage_gate" entityId={stageGateId} />
+    </div>
+  );
+}

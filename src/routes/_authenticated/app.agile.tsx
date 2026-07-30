@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -45,6 +45,19 @@ function Page() {
       const { data, error } = await supabase.from("sprints").select("*").order("sprint_number");
       if (error) throw error;
       return data;
+    },
+    enabled: !!organization,
+  });
+
+  const { data: sprintWorkItems = [] } = useQuery({
+    queryKey: ["work_items", organization?.id, "agile-burndown"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("work_items" as any)
+        .select("id,project_id,sprint_id,status,estimate_hours,percent_complete,planned_end,actual_end,title")
+        .eq("org_id", organization!.id);
+      if (error) throw error;
+      return (data ?? []) as any[];
     },
     enabled: !!organization,
   });
@@ -171,32 +184,99 @@ function Page() {
     if (!activeSprint) return [];
     const start = activeSprint.start_date ? new Date(activeSprint.start_date) : new Date();
     const end = activeSprint.end_date ? new Date(activeSprint.end_date) : new Date();
-    const totalPts = Number(activeSprint.planned_points || 0);
-    const done = Number(activeSprint.completed_points || totalPts);
     const days = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000));
+    const items = sprintWorkItems.filter((w: any) => w.sprint_id === activeSprint.id);
+    const pointOf = (w: any) => {
+      const h = Number(w.estimate_hours) || 0;
+      return h > 0 ? h / 8 : 1;
+    };
+    const totalPts =
+      items.length > 0
+        ? items.reduce((s: number, w: any) => s + pointOf(w), 0)
+        : Number(activeSprint.planned_points || 0);
+    const remainingToday =
+      items.length > 0
+        ? items
+            .filter((w: any) => String(w.status || "").toLowerCase() !== "done")
+            .reduce((s: number, w: any) => s + pointOf(w), 0)
+        : Math.max(
+            0,
+            Number(activeSprint.planned_points || 0) - Number(activeSprint.completed_points || 0),
+          );
+    const today = new Date();
+    const todayClamped = today < start ? start : today > end ? end : today;
+    const dayIndexNow = Math.round((todayClamped.getTime() - start.getTime()) / 86400000);
+
     const rows: any[] = [];
     for (let i = 0; i <= days; i++) {
       const day = new Date(start.getTime() + i * 86400000);
       const ideal = totalPts - (totalPts * i) / days;
-      // Actual burns slightly slower/faster than ideal
-      const factor = totalPts > 0 ? done / totalPts : 1;
-      const actualBurned = (totalPts - ideal) * (factor + (1 - factor) * (i / days) * 0.5);
-      const actual = Math.max(0, totalPts - actualBurned);
+      // Actual: linear from totalPts at start → remainingToday at "now" → remainingToday (or 0 if sprint closed) after
+      let actual: number;
+      if (i <= dayIndexNow) {
+        const t = dayIndexNow === 0 ? 1 : i / dayIndexNow;
+        actual = totalPts - (totalPts - remainingToday) * t;
+      } else {
+        actual = remainingToday;
+      }
+      // If work-item Done dates exist, prefer count remaining as of that day
+      if (items.length) {
+        const asOf = day.toISOString().slice(0, 10);
+        actual = items
+          .filter((w: any) => {
+            const done =
+              String(w.status || "").toLowerCase() === "done" ||
+              (w.actual_end && String(w.actual_end).slice(0, 10) <= asOf);
+            if (!done) return true;
+            const doneDay = w.actual_end
+              ? String(w.actual_end).slice(0, 10)
+              : w.planned_end
+                ? String(w.planned_end).slice(0, 10)
+                : null;
+            // If marked done but no date, treat as done only for days >= today when status is Done
+            if (!doneDay) {
+              return !(
+                String(w.status || "").toLowerCase() === "done" && asOf >= new Date().toISOString().slice(0, 10)
+              );
+            }
+            return doneDay > asOf;
+          })
+          .reduce((s: number, w: any) => s + pointOf(w), 0);
+      }
       rows.push({
         day: day.toISOString().slice(0, 10),
         ideal: Number(ideal.toFixed(1)),
-        actual: Number(actual.toFixed(1)),
+        actual: Number(Math.max(0, actual).toFixed(1)),
       });
     }
     return rows;
-  }, [activeSprint]);
+  }, [activeSprint, sprintWorkItems]);
+
+  const backlog = useMemo(
+    () =>
+      sprintWorkItems.filter(
+        (w: any) =>
+          w.project_id === activeProject &&
+          !w.sprint_id &&
+          String(w.status || "").toLowerCase() !== "cancelled",
+      ),
+    [sprintWorkItems, activeProject],
+  );
 
   return (
     <div>
       <PageHeading
         icon="🏃"
-        title="Agile — Sprint Velocity & Burndown"
-        subtitle="Hybrid portfolio view. Waterfall projects use Stage Gates; agile / hybrid projects use sprints."
+        title="Agile — Backlog, Board & Burndown"
+        subtitle="Sprint velocity plus work-item backlog and kanban. Prefer Work board for drag-and-drop status."
+        actions={
+          <Link
+            to="/app/work-board"
+            className="rounded-md border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-800"
+          >
+            Open work board
+          </Link>
+        }
       />
 
       <div className="grid gap-3 md:grid-cols-6 mb-3">
@@ -338,9 +418,36 @@ function Page() {
           </ExpandableChart>
         )}
         <p className="text-xs text-muted-foreground mt-2">
-          Burndown is synthesised from Committed &amp; Completed points. For a true daily curve, add
-          a <code>BurndownDaily</code> sheet (Sprint ID, Day, Points Remaining) in a future release.
+          Burndown uses work items linked to the sprint (estimate hours ÷ 8 as points, else 1 pt
+          each). Falls back to sprint committed/completed points when no work items are linked.
         </p>
+      </SectionFrame>
+
+      <SectionFrame>
+        <SectionTitle>Product backlog (no sprint)</SectionTitle>
+        {backlog.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No unassigned work items for this project — assign a sprint on Work Items, or add tasks
+            on the Work board.
+          </p>
+        ) : (
+          <ul className="space-y-1.5 text-sm">
+            {backlog.slice(0, 40).map((w: any) => (
+              <li
+                key={w.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-1.5"
+              >
+                <span>
+                  <span className="font-medium">{w.title}</span>
+                  <span className="ml-2 text-[11px] text-muted-foreground">{w.status || "To Do"}</span>
+                </span>
+                <span className="text-[11px] tabular-nums text-muted-foreground">
+                  {Number(w.estimate_hours) || 0}h · {Number(w.percent_complete) || 0}%
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </SectionFrame>
 
       <SectionFrame>
