@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { useAuth, isAdmin } from "@/lib/auth-context";
+import { useAuth, canEditProjects } from "@/lib/auth-context";
 import { PageLoading } from "@/components/page-loading";
 import { ProjectCreateWizard } from "@/components/project-create-wizard";
 
@@ -11,20 +11,21 @@ export const Route = createFileRoute("/_authenticated/app/projects/new")({
 function NewProject() {
   const { roles, loading } = useAuth();
   const navigate = useNavigate();
+  const canCreate = canEditProjects(roles);
 
   useEffect(() => {
     if (loading) return;
     if (roles.length === 0) return;
-    if (!isAdmin(roles)) navigate({ to: "/app/projects", replace: true });
-  }, [roles, loading, navigate]);
+    if (!canCreate) navigate({ to: "/app/projects", replace: true });
+  }, [roles, loading, canCreate, navigate]);
 
   if (loading || roles.length === 0) {
     return <PageLoading label="Loading…" fullScreen={false} />;
   }
-  if (!isAdmin(roles)) {
+  if (!canCreate) {
     return (
       <div className="p-8 text-sm text-muted-foreground">
-        You need admin access to create projects.
+        You need PM or admin access to create projects.
       </div>
     );
   }
