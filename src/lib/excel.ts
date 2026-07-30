@@ -240,9 +240,15 @@ export async function importOrganizationWorkbook(orgId: string, file: File): Pro
   ];
 
   for (const t of ordered) {
-    const sheetName = names.find(
-      (n) => n.toLowerCase() === t.label.toLowerCase() || n.toLowerCase() === t.key.toLowerCase(),
-    );
+    const sheetName = names.find((n) => {
+      const lower = n.toLowerCase();
+      if (lower === t.label.toLowerCase() || lower === t.key.toLowerCase()) return true;
+      // Renamed Change Requests → Release Register; keep old workbook sheets working.
+      if (t.key === "change_requests" && (lower === "change requests" || lower === "release & change register")) {
+        return true;
+      }
+      return false;
+    });
     if (!sheetName) {
       results.push({ table: t.label, inserted: 0, updated: 0, skipped: 0, errors: ["Sheet missing"] });
       continue;

@@ -19,7 +19,7 @@ export const EDITABLE_TABLES: { name: string; label: string }[] = [
   { name: "sprints", label: "Sprints" },
   { name: "resource_allocations", label: "Resource Allocations" },
   { name: "resources", label: "Resources" },
-  { name: "change_requests", label: "Change Requests" },
+  { name: "change_requests", label: "Release Register" },
   { name: "demand_pipeline", label: "Demand Pipeline" },
   { name: "status_updates", label: "Status Updates" },
   { name: "stakeholders", label: "Stakeholders" },
