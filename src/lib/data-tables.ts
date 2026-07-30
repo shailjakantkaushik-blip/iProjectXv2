@@ -11,7 +11,7 @@ export interface FieldDef {
   options?: string[];
   required?: boolean;
   // In export/import, replace a UUID FK with a human-readable code column.
-  fk?: "project" | "bu" | "stream" | "stage_gate" | "user";
+  fk?: "project" | "bu" | "stream" | "stage_gate" | "sprint" | "user";
   // Show in list/editor tables (default true)
   hidden?: boolean;
   // Width hint for the editor grid
@@ -560,11 +560,13 @@ export const TABLES: TableDef[] = [
     matchOn: ["project_code", "stream_code", "wbs_code", "title"],
     orderBy: "sort_order",
     description:
-      "WBS / tasks. Set stream_code when the project has streams — blanks autopopulate to the Core stream when streams are enabled. stage_gate_id links the task to a stream phase for cost attribution.",
+      "WBS / tasks. Set stream_code when the project has streams — blanks autopopulate to the Core stream when streams are enabled. " +
+      "stage_gate_id links Waterfall/Hybrid tasks to a phase; sprint_id links Agile/Hybrid tasks to a sprint.",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
       { key: "stream_id", label: "Stream", type: "text", fk: "stream" },
       { key: "stage_gate_id", label: "Stage Gate", type: "text", fk: "stage_gate" },
+      { key: "sprint_id", label: "Sprint", type: "text", fk: "sprint" },
       { key: "wbs_code", label: "WBS", type: "text" },
       { key: "title", label: "Title", type: "text", required: true },
       { key: "status", label: "Status", type: "select", options: ["To Do", "In Progress", "Blocked", "Done", "Cancelled"] },

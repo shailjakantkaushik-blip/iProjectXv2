@@ -27,6 +27,10 @@ interface LookupMaps {
   gatesById: Map<string, string>;
   /** label → stage_gate id (best-effort import; accepts legacy "name · stream · date") */
   gatesByLabel: Map<string, string>;
+  /** sprint id → display label (#N · name) */
+  sprintsById: Map<string, string>;
+  /** label / #N / name → sprint id */
+  sprintsByLabel: Map<string, string>;
   /** profile id → display label (name / email) — never show raw UUID in the grid */
   usersById: Map<string, string>;
   /** email or full_name (lower) → profile id for add-row / import */
@@ -47,8 +51,15 @@ export function TableEditor({ def }: { def: TableDef }) {
     queryKey: ["editor-lookups", organization?.id, "v2-user-labels"],
     enabled: !!organization,
     queryFn: async (): Promise<LookupMaps> => {
-      const [{ data: projects }, { data: bus }, { data: resources }, { data: streams }, gatesRes, { data: profiles }] =
-        await Promise.all([
+      const [
+        { data: projects },
+        { data: bus },
+        { data: resources },
+        { data: streams },
+        gatesRes,
+        sprintsRes,
+        { data: profiles },
+      ] = await Promise.all([
           supabase.from("projects").select("id,project_code,name").eq("org_id", organization!.id),
           supabase.from("business_units").select("id,code,name").eq("org_id", organization!.id),
           supabase.from("resources").select("id,name,email,user_id").eq("org_id", organization!.id),
@@ -58,6 +69,11 @@ export function TableEditor({ def }: { def: TableDef }) {
             .select("id,project_id,stream_id,gate_name,planned_date,status")
             .eq("org_id", organization!.id)
             .order("planned_date"),
+          supabase
+            .from("sprints")
+            .select("id,project_id,sprint_number,name")
+            .eq("org_id", organization!.id)
+            .order("sprint_number"),
           supabase.from("profiles").select("id,full_name,email").eq("org_id", organization!.id),
         ]);
       const projectsById = new Map((projects ?? []).map((p) => [p.id, p.project_code || p.name]));
@@ -89,6 +105,18 @@ export function TableEditor({ def }: { def: TableDef }) {
         // Legacy composite labels from older imports / displays still resolve.
         const legacy = [name, streamLbl, date].filter(Boolean).join(" · ");
         if (legacy && legacy !== name) gatesByLabel.set(legacy, g.id);
+      });
+      const sprintsById = new Map<string, string>();
+      const sprintsByLabel = new Map<string, string>();
+      (sprintsRes.data ?? []).forEach((s: any) => {
+        const num = s.sprint_number != null ? `#${s.sprint_number}` : "Sprint";
+        const name = String(s.name || "").trim();
+        const label = name ? `${num} · ${name}` : num;
+        sprintsById.set(s.id, label);
+        sprintsByLabel.set(label, s.id);
+        sprintsByLabel.set(num, s.id);
+        if (name) sprintsByLabel.set(name, s.id);
+        if (s.sprint_number != null) sprintsByLabel.set(String(s.sprint_number), s.id);
       });
       const usersById = new Map<string, string>();
       const usersByLabel = new Map<string, string>();
@@ -138,6 +166,8 @@ export function TableEditor({ def }: { def: TableDef }) {
         defaultStreamByProject,
         gatesById,
         gatesByLabel,
+        sprintsById,
+        sprintsByLabel,
         usersById,
         usersByLabel,
         userOptions,
@@ -178,6 +208,7 @@ export function TableEditor({ def }: { def: TableDef }) {
           if (f.fk === "bu") return lookups?.busById.get(String(v)) ?? "";
           if (f.fk === "stream") return lookups?.streamsById.get(String(v)) ?? "";
           if (f.fk === "stage_gate") return lookups?.gatesById.get(String(v)) ?? "";
+          if (f.fk === "sprint") return lookups?.sprintsById.get(String(v)) ?? "";
           if (f.fk === "user") return lookups?.usersById.get(String(v)) ?? "";
           if (f.key === "resource_id") return lookups?.resourcesById.get(String(v)) ?? "";
           return v;
@@ -323,6 +354,9 @@ function CellRenderer({
   if (field.fk === "stage_gate") {
     return <span>{v ? lookups?.gatesById.get(String(v)) ?? "—" : "—"}</span>;
   }
+  if (field.fk === "sprint") {
+    return <span>{v ? lookups?.sprintsById.get(String(v)) ?? "—" : "—"}</span>;
+  }
   if (field.key === "resource_id") {
     return <span>{v ? lookups?.resourcesById.get(String(v)) ?? "—" : "—"}</span>;
   }
@@ -396,6 +430,10 @@ function AddRowForm({ def, lookups, orgId, onDone }: { def: TableDef; lookups: L
           const resolved = lookups.gatesByLabel.get(v) || (lookups.gatesById.has(v) ? v : null);
           if (!resolved) throw new Error(`Unknown stage gate: ${v}`);
           payload[f.key] = resolved;
+        } else if (f.fk === "sprint") {
+          const resolved = lookups.sprintsByLabel.get(v) || (lookups.sprintsById.has(v) ? v : null);
+          if (!resolved) throw new Error(`Unknown sprint: ${v}`);
+          payload[f.key] = resolved;
         } else if (f.fk === "user") {
           const id =
             lookups.usersByLabel.get(v.trim().toLowerCase()) ||
@@ -449,6 +487,7 @@ function AddRowForm({ def, lookups, orgId, onDone }: { def: TableDef; lookups: L
               {f.fk === "bu" && <span className="ml-1 normal-case text-muted-foreground">(bu_code)</span>}
               {f.fk === "stream" && <span className="ml-1 normal-case text-muted-foreground">(stream_code)</span>}
               {f.fk === "stage_gate" && <span className="ml-1 normal-case text-muted-foreground">(gate name)</span>}
+              {f.fk === "sprint" && <span className="ml-1 normal-case text-muted-foreground">(#N · name)</span>}
               {f.fk === "user" && <span className="ml-1 normal-case text-muted-foreground">(name / email)</span>}
               {f.key === "resource_id" && <span className="ml-1 normal-case text-muted-foreground">(name)</span>}
             </label>

@@ -29,7 +29,7 @@ const TABLE_QUERY_KEYS: Record<string, string[]> = {
   // work_item_assignees: only invalidate when that page is open — avoid boot fan-out
   // before the timesheets migration is applied on every environment.
   work_item_assignees: ["work_item_assignees", "work_items"],
-  sprints: ["sprints"],
+  sprints: ["sprints", "work_items"],
   status_updates: ["status_updates"],
   change_requests: ["change_requests"],
   demand_pipeline: ["demand_pipeline"],

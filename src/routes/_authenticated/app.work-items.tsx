@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchProjectOptions, projectOptionsQueryKey, compareProjectsByCodeName } from "@/lib/project-options";
+import { fetchProjectOptions, projectOptionsQueryKey, compareProjectsByCodeName, projectUsesStageGates, projectUsesSprints } from "@/lib/project-options";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -33,6 +33,22 @@ export const Route = createFileRoute("/_authenticated/app/work-items")({
 
 const STATUSES = ["To Do", "In Progress", "Blocked", "Done", "Cancelled"];
 const PRIORITIES = ["Critical", "High", "Medium", "Low"];
+
+type SprintRow = {
+  id: string;
+  project_id: string;
+  sprint_number: number | null;
+  name: string | null;
+  status: string | null;
+  start_date: string | null;
+  end_date: string | null;
+};
+
+const formatSprintLabel = (s: Pick<SprintRow, "sprint_number" | "name">) => {
+  const num = s.sprint_number != null ? `#${s.sprint_number}` : "Sprint";
+  const name = String(s.name || "").trim();
+  return name ? `${num} · ${name}` : num;
+};
 
 const numH = (v: unknown) => {
   const n = Number(v);
@@ -78,6 +94,20 @@ function WorkItemsPage() {
     enabled: !!orgId,
   });
 
+  const { data: sprints = [], error: sprintsError, isError: sprintsIsError } = useQuery({
+    queryKey: ["sprints", orgId, "work-items"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("sprints")
+        .select("id,project_id,sprint_number,name,status,start_date,end_date")
+        .eq("org_id", orgId!)
+        .order("sprint_number", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as unknown as SprintRow[];
+    },
+    enabled: !!orgId,
+  });
+
   const { data: gateDefs = [] } = useQuery({
     queryKey: ["stage_gate_definitions", orgId],
     queryFn: async () => {
@@ -110,6 +140,17 @@ function WorkItemsPage() {
       return sortGatesByOrgOrder(scoped, orgPhases) as typeof stageGates;
     },
     [stageGates, orgPhases],
+  );
+
+  const sprintsForWorkItem = useCallback(
+    (projectId: string | null | undefined) => {
+      if (!projectId) return [] as SprintRow[];
+      return sprints
+        .filter((s) => s.project_id === projectId)
+        .slice()
+        .sort((a, b) => (a.sprint_number ?? 0) - (b.sprint_number ?? 0));
+    },
+    [sprints],
   );
 
   const projectsOrdered = useMemo(() => [...projects].sort(compareProjectsByCodeName), [projects]);
@@ -231,11 +272,13 @@ function WorkItemsPage() {
   );
 
   const gateById = useMemo(() => new Map(stageGates.map((g) => [g.id, g])), [stageGates]);
+  const sprintById = useMemo(() => new Map(sprints.map((s) => [s.id, s])), [sprints]);
 
   const [form, setForm] = useState({
     project_id: "",
     stream_id: "",
     stage_gate_id: "",
+    sprint_id: "",
     title: "",
     status: "To Do",
     priority: "Medium",
@@ -250,10 +293,18 @@ function WorkItemsPage() {
   });
 
   const formStreams = streamsByProject.get(form.project_id) || [];
+  const formProject = form.project_id ? (projectById.get(form.project_id) as any) : null;
+  const formShowGates = projectUsesStageGates(formProject?.delivery_method);
+  const formShowSprints = projectUsesSprints(formProject?.delivery_method);
 
   const formGates = useMemo(
     () => gatesForWorkItem(form.project_id, form.stream_id || null),
     [gatesForWorkItem, form.project_id, form.stream_id],
+  );
+
+  const formSprints = useMemo(
+    () => sprintsForWorkItem(form.project_id),
+    [sprintsForWorkItem, form.project_id],
   );
 
   const demandSlices = useMemo(
@@ -328,6 +379,14 @@ function WorkItemsPage() {
         getValue: (i) => (i.stage_gate_id ? gateById.get(i.stage_gate_id)?.gate_name || "" : ""),
       },
       {
+        key: "sprint",
+        label: "Sprint",
+        getValue: (i) => {
+          const s = i.sprint_id ? sprintById.get(i.sprint_id) : null;
+          return s ? formatSprintLabel(s) : "";
+        },
+      },
+      {
         key: "lane_allocated",
         label: "Lane allocated",
         getValue: (i) =>
@@ -367,7 +426,7 @@ function WorkItemsPage() {
       },
       { key: "planned_end", label: "End" },
     ],
-    [projectById, streamById, assigneesByWorkItem, resourceById, gateById, allocations],
+    [projectById, streamById, assigneesByWorkItem, resourceById, gateById, sprintById, allocations],
   );
 
   const numericColKeys = useMemo(
@@ -414,6 +473,7 @@ function WorkItemsPage() {
           percent_complete: Number(form.percent_complete) || 0,
           wbs_code: form.wbs_code || null,
           stage_gate_id: form.stage_gate_id || null,
+          sprint_id: form.sprint_id || null,
           estimate_hours: form.estimate_hours === "" ? null : Number(form.estimate_hours) || 0,
         } as never)
         .select("id")
@@ -445,6 +505,7 @@ function WorkItemsPage() {
         planned_end: "",
         assignee_ids: [],
         stage_gate_id: "",
+        sprint_id: "",
         estimate_hours: "",
       }));
     },
@@ -523,7 +584,7 @@ function WorkItemsPage() {
     <PageExport name="Work_Items" title="Work Items">
       <PageHeading
         title="Work Items"
-        subtitle="WBS / tasks across projects and streams — stage gates attribute labor cost to phases"
+        subtitle="WBS / tasks across projects — stage gates for Waterfall phases, sprints for Agile iterations"
         actions={
           <button
             type="button"
@@ -560,7 +621,13 @@ function WorkItemsPage() {
                 const pid = e.target.value;
                 const nextStreams = streamsByProject.get(pid) || [];
                 const def = nextStreams.find((s) => s.is_default) || nextStreams[0];
-                return { ...f, project_id: pid, stream_id: def?.id || "", stage_gate_id: "" };
+                return {
+                  ...f,
+                  project_id: pid,
+                  stream_id: def?.id || "",
+                  stage_gate_id: "",
+                  sprint_id: "",
+                };
               })
             }
           >
@@ -586,19 +653,37 @@ function WorkItemsPage() {
               </option>
             ))}
           </select>
-          <select
-            className="st-input"
-            value={form.stage_gate_id}
-            onChange={(e) => setForm((f) => ({ ...f, stage_gate_id: e.target.value }))}
-            disabled={!form.project_id}
-          >
-            <option value="">— Stage gate / phase —</option>
-            {formGates.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.gate_name || "Gate"}
-              </option>
-            ))}
-          </select>
+          {formShowGates || !form.project_id ? (
+            <select
+              className="st-input"
+              value={form.stage_gate_id}
+              onChange={(e) => setForm((f) => ({ ...f, stage_gate_id: e.target.value }))}
+              disabled={!form.project_id}
+            >
+              <option value="">— Stage gate / phase —</option>
+              {formGates.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.gate_name || "Gate"}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          {formShowSprints || !form.project_id ? (
+            <select
+              className="st-input"
+              value={form.sprint_id}
+              onChange={(e) => setForm((f) => ({ ...f, sprint_id: e.target.value }))}
+              disabled={!form.project_id}
+            >
+              <option value="">— Sprint —</option>
+              {formSprints.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {formatSprintLabel(s)}
+                  {s.status ? ` (${s.status})` : ""}
+                </option>
+              ))}
+            </select>
+          ) : null}
           <input
             className="st-input"
             placeholder="WBS code"
@@ -712,8 +797,10 @@ function WorkItemsPage() {
           Reverse planning flow: set work-item planned hours as demand against the lane&apos;s
           resource allocation (pending = allocated − work planned). Planned FTE $ is hours ×
           assignee cost rates. Actual hours come from approved timesheets. Assign resources so
-          timesheet placeholders appear for their linked logins; stream defaults to Core; pick a
-          stage gate so billable hours attribute to that phase.
+          timesheet placeholders appear for their linked logins; stream defaults to Core. Use{" "}
+          <span className="font-medium text-foreground">Stage gate</span> for Waterfall/Hybrid
+          phase attribution, and <span className="font-medium text-foreground">Sprint</span> for
+          Agile/Hybrid iteration capture (create sprints under Agile / Sprints first).
         </p>
       </SectionFrame>
 
@@ -744,10 +831,29 @@ function WorkItemsPage() {
             </button>
           </div>
         ) : null}
+        {sprintsIsError ? (
+          <div className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+            Sprints failed to load: {(sprintsError as Error)?.message || "Unknown error"}. Sprint
+            dropdowns will be empty until this succeeds.
+            <button
+              type="button"
+              className="ml-2 underline"
+              onClick={() => void qc.invalidateQueries({ queryKey: ["sprints", orgId] })}
+            >
+              Retry
+            </button>
+          </div>
+        ) : null}
         {!gatesIsError && stageGates.length === 0 ? (
           <div className="mb-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
             No stage gates found for this organisation. Re-run the wipe-and-seed SQL (or create gates on
             each stream) so Work Items and timelines can show phases.
+          </div>
+        ) : null}
+        {!sprintsIsError && sprints.length === 0 ? (
+          <div className="mb-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
+            No sprints found. Create sprints under Agile / Sprints for Agile or Hybrid projects, then
+            link work items here.
           </div>
         ) : null}
         <ColumnarToolbar
@@ -873,6 +979,28 @@ function WorkItemsPage() {
                                   {gatesForWorkItem(i.project_id, i.stream_id).map((g) => (
                                     <option key={g.id} value={g.id}>
                                       {g.gate_name || "Gate"}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                            );
+                          case "sprint":
+                            return (
+                              <td key={col.key} className="min-w-[8rem]">
+                                <select
+                                  className="st-input !min-w-[7rem] !max-w-[11rem] !py-0.5 !text-xs"
+                                  value={i.sprint_id || ""}
+                                  onChange={(e) =>
+                                    patch.mutate({
+                                      id: i.id,
+                                      updates: { sprint_id: e.target.value || null },
+                                    })
+                                  }
+                                >
+                                  <option value="">— None —</option>
+                                  {sprintsForWorkItem(i.project_id).map((s) => (
+                                    <option key={s.id} value={s.id}>
+                                      {formatSprintLabel(s)}
                                     </option>
                                   ))}
                                 </select>
@@ -1032,7 +1160,12 @@ function WorkItemsPage() {
           {
             name: "Stage gate",
             description:
-              "Phase for this work item. Used to attribute planned FTE $ and timesheet labor to that gate.",
+              "Waterfall / Hybrid phase for this work item. Used to attribute planned FTE $ and timesheet labor to that gate.",
+          },
+          {
+            name: "Sprint",
+            description:
+              "Agile / Hybrid iteration for this work item. Pick from the project’s sprints (Agile / Sprints page).",
           },
           {
             name: "Lane allocated",

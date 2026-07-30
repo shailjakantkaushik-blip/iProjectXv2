@@ -61,6 +61,7 @@ function exportHeaders(t: TableDef): string[] {
     else if (f.fk === "bu") cols.push("bu_code");
     else if (f.fk === "stream") cols.push("stream_code");
     else if (f.fk === "stage_gate") cols.push("stage_gate_name");
+    else if (f.fk === "sprint") cols.push("sprint_name");
     else if (f.fk === "user") {
       if (f.key === "user_id") cols.push("linked_login");
       else if (f.key === "manager_user_id") cols.push("manager_login");
@@ -83,6 +84,7 @@ function toExportRow(
   streamById?: Map<string, string>,
   gateById?: Map<string, string>,
   userById?: Map<string, string>,
+  sprintById?: Map<string, string>,
 ): Dict {
   const out: Dict = {};
   for (const f of t.fields) {
@@ -100,6 +102,8 @@ function toExportRow(
       out["stream_code"] = v && streamById ? streamById.get(String(v)) ?? "" : "";
     } else if (f.fk === "stage_gate") {
       out["stage_gate_name"] = v && gateById ? gateById.get(String(v)) ?? "" : "";
+    } else if (f.fk === "sprint") {
+      out["sprint_name"] = v && sprintById ? sprintById.get(String(v)) ?? "" : "";
     } else if (f.fk === "user") {
       const label = v && userById ? userById.get(String(v)) ?? "" : "";
       if (f.key === "user_id") out["linked_login"] = label;
@@ -126,13 +130,14 @@ function toExportRow(
 // ---------- Full org export ----------
 export async function exportOrganizationWorkbook(orgId: string, orgName: string) {
   // Preload lookup maps for FK resolution.
-  const [{ data: projects }, { data: bus }, { data: resources }, { data: streams }, { data: gates }, { data: profiles }] =
+  const [{ data: projects }, { data: bus }, { data: resources }, { data: streams }, { data: gates }, { data: sprints }, { data: profiles }] =
     await Promise.all([
       supabase.from("projects").select("id,project_code,name").eq("org_id", orgId),
       supabase.from("business_units").select("id,code,name").eq("org_id", orgId),
       supabase.from("resources").select("id,name").eq("org_id", orgId),
       supabase.from("project_streams").select("id,code,name,project_id").eq("org_id", orgId),
       supabase.from("stage_gates").select("id,gate_name").eq("org_id", orgId),
+      supabase.from("sprints").select("id,sprint_number,name").eq("org_id", orgId),
       supabase.from("profiles").select("id,full_name,email").eq("org_id", orgId),
     ]);
   const projectById = new Map((projects ?? []).map((p) => [p.id, p.project_code || p.name]));
@@ -142,6 +147,13 @@ export async function exportOrganizationWorkbook(orgId: string, orgName: string)
     (streams ?? []).map((s: any) => [s.id, s.code || s.name || s.id] as [string, string]),
   );
   const gateById = new Map((gates ?? []).map((g: any) => [g.id, g.gate_name || "Gate"]));
+  const sprintById = new Map(
+    (sprints ?? []).map((s: any) => {
+      const num = s.sprint_number != null ? `#${s.sprint_number}` : "Sprint";
+      const name = String(s.name || "").trim();
+      return [s.id, name ? `${num} · ${name}` : num] as [string, string];
+    }),
+  );
   const userById = new Map(
     (profiles ?? []).map((p: any) => [
       p.id,
@@ -158,8 +170,9 @@ export async function exportOrganizationWorkbook(orgId: string, orgName: string)
     ["Match keys", "Rows match on the keys listed per sheet. New codes insert; existing codes update."],
     ["Project dates", "Edit planned_* and actual_* dates. start_date/end_date (Schedule Start/End) auto-sync as Actual → else Planned."],
     ["Current phase", "Prefer Stage Gates sheet status. current_phase is refreshed from the in-flight gate after gate rows are saved."],
-    ["FK columns", "Use project_code / bu_code / resource_name / stream_code / stage_gate_name / linked_login / manager_login (not UUIDs). Dependencies also use depends_on_project_code."],
+    ["FK columns", "Use project_code / bu_code / resource_name / stream_code / stage_gate_name / sprint_name / linked_login / manager_login (not UUIDs). Dependencies also use depends_on_project_code."],
     ["Streams", "Every project has a Core stream. Add Project Streams rows for more lanes. Child sheets (gates, milestones, finance, allocations) use stream_code."],
+    ["Work items", "stage_gate_name = Waterfall/Hybrid phase. sprint_name = Agile/Hybrid sprint (#N · name, or just #N / name)."],
     ["", ""],
     ["Finance model (canonical)", ""],
     ["1. Projects", "budget = approved funding; capex/opex approved & incurred; forecast_at_completion (FAC); benefits_* are rollups. With streams on, project figures roll up from Project Streams. portfolio = Business Strategic | IT Strategic | CAPEX | Unfunded (used by Executive Cockpit health & segmentation)."],
@@ -186,7 +199,7 @@ export async function exportOrganizationWorkbook(orgId: string, orgName: string)
       // depends_on_project_code already emitted by exportHeaders for depends_on_project_id
     }
     const rows = (data ?? []).map((r: Dict) =>
-      toExportRow(r, t, projectById, buById, resourceById, streamById, gateById, userById),
+      toExportRow(r, t, projectById, buById, resourceById, streamById, gateById, userById, sprintById),
     );
     sheets.push({
       name: t.label.slice(0, 31),
@@ -212,8 +225,15 @@ export async function importOrganizationWorkbook(orgId: string, file: File): Pro
   const names = await listSheetNames(file);
   const results: ImportReport[] = [];
 
-  // Import lookup tables + projects + streams before child sheets that reference them.
-  const firstKeys = ["business_units", "stage_gate_definitions", "projects", "project_streams", "resources"];
+  // Import lookup tables + projects + streams (+ sprints) before child sheets that reference them.
+  const firstKeys = [
+    "business_units",
+    "stage_gate_definitions",
+    "projects",
+    "project_streams",
+    "resources",
+    "sprints",
+  ];
   const ordered: TableDef[] = [
     ...TABLES.filter((t) => firstKeys.includes(t.key)),
     ...TABLES.filter((t) => !firstKeys.includes(t.key)),
@@ -238,13 +258,14 @@ async function importTableRows(orgId: string, t: TableDef, rows: Dict[]): Promis
   const report: ImportReport = { table: t.label, inserted: 0, updated: 0, skipped: 0, errors: [] };
 
   // Lookup maps per import (rebuilt fresh — projects/streams may have been added earlier).
-  const [{ data: projects }, { data: bus }, { data: resources }, { data: streams }, { data: gates }, { data: profiles }] =
+  const [{ data: projects }, { data: bus }, { data: resources }, { data: streams }, { data: gates }, { data: sprints }, { data: profiles }] =
     await Promise.all([
       supabase.from("projects").select("id,project_code,name").eq("org_id", orgId),
       supabase.from("business_units").select("id,code,name").eq("org_id", orgId),
       supabase.from("resources").select("id,name").eq("org_id", orgId),
       supabase.from("project_streams").select("id,code,name,project_id").eq("org_id", orgId),
       supabase.from("stage_gates").select("id,project_id,stream_id,gate_name").eq("org_id", orgId),
+      supabase.from("sprints").select("id,project_id,sprint_number,name").eq("org_id", orgId),
       supabase.from("profiles").select("id,full_name,email").eq("org_id", orgId),
     ]);
   const projectByCode = new Map<string, string>();
@@ -285,6 +306,17 @@ async function importTableRows(orgId: string, t: TableDef, rows: Dict[]): Promis
     gateByName.set(name, g.id);
     if (g.project_id) gateByName.set(`${g.project_id}||${name}`, g.id);
     if (g.project_id && g.stream_id) gateByName.set(`${g.project_id}||${g.stream_id}||${name}`, g.id);
+  });
+  const sprintByLabel = new Map<string, string>();
+  (sprints ?? []).forEach((s: any) => {
+    const num = s.sprint_number != null ? `#${s.sprint_number}` : "Sprint";
+    const name = String(s.name || "").trim();
+    const label = name ? `${num} · ${name}` : num;
+    const keys = [label, num, name, s.sprint_number != null ? String(s.sprint_number) : ""].filter(Boolean);
+    for (const k of keys) {
+      sprintByLabel.set(k, s.id);
+      if (s.project_id) sprintByLabel.set(`${s.project_id}||${k}`, s.id);
+    }
   });
   const userByLabel = new Map<string, string>();
   (profiles ?? []).forEach((p: any) => {
@@ -348,6 +380,17 @@ async function importTableRows(orgId: string, t: TableDef, rows: Dict[]): Promis
             (resolvedProjectId && streamId && gateByName.get(`${resolvedProjectId}||${streamId}||${n}`)) ||
             (resolvedProjectId && gateByName.get(`${resolvedProjectId}||${n}`)) ||
             gateByName.get(n) ||
+            null;
+        } else {
+          v = null;
+        }
+      } else if (f.fk === "sprint") {
+        const name = raw["sprint_name"] ?? raw["sprint"] ?? raw[f.key];
+        if (name) {
+          const n = String(name).trim();
+          v =
+            (resolvedProjectId && sprintByLabel.get(`${resolvedProjectId}||${n}`)) ||
+            sprintByLabel.get(n) ||
             null;
         } else {
           v = null;
