@@ -14,6 +14,7 @@ import { memberLabel, type OrgMember } from "@/lib/decision-approval";
 import { TimesheetReportsPanel } from "@/components/timesheet-reports-panel";
 import { TimesheetApprovalsPanel } from "@/components/timesheet-approvals-panel";
 import { ResourceAnalyticsPanels } from "@/components/resource-analytics-panels";
+import { TimesheetWeekCalendar } from "@/components/timesheet-week-calendar";
 import { useCapabilityPermission } from "@/lib/permissions";
 import { RESOURCE_ALLOCATIONS_SELECT, RESOURCES_SELECT } from "@/lib/query-selects";
 import {
@@ -186,6 +187,8 @@ function TimesheetsPage() {
   const [tab, setTab] = useState<TimesheetTab>(initialTab);
   const [weekStart, setWeekStart] = useState(() => weekStartMonday());
   const [customTaskDraft, setCustomTaskDraft] = useState("");
+  /** Calendar is the primary fill UX; Grid keeps the classic spreadsheet. */
+  const [hoursView, setHoursView] = useState<"calendar" | "grid">("calendar");
 
   useEffect(() => {
     if (search.tab && setupOnlyTabs.includes(search.tab) && !canAccessSetup) {
@@ -694,6 +697,54 @@ function TimesheetsPage() {
     return Object.values(draftRows).reduce((sum, r) => sum + entryWeekTotal(r), 0);
   }, [draftRows]);
 
+  const setRowHours = (rowKey: string, dayKey: DayKey, hours: number) => {
+    setDraftRows((prev) => {
+      const row = prev[rowKey];
+      if (!row) return prev;
+      return { ...prev, [rowKey]: { ...row, [dayKey]: hours } };
+    });
+  };
+
+  const applyWeekPlan = () => {
+    let filled = 0;
+    setDraftRows((prev) => {
+      const next = { ...prev };
+      for (const [key, row] of Object.entries(next)) {
+        if (!row.billable || !row.work_item_id) continue;
+        const wi = workById.get(row.work_item_id);
+        if (!wi) continue;
+        const { weekHours, perDay } = workItemWeekdayPlan({
+          estimateHours: Number(wi.estimate_hours) || 0,
+          actualHours: Number(wi.actual_hours) || 0,
+          plannedStart: wi.planned_start,
+          plannedEnd: wi.planned_end,
+          weekStart,
+        });
+        if (!(weekHours > 0)) continue;
+        next[key] = { ...row, ...perDay };
+        filled += 1;
+      }
+      return next;
+    });
+    if (filled === 0) {
+      toast.message("No week plan available — set planned hours/dates on work items first");
+    } else {
+      toast.success(`Applied week plan to ${filled} billable row${filled === 1 ? "" : "s"}`);
+    }
+  };
+
+  const clearWeekHours = () => {
+    if (!confirm("Clear all hours for this week? (rows stay; values go to 0)")) return;
+    setDraftRows((prev) => {
+      const next: typeof prev = {};
+      for (const [key, row] of Object.entries(prev)) {
+        next[key] = { ...row, ...emptyHours() };
+      }
+      return next;
+    });
+    toast.success("Cleared hours for this week");
+  };
+
   const status = normalizeTimesheetStatus(sheet?.status) as TimesheetStatus;
 
   const pendingForMe = myApprovals.filter((a) => {
@@ -708,7 +759,7 @@ function TimesheetsPage() {
     <PageExport name="Timesheets" title="Timesheets">
       <PageHeading
         title="Timesheets"
-        subtitle="Billable hours are logged against assigned work items; non-billable uses custom tasks. Approval: Project Manager → Resource Manager."
+        subtitle="Fill hours in Calendar (day cards) or Grid view. Billable rows come from assigned work items; approval is PM → Resource Manager."
         actions={
           <div className="flex flex-wrap gap-2">
             {(
@@ -838,7 +889,53 @@ function TimesheetsPage() {
           </SectionFrame>
 
           <SectionFrame>
-            <SectionTitle>Hours — billable &amp; non-billable</SectionTitle>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <SectionTitle>Hours — billable &amp; non-billable</SectionTitle>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex rounded-md border border-border p-0.5">
+                  <button
+                    type="button"
+                    className={`rounded px-2.5 py-1 text-[11px] font-semibold ${
+                      hoursView === "calendar"
+                        ? "bg-sky-100 text-sky-800"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                    onClick={() => setHoursView("calendar")}
+                  >
+                    Calendar
+                  </button>
+                  <button
+                    type="button"
+                    className={`rounded px-2.5 py-1 text-[11px] font-semibold ${
+                      hoursView === "grid"
+                        ? "bg-sky-100 text-sky-800"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                    onClick={() => setHoursView("grid")}
+                  >
+                    Grid
+                  </button>
+                </div>
+                {editable ? (
+                  <>
+                    <button
+                      type="button"
+                      className="st-btn-secondary !px-2.5 !py-1 !text-[11px]"
+                      onClick={applyWeekPlan}
+                    >
+                      Apply week plan
+                    </button>
+                    <button
+                      type="button"
+                      className="text-[11px] text-muted-foreground hover:underline"
+                      onClick={clearWeekHours}
+                    >
+                      Clear hours
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            </div>
             {sheetLoading || resourcesLoading ? (
               <PageLoading label="Loading timesheet…" fullScreen={false} />
             ) : Object.keys(draftRows).length === 0 ? (
@@ -846,6 +943,21 @@ function TimesheetsPage() {
                 No assigned work items yet. Ask a PM to assign you on Work Items for billable
                 placeholders, or add a non-billable task below.
               </div>
+            ) : hoursView === "calendar" ? (
+              <TimesheetWeekCalendar
+                weekStart={weekStart}
+                editable={editable}
+                draftRows={draftRows}
+                workById={workById}
+                projectById={projectById as Map<string, { id: string; name?: string | null; project_code?: string | null }>}
+                onChangeHours={setRowHours}
+                onChangeCustomTask={(rowKey, value) =>
+                  setDraftRows((prev) => ({
+                    ...prev,
+                    [rowKey]: { ...prev[rowKey], custom_task: value },
+                  }))
+                }
+              />
             ) : (
               <div className="overflow-x-auto">
                 <table className="st-table text-xs">
@@ -965,21 +1077,12 @@ function TimesheetsPage() {
                                   onChange={(e) => {
                                     const raw = e.target.value;
                                     if (raw === "") {
-                                      setDraftRows((prev) => ({
-                                        ...prev,
-                                        [rowKey]: { ...prev[rowKey], [dk]: 0 },
-                                      }));
+                                      setRowHours(rowKey, dk, 0);
                                       return;
                                     }
                                     const v = Number(raw);
                                     if (!Number.isFinite(v)) return;
-                                    setDraftRows((prev) => ({
-                                      ...prev,
-                                      [rowKey]: {
-                                        ...prev[rowKey],
-                                        [dk]: Math.min(24, Math.max(0, v)),
-                                      },
-                                    }));
+                                    setRowHours(rowKey, dk, Math.min(24, Math.max(0, v)));
                                   }}
                                 />
                                 {row.billable && isWeekday && dayPlanned > 0 ? (
@@ -1253,6 +1356,20 @@ function TimesheetsPage() {
 }
 
 const TIMESHEET_HOURS_GLOSSARY: ColumnGlossaryItem[] = [
+  {
+    name: "Calendar / Grid",
+    description:
+      "Calendar = day cards with hour inputs (default). Grid = classic spreadsheet. Same data; switch anytime.",
+  },
+  {
+    name: "Apply week plan",
+    description:
+      "Fills billable rows from each work item’s suggested Mon–Fri hours for this week (from planned hours/dates).",
+  },
+  {
+    name: "Day strip",
+    description: "Mon–Sun totals at a glance. Tap a day to focus that card; totals over 8h highlight amber.",
+  },
   {
     name: "Type",
     description: "Billable (work item) or Non-billable (custom task).",
