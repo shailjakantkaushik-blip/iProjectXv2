@@ -18,6 +18,7 @@ const TABLE_QUERY_KEYS: Record<string, string[]> = {
   decisions: ["decisions"],
   dependencies: ["dependencies"],
   financials_monthly: ["financials_monthly", "monthly"],
+  opex_other_costs: ["opex_other_costs", "financials_monthly", "projects"],
   fy_allocations: ["fy_allocations"],
   benefits: ["benefits"],
   resources: ["resources"],

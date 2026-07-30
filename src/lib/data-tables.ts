@@ -334,6 +334,47 @@ export const TABLES: TableDef[] = [
     ],
   },
   {
+    key: "opex_other_costs",
+    label: "Other OpEx Costs",
+    matchOn: ["project_code", "stream_code", "cost_date", "category", "invoice_ref"],
+    orderBy: "cost_date",
+    description:
+      "Non-labor OpEx line items (travel, vendors, software, etc.). Posted rows roll up to " +
+      "Financials Monthly → OPEX Other, and OPEX Actual (all) = FTE Actual + OPEX Other. " +
+      "Optional stream + stage gate for attribution.",
+    fields: [
+      { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "stream_id", label: "Stream", type: "text", fk: "stream" },
+      { key: "stage_gate_id", label: "Stage Gate", type: "text", fk: "stage_gate" },
+      { key: "cost_date", label: "Cost Date", type: "date", required: true },
+      {
+        key: "category",
+        label: "Category",
+        type: "select",
+        options: [
+          "Travel",
+          "Software",
+          "Vendor / Contractor",
+          "Facilities",
+          "Training",
+          "Licenses",
+          "Contingency",
+          "Other",
+        ],
+      },
+      { key: "amount", label: "Amount", type: "number", required: true },
+      { key: "vendor", label: "Vendor", type: "text" },
+      { key: "invoice_ref", label: "Invoice / PO", type: "text" },
+      { key: "description", label: "Description", type: "textarea" },
+      {
+        key: "status",
+        label: "Status",
+        type: "select",
+        options: ["posted", "draft"],
+      },
+    ],
+  },
+  {
     key: "fy_allocations",
     label: "FY Allocations",
     matchOn: ["project_code", "stream_code", "fy"],

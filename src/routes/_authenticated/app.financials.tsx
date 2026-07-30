@@ -57,6 +57,7 @@ import { syncOpexLaborPlannedFromWorkItems } from "@/lib/sync-opex-labor-planned
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
+import { OpexOtherCostsPanel } from "@/components/opex-other-costs-panel";
 
 export const Route = createFileRoute("/_authenticated/app/financials")({
   component: FinancialsPage,
@@ -705,6 +706,14 @@ function FinancialsPage() {
         )}
       </SectionFrame>
 
+      {organization?.id ? (
+        <OpexOtherCostsPanel
+          orgId={organization.id}
+          projects={filtered as any[]}
+          orgPhases={orgPhases}
+        />
+      ) : null}
+
       <SectionFrame>
         <SectionTitle>
           Project Financials ({financeTable.rows.length}
@@ -841,6 +850,15 @@ function FinancialsPage() {
           {
             name: "Cum. planned / Cum. actual",
             description: "Running totals of planned and actual cashflow through that month (S-curve).",
+          },
+          {
+            name: "OPEX Other / Other OpEx costs",
+            description:
+              "Non-labor OpEx. Capture line items in Other OpEx costs (with optional stage gate); posted amounts roll into OPEX Other. OPEX Actual (all) = FTE Actual + OPEX Other.",
+          },
+          {
+            name: "OPEX Forecast",
+            description: "Expected total OpEx for the month (from FY cascade / forecast).",
           },
           {
             name: "Code",

@@ -13,6 +13,7 @@ export const EDITABLE_TABLES: { name: string; label: string }[] = [
   { name: "decisions", label: "Decisions" },
   { name: "benefits", label: "Benefits" },
   { name: "financials_monthly", label: "Financials (monthly)" },
+  { name: "opex_other_costs", label: "Other OpEx Costs" },
   { name: "fy_allocations", label: "FY Allocations" },
   { name: "dependencies", label: "Dependencies" },
   { name: "sprints", label: "Sprints" },
