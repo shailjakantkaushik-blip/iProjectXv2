@@ -100,6 +100,7 @@ import { Route as AuthenticatedPlatformSubscriptionsRouteImport } from './routes
 import { Route as AuthenticatedPlatformSupportRouteImport } from './routes/_authenticated/platform.support'
 import { Route as OSlugLoginRouteImport } from './routes/o.$slug.login'
 import { Route as AuthenticatedAppInvoiceIdRouteImport } from './routes/_authenticated/app.invoice.$id'
+import { Route as AuthenticatedAppProjectsIndexRouteImport } from './routes/_authenticated/app.projects.index'
 import { Route as AuthenticatedAppProjectsIdRouteImport } from './routes/_authenticated/app.projects.$id'
 import { Route as AuthenticatedAppProjectsNewRouteImport } from './routes/_authenticated/app.projects.new'
 import { Route as AuthenticatedPlatformInvoiceIdRouteImport } from './routes/_authenticated/platform.invoice.$id'
@@ -626,6 +627,12 @@ const AuthenticatedAppInvoiceIdRoute =
     path: '/invoice/$id',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
+const AuthenticatedAppProjectsIndexRoute =
+  AuthenticatedAppProjectsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedAppProjectsRoute,
+  } as any)
 const AuthenticatedAppProjectsIdRoute =
   AuthenticatedAppProjectsIdRouteImport.update({
     id: '/$id',
@@ -752,6 +759,7 @@ export interface FileRoutesByFullPath {
   '/platform/invoice/$id': typeof AuthenticatedPlatformInvoiceIdRoute
   '/api/byod/rest/$': typeof ApiByodRestSplatRoute
   '/api/public/hooks/billing-run': typeof ApiPublicHooksBillingRunRoute
+  '/app/projects/': typeof AuthenticatedAppProjectsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -802,7 +810,6 @@ export interface FileRoutesByTo {
   '/app/project-access': typeof AuthenticatedAppProjectAccessRoute
   '/app/project-infographic': typeof AuthenticatedAppProjectInfographicRoute
   '/app/project-purge': typeof AuthenticatedAppProjectPurgeRoute
-  '/app/projects': typeof AuthenticatedAppProjectsRouteWithChildren
   '/app/release-register': typeof AuthenticatedAppReleaseRegisterRoute
   '/app/report-builder': typeof AuthenticatedAppReportBuilderRoute
   '/app/resources': typeof AuthenticatedAppResourcesRoute
@@ -848,6 +855,7 @@ export interface FileRoutesByTo {
   '/platform/invoice/$id': typeof AuthenticatedPlatformInvoiceIdRoute
   '/api/byod/rest/$': typeof ApiByodRestSplatRoute
   '/api/public/hooks/billing-run': typeof ApiPublicHooksBillingRunRoute
+  '/app/projects': typeof AuthenticatedAppProjectsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -947,6 +955,7 @@ export interface FileRoutesById {
   '/_authenticated/platform/invoice/$id': typeof AuthenticatedPlatformInvoiceIdRoute
   '/api/byod/rest/$': typeof ApiByodRestSplatRoute
   '/api/public/hooks/billing-run': typeof ApiPublicHooksBillingRunRoute
+  '/_authenticated/app/projects/': typeof AuthenticatedAppProjectsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -1046,6 +1055,7 @@ export interface FileRouteTypes {
     | '/platform/invoice/$id'
     | '/api/byod/rest/$'
     | '/api/public/hooks/billing-run'
+    | '/app/projects/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -1096,7 +1106,6 @@ export interface FileRouteTypes {
     | '/app/project-access'
     | '/app/project-infographic'
     | '/app/project-purge'
-    | '/app/projects'
     | '/app/release-register'
     | '/app/report-builder'
     | '/app/resources'
@@ -1142,6 +1151,7 @@ export interface FileRouteTypes {
     | '/platform/invoice/$id'
     | '/api/byod/rest/$'
     | '/api/public/hooks/billing-run'
+    | '/app/projects'
   id:
     | '__root__'
     | '/'
@@ -1240,6 +1250,7 @@ export interface FileRouteTypes {
     | '/_authenticated/platform/invoice/$id'
     | '/api/byod/rest/$'
     | '/api/public/hooks/billing-run'
+    | '/_authenticated/app/projects/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1895,6 +1906,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppInvoiceIdRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
+    '/_authenticated/app/projects/': {
+      id: '/_authenticated/app/projects/'
+      path: '/'
+      fullPath: '/app/projects/'
+      preLoaderRoute: typeof AuthenticatedAppProjectsIndexRouteImport
+      parentRoute: typeof AuthenticatedAppProjectsRoute
+    }
     '/_authenticated/app/projects/$id': {
       id: '/_authenticated/app/projects/$id'
       path: '/$id'
@@ -1936,12 +1954,14 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedAppProjectsRouteChildren {
   AuthenticatedAppProjectsIdRoute: typeof AuthenticatedAppProjectsIdRoute
   AuthenticatedAppProjectsNewRoute: typeof AuthenticatedAppProjectsNewRoute
+  AuthenticatedAppProjectsIndexRoute: typeof AuthenticatedAppProjectsIndexRoute
 }
 
 const AuthenticatedAppProjectsRouteChildren: AuthenticatedAppProjectsRouteChildren =
   {
     AuthenticatedAppProjectsIdRoute: AuthenticatedAppProjectsIdRoute,
     AuthenticatedAppProjectsNewRoute: AuthenticatedAppProjectsNewRoute,
+    AuthenticatedAppProjectsIndexRoute: AuthenticatedAppProjectsIndexRoute,
   }
 
 const AuthenticatedAppProjectsRouteWithChildren =
