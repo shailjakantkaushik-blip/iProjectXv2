@@ -2,12 +2,13 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 import { createAuthStorage } from './auth-storage';
+import { maybeRewriteByodRestUrl } from '@/lib/byod-client-routing';
 
 function isNewSupabaseApiKey(value: string): boolean {
   return value.startsWith('sb_publishable_') || value.startsWith('sb_secret_');
 }
 
-function createSupabaseFetch(supabaseKey: string): typeof fetch {
+function createSupabaseFetch(supabaseUrl: string, supabaseKey: string): typeof fetch {
   return (input, init) => {
     const headers = new Headers(
       typeof Request !== 'undefined' && input instanceof Request ? input.headers : undefined,
@@ -23,7 +24,25 @@ function createSupabaseFetch(supabaseKey: string): typeof fetch {
     }
 
     headers.set('apikey', supabaseKey);
-    return fetch(input, { ...init, headers });
+
+    let nextInput: RequestInfo | URL = input;
+    const rawUrl =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : typeof Request !== 'undefined' && input instanceof Request
+            ? input.url
+            : null;
+
+    if (rawUrl) {
+      const rewritten = maybeRewriteByodRestUrl(rawUrl, supabaseUrl);
+      if (rewritten) {
+        nextInput = rewritten;
+      }
+    }
+
+    return fetch(nextInput, { ...init, headers });
   };
 }
 
@@ -46,7 +65,7 @@ function createSupabaseClient() {
 
   return createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     global: {
-      fetch: createSupabaseFetch(SUPABASE_PUBLISHABLE_KEY),
+      fetch: createSupabaseFetch(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY),
     },
     auth: {
       // sessionStorage (not localStorage) — see auth-storage.ts

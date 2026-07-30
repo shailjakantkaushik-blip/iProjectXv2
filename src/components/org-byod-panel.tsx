@@ -177,10 +177,11 @@ export function OrgByodPanel({
         </CardTitle>
         <CardDescription>
           Optional for <strong>{orgName}</strong>. By default, organisations use the shared
-          iProjectX data plane. When active, server-side tenant data is read/written against
-          this customer-hosted database URL (any HTTPS Postgres/PostgREST-compatible API —
-          including self-hosted or third-party hosts, not only one vendor). Auth, billing, and
-          white-label stay on iProjectX.
+          iProjectX data plane. When active, portfolio screens route tenant REST through a
+          same-origin proxy to this customer-hosted database URL (any HTTPS
+          Postgres/PostgREST-compatible API — including self-hosted or third-party hosts, not
+          only one vendor). Auth, billing, SSO config, and white-label stay on iProjectX.
+          Apply the same schema migrations on the customer DB before relying on portfolio features.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

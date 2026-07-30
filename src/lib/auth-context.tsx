@@ -15,6 +15,7 @@ import {
   readCachedAuthChrome,
   writeCachedAuthChrome,
 } from "@/lib/auth-chrome-cache";
+import { setByodClientRoutingActive } from "@/lib/byod-client-routing";
 
 export type AppRole =
   | "admin"
@@ -137,6 +138,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadedUserIdRef = useRef<string | null>(cached?.userId ?? null);
   const inflightProfileRef = useRef<{ userId: string; promise: Promise<void> } | null>(null);
   const bootFinishedRef = useRef(false);
+
+  // Enable tenant REST → BYOD proxy as soon as we know the org (incl. cached chrome).
+  useEffect(() => {
+    setByodClientRoutingActive(Boolean(organization?.byod_active));
+    return () => setByodClientRoutingActive(false);
+  }, [organization?.byod_active, organization?.id]);
 
   const loadProfile = async (userId: string) => {
     if (inflightProfileRef.current?.userId === userId) {
@@ -327,6 +334,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     clearCachedOrgNavigation();
     clearCachedAuthChrome();
+    setByodClientRoutingActive(false);
     await supabase.auth.signOut();
   };
 

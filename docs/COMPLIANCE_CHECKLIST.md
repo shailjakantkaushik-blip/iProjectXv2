@@ -4,6 +4,8 @@ Use this after the latest security deploy. Technical controls are largely in pla
 
 **Ops validated (2026-07-25):** Supabase TOTP MFA On · hardening + `security_events` + audit admin-read SQL applied · latest `main` deployed · MFA / logging / audit-access smoke tests passed.
 
+**Engineering re-audit (2026-07-30):** BYOD proxy AAL2 + authz hardening closed two HIGH findings. Legal policy SQL refresh available.
+
 ---
 
 ## A. Do this week (required)
@@ -18,6 +20,8 @@ Use this after the latest security deploy. Technical controls are largely in pla
 | A5b | **Audit log access** | As a non-admin user, `/app/audit-log` should be hidden/denied. As org admin, it should load. | ✅ |
 | A5c | **Run audit RLS SQL** | Apply `20260725170000_audit_events_admin_read.sql` in Supabase SQL Editor | ✅ |
 | A5d | **Run hardening SQL** | Apply `20260725120000_security_hardening.sql` if not already | ✅ |
+| A5e | **Refresh legal policies** | Apply `20260730170000_legal_policies_security_byod_sso.sql` (MFA/SSO/BYOD wording) | ☐ |
+| A5f | **If using BYOD** | Set `BYOD_SECRETS_KEK` (≥32 chars); apply `org_byod_connections` migration; smoke-test: AAL1 JWT must get 403 on `/api/byod/rest/projects`; after MFA, scoped data only | ☐ (only if BYOD) |
 | A6 | **Confirm sessionStorage** | DevTools → Application → Session Storage has `sb-*-auth-token`. Local Storage should **not** hold that token. | ✅ (covered in smoke) |
 | A7 | **Confirm CSP** | Production response headers include `Content-Security-Policy` with Turnstile + fonts + Supabase. Landing fonts still load. | ✅ (covered in deploy) |
 | A8 | **Manual invoicing only** | No cron needed. Use Platform → Invoices → Email → Mark paid. Optionally set `BILLING_CRON_SECRET` anyway so the unused endpoint stays locked. | ☐ (process choice) |
@@ -35,6 +39,7 @@ Use this after the latest security deploy. Technical controls are largely in pla
 | B4 | Confirm vendor DPAs (Supabase, Vercel, Cloudflare, Resend/SendGrid) | Annually |
 | B5 | Re-read / update `docs/isms/*` if process changes | Annually |
 | B6 | **Export auditor evidence packs** (one click) | Before audits / on request |
+| B7 | If BYOD active: review customer DB backup/DR attestations | Quarterly |
 
 ### One-click evidence export (in product)
 
@@ -49,13 +54,16 @@ Excel files include an `Export_Metadata` sheet (period, row count, export time) 
 
 ---
 
-## C. Certification path (later — not blocking product)
+## C. Certification path (honest status)
 
-| Goal | What’s left |
-|------|-------------|
-| **SOC 2 Type II** | Hire auditor; run controls 3–12 months; collect evidence (access reviews, incidents, change logs) |
-| **ISO 27001** | Formal ISMS project + certification body |
-| **GDPR / APP** | DPIA, retention schedule, privacy notices (legal), breach notification process already sketched in ISMS |
+| Goal | Status | What’s left |
+|------|--------|-------------|
+| **Technical control design** | **Ready** (~78% SOC design / ~62% ISO) | Keep migrations applied; edge WAF recommended |
+| **SOC 2 Type II** | **Not certified yet** | Hire auditor; run controls 3–12 months; collect evidence (section B) |
+| **ISO 27001** | **Not certified yet** | Formal SoA, internal audit, certification body |
+| **GDPR / APP** | **Policy pack ready** | DPIA as needed; retention schedule enforcement evidence |
+
+**Important:** Shipping MFA, RLS, BYOD hardening, and ISMS docs makes you **procurement-ready** and **audit-ready**. It does **not** by itself grant SOC 2 or ISO certificates — those require an external auditor and an observation/evidence period.
 
 ---
 
@@ -73,6 +81,7 @@ Old library **`xlsx`** had known security bugs (attackers could craft a maliciou
 |---------|--------|
 | Critical authz (provision, org lock, EOI, forced password) | **Pass** |
 | MFA for all users | **Pass** (Supabase TOTP On + smoke-tested) |
+| BYOD proxy AAL2 + authz | **Pass** (2026-07-30 re-audit fixes) |
 | Safer sessions (sessionStorage + PKCE) | **Pass** |
 | Excel CVE | **Pass** (package removed) |
 | Login / logout / failed-login logging | **Pass** (`security_events` SQL + smoke-tested) |
@@ -84,4 +93,4 @@ Old library **`xlsx`** had known security bugs (attackers could craft a maliciou
 | Production deploy | **Pass** (latest `main`) |
 | Billing cron | Not used (manual invoicing) — endpoint fail-closed if secret unset |
 
-**Go-live security gate: CLOSED.** Remaining work is operational evidence for certification (section B/C), not product blockers.
+**Go-live security gate: CLOSED.** Remaining work for **certificates** is operational evidence (section B/C), not product blockers.
