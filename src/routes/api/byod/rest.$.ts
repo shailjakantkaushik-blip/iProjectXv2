@@ -2,17 +2,24 @@
  * Same-origin BYOD PostgREST proxy.
  *
  * Browser supabase-js keeps talking to the platform URL for auth + control tables.
- * When organization.byod_active, tenant REST is rewritten here; we verify the
- * platform JWT, resolve the customer upstream (cached), force org_id scope, and
- * forward with the customer service-role key (never exposed to the browser).
+ * When organization.byod_active, tenant REST is rewritten here.
+ *
+ * Security (SOC 2 / ISO access control):
+ * - Platform JWT required + AAL2 (mandatory MFA)
+ * - Home-org from profiles (not client-supplied)
+ * - Role gates + project visibility + timesheet owner scope (service role bypasses RLS)
+ * - Mutation audit events
+ * - Customer service-role secrets never exposed to the browser
  */
 import { createFileRoute } from "@tanstack/react-router";
-import { createClient } from "@supabase/supabase-js";
 import { resolveByodUpstream } from "@/lib/byod.server";
+import { isByodTenantTable } from "@/lib/byod-tables";
 import {
-  BYOD_ORG_SCOPED_TABLES,
-  isByodTenantTable,
-} from "@/lib/byod-tables";
+  authenticateByodActor,
+  authorizeByodProxyRequest,
+  logByodProxyMutation,
+} from "@/lib/byod-proxy-authz.server";
+import { BYOD_ORG_SCOPED_TABLES } from "@/lib/byod-tables";
 
 const HOP_BY_HOP = new Set([
   "connection",
@@ -27,78 +34,31 @@ const HOP_BY_HOP = new Set([
   "content-length",
 ]);
 
-async function authenticatePlatformUser(
-  request: Request,
-): Promise<{ userId: string; orgId: string } | Response> {
-  const authHeader = request.headers.get("authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return new Response(JSON.stringify({ message: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-  const token = authHeader.slice(7).trim();
-  if (!token || token.split(".").length !== 3) {
-    return new Response(JSON.stringify({ message: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+/** Simple per-user rate limit (best-effort across isolates). */
+const rateBuckets = new Map<string, { count: number; reset: number }>();
+const RATE_LIMIT = 240;
+const RATE_WINDOW_MS = 60_000;
 
-  const url = process.env.SUPABASE_URL;
-  const publishable = process.env.SUPABASE_PUBLISHABLE_KEY;
-  const service = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !publishable || !service) {
-    return new Response(JSON.stringify({ message: "Server misconfigured" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
+function rateLimit(userId: string): Response | null {
+  const now = Date.now();
+  const bucket = rateBuckets.get(userId);
+  if (!bucket || bucket.reset < now) {
+    rateBuckets.set(userId, { count: 1, reset: now + RATE_WINDOW_MS });
+    return null;
+  }
+  bucket.count += 1;
+  if (bucket.count > RATE_LIMIT) {
+    return new Response(JSON.stringify({ message: "Too many requests" }), {
+      status: 429,
+      headers: { "Content-Type": "application/json", "Retry-After": "60" },
     });
   }
-
-  const userClient = createClient(url, publishable, {
-    auth: { persistSession: false, autoRefreshToken: false },
-    global: { headers: { Authorization: `Bearer ${token}` } },
-  });
-  const { data: userData, error: userErr } = await userClient.auth.getUser(token);
-  if (userErr || !userData.user) {
-    return new Response(JSON.stringify({ message: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  const admin = createClient(url, service, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const { data: profile, error: profErr } = await admin
-    .from("profiles")
-    .select("org_id,is_active")
-    .eq("user_id", userData.user.id)
-    .maybeSingle();
-
-  if (profErr || !profile?.org_id) {
-    return new Response(JSON.stringify({ message: "No organisation on profile" }), {
-      status: 403,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-  if ((profile as { is_active?: boolean }).is_active === false) {
-    return new Response(JSON.stringify({ message: "Account inactive" }), {
-      status: 403,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  return { userId: userData.user.id, orgId: profile.org_id as string };
+  return null;
 }
 
 function forceOrgFilter(target: URL, table: string, orgId: string): void {
   if (!BYOD_ORG_SCOPED_TABLES.has(table)) return;
   for (const key of [...target.searchParams.keys()]) {
-    if (key === "org_id" || key.startsWith("and") || key.startsWith("or")) {
-      // Keep and/or — PostgREST AND with top-level org_id=eq still applies.
-      // Strip only direct org_id overrides.
-    }
     if (key === "org_id") target.searchParams.delete(key);
   }
   target.searchParams.set("org_id", `eq.${orgId}`);
@@ -151,10 +111,14 @@ async function proxyByodRest(
     );
   }
 
-  const auth = await authenticatePlatformUser(request);
-  if (auth instanceof Response) return auth;
+  const actorOrErr = await authenticateByodActor(request);
+  if (actorOrErr instanceof Response) return actorOrErr;
+  const actor = actorOrErr;
 
-  const upstream = await resolveByodUpstream(auth.orgId);
+  const limited = rateLimit(actor.userId);
+  if (limited) return limited;
+
+  const upstream = await resolveByodUpstream(actor.orgId);
   if (!upstream) {
     return new Response(
       JSON.stringify({
@@ -168,19 +132,27 @@ async function proxyByodRest(
   const incoming = new URL(request.url);
   const target = new URL(`${upstream.baseUrl}/rest/v1/${table}`);
   target.search = incoming.search;
-  forceOrgFilter(target, table, auth.orgId);
+  forceOrgFilter(target, table, actor.orgId);
 
   const method = request.method.toUpperCase();
   let bodyText: string | null = null;
+  const contentType = request.headers.get("content-type");
   if (method !== "GET" && method !== "HEAD") {
     bodyText = await request.text();
-    bodyText = await scopeJsonBody(
-      bodyText,
-      request.headers.get("content-type"),
-      table,
-      auth.orgId,
-    );
+    bodyText = await scopeJsonBody(bodyText, contentType, table, actor.orgId);
   }
+
+  const authz = await authorizeByodProxyRequest({
+    actor,
+    method,
+    table,
+    targetUrl: target,
+    bodyText,
+    contentType,
+    upstream,
+  });
+  if (!authz.ok) return authz.response;
+  bodyText = authz.bodyText;
 
   const headers = new Headers();
   request.headers.forEach((value, key) => {
@@ -201,13 +173,19 @@ async function proxyByodRest(
       body: bodyText,
       redirect: "manual",
     });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : "Upstream fetch failed";
-    return new Response(JSON.stringify({ message: `BYOD upstream error: ${msg}` }), {
-      status: 502,
-      headers: { "Content-Type": "application/json" },
-    });
+  } catch {
+    return new Response(
+      JSON.stringify({ message: "BYOD upstream unavailable. Try again or contact support." }),
+      { status: 502, headers: { "Content-Type": "application/json" } },
+    );
   }
+
+  void logByodProxyMutation({
+    actor,
+    method,
+    table,
+    status: upstreamRes.status,
+  });
 
   const outHeaders = new Headers();
   upstreamRes.headers.forEach((value, key) => {
@@ -215,7 +193,6 @@ async function proxyByodRest(
     if (HOP_BY_HOP.has(lower)) return;
     outHeaders.set(key, value);
   });
-  // Avoid leaking customer project URL via CORS-like headers
   outHeaders.delete("access-control-allow-origin");
   outHeaders.delete("access-control-allow-credentials");
 
@@ -229,8 +206,10 @@ async function proxyByodRest(
 const methods = ["GET", "POST", "PATCH", "PUT", "DELETE", "HEAD", "OPTIONS"] as const;
 
 function buildHandlers() {
-  const handlers: Record<string, (ctx: { request: Request; params: { _splat?: string } }) => Promise<Response>> =
-    {};
+  const handlers: Record<
+    string,
+    (ctx: { request: Request; params: { _splat?: string } }) => Promise<Response>
+  > = {};
   for (const method of methods) {
     handlers[method] = async ({ request, params }) => {
       if (method === "OPTIONS") {

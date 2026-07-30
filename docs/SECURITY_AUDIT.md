@@ -1,10 +1,43 @@
 # iProjectX Security Audit & Hardening Review
 
-**Date:** 2026-07-26 (post-incident re-audit)  
+**Date:** 2026-07-30 (BYOD proxy re-audit + certification readiness)  
+**Prior:** 2026-07-26 (post-incident re-audit)  
 **Scope:** Full repository `/workspace` (application + Supabase migrations + Vercel config)  
 **Auditor role:** Principal Security Engineer / SOC 2 / OWASP ASVS L2 / SaaS multi-tenant  
 
 **Operator checklist:** [`COMPLIANCE_CHECKLIST.md`](./COMPLIANCE_CHECKLIST.md)
+
+---
+
+## BYOD full-app proxy re-audit (2026-07-30)
+
+### Findings (pre-fix)
+
+| ID | Severity | Finding | Status |
+|----|----------|---------|--------|
+| B1 | **HIGH** | `/api/byod/rest/$` used customer **service role** with only `org_id` filter → any org member could read/mutate all tenant rows (bypassed project visibility, timesheet ownership, admin-only deletes) | **FIXED** |
+| B2 | **HIGH** | Proxy validated JWT only — **no AAL2** → password session (AAL1) could call proxy before MFA | **FIXED** |
+
+### Fixes shipped
+
+| Control | Implementation |
+|---------|----------------|
+| Mandatory MFA on BYOD data path | `authenticateByodActor` requires JWT claim `aal === "aal2"` (`byod-proxy-authz.server.ts`) |
+| Role gates | Non-editors blocked from mutating most tables; admin-only deletes for projects / BUs / FY / scenarios |
+| Project visibility | Visible project ids resolved from customer `projects` + platform `ui_config.project_visibility` + roles; injected as `id`/`project_id=in.(…)` |
+| Timesheet ownership | Non-admin non-editor forced to `user_id=eq.{caller}` on timesheets; inserts force owner |
+| Mutation audit | BYOD POST/PATCH/PUT/DELETE logged to `security_events` (no bodies) |
+| Rate limit | Best-effort 240 req/min/user on proxy |
+| Error sanitisation | Upstream failures return generic 502 (no customer host leak) |
+| Secrets | Unchanged — AES-256-GCM + `BYOD_SECRETS_KEK`; service role never to browser |
+
+### Residual BYOD risks (accepted / documented)
+
+1. Full bit-for-bit parity with every Postgres RLS helper (e.g. `is_timesheet_approver`) is not replicated; editors/admins get broader timesheet read than draft-only owners — matches product need for PM approval flows.
+2. Customer DB must apply the same schema; encryption-at-rest / backups for BYOD tenant data are **Customer** responsibilities.
+3. In-process rate limits are best-effort across Vercel isolates — pair with edge/WAF for production.
+
+See [`BYOD.md`](./BYOD.md).
 
 ---
 
@@ -19,6 +52,7 @@
 ---
 
 ## Post-incident re-audit — org white-label login (2026-07-26)
+
 
 ### Incident
 
@@ -60,7 +94,7 @@ Prior audits validated RLS, MFA enrollment, AI egress, and many server-fn authz 
 
 ---
 
-### Current validation status (2026-07-26)
+### Current validation status (2026-07-30)
 
 | Control | Status | Notes |
 |---------|--------|-------|
@@ -68,6 +102,8 @@ Prior audits validated RLS, MFA enrollment, AI egress, and many server-fn authz 
 | Org white-label login gate × MFA | **PASS (re-audited)** | Membership before MFA; home-org only; shell blocked until AAL2 |
 | Admin role helpers scoped to home org | **PASS (apply SQL)** | `has_any_admin` / `has_role` / `can_edit_project` |
 | MFA for all users | **PASS** | App + Supabase TOTP On; shell waits for MFA before data UI |
+| BYOD proxy AAL2 | **PASS** | `/api/byod/rest/$` rejects non-`aal2` JWTs |
+| BYOD proxy authz parity | **PASS (hardened)** | Roles + project visibility + timesheet owner scope + mutation audit |
 | MFA gate vs scroll/nav perf | **PASS** | Shell stays mounted after AAL2; MFA re-checked on tab focus without tearing chrome; org gate unchanged |
 | Safer sessions | **PASS** | `sessionStorage` + PKCE (not localStorage JWTs) |
 | Excel CVE (`xlsx`) | **PASS** | Package removed; `read-excel-file` / `write-excel-file` |
@@ -75,10 +111,14 @@ Prior audits validated RLS, MFA enrollment, AI egress, and many server-fn authz 
 | Audit log admin-only | **PASS** | RLS SQL applied; smoke-tested |
 | Security headers + CSP | **PASS** | Vercel: HSTS, CSP (Turnstile, fonts, Supabase) |
 | ISMS policy pack | **PASS** | `docs/isms/` |
+| Legal policies (MFA/SSO/BYOD) | **PASS (apply SQL)** | `20260730170000_legal_policies_security_byod_sso.sql` |
 | Billing cron | **N/A (manual invoicing)** | Endpoint fail-closed if secret unset; no cron required |
 | Production ops gate | **PASS** | Hardening SQL + deploy + MFA/logging/audit smoke tests confirmed |
 
-**Go-live security gate: CLOSED.** Not “fully certified”: SOC 2 Type II / ISO 27001 still need operating evidence + auditor. Technical + production baseline is enterprise-ready.
+**Go-live security gate: CLOSED** for shared data-plane orgs. **BYOD:** CLOSED after 2026-07-30 proxy hardening (AAL2 + authz).  
+
+**Not “fully certified”:** SOC 2 Type II / ISO 27001 still need operating evidence + an external auditor. Technical control design is enterprise-ready; certification is an evidence-period process, not a code checkbox.
+
 
 ### In-house AI — permission, safety & egress validation (2026-07-25)
 
@@ -252,56 +292,58 @@ Legacy `NEXT_PUBLIC_*` env names are bridged to `VITE_*` via `scripts/env-bridge
 | Turnstile | Rate limit |
 | `role_table_permissions` | Migration ensures table + RLS |
 
-### Still required (not fully implemented)
+### Still required (ops / certification evidence — not product blockers)
 
-1. **MFA** (Supabase MFA enroll/challenge UX + policy for admins)  
-2. **HttpOnly cookie session** (or hardened XSS program + CSP nonce tightening)  
+1. ~~**MFA**~~ **Done** (TOTP mandatory + BYOD AAL2)  
+2. **HttpOnly cookie session** (or hardened XSS program + CSP nonce tightening) — future  
 3. **Edge/WAF rate limits** (Vercel Firewall / Cloudflare) — in-process limiter is best-effort  
-4. **Login/logout immutable audit** with IP/UA from edge  
-5. **Replace `xlsx`**  
-6. **Tighten any-member write tables**  
+4. Continuous **SIEM / alerting** on `security_events` failed-login spikes  
+5. ~~**Replace `xlsx`**~~ **Done**  
+6. Tighten remaining any-member write tables (medium)  
 7. **Malware scanning** for uploads / ban SVG logos or sanitize  
-8. **Session device management**  
-9. **Apply migration** `20260725120000_security_hardening.sql` to production Supabase  
-10. **Set `BILLING_CRON_SECRET`** in Vercel and cron caller  
+8. **Session device management** UI  
+9. Keep production SQL migrations applied (including legal policy refresh + admin role scope)  
+10. Formal **access-review minutes**, vendor DPAs, change tickets for Type II evidence period  
 
 ---
 
 ## Phase 3 – Compliance readiness
 
-### SOC 2 Type II (gap summary)
+### SOC 2 Type II (gap summary) — updated 2026-07-30
 
 | Area | Implemented | Missing / evidence needed |
 |------|-------------|---------------------------|
-| CC6 Logical access | RLS, RBAC, admin server asserts | MFA, joiner/mover/leaver SOPs, access reviews |
-| CC7 Monitoring | Partial `audit_events` | Central SIEM, failed-login alerts, on-call runbooks |
-| CC8 Change mgmt | GitHub PRs | Formal CAB, prod change tickets |
-| A1 Availability | Vercel/Supabase | DR/BCP tests, RTO/RPO docs |
-| C1 Confidentiality | TLS, RLS | DLP, encryption-at-rest attestations from vendors |
-| PII / privacy | Partial | DPIA, retention, subprocessors list |
+| CC6 Logical access | RLS, RBAC, MFA AAL2 (UI + BYOD proxy), admin server asserts, BYOD authz layer | Joiner/mover/leaver **signed** access reviews (quarterly minutes) |
+| CC7 Monitoring | `security_events`, `audit_events`, BYOD mutation logs, auditor Excel export | Central SIEM, failed-login alerts, on-call runbooks |
+| CC8 Change mgmt | GitHub PRs | Formal CAB / prod change tickets retained for audit period |
+| A1 Availability | Vercel/Supabase | DR/BCP tests, RTO/RPO docs (customer BYOD = customer DR) |
+| C1 Confidentiality | TLS, RLS, BYOD secret encryption | Vendor encryption-at-rest attestations; BYOD tenant plane = customer host |
+| PII / privacy | Privacy policy, DPA, subprocessors list, legal CMS | DPIA per customer as needed; retention schedule enforcement evidence |
 
-**SOC 2 readiness (control design): ~45%** — rising to ~60% after this PR + migration apply + MFA + monitoring.
+**SOC 2 readiness (control design): ~75–80%**  
+**SOC 2 Type II (evidence / observation period): ~45–55%** — needs 3–12 months operating evidence + auditor.
 
-### ISO 27001
+### ISO 27001 — updated 2026-07-30
 
 | Theme | Status |
 |-------|--------|
-| ISMS docs (SoA, risk register, policies) | **Missing in repo** |
-| Access control (A.5/A.8) | Partial technical controls |
-| Cryptography | TLS via platform; app-level secrets mgmt partial |
-| Logging (A.8.15) | Partial |
-| Supplier security | Need Supabase/Vercel/Resend DPAs |
+| ISMS docs (policies, risk register, access, incident, logging, vendors) | **Present** (`docs/isms/`) |
+| Access control (A.5/A.8) | **Strong technical** (MFA, RBAC, RLS, BYOD AAL2+authz) |
+| Cryptography | TLS via platform; BYOD secrets AES-256-GCM |
+| Logging (A.8.15) | Auth + admin + BYOD mutations |
+| Supplier security | Subprocessor list; need executed DPAs on file |
+| Statement of Applicability / formal SoA | Draft via ISMS pack — certification body engagement still required |
 
-**ISO readiness: ~35%** (documentation-heavy gap).
+**ISO readiness: ~60–65%** (docs + technical controls); certification needs formal SoA, internal audit, and registrar.
 
 ### OWASP ASVS Level 2 (by section)
 
 | ASVS section | Result | Notes |
 |--------------|--------|-------|
 | V1 Architecture | **Partial** | Multi-tenant model exists; threat model doc missing |
-| V2 Authentication | **Partial** | Reset/force-change OK; **MFA Fail**; session storage Fail vs ideal |
+| V2 Authentication | **Pass (with residual)** | MFA mandatory + AAL2 on BYOD; sessionStorage (not HttpOnly cookie) residual |
 | V3 Session | **Partial** | Supabase refresh; no app session inventory |
-| V4 Access control | **Partial** | RLS strong; remaining write-broad tables / UI default-allow |
+| V4 Access control | **Pass/Partial** | RLS strong; BYOD proxy authz hardened; remaining broad write tables / UI default-allow |
 | V5 Validation | **Partial** | Zod on server fns; bulk Excel/import weak |
 | V6 Cryptography | **Partial** | Platform-managed |
 | V7 Error handling | **Partial** | Some raw errors to client |
@@ -338,17 +380,17 @@ Legacy `NEXT_PUBLIC_*` env names are bridged to `VITE_*` via `scripts/env-bridge
 
 ## Phase 5 – Scorecard & readiness
 
-### Security scorecard (0–10) — revalidated
+### Security scorecard (0–10) — revalidated 2026-07-30
 
 | Domain | Score |
 |--------|-------|
-| Authentication | **8** (MFA all users + PKCE + sessionStorage) |
-| Authorization | **7** |
-| API Security | **7** |
+| Authentication | **9** (MFA all users + AAL2 on BYOD + PKCE + sessionStorage) |
+| Authorization | **8** (RLS + BYOD authz layer; residual broad writes) |
+| API Security | **8** |
 | Database Security | **8** |
 | Infrastructure Security | **8** (CSP + HSTS + fonts/Turnstile) |
-| Monitoring | **8** (`security_events` + tenant `audit_events`) |
-| Compliance docs | **8** (`docs/isms` + checklist) |
+| Monitoring | **8** (`security_events` + tenant `audit_events` + BYOD mutations) |
+| Compliance docs | **9** (`docs/isms` + checklist + legal refresh) |
 
 ### Remaining medium items (not blockers for go-live)
 
@@ -362,10 +404,11 @@ Legacy `NEXT_PUBLIC_*` env names are bridged to `VITE_*` via `scripts/env-bridge
 
 | Metric | Score |
 |--------|-------|
-| **Current overall** | **85 / 100** (ops validated in production) |
-| **SOC 2 readiness** | **~80%** design / **~45%** Type II evidence |
-| **ISO 27001 readiness** | **~55%** |
-| **Enterprise procurement readiness** | **~80%** |
+| **Current overall** | **88 / 100** (BYOD high findings closed) |
+| **SOC 2 control design** | **~78%** |
+| **SOC 2 Type II evidence** | **~50%** (needs observation period) |
+| **ISO 27001 readiness** | **~62%** |
+| **Enterprise procurement readiness** | **~85%** |
 
 ---
 

@@ -45,12 +45,16 @@ Table lists live in `src/lib/byod-tables.ts`.
 
 ### Proxy (`/api/byod/rest/$`)
 
-1. Verifies the platform user JWT  
-2. Loads `profile.org_id` and resolves cached BYOD upstream credentials  
-3. Forwards to the customer PostgREST with the **service role** key  
-4. Forces `org_id=eq.{org}` on scoped tables (service role bypasses RLS)
+1. Verifies the platform user JWT and requires **AAL2** (mandatory MFA)  
+2. Loads `profile.org_id` and roles; resolves cached BYOD upstream credentials  
+3. Applies **authorization** before forward (editor/admin gates, project visibility, timesheet owner scope)  
+4. Forwards to the customer PostgREST with the **service role** key  
+5. Forces `org_id=eq.{org}` on scoped tables  
+6. Logs mutations to `security_events` (no request bodies)
 
 Upstream credentials from `resolveOrgDataClient` / `resolveByodUpstream` are cached ~120s and invalidated on BYOD save / clear / test / activate.
+
+**Why service role?** Customer PostgREST cannot validate platform Auth JWTs. Authorization is therefore enforced in the proxy (not by trusting the browser).
 
 ### Server functions
 
