@@ -25,7 +25,6 @@ import {
   Legend,
   ReferenceLine,
   LabelList,
-  Cell,
 } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { compareProjectsByCodeName } from "@/lib/project-options";
@@ -76,7 +75,7 @@ type Project = {
   portfolio?: string | null;
 };
 
-type ResTab = "utilisation" | "pva" | "cost";
+type ResTab = "utilisation" | "pva";
 
 const STATUS_COLOR = {
   Over: "#dc2626",
@@ -85,6 +84,16 @@ const STATUS_COLOR = {
   Unplanned: "#7c3aed",
 } as const;
 type Status = keyof typeof STATUS_COLOR;
+
+const PLAN_BAR = "#2563eb";
+const ACTUAL_BAR = "#0d9488";
+
+/** Convert timesheet hours in a month to % of monthly FTE capacity. */
+function hoursToMonthPct(hours: number, capacityHoursWeek = 40): number {
+  const monthCap = (Number(capacityHoursWeek) || 40) * 4.33;
+  if (monthCap <= 0 || !Number.isFinite(hours)) return 0;
+  return Math.round((hours / monthCap) * 100);
+}
 
 /** Normalize DB dates to YYYY-MM-01 so filters/headers/cells share one key. */
 function normMonth(v: string | null | undefined): string {
@@ -203,7 +212,6 @@ function ResourcesPage() {
   const [monthFrom, setMonthFrom] = useState<string>("all");
   const [monthTo, setMonthTo] = useState<string>("all");
 
-  const projByIdAll = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
   const projectsOrdered = useMemo(() => [...projects].sort(compareProjectsByCodeName), [projects]);
   const resByIdAll = useMemo(() => new Map(resourcesAll.map((r) => [r.id, r])), [resourcesAll]);
 
@@ -310,7 +318,6 @@ function ResourcesPage() {
   }, [allocationsAll, resIdSet, projectFilter, monthFrom, monthTo]);
 
   const resById = resByIdAll;
-  const projById = projByIdAll;
 
   const resetFilters = () => {
     setSearch("");
@@ -321,27 +328,6 @@ function ResourcesPage() {
     setMonthFrom("all");
     setMonthTo("all");
   };
-
-  // Distinct months (sorted, normalized)
-  const months = useMemo(() => {
-    const s = new Set<string>();
-    allocations.forEach((a) => {
-      const m = normMonth(a.period_month);
-      if (m) s.add(m);
-    });
-    return Array.from(s).sort();
-  }, [allocations]);
-
-  const projectColumns = useMemo(() => {
-    // Always show every visible project (not only those with allocations).
-    const list =
-      projectFilter === "all"
-        ? [...projects]
-        : projects.filter((p) => p.id === projectFilter);
-    return list.sort((a, b) =>
-      String(a.project_code || a.name).localeCompare(String(b.project_code || b.name)),
-    );
-  }, [projects, projectFilter]);
 
   const filteredActuals = useMemo(() => {
     const from = monthFrom === "all" ? null : normMonth(monthFrom);
@@ -359,6 +345,31 @@ function ResourcesPage() {
       return true;
     });
   }, [timesheetActuals, resIdSet, projectFilter, monthFrom, monthTo]);
+
+  // Distinct months (sorted, normalized) — plan + actuals
+  const months = useMemo(() => {
+    const s = new Set<string>();
+    allocations.forEach((a) => {
+      const m = normMonth(a.period_month);
+      if (m) s.add(m);
+    });
+    filteredActuals.forEach((a) => {
+      const m = normMonth(a.period_month || a.week_start);
+      if (m) s.add(m);
+    });
+    return Array.from(s).sort();
+  }, [allocations, filteredActuals]);
+
+  const projectColumns = useMemo(() => {
+    // Always show every visible project (not only those with allocations).
+    const list =
+      projectFilter === "all"
+        ? [...projects]
+        : projects.filter((p) => p.id === projectFilter);
+    return list.sort((a, b) =>
+      String(a.project_code || a.name).localeCompare(String(b.project_code || b.name)),
+    );
+  }, [projects, projectFilter]);
 
   // Avg allocation per resource + timesheet actuals
   const utilisation = useMemo(() => {
@@ -379,6 +390,20 @@ function ResourcesPage() {
           if (a.billable === false || !a.project_id) nonBillableHours += hrs;
           else billableHours += hrs;
         }
+        // Average monthly actual % (same basis as plan avg %)
+        let actualPctSum = 0;
+        if (months.length) {
+          for (const m of months) {
+            const hrs = filteredActuals
+              .filter(
+                (a) =>
+                  a.resource_id === r.id && normMonth(a.period_month || a.week_start) === m,
+              )
+              .reduce((s, a) => s + (Number(a.hours) || 0), 0);
+            actualPctSum += hoursToMonthPct(hrs, cap);
+          }
+        }
+        const actualPctAvg = months.length ? Math.round(actualPctSum / months.length) : 0;
         const utilVsPlan =
           planHours > 0 ? Math.round((actualHours / planHours) * 1000) / 10 : null;
         let status: Status = statusFor(avg);
@@ -388,6 +413,7 @@ function ResourcesPage() {
           resource: r.name,
           resourceId: r.id,
           pct: Math.round(avg),
+          actualPct: actualPctAvg,
           planHours: Math.round(planHours * 10) / 10,
           actualHours: Math.round(actualHours * 10) / 10,
           billableHours: Math.round(billableHours * 10) / 10,
@@ -397,7 +423,7 @@ function ResourcesPage() {
         };
       })
       .sort((a, b) => b.pct - a.pct);
-  }, [resources, allocations, months.length, filteredActuals]);
+  }, [resources, allocations, months, filteredActuals]);
 
   const utilisationExportRows = useMemo(() => {
     const planByResource = new Map<string, { percent: number; hours: number }>();
@@ -440,44 +466,59 @@ function ResourcesPage() {
     under: utilisation.filter((u) => u.status === "Under" || u.status === "Unplanned").length,
   };
 
-  // Resource × Month heatmap grid — sum ALL allocations for resource+month
+  // Resource × Month heatmap — plan % and actual % (from timesheets)
   const heatGrid = useMemo(() => {
     return resources.map((r) => {
-      const row: { name: string; cells: { month: string; pct: number }[] } = {
-        name: r.name,
-        cells: [],
-      };
+      const cap = Number(r.capacity_hours_week) || 40;
+      const row: {
+        name: string;
+        cells: { month: string; planPct: number; actualPct: number }[];
+      } = { name: r.name, cells: [] };
       months.forEach((m) => {
-        const total = allocations
-          .filter((a) => a.resource_id === r.id && a.period_month === m)
-          .reduce((s, a) => s + Number(a.allocation_percent || 0), 0);
-        row.cells.push({ month: m, pct: Math.round(total) });
+        const planPct = Math.round(
+          allocations
+            .filter((a) => a.resource_id === r.id && a.period_month === m)
+            .reduce((s, a) => s + Number(a.allocation_percent || 0), 0),
+        );
+        const actualHrs = filteredActuals
+          .filter((a) => a.resource_id === r.id && normMonth(a.period_month || a.week_start) === m)
+          .reduce((s, a) => s + (Number(a.hours) || 0), 0);
+        row.cells.push({
+          month: m,
+          planPct,
+          actualPct: hoursToMonthPct(actualHrs, cap),
+        });
       });
       return row;
     });
-  }, [resources, allocations, months]);
+  }, [resources, allocations, months, filteredActuals]);
 
-  // Monthly demand by project (stacked area = simple bar per month)
-  const monthlyByProject = useMemo(() => {
-    const map = new Map<string, Record<string, number>>();
-    const projKeys = new Set<string>();
-    allocations.forEach((a) => {
-      const p = projById.get(a.project_id);
-      const pname = p?.name || "—";
-      projKeys.add(pname);
-      const mk = normMonth(a.period_month);
-      const row = map.get(mk) || {};
-      row[pname] = (row[pname] || 0) + Number(a.allocation_percent || 0);
-      map.set(mk, row);
+  // Monthly plan vs actual hours (portfolio totals)
+  const monthlyPlanActual = useMemo(() => {
+    return months.map((m) => {
+      let planHours = 0;
+      let actualHours = 0;
+      for (const a of allocations) {
+        if (a.period_month !== m) continue;
+        const r = resById.get(a.resource_id);
+        planHours += hoursFromAllocation(a, Number(r?.capacity_hours_week) || 40);
+      }
+      for (const a of filteredActuals) {
+        if (normMonth(a.period_month || a.week_start) !== m) continue;
+        actualHours += Number(a.hours) || 0;
+      }
+      return {
+        month: monthLabel(m),
+        planHours: Math.round(planHours * 10) / 10,
+        actualHours: Math.round(actualHours * 10) / 10,
+      };
     });
-    const projList = Array.from(projKeys).sort();
-    const data = months.map((m) => ({ month: monthLabel(m), ...(map.get(m) || {}) }));
-    return { data, projList };
-  }, [allocations, months, projById]);
+  }, [months, allocations, filteredActuals, resById]);
 
-  // Demand by skill (sum of allocation %)
+  // Demand by skill — plan % share vs actual hours→% share
   const bySkill = useMemo(() => {
-    const m = new Map<string, number>();
+    const planMap = new Map<string, number>();
+    const actualMap = new Map<string, number>();
     allocations.forEach((a) => {
       const r = resById.get(a.resource_id);
       const skills = (r?.skills || r?.role || "Unknown")
@@ -485,53 +526,96 @@ function ResourcesPage() {
         .map((s) => s.trim())
         .filter(Boolean);
       const share = Number(a.allocation_percent || 0) / (skills.length || 1);
-      skills.forEach((s) => m.set(s, (m.get(s) || 0) + share));
+      skills.forEach((s) => planMap.set(s, (planMap.get(s) || 0) + share));
     });
-    return Array.from(m.entries())
-      .map(([skill, pct]) => ({ skill, pct: Math.round(pct) }))
-      .sort((a, b) => b.pct - a.pct)
+    filteredActuals.forEach((a) => {
+      if (!a.resource_id) return;
+      const r = resById.get(a.resource_id);
+      const skills = (r?.skills || r?.role || "Unknown")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const pct = hoursToMonthPct(Number(a.hours) || 0, Number(r?.capacity_hours_week) || 40);
+      const share = pct / (skills.length || 1);
+      skills.forEach((s) => actualMap.set(s, (actualMap.get(s) || 0) + share));
+    });
+    const skills = new Set([...planMap.keys(), ...actualMap.keys()]);
+    return Array.from(skills)
+      .map((skill) => ({
+        skill,
+        planPct: Math.round(planMap.get(skill) || 0),
+        actualPct: Math.round(actualMap.get(skill) || 0),
+      }))
+      .sort((a, b) => Math.max(b.planPct, b.actualPct) - Math.max(a.planPct, a.actualPct))
       .slice(0, 12);
-  }, [allocations, resById]);
+  }, [allocations, filteredActuals, resById]);
 
-  // Resource × Project heatmap — one column per project (zeros when no allocation)
+  // Resource × Project heatmap — plan % and actual % (hours→% of FTE month)
   const rpGrid = useMemo(() => {
-    const byResProj = new Map<string, Map<string, number>>();
+    const planBy = new Map<string, Map<string, number>>();
+    const actualBy = new Map<string, Map<string, number>>();
     allocations.forEach((a) => {
-      const row = byResProj.get(a.resource_id) || new Map();
+      const row = planBy.get(a.resource_id) || new Map();
       row.set(a.project_id, (row.get(a.project_id) || 0) + Number(a.allocation_percent || 0));
-      byResProj.set(a.resource_id, row);
+      planBy.set(a.resource_id, row);
+    });
+    filteredActuals.forEach((a) => {
+      if (!a.resource_id || !a.project_id || a.billable === false) return;
+      const r = resById.get(a.resource_id);
+      const pct = hoursToMonthPct(Number(a.hours) || 0, Number(r?.capacity_hours_week) || 40);
+      const row = actualBy.get(a.resource_id) || new Map();
+      row.set(a.project_id, (row.get(a.project_id) || 0) + pct);
+      actualBy.set(a.resource_id, row);
     });
     const cols = projectColumns.map((p) => ({
       id: p.id,
       label: p.project_code ? `${p.project_code}` : p.name,
-      // Native tooltip on header hover — full project name
       title: p.project_code ? `${p.name} (${p.project_code})` : p.name,
     }));
+    // Include a Non-billable column when there is any non-billable actual
+    const hasNonBillable = filteredActuals.some(
+      (a) => a.resource_id && (!a.project_id || a.billable === false),
+    );
+    if (hasNonBillable) {
+      cols.push({
+        id: "__non_billable__",
+        label: "Non-bill",
+        title: "Non-billable / unallocated timesheet hours",
+      });
+      filteredActuals.forEach((a) => {
+        if (!a.resource_id || (a.project_id && a.billable !== false)) return;
+        const r = resById.get(a.resource_id);
+        const pct = hoursToMonthPct(Number(a.hours) || 0, Number(r?.capacity_hours_week) || 40);
+        const row = actualBy.get(a.resource_id) || new Map();
+        row.set("__non_billable__", (row.get("__non_billable__") || 0) + pct);
+        actualBy.set(a.resource_id, row);
+      });
+    }
     const rows = resources.map((r) => ({
       name: r.name,
       cells: cols.map((c) => ({
         projectId: c.id,
         project: c.title,
-        pct: Math.round(byResProj.get(r.id)?.get(c.id) || 0),
+        planPct: Math.round(planBy.get(r.id)?.get(c.id) || 0),
+        actualPct: Math.round(actualBy.get(r.id)?.get(c.id) || 0),
       })),
     }));
     return { rows, cols };
-  }, [allocations, resources, projectColumns]);
+  }, [allocations, filteredActuals, resources, projectColumns, resById]);
 
   return (
     <PageExport name="Resource_Capacity" title="Resource Capacity & Skill Intelligence">
       <PageHeading icon="👥">Resource Capacity & Skill Intelligence</PageHeading>
       <p className="mb-3 max-w-3xl text-sm text-muted-foreground">
         Compare <strong>planned allocations</strong> with <strong>approved timesheet actuals</strong>{" "}
-        (project / work-item billable hours and non-billable / unallocated). Export standard reports
-        from the Planned vs actual tab.
+        (project / work-item billable hours and non-billable / unallocated). Graphs and heatmaps on
+        Utilisation show plan and actual side by side; export standard reports from either tab.
       </p>
       <div className="mb-3 flex flex-wrap gap-2">
         {(
           [
             ["pva", "Plan vs actual (timesheets)"],
             ["utilisation", "Utilisation (plan + actual)"],
-            ["cost", "FTE cost"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -553,14 +637,6 @@ function ResourcesPage() {
       {tab === "pva" ? (
         <ResourceAnalyticsPanels
           mode="pva"
-          projects={projects}
-          resources={resourcesAll}
-          allocations={allocationsAll}
-        />
-      ) : null}
-      {tab === "cost" ? (
-        <ResourceAnalyticsPanels
-          mode="cost"
           projects={projects}
           resources={resourcesAll}
           allocations={allocationsAll}
@@ -692,35 +768,32 @@ function ResourcesPage() {
 
       <SectionFrame>
         <ExpandableChart
-          title="Resource Utilisation (avg monthly allocation)"
+          title="Resource utilisation — plan % vs actual %"
           heightClass="h-80"
           legend={
-            <div className="mt-1 flex justify-end gap-3 text-xs">
+            <div className="mt-1 flex flex-wrap justify-end gap-3 text-xs">
               <span className="flex items-center gap-1">
-                <span
-                  className="inline-block h-3 w-3 rounded-sm"
-                  style={{ background: STATUS_COLOR.Over }}
-                />{" "}
-                Over
+                <span className="inline-block h-3 w-3 rounded-sm" style={{ background: PLAN_BAR }} />
+                Plan (allocation)
               </span>
               <span className="flex items-center gap-1">
                 <span
                   className="inline-block h-3 w-3 rounded-sm"
-                  style={{ background: STATUS_COLOR.Optimal }}
-                />{" "}
-                Optimal
-              </span>
-              <span className="flex items-center gap-1">
-                <span
-                  className="inline-block h-3 w-3 rounded-sm"
-                  style={{ background: STATUS_COLOR.Under }}
-                />{" "}
-                Under
+                  style={{ background: ACTUAL_BAR }}
+                />
+                Actual (timesheets → % of FTE month)
               </span>
             </div>
           }
         >
-          <BarChart data={utilisation} margin={{ top: 20, right: 60, left: 20, bottom: 60 }}>
+          <BarChart
+            data={utilisation.map((u) => ({
+              resource: u.resource,
+              planPct: u.pct,
+              actualPct: u.actualPct,
+            }))}
+            margin={{ top: 20, right: 60, left: 20, bottom: 60 }}
+          >
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
             <XAxis
               dataKey="resource"
@@ -734,7 +807,7 @@ function ResourcesPage() {
             <YAxis
               fontSize={11}
               domain={[0, 120]}
-              label={{ value: "Allocation %", angle: -90, position: "insideLeft", fontSize: 11 }}
+              label={{ value: "% of capacity", angle: -90, position: "insideLeft", fontSize: 11 }}
             />
             <Tooltip formatter={(v: number) => `${v}%`} />
             <Legend verticalAlign="top" wrapperStyle={{ fontSize: 11 }} />
@@ -744,31 +817,33 @@ function ResourcesPage() {
               strokeDasharray="6 4"
               label={{ value: "100% capacity", position: "right", fill: "#dc2626", fontSize: 11 }}
             />
-            <ReferenceLine
-              y={60}
-              stroke="#f59e0b"
-              strokeDasharray="2 4"
-              label={{ value: "60% floor", position: "right", fill: "#b45309", fontSize: 11 }}
-            />
-            <Bar dataKey="pct" name="Allocation">
+            <Bar dataKey="planPct" name="Plan %" fill={PLAN_BAR} radius={[3, 3, 0, 0]}>
               <LabelList
-                dataKey="pct"
+                dataKey="planPct"
                 position="top"
                 formatter={(v: number) => `${v}%`}
-                fontSize={10}
+                fontSize={9}
               />
-              {utilisation.map((u, i) => (
-                <Cell key={i} fill={STATUS_COLOR[u.status]} />
-              ))}
+            </Bar>
+            <Bar dataKey="actualPct" name="Actual %" fill={ACTUAL_BAR} radius={[3, 3, 0, 0]}>
+              <LabelList
+                dataKey="actualPct"
+                position="top"
+                formatter={(v: number) => `${v}%`}
+                fontSize={9}
+              />
             </Bar>
           </BarChart>
         </ExpandableChart>
       </SectionFrame>
 
       <SectionFrame>
-        <SectionTitle>Month-wise Allocation Heatmap (Resource × Month)</SectionTitle>
+        <SectionTitle>Month-wise heatmap (Resource × Month) — plan / actual</SectionTitle>
+        <p className="mb-2 text-[12px] text-muted-foreground">
+          Each cell shows <span style={{ color: PLAN_BAR }}>plan%</span> /{" "}
+          <span style={{ color: ACTUAL_BAR }}>actual%</span>. Colour uses the higher of the two.
+        </p>
         <div className="overflow-auto max-h-[420px]">
-          {/* w-max only (not min-w-full) — avoids stretching months into huge gaps */}
           <table className="border-collapse text-xs w-max">
             <thead>
               <tr>
@@ -778,7 +853,7 @@ function ResourcesPage() {
                 {months.map((m) => (
                   <th
                     key={m}
-                    className="p-0.5 text-center font-normal text-muted-foreground w-14"
+                    className="p-0.5 text-center font-normal text-muted-foreground w-16"
                   >
                     {monthLabel(m)}
                   </th>
@@ -791,70 +866,75 @@ function ResourcesPage() {
                   <td className="sticky left-0 z-10 bg-background px-1.5 py-0.5 font-medium whitespace-nowrap">
                     {row.name}
                   </td>
-                  {row.cells.map((c) => (
-                    <td key={c.month} className="p-0.5">
-                      <div
-                        className="flex h-7 w-14 items-center justify-center rounded text-[10px] font-semibold"
-                        style={{
-                          background: c.pct === 0 ? "rgba(148,163,184,0.25)" : heatColor(c.pct),
-                          color: c.pct === 0 ? "#64748b" : "#fff",
-                        }}
-                        title={`${row.name} · ${monthLabel(c.month)}: ${c.pct}%`}
-                      >
-                        {c.pct}%
-                      </div>
-                    </td>
-                  ))}
+                  {row.cells.map((c) => {
+                    const peak = Math.max(c.planPct, c.actualPct);
+                    return (
+                      <td key={c.month} className="p-0.5">
+                        <div
+                          className="flex h-8 w-16 flex-col items-center justify-center rounded text-[9px] font-semibold leading-tight"
+                          style={{
+                            background:
+                              peak === 0 ? "rgba(148,163,184,0.25)" : heatColor(peak),
+                            color: peak === 0 ? "#64748b" : "#fff",
+                          }}
+                          title={`${row.name} · ${monthLabel(c.month)}: plan ${c.planPct}% · actual ${c.actualPct}%`}
+                        >
+                          <span>{c.planPct}%</span>
+                          <span className="opacity-90">{c.actualPct}%</span>
+                        </div>
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground max-w-xs">
-          <span>0%</span>
-          <div
-            className="h-2 flex-1 rounded"
-            style={{
-              background:
-                "linear-gradient(to right, rgb(22,163,74), rgb(234,179,8), rgb(220,38,38))",
-            }}
-          />
-          <span>120%</span>
+        <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: PLAN_BAR }} />
+            Top = plan
+          </span>
+          <span className="flex items-center gap-1">
+            <span
+              className="inline-block h-2.5 w-2.5 rounded-sm"
+              style={{ background: ACTUAL_BAR }}
+            />
+            Bottom = actual
+          </span>
+          <div className="flex max-w-xs flex-1 items-center gap-2">
+            <span>0%</span>
+            <div
+              className="h-2 flex-1 rounded"
+              style={{
+                background:
+                  "linear-gradient(to right, rgb(22,163,74), rgb(234,179,8), rgb(220,38,38))",
+              }}
+            />
+            <span>120%</span>
+          </div>
         </div>
       </SectionFrame>
 
       <SectionFrame>
-        <ExpandableChart title="Total Monthly Demand by Project" heightClass="h-80">
-          <BarChart
-            data={monthlyByProject.data}
-            margin={{ top: 10, right: 20, left: 20, bottom: 20 }}
-          >
+        <ExpandableChart title="Monthly plan vs actual hours" heightClass="h-80">
+          <BarChart data={monthlyPlanActual} margin={{ top: 10, right: 20, left: 20, bottom: 20 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
             <XAxis dataKey="month" fontSize={11} />
             <YAxis
               fontSize={11}
-              label={{ value: "Allocation %", angle: -90, position: "insideLeft", fontSize: 11 }}
+              label={{ value: "Hours", angle: -90, position: "insideLeft", fontSize: 11 }}
             />
             <Tooltip />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            {monthlyByProject.projList.map((p, i) => (
-              <Bar
-                key={p}
-                dataKey={p}
-                stackId="d"
-                fill={
-                  ["#1d4ed8", "#0ea5e9", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#6366f1"][
-                    i % 7
-                  ]
-                }
-              />
-            ))}
+            <Bar dataKey="planHours" name="Plan hours" fill={PLAN_BAR} radius={[3, 3, 0, 0]} />
+            <Bar dataKey="actualHours" name="Actual hours" fill={ACTUAL_BAR} radius={[3, 3, 0, 0]} />
           </BarChart>
         </ExpandableChart>
       </SectionFrame>
 
       <SectionFrame>
-        <ExpandableChart title="Demand by Skill" heightClass="h-72">
+        <ExpandableChart title="Demand by skill — plan vs actual" heightClass="h-72">
           <BarChart data={bySkill} margin={{ top: 28, right: 12, left: 8, bottom: 48 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
             <XAxis
@@ -867,30 +947,23 @@ function ResourcesPage() {
             />
             <YAxis
               fontSize={11}
-              // Leave headroom so top % labels are never clipped
               domain={[0, (dataMax: number) => Math.ceil((dataMax || 0) * 1.18) || 10]}
-              label={{ value: "Allocation %", angle: -90, position: "insideLeft", fontSize: 11 }}
+              label={{ value: "% (FTE)", angle: -90, position: "insideLeft", fontSize: 11 }}
             />
             <Tooltip formatter={(v: number) => `${v}%`} />
-            <Bar dataKey="pct" fill="#0d9488" radius={[4, 4, 0, 0]}>
-              <LabelList
-                dataKey="pct"
-                position="top"
-                offset={6}
-                fontSize={10}
-                fill="currentColor"
-                formatter={(v: number) => `${v}%`}
-              />
-            </Bar>
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            <Bar dataKey="planPct" name="Plan %" fill={PLAN_BAR} radius={[3, 3, 0, 0]} />
+            <Bar dataKey="actualPct" name="Actual %" fill={ACTUAL_BAR} radius={[3, 3, 0, 0]} />
           </BarChart>
         </ExpandableChart>
       </SectionFrame>
 
       <SectionFrame>
-        <SectionTitle>Resource × Project Heatmap (total across months)</SectionTitle>
+        <SectionTitle>Resource × Project — plan / actual</SectionTitle>
         <p className="mb-2 text-[12px] text-muted-foreground">
-          All {rpGrid.cols.length} projects shown as columns (0% = no allocation in the selected
-          months). Hover a project code to see the full name. Values are summed % across months.
+          Cells show plan% / actual% (actual from approved timesheets as % of FTE month). Non-billable
+          column appears when unallocated timesheet hours exist. Hover a project code for the full
+          name.
         </p>
         <div className="overflow-auto max-h-[480px]">
           <table className="border-collapse text-xs w-max">
@@ -902,7 +975,7 @@ function ResourcesPage() {
                 {rpGrid.cols.map((c) => (
                   <th
                     key={c.id}
-                    className="p-0.5 text-center font-normal text-muted-foreground w-14 cursor-default"
+                    className="p-0.5 text-center font-normal text-muted-foreground w-16 cursor-default"
                     title={c.title}
                     aria-label={c.title}
                   >
@@ -919,23 +992,27 @@ function ResourcesPage() {
                   <td className="sticky left-0 z-10 bg-background px-1.5 py-0.5 font-medium whitespace-nowrap">
                     {row.name}
                   </td>
-                  {row.cells.map((c) => (
-                    <td key={c.projectId} className="p-0.5">
-                      <div
-                        className="flex h-7 w-14 items-center justify-center rounded text-[10px] font-semibold"
-                        style={{
-                          background:
-                            c.pct === 0
-                              ? "rgba(148,163,184,0.2)"
-                              : heatColor(Math.min(100, c.pct / 3)),
-                          color: c.pct === 0 ? "#64748b" : "#fff",
-                        }}
-                        title={`${row.name} → ${c.project}: ${c.pct}%`}
-                      >
-                        {c.pct}%
-                      </div>
-                    </td>
-                  ))}
+                  {row.cells.map((c) => {
+                    const peak = Math.max(c.planPct, c.actualPct);
+                    return (
+                      <td key={c.projectId} className="p-0.5">
+                        <div
+                          className="flex h-8 w-16 flex-col items-center justify-center rounded text-[9px] font-semibold leading-tight"
+                          style={{
+                            background:
+                              peak === 0
+                                ? "rgba(148,163,184,0.2)"
+                                : heatColor(Math.min(120, peak > 100 ? peak : peak / 2 + 30)),
+                            color: peak === 0 ? "#64748b" : "#fff",
+                          }}
+                          title={`${row.name} → ${c.project}: plan ${c.planPct}% · actual ${c.actualPct}%`}
+                        >
+                          <span>{c.planPct}%</span>
+                          <span className="opacity-90">{c.actualPct}%</span>
+                        </div>
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
@@ -988,11 +1065,12 @@ function ResourcesPage() {
             <thead>
               <tr className="border-b bg-[#f1f3f6]">
                 <th className="px-2.5 py-2 text-left font-semibold">Resource</th>
-                <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">Plan %</th>
-                <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">Plan h</th>
-                <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">Actual h</th>
-                <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">Billable</th>
-                <th className="w-28 px-2.5 py-2 text-right font-semibold tabular-nums">
+                <th className="w-20 px-2.5 py-2 text-right font-semibold tabular-nums">Plan %</th>
+                <th className="w-20 px-2.5 py-2 text-right font-semibold tabular-nums">Actual %</th>
+                <th className="w-20 px-2.5 py-2 text-right font-semibold tabular-nums">Plan h</th>
+                <th className="w-20 px-2.5 py-2 text-right font-semibold tabular-nums">Actual h</th>
+                <th className="w-20 px-2.5 py-2 text-right font-semibold tabular-nums">Billable</th>
+                <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">
                   Non-billable
                 </th>
                 <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">
@@ -1005,11 +1083,12 @@ function ResourcesPage() {
               {utilisation.map((u) => (
                 <tr key={u.resource} className="border-b border-[#eef0f3]">
                   <td className="px-2.5 py-1.5 font-medium">{u.resource}</td>
-                  <td className="w-24 px-2.5 py-1.5 text-right tabular-nums">{u.pct}</td>
-                  <td className="w-24 px-2.5 py-1.5 text-right tabular-nums">{u.planHours}</td>
-                  <td className="w-24 px-2.5 py-1.5 text-right tabular-nums">{u.actualHours}</td>
-                  <td className="w-24 px-2.5 py-1.5 text-right tabular-nums">{u.billableHours}</td>
-                  <td className="w-28 px-2.5 py-1.5 text-right tabular-nums">
+                  <td className="w-20 px-2.5 py-1.5 text-right tabular-nums">{u.pct}</td>
+                  <td className="w-20 px-2.5 py-1.5 text-right tabular-nums">{u.actualPct}</td>
+                  <td className="w-20 px-2.5 py-1.5 text-right tabular-nums">{u.planHours}</td>
+                  <td className="w-20 px-2.5 py-1.5 text-right tabular-nums">{u.actualHours}</td>
+                  <td className="w-20 px-2.5 py-1.5 text-right tabular-nums">{u.billableHours}</td>
+                  <td className="w-24 px-2.5 py-1.5 text-right tabular-nums">
                     {u.nonBillableHours}
                   </td>
                   <td className="w-24 px-2.5 py-1.5 text-right tabular-nums">
@@ -1031,9 +1110,9 @@ function ResourcesPage() {
       </SectionFrame>
 
       <SectionFrame>
-        <SectionTitle>Monthly Allocation Matrix</SectionTitle>
+        <SectionTitle>Monthly plan / actual matrix</SectionTitle>
         <p className="mb-2 text-[12px] text-muted-foreground">
-          Same data as the month heatmap — compact columns so each value sits under its month.
+          Same as the heatmap — each cell is plan% / actual%.
         </p>
         <div className="overflow-auto max-h-[420px]">
           <table className="border-collapse text-[12.5px] w-max">
@@ -1045,7 +1124,7 @@ function ResourcesPage() {
                 {months.map((m) => (
                   <th
                     key={m}
-                    className="w-14 px-1 py-2 text-center font-semibold tabular-nums whitespace-nowrap"
+                    className="w-16 px-1 py-2 text-center font-semibold tabular-nums whitespace-nowrap"
                   >
                     {monthLabel(m)}
                   </th>
@@ -1059,8 +1138,8 @@ function ResourcesPage() {
                     {row.name}
                   </td>
                   {row.cells.map((c) => (
-                    <td key={c.month} className="w-14 px-1 py-1.5 text-center tabular-nums">
-                      {c.pct}
+                    <td key={c.month} className="w-16 px-1 py-1.5 text-center tabular-nums text-[11px]">
+                      {c.planPct}/{c.actualPct}
                     </td>
                   ))}
                 </tr>
