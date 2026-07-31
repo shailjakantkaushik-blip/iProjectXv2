@@ -30,6 +30,18 @@ import {
 import { ExpandableChart } from "@/components/expandable-chart";
 import { compareProjectsByCodeName } from "@/lib/project-options";
 import { ResourceAnalyticsPanels } from "@/components/resource-analytics-panels";
+import {
+  entryHours,
+  hoursFromAllocation,
+  type TimesheetEffortRow,
+} from "@/lib/resource-allocation-analytics";
+import {
+  buildResourceUtilisationExport,
+  exportResourceReportsExcel,
+  exportResourceUtilisationCsv,
+} from "@/lib/resource-reports";
+import { Download } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/app/resources")({
@@ -66,7 +78,12 @@ type Project = {
 
 type ResTab = "utilisation" | "pva" | "cost";
 
-const STATUS_COLOR = { Over: "#dc2626", Optimal: "#16a34a", Under: "#f59e0b" } as const;
+const STATUS_COLOR = {
+  Over: "#dc2626",
+  Optimal: "#16a34a",
+  Under: "#f59e0b",
+  Unplanned: "#7c3aed",
+} as const;
 type Status = keyof typeof STATUS_COLOR;
 
 /** Normalize DB dates to YYYY-MM-01 so filters/headers/cells share one key. */
@@ -118,7 +135,7 @@ function heatColor(pct: number): string {
 
 function ResourcesPage() {
   const { organization } = useAuth();
-  const [tab, setTab] = useState<ResTab>("utilisation");
+  const [tab, setTab] = useState<ResTab>("pva");
 
   const { data: resourcesAll = [] } = useQuery({
     queryKey: ["resources", organization?.id],
@@ -139,6 +156,41 @@ function ResourcesPage() {
         .select("id,name,project_code,program,portfolio")
         .order("project_code")
         .order("name")).data as Project[]) ?? [],
+    enabled: !!organization,
+  });
+
+  const { data: timesheetActuals = [] } = useQuery({
+    queryKey: ["timesheet_effort", organization?.id, "resources-util"],
+    queryFn: async () => {
+      const { data: sheets, error } = await (supabase as any)
+        .from("timesheets")
+        .select("id,resource_id,week_start,status")
+        .eq("status", "approved");
+      if (error) throw error;
+      const ids = ((sheets ?? []) as any[]).map((s) => s.id);
+      if (!ids.length) return [] as TimesheetEffortRow[];
+      const sheetById = new Map<string, any>(((sheets ?? []) as any[]).map((s) => [s.id, s]));
+      const { data: entries, error: e2 } = await (supabase as any)
+        .from("timesheet_entries")
+        .select(
+          "timesheet_id,project_id,work_item_id,billable,hours_mon,hours_tue,hours_wed,hours_thu,hours_fri,hours_sat,hours_sun",
+        )
+        .in("timesheet_id", ids);
+      if (e2) throw e2;
+      return ((entries ?? []) as any[]).map((e) => {
+        const ts = sheetById.get(e.timesheet_id) as any;
+        const weekStart = ts?.week_start ? String(ts.week_start).slice(0, 10) : null;
+        return {
+          resource_id: ts?.resource_id ?? null,
+          project_id: e.project_id,
+          period_month: normMonth(weekStart),
+          week_start: weekStart,
+          hours: entryHours(e),
+          labor_cost: 0,
+          billable: e.billable !== false && Boolean(e.project_id || e.work_item_id),
+        } as TimesheetEffortRow;
+      });
+    },
     enabled: !!organization,
   });
 
@@ -177,8 +229,12 @@ function ResourcesPage() {
       const m = normMonth(a.period_month);
       if (m) s.add(m);
     });
+    timesheetActuals.forEach((a) => {
+      const m = normMonth(a.period_month || a.week_start);
+      if (m) s.add(m);
+    });
     return Array.from(s).sort();
-  }, [allocationsAll]);
+  }, [allocationsAll, timesheetActuals]);
 
   // Utilisation across the currently visible months, used for the status filter
   const monthsInRange = useMemo(() => {
@@ -209,13 +265,26 @@ function ResourcesPage() {
         );
         const total = rows.reduce((s, a) => s + Number(a.allocation_percent || 0), 0);
         const avg = monthsInRange.length ? total / monthsInRange.length : 0;
-        if (statusFor(avg) !== (statusFilter as Status)) return false;
+        const cap = Number(r.capacity_hours_week) || 40;
+        const planHours = rows.reduce((s, a) => s + hoursFromAllocation(a, cap), 0);
+        const actualHours = timesheetActuals
+          .filter((a) => {
+            if (a.resource_id !== r.id) return false;
+            const m = normMonth(a.period_month || a.week_start);
+            return monthsInRange.length === 0 || monthsInRange.includes(m);
+          })
+          .reduce((s, a) => s + (Number(a.hours) || 0), 0);
+        let st: Status = statusFor(avg);
+        if (planHours <= 0 && actualHours > 0) st = "Unplanned";
+        else if (planHours > 0 && (actualHours / planHours) * 100 > 110) st = "Over";
+        if (st !== (statusFilter as Status)) return false;
       }
       return true;
     });
   }, [
     resourcesAll,
     allocationsAll,
+    timesheetActuals,
     search,
     roleFilter,
     skillFilter,
@@ -274,23 +343,101 @@ function ResourcesPage() {
     );
   }, [projects, projectFilter]);
 
-  // Avg allocation per resource
+  const filteredActuals = useMemo(() => {
+    const from = monthFrom === "all" ? null : normMonth(monthFrom);
+    const to = monthTo === "all" ? null : normMonth(monthTo);
+    return timesheetActuals.filter((a) => {
+      if (!a.resource_id || !resIdSet.has(a.resource_id)) return false;
+      if (projectFilter !== "all") {
+        const nonBillable = !a.project_id || a.billable === false;
+        if (nonBillable) return false;
+        if (a.project_id !== projectFilter) return false;
+      }
+      const m = normMonth(a.period_month || a.week_start);
+      if (from && m < from) return false;
+      if (to && m > to) return false;
+      return true;
+    });
+  }, [timesheetActuals, resIdSet, projectFilter, monthFrom, monthTo]);
+
+  // Avg allocation per resource + timesheet actuals
   const utilisation = useMemo(() => {
     return resources
       .map((r) => {
         const rows = allocations.filter((a) => a.resource_id === r.id);
         const total = rows.reduce((s, a) => s + Number(a.allocation_percent || 0), 0);
         const avg = months.length ? total / months.length : 0;
-        return { resource: r.name, pct: Math.round(avg), status: statusFor(avg) };
+        const cap = Number(r.capacity_hours_week) || 40;
+        const planHours = rows.reduce((s, a) => s + hoursFromAllocation(a, cap), 0);
+        let actualHours = 0;
+        let billableHours = 0;
+        let nonBillableHours = 0;
+        for (const a of filteredActuals) {
+          if (a.resource_id !== r.id) continue;
+          const hrs = Number(a.hours) || 0;
+          actualHours += hrs;
+          if (a.billable === false || !a.project_id) nonBillableHours += hrs;
+          else billableHours += hrs;
+        }
+        const utilVsPlan =
+          planHours > 0 ? Math.round((actualHours / planHours) * 1000) / 10 : null;
+        let status: Status = statusFor(avg);
+        if (planHours <= 0 && actualHours > 0) status = "Unplanned";
+        else if (utilVsPlan != null && utilVsPlan > 110) status = "Over";
+        return {
+          resource: r.name,
+          resourceId: r.id,
+          pct: Math.round(avg),
+          planHours: Math.round(planHours * 10) / 10,
+          actualHours: Math.round(actualHours * 10) / 10,
+          billableHours: Math.round(billableHours * 10) / 10,
+          nonBillableHours: Math.round(nonBillableHours * 10) / 10,
+          utilVsPlan,
+          status,
+        };
       })
       .sort((a, b) => b.pct - a.pct);
-  }, [resources, allocations, months.length]);
+  }, [resources, allocations, months.length, filteredActuals]);
+
+  const utilisationExportRows = useMemo(() => {
+    const planByResource = new Map<string, { percent: number; hours: number }>();
+    for (const a of allocations) {
+      const r = resById.get(a.resource_id);
+      const cap = Number(r?.capacity_hours_week) || 40;
+      const cur = planByResource.get(a.resource_id) ?? { percent: 0, hours: 0 };
+      cur.percent += Number(a.allocation_percent) || 0;
+      cur.hours += hoursFromAllocation(a, cap);
+      planByResource.set(a.resource_id, cur);
+    }
+    const actualByResource = new Map<
+      string,
+      { hours: number; billable: number; non_billable: number }
+    >();
+    for (const a of filteredActuals) {
+      if (!a.resource_id) continue;
+      const cur = actualByResource.get(a.resource_id) ?? {
+        hours: 0,
+        billable: 0,
+        non_billable: 0,
+      };
+      const hrs = Number(a.hours) || 0;
+      cur.hours += hrs;
+      if (a.billable === false || !a.project_id) cur.non_billable += hrs;
+      else cur.billable += hrs;
+      actualByResource.set(a.resource_id, cur);
+    }
+    return buildResourceUtilisationExport({
+      resources,
+      planByResource,
+      actualByResource,
+    });
+  }, [allocations, filteredActuals, resources, resById]);
 
   const kpi = {
     total: resources.length,
     over: utilisation.filter((u) => u.status === "Over").length,
     optimal: utilisation.filter((u) => u.status === "Optimal").length,
-    under: utilisation.filter((u) => u.status === "Under").length,
+    under: utilisation.filter((u) => u.status === "Under" || u.status === "Unplanned").length,
   };
 
   // Resource × Month heatmap grid — sum ALL allocations for resource+month
@@ -374,11 +521,16 @@ function ResourcesPage() {
   return (
     <PageExport name="Resource_Capacity" title="Resource Capacity & Skill Intelligence">
       <PageHeading icon="👥">Resource Capacity & Skill Intelligence</PageHeading>
+      <p className="mb-3 max-w-3xl text-sm text-muted-foreground">
+        Compare <strong>planned allocations</strong> with <strong>approved timesheet actuals</strong>{" "}
+        (project / work-item billable hours and non-billable / unallocated). Export standard reports
+        from the Planned vs actual tab.
+      </p>
       <div className="mb-3 flex flex-wrap gap-2">
         {(
           [
-            ["utilisation", "Utilisation"],
-            ["pva", "Planned vs actual"],
+            ["pva", "Plan vs actual (timesheets)"],
+            ["utilisation", "Utilisation (plan + actual)"],
             ["cost", "FTE cost"],
           ] as const
         ).map(([id, label]) => (
@@ -487,6 +639,7 @@ function ResourcesPage() {
                 <SelectItem value="Over">Over</SelectItem>
                 <SelectItem value="Optimal">Optimal</SelectItem>
                 <SelectItem value="Under">Under</SelectItem>
+                <SelectItem value="Unplanned">Unplanned</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -791,15 +944,59 @@ function ResourcesPage() {
       </SectionFrame>
 
       <SectionFrame>
-        <SectionTitle>Utilisation</SectionTitle>
+        <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <SectionTitle>Utilisation — plan vs timesheet actuals</SectionTitle>
+            <p className="text-[12px] text-muted-foreground">
+              Plan % from resource allocations. Actual / billable / non-billable hours from approved
+              timesheets (project &amp; work-item bookings plus unallocated non-billable).
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                exportResourceUtilisationCsv(utilisationExportRows);
+                toast.success("Utilisation CSV downloaded");
+              }}
+            >
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+              CSV
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                void exportResourceReportsExcel({
+                  utilisation: utilisationExportRows,
+                  pva: [],
+                })
+                  .then(() => toast.success("Resource reports exported"))
+                  .catch((e: Error) => toast.error(e.message || "Export failed"));
+              }}
+            >
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+              Excel
+            </Button>
+          </div>
+        </div>
         <div className="overflow-auto max-h-[420px]">
-          {/* Explicit grid columns so header + value share the same alignment */}
-          <table className="w-full max-w-xl border-collapse text-[12.5px]">
+          <table className="w-max min-w-full border-collapse text-[12.5px]">
             <thead>
               <tr className="border-b bg-[#f1f3f6]">
                 <th className="px-2.5 py-2 text-left font-semibold">Resource</th>
+                <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">Plan %</th>
+                <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">Plan h</th>
+                <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">Actual h</th>
+                <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">Billable</th>
                 <th className="w-28 px-2.5 py-2 text-right font-semibold tabular-nums">
-                  Allocation %
+                  Non-billable
+                </th>
+                <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">
+                  Util vs plan
                 </th>
                 <th className="w-28 px-2.5 py-2 text-left font-semibold">Status</th>
               </tr>
@@ -808,7 +1005,16 @@ function ResourcesPage() {
               {utilisation.map((u) => (
                 <tr key={u.resource} className="border-b border-[#eef0f3]">
                   <td className="px-2.5 py-1.5 font-medium">{u.resource}</td>
-                  <td className="w-28 px-2.5 py-1.5 text-right tabular-nums">{u.pct}</td>
+                  <td className="w-24 px-2.5 py-1.5 text-right tabular-nums">{u.pct}</td>
+                  <td className="w-24 px-2.5 py-1.5 text-right tabular-nums">{u.planHours}</td>
+                  <td className="w-24 px-2.5 py-1.5 text-right tabular-nums">{u.actualHours}</td>
+                  <td className="w-24 px-2.5 py-1.5 text-right tabular-nums">{u.billableHours}</td>
+                  <td className="w-28 px-2.5 py-1.5 text-right tabular-nums">
+                    {u.nonBillableHours}
+                  </td>
+                  <td className="w-24 px-2.5 py-1.5 text-right tabular-nums">
+                    {u.utilVsPlan == null ? "—" : `${u.utilVsPlan}%`}
+                  </td>
                   <td className="w-28 px-2.5 py-1.5">
                     <span
                       className="inline-block rounded-full px-2 py-0.5 text-xs font-medium text-white"

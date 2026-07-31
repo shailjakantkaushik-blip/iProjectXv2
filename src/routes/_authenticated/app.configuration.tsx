@@ -13,6 +13,7 @@ import {
   Eye,
   Trash2,
   FileDown,
+  Link2,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/app/configuration")({
@@ -66,6 +67,12 @@ const CARDS = [
 
 /** Org-admin only — never include platform settings / landing here. */
 const ORG_ADMIN_CARDS = [
+  {
+    to: "/app/integrations",
+    icon: Link2,
+    title: "Integrations",
+    desc: "Connect Jira and other systems; sync demand into the pipeline",
+  },
   {
     to: "/app/navigation",
     icon: Menu,

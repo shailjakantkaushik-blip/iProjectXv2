@@ -13,11 +13,21 @@ import {
 import {
   buildAllocationPva,
   entryHours,
+  hoursFromAllocation,
   normMonth,
   type AllocationPlanRow,
+  type AllocationPvaRow,
   type PvaGrain,
   type TimesheetEffortRow,
 } from "@/lib/resource-allocation-analytics";
+import {
+  exportResourceReportsExcel,
+  exportResourceUtilisationCsv,
+  buildResourceUtilisationExport,
+} from "@/lib/resource-reports";
+import { Button } from "@/components/ui/button";
+import { Download } from "lucide-react";
+import { toast } from "sonner";
 import {
   buildWorkItemDemandSlices,
   type WorkItemAssigneeLink,
@@ -74,14 +84,23 @@ type Props = {
   resources: Array<{
     id: string;
     name: string;
+    role?: string | null;
     capacity_hours_week?: number | null;
     cost_rate?: number | null;
     user_id?: string | null;
   }>;
   allocations: AllocationPlanRow[];
+  /** Optional: expose latest PVA rows to parent for page-level exports. */
+  onPvaRows?: (rows: AllocationPvaRow[]) => void;
 };
 
-export function ResourceAnalyticsPanels({ mode, projects, resources, allocations }: Props) {
+export function ResourceAnalyticsPanels({
+  mode,
+  projects,
+  resources,
+  allocations,
+  onPvaRows,
+}: Props) {
   const { organization } = useAuth();
   const { canEdit: canViewCost } = useCapabilityPermission("timesheet_cost_view");
   const [grain, setGrain] = useState<PvaGrain>(mode === "cost" ? "resource" : "stage_gate");
@@ -302,8 +321,10 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
   const scopedActuals = useMemo(
     () =>
       actualRows.filter((a: TimesheetEffortRow) => {
-        if (a.billable === false) return false;
-        if (!a.project_id) return grain === "resource" || grain === "month";
+        // Non-billable / unallocated (no project) — keep for resource/month and PVA buckets.
+        if (!a.project_id || a.billable === false) {
+          return grain === "resource" || grain === "month" || grain === "project";
+        }
         return visibleProjectIds.has(a.project_id);
       }),
     [actualRows, visibleProjectIds, grain],
@@ -331,9 +352,17 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
 
   const filteredActuals = useMemo(() => {
     return scopedActuals.filter((a: TimesheetEffortRow) => {
-      if (projectFilter !== "all" && a.project_id !== projectFilter) return false;
-      if (streamFilter !== "all" && (a.stream_id || null) !== streamFilter) return false;
-      if (!matchesGateFilter(a.stage_gate_id)) return false;
+      const nonBillable = !a.project_id || a.billable === false;
+      if (projectFilter !== "all") {
+        if (nonBillable) return false; // project filter hides unallocated bucket
+        if (a.project_id !== projectFilter) return false;
+      }
+      if (!nonBillable) {
+        if (streamFilter !== "all" && (a.stream_id || null) !== streamFilter) return false;
+        if (!matchesGateFilter(a.stage_gate_id)) return false;
+      } else if (streamFilter !== "all" || gateFilter !== "all") {
+        return false;
+      }
       if (resourceFilter !== "all" && a.resource_id !== resourceFilter) return false;
       if (!inMonthRange(a.period_month || a.week_start, monthFrom, monthTo)) return false;
       return true;
@@ -377,11 +406,64 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
     ],
   );
 
+  useEffect(() => {
+    onPvaRows?.(rows);
+  }, [rows, onPvaRows]);
+
   const totAlloc = rows.reduce((s, r) => s + r.planned_hours, 0);
   const totDemand = rows.reduce((s, r) => s + r.demand_hours, 0);
   const totAct = rows.reduce((s, r) => s + r.actual_hours, 0);
+  const totBillable = rows.reduce((s, r) => s + r.billable_hours, 0);
+  const totNonBillable = rows.reduce((s, r) => s + r.non_billable_hours, 0);
   const totPlanFte = rows.reduce((s, r) => s + r.planned_labor_cost, 0);
   const totActualFte = rows.reduce((s, r) => s + r.labor_cost, 0);
+
+  const exportUtilRows = useMemo(() => {
+    const planByResource = new Map<string, { percent: number; hours: number }>();
+    for (const a of filteredPlans) {
+      const cur = planByResource.get(a.resource_id) ?? { percent: 0, hours: 0 };
+      const cap = capacityByResource.get(a.resource_id) ?? 40;
+      cur.percent += Number(a.allocation_percent) || 0;
+      cur.hours += hoursFromAllocation(a, cap);
+      planByResource.set(a.resource_id, cur);
+    }
+    const actualByResource = new Map<
+      string,
+      { hours: number; billable: number; non_billable: number }
+    >();
+    for (const a of filteredActuals) {
+      if (!a.resource_id) continue;
+      const cur = actualByResource.get(a.resource_id) ?? {
+        hours: 0,
+        billable: 0,
+        non_billable: 0,
+      };
+      const hrs = Number(a.hours) || 0;
+      cur.hours += hrs;
+      if (a.billable === false || !a.project_id) cur.non_billable += hrs;
+      else cur.billable += hrs;
+      actualByResource.set(a.resource_id, cur);
+    }
+    return buildResourceUtilisationExport({
+      resources,
+      planByResource,
+      actualByResource,
+    });
+  }, [filteredPlans, filteredActuals, resources, capacityByResource]);
+
+  const onExportExcel = async () => {
+    try {
+      await exportResourceReportsExcel({ utilisation: exportUtilRows, pva: rows });
+      toast.success("Resource reports exported");
+    } catch (e: any) {
+      toast.error(e?.message || "Export failed");
+    }
+  };
+
+  const onExportCsv = () => {
+    exportResourceUtilisationCsv(exportUtilRows);
+    toast.success("Utilisation CSV downloaded");
+  };
 
   const periodLabel =
     monthFrom === "all" && monthTo === "all"
@@ -560,24 +642,42 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
         </div>
       </div>
 
-      <div
-        className={`mb-3 grid grid-cols-2 gap-3 ${
-          canViewCost ? "sm:grid-cols-3 lg:grid-cols-6" : "sm:grid-cols-4"
-        }`}
-      >
-        <KpiCard label="Period" value={periodLabel} accent="#8b5cf6" />
-        <KpiCard label="Alloc plan h" value={totAlloc.toFixed(1)} accent="#3b82f6" />
-        <KpiCard label="WI demand h" value={totDemand.toFixed(1)} accent="#6366f1" />
-        <KpiCard label="Actual h" value={totAct.toFixed(1)} accent="#0ea5e9" />
-        {canViewCost ? (
-          <>
-            <KpiCard label="Plan FTE $" value={money(totPlanFte)} accent="#f59e0b" />
-            <KpiCard label="Actual FTE $" value={money(totActualFte)} accent="#ea580c" />
-          </>
-        ) : null}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div
+          className={`grid flex-1 grid-cols-2 gap-3 ${
+            canViewCost ? "sm:grid-cols-3 lg:grid-cols-6" : "sm:grid-cols-3 lg:grid-cols-5"
+          }`}
+        >
+          <KpiCard label="Period" value={periodLabel} accent="#8b5cf6" />
+          <KpiCard label="Alloc plan h" value={totAlloc.toFixed(1)} accent="#3b82f6" />
+          <KpiCard label="WI demand h" value={totDemand.toFixed(1)} accent="#6366f1" />
+          <KpiCard label="Actual h" value={totAct.toFixed(1)} accent="#0ea5e9" />
+          <KpiCard label="Billable h" value={totBillable.toFixed(1)} accent="#059669" />
+          <KpiCard
+            label="Non-billable h"
+            value={totNonBillable.toFixed(1)}
+            accent="#a855f7"
+          />
+          {canViewCost ? (
+            <>
+              <KpiCard label="Plan FTE $" value={money(totPlanFte)} accent="#f59e0b" />
+              <KpiCard label="Actual FTE $" value={money(totActualFte)} accent="#ea580c" />
+            </>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 gap-2">
+          <Button type="button" size="sm" variant="outline" onClick={onExportCsv}>
+            <Download className="mr-1.5 h-3.5 w-3.5" />
+            CSV
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => void onExportExcel()}>
+            <Download className="mr-1.5 h-3.5 w-3.5" />
+            Excel reports
+          </Button>
+        </div>
       </div>
 
-      <div className="max-h-[480px] overflow-auto">
+      <div className="st-table-wrap max-h-[480px] overflow-auto">
         <table className="st-table !w-max min-w-full text-sm">
           <thead className="sticky top-0 z-[1] bg-[#f1f3f6]">
             <tr>
@@ -586,6 +686,8 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
               <th className="st-num whitespace-nowrap">Demand h</th>
               <th className="st-num whitespace-nowrap">Gap h</th>
               <th className="st-num whitespace-nowrap">Actual h</th>
+              <th className="st-num whitespace-nowrap">Billable</th>
+              <th className="st-num whitespace-nowrap">Non-billable</th>
               <th className="st-num whitespace-nowrap">Var h</th>
               <th className="st-num whitespace-nowrap">Util%</th>
               <th className="whitespace-nowrap">Status</th>
@@ -596,7 +698,7 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={emptyColSpan} className="py-6 text-center text-muted-foreground">
+                <td colSpan={emptyColSpan + 2} className="py-6 text-center text-muted-foreground">
                   No allocation, work-item demand, or timesheet data for this period.
                 </td>
               </tr>
@@ -608,6 +710,8 @@ export function ResourceAnalyticsPanels({ mode, projects, resources, allocations
                   <td className="st-num whitespace-nowrap">{r.demand_hours.toFixed(1)}</td>
                   <td className="st-num whitespace-nowrap">{r.demand_gap_hours.toFixed(1)}</td>
                   <td className="st-num whitespace-nowrap">{r.actual_hours.toFixed(1)}</td>
+                  <td className="st-num whitespace-nowrap">{r.billable_hours.toFixed(1)}</td>
+                  <td className="st-num whitespace-nowrap">{r.non_billable_hours.toFixed(1)}</td>
                   <td className="st-num whitespace-nowrap">{r.variance_hours.toFixed(1)}</td>
                   <td className="st-num whitespace-nowrap">
                     {r.utilization_pct == null ? "—" : `${r.utilization_pct}%`}

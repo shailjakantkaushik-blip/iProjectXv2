@@ -43,6 +43,7 @@ import { Route as AuthenticatedAppExecutiveReportsRouteImport } from './routes/_
 import { Route as AuthenticatedAppFinancialsRouteImport } from './routes/_authenticated/app.financials'
 import { Route as AuthenticatedAppFyAllocationRouteImport } from './routes/_authenticated/app.fy-allocation'
 import { Route as AuthenticatedAppGovernanceChannelsRouteImport } from './routes/_authenticated/app.governance-channels'
+import { Route as AuthenticatedAppIntegrationsRouteImport } from './routes/_authenticated/app.integrations'
 import { Route as AuthenticatedAppIssuesRouteImport } from './routes/_authenticated/app.issues'
 import { Route as AuthenticatedAppLatestUpdatesRouteImport } from './routes/_authenticated/app.latest-updates'
 import { Route as AuthenticatedAppLegalRouteImport } from './routes/_authenticated/app.legal'
@@ -290,6 +291,12 @@ const AuthenticatedAppGovernanceChannelsRoute =
   AuthenticatedAppGovernanceChannelsRouteImport.update({
     id: '/governance-channels',
     path: '/governance-channels',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
+const AuthenticatedAppIntegrationsRoute =
+  AuthenticatedAppIntegrationsRouteImport.update({
+    id: '/integrations',
+    path: '/integrations',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
 const AuthenticatedAppIssuesRoute = AuthenticatedAppIssuesRouteImport.update({
@@ -690,6 +697,7 @@ export interface FileRoutesByFullPath {
   '/app/financials': typeof AuthenticatedAppFinancialsRoute
   '/app/fy-allocation': typeof AuthenticatedAppFyAllocationRoute
   '/app/governance-channels': typeof AuthenticatedAppGovernanceChannelsRoute
+  '/app/integrations': typeof AuthenticatedAppIntegrationsRoute
   '/app/issues': typeof AuthenticatedAppIssuesRoute
   '/app/latest-updates': typeof AuthenticatedAppLatestUpdatesRoute
   '/app/legal': typeof AuthenticatedAppLegalRoute
@@ -786,6 +794,7 @@ export interface FileRoutesByTo {
   '/app/financials': typeof AuthenticatedAppFinancialsRoute
   '/app/fy-allocation': typeof AuthenticatedAppFyAllocationRoute
   '/app/governance-channels': typeof AuthenticatedAppGovernanceChannelsRoute
+  '/app/integrations': typeof AuthenticatedAppIntegrationsRoute
   '/app/issues': typeof AuthenticatedAppIssuesRoute
   '/app/latest-updates': typeof AuthenticatedAppLatestUpdatesRoute
   '/app/legal': typeof AuthenticatedAppLegalRoute
@@ -884,6 +893,7 @@ export interface FileRoutesById {
   '/_authenticated/app/financials': typeof AuthenticatedAppFinancialsRoute
   '/_authenticated/app/fy-allocation': typeof AuthenticatedAppFyAllocationRoute
   '/_authenticated/app/governance-channels': typeof AuthenticatedAppGovernanceChannelsRoute
+  '/_authenticated/app/integrations': typeof AuthenticatedAppIntegrationsRoute
   '/_authenticated/app/issues': typeof AuthenticatedAppIssuesRoute
   '/_authenticated/app/latest-updates': typeof AuthenticatedAppLatestUpdatesRoute
   '/_authenticated/app/legal': typeof AuthenticatedAppLegalRoute
@@ -983,6 +993,7 @@ export interface FileRouteTypes {
     | '/app/financials'
     | '/app/fy-allocation'
     | '/app/governance-channels'
+    | '/app/integrations'
     | '/app/issues'
     | '/app/latest-updates'
     | '/app/legal'
@@ -1079,6 +1090,7 @@ export interface FileRouteTypes {
     | '/app/financials'
     | '/app/fy-allocation'
     | '/app/governance-channels'
+    | '/app/integrations'
     | '/app/issues'
     | '/app/latest-updates'
     | '/app/legal'
@@ -1176,6 +1188,7 @@ export interface FileRouteTypes {
     | '/_authenticated/app/financials'
     | '/_authenticated/app/fy-allocation'
     | '/_authenticated/app/governance-channels'
+    | '/_authenticated/app/integrations'
     | '/_authenticated/app/issues'
     | '/_authenticated/app/latest-updates'
     | '/_authenticated/app/legal'
@@ -1492,6 +1505,13 @@ declare module '@tanstack/react-router' {
       path: '/governance-channels'
       fullPath: '/app/governance-channels'
       preLoaderRoute: typeof AuthenticatedAppGovernanceChannelsRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/app/integrations': {
+      id: '/_authenticated/app/integrations'
+      path: '/integrations'
+      fullPath: '/app/integrations'
+      preLoaderRoute: typeof AuthenticatedAppIntegrationsRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
     '/_authenticated/app/issues': {
@@ -1972,6 +1992,7 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppFinancialsRoute: typeof AuthenticatedAppFinancialsRoute
   AuthenticatedAppFyAllocationRoute: typeof AuthenticatedAppFyAllocationRoute
   AuthenticatedAppGovernanceChannelsRoute: typeof AuthenticatedAppGovernanceChannelsRoute
+  AuthenticatedAppIntegrationsRoute: typeof AuthenticatedAppIntegrationsRoute
   AuthenticatedAppIssuesRoute: typeof AuthenticatedAppIssuesRoute
   AuthenticatedAppLatestUpdatesRoute: typeof AuthenticatedAppLatestUpdatesRoute
   AuthenticatedAppLegalRoute: typeof AuthenticatedAppLegalRoute
@@ -2037,6 +2058,7 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppFyAllocationRoute: AuthenticatedAppFyAllocationRoute,
   AuthenticatedAppGovernanceChannelsRoute:
     AuthenticatedAppGovernanceChannelsRoute,
+  AuthenticatedAppIntegrationsRoute: AuthenticatedAppIntegrationsRoute,
   AuthenticatedAppIssuesRoute: AuthenticatedAppIssuesRoute,
   AuthenticatedAppLatestUpdatesRoute: AuthenticatedAppLatestUpdatesRoute,
   AuthenticatedAppLegalRoute: AuthenticatedAppLegalRoute,

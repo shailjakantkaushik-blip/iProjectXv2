@@ -65,6 +65,10 @@ export type AllocationPvaRow = {
   /** Hours demanded by work-item planned hours. */
   demand_hours: number;
   actual_hours: number;
+  /** Approved timesheet hours booked to projects / work items. */
+  billable_hours: number;
+  /** Approved non-billable / unallocated timesheet hours (no work item). */
+  non_billable_hours: number;
   variance_hours: number;
   /** Allocated plan − work-item demand. */
   demand_gap_hours: number;
@@ -182,6 +186,8 @@ type Agg = {
   planned_percent: number;
   demand_hours: number;
   actual_hours: number;
+  billable_hours: number;
+  non_billable_hours: number;
   labor_cost: number;
   planned_labor_cost: number;
 };
@@ -248,6 +254,8 @@ export function buildAllocationPva(opts: {
       | "planned_percent"
       | "demand_hours"
       | "actual_hours"
+      | "billable_hours"
+      | "non_billable_hours"
       | "labor_cost"
       | "planned_labor_cost"
     > &
@@ -267,6 +275,8 @@ export function buildAllocationPva(opts: {
       planned_percent: 0,
       demand_hours: 0,
       actual_hours: 0,
+      billable_hours: 0,
+      non_billable_hours: 0,
       labor_cost: 0,
       planned_labor_cost: 0,
     };
@@ -274,6 +284,8 @@ export function buildAllocationPva(opts: {
     cur.planned_percent += num(partial.planned_percent);
     cur.demand_hours += num(partial.demand_hours);
     cur.actual_hours += num(partial.actual_hours);
+    cur.billable_hours += num(partial.billable_hours);
+    cur.non_billable_hours += num(partial.non_billable_hours);
     cur.labor_cost += num(partial.labor_cost);
     cur.planned_labor_cost += num(partial.planned_labor_cost);
     acc.set(partial.key, cur);
@@ -362,42 +374,56 @@ export function buildAllocationPva(opts: {
   }
 
   for (const e of actuals) {
-    if (!e.project_id && grain !== "resource" && grain !== "month") continue;
+    const isBillable = e.billable !== false && Boolean(e.project_id);
+    // Non-billable / unallocated (no project/work item) still rolls into resource & month grains,
+    // and appears under a dedicated bucket for project/stream/gate views.
+    const projectId =
+      e.project_id ||
+      (grain === "project" || grain === "stream" || grain === "stage_gate"
+        ? "__non_billable__"
+        : null);
+    if (!projectId && grain !== "resource" && grain !== "month") continue;
     const p = e.project_id ? projectsById.get(e.project_id) : undefined;
     const month = normMonth(e.period_month);
     const key = grainKey(grain, {
       resourceId: e.resource_id,
-      projectId: e.project_id,
-      streamId: e.stream_id,
-      stageGateId: e.stage_gate_id,
-      program: p?.program,
-      portfolio: p?.portfolio,
+      projectId,
+      streamId: isBillable ? e.stream_id : null,
+      stageGateId: isBillable ? e.stage_gate_id : null,
+      program: p?.program ?? (projectId === "__non_billable__" ? "Non-billable" : null),
+      portfolio: p?.portfolio ?? (projectId === "__non_billable__" ? "Non-billable" : null),
       month,
     });
-    const label = labelFor(grain, {
-      resourceId: e.resource_id,
-      projectId: e.project_id,
-      streamId: e.stream_id,
-      stageGateId: e.stage_gate_id,
-      program: p?.program,
-      portfolio: p?.portfolio,
-      month,
-      projectsById,
-      resourceNames,
-      streamLabels,
-      gateLabels,
-    });
+    const label =
+      projectId === "__non_billable__" && (grain === "project" || grain === "stream" || grain === "stage_gate")
+        ? "Non-billable / unallocated"
+        : labelFor(grain, {
+            resourceId: e.resource_id,
+            projectId: e.project_id,
+            streamId: e.stream_id,
+            stageGateId: e.stage_gate_id,
+            program: p?.program,
+            portfolio: p?.portfolio,
+            month,
+            projectsById,
+            resourceNames,
+            streamLabels,
+            gateLabels,
+          });
+    const hrs = num(e.hours);
     touch({
       key,
       label,
       resource_id: e.resource_id,
-      project_id: e.project_id,
-      stream_id: e.stream_id,
-      stage_gate_id: e.stage_gate_id,
-      program: p?.program,
-      portfolio: p?.portfolio,
+      project_id: projectId === "__non_billable__" ? null : e.project_id,
+      stream_id: isBillable ? e.stream_id : null,
+      stage_gate_id: isBillable ? e.stage_gate_id : null,
+      program: p?.program ?? (projectId === "__non_billable__" ? "Non-billable" : null),
+      portfolio: p?.portfolio ?? (projectId === "__non_billable__" ? "Non-billable" : null),
       period_month: month,
-      actual_hours: num(e.hours),
+      actual_hours: hrs,
+      billable_hours: isBillable ? hrs : 0,
+      non_billable_hours: isBillable ? 0 : hrs,
       labor_cost: num(e.labor_cost),
     });
   }
@@ -416,6 +442,8 @@ export function buildAllocationPva(opts: {
         planned_percent: Math.round(r.planned_percent * 10) / 10,
         demand_hours: Math.round(r.demand_hours * 100) / 100,
         actual_hours: Math.round(r.actual_hours * 100) / 100,
+        billable_hours: Math.round(r.billable_hours * 100) / 100,
+        non_billable_hours: Math.round(r.non_billable_hours * 100) / 100,
         variance_hours: variance,
         demand_gap_hours: demandGap,
         utilization_pct: util,

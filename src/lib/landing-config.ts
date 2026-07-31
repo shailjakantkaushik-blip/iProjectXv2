@@ -591,7 +591,7 @@ export const DEFAULT_LANDING: LandingConfig = {
     title: "Master the",
     title_accent: "Portfolio",
     subtitle:
-      "Stop flying blind. iProjectX is the single, immutable source of truth for enterprise PMOs — from executive cockpit KPIs to granular stage-gate governance across Agile and Waterfall.",
+      "Stop flying blind. One PMO command center for live portfolio KPIs, resource timesheets, stage-gate governance, optional SSO & BYOD, and Jira integrations — Agile and Waterfall on the same truth.",
     primary_cta: "Expression of Interest",
     secondary_cta: "See use cases",
     alert:
@@ -650,7 +650,7 @@ export const DEFAULT_LANDING: LandingConfig = {
       },
       {
         title: "Capacity heatmaps",
-        desc: "Flag conflicts 3 months before they become the reason for a slip.",
+        desc: "Plan allocation plus timesheet actuals — flag conflicts before they become the reason for a slip.",
       },
       {
         title: "RAID tied to delivery",
@@ -705,9 +705,11 @@ export const DEFAULT_LANDING: LandingConfig = {
   security: {
     eyebrow: "Trust & security",
     title: "Protect the portfolio. Still deliver the intelligence.",
-    body: "iProjectX is multi-tenant by design: MFA, row-level isolation, hardened sessions, and admin audit trails — plus In-house AI by default, answering from your live PMO data inside your organisation session. An Approved Open AI model is available only if an organisation requests it. Built for SOC 2 and ISO 27001 readiness — without overstating certification status.",
+    body: "iProjectX is multi-tenant by design: mandatory authenticator MFA, optional SSO, row-level isolation, hardened sessions, and admin audit trails — plus optional Bring-Your-Own-Database for tenant data residency. In-house AI answers from your live PMO data inside your organisation session by default; an Approved Open AI model is available only if an organisation requests it. Built for SOC 2 and ISO 27001 readiness — without overstating certification status.",
     bullets: [
-      "MFA (authenticator) required for all users",
+      "MFA (TOTP authenticator) required for all users",
+      "Optional per-organisation SSO (SAML) when provisioned",
+      "Optional BYOD — tenant registers on your PostgREST-compatible DB",
       "Row-level security isolating every organisation’s data",
       "In-house AI by default — answers stay in your org session",
       "Approved Open AI model only if the organisation requests it",
@@ -720,11 +722,11 @@ export const DEFAULT_LANDING: LandingConfig = {
   trust_strip: {
     items: [
       "MFA for every user",
+      "Optional SSO",
+      "Optional BYOD",
       "Multi-tenant RLS",
       "In-house AI",
       "Admin audit trails",
-      "Evidence export",
-      "White-label ready",
     ],
   },
   capabilities: {
@@ -750,7 +752,15 @@ export const DEFAULT_LANDING: LandingConfig = {
       },
       {
         title: "Resource Capacity",
-        desc: "Heatmaps, allocation, conflict detection across programs and business units.",
+        desc: "Plan vs actual utilisation — allocation heatmaps plus approved timesheet actuals (billable project/work-item and non-billable).",
+      },
+      {
+        title: "Resource Timesheets",
+        desc: "Weekly timesheets with approval workflow, project/work-item booking, and non-billable capture that feeds capacity actuals.",
+      },
+      {
+        title: "Integrations",
+        desc: "Connect Jira (and extensible connectors) so external issues land in Demand Pipeline with encrypted API tokens.",
       },
       {
         title: "Dependencies",
@@ -770,7 +780,15 @@ export const DEFAULT_LANDING: LandingConfig = {
       },
       {
         title: "Enterprise Security",
-        desc: "MFA for all users, multi-tenant RLS, CSP/HSTS, and hardened browser sessions.",
+        desc: "Mandatory TOTP MFA, optional SSO, multi-tenant RLS, CSP/HSTS, and hardened browser sessions.",
+      },
+      {
+        title: "Optional BYOD",
+        desc: "Host tenant portfolio data on your PostgREST-compatible database; auth and control plane stay on iProjectX.",
+      },
+      {
+        title: "Optional SSO",
+        desc: "Per-organisation SAML SSO via white-label branding when your plan provisions it.",
       },
       {
         title: "In-house AI",
@@ -824,7 +842,7 @@ export const DEFAULT_LANDING: LandingConfig = {
   },
   final_cta: {
     title: "Secure the portfolio outcome.",
-    body: "Deploy iProjectX in weeks, not months. White-label ready, multi-tenant by design, MFA-enforced — with In-house AI by default, and an Approved Open AI model only when your organisation requests it. Admin audit trails and evidence export for enterprise procurement.",
+    body: "Deploy iProjectX in weeks, not months. White-label ready, multi-tenant by design, MFA-enforced — with optional SSO and BYOD when you need them. In-house AI by default, and an Approved Open AI model only when your organisation requests it. Admin audit trails and evidence export for enterprise procurement.",
     primary: "Expression of Interest",
     secondary: "Sign in",
   },
@@ -1047,16 +1065,26 @@ export function mergeConfig(partial: any): LandingConfig {
   // Rewrite absolute "never external AI" claims after Approved Open AI model opt-in shipped.
   if (
     typeof merged.security.body === "string" &&
-    /without shipping|no portfolio data sent to chatgpt|no external model/i.test(
+    (/without shipping|no portfolio data sent to chatgpt|no external model/i.test(
       merged.security.body,
-    )
+    ) ||
+      (!/BYOD|bring.?your.?own/i.test(merged.security.body) &&
+        !/optional SSO|optional.*SSO/i.test(merged.security.body)))
   ) {
-    merged.security.body = DEFAULT_LANDING.security.body;
+    // Prefer current defaults when body is stale (missing SSO/BYOD or old AI claims).
+    if (
+      /without shipping|no portfolio data sent to chatgpt|no external model/i.test(
+        merged.security.body,
+      ) ||
+      !/BYOD|bring.?your.?own/i.test(merged.security.body)
+    ) {
+      merged.security.body = DEFAULT_LANDING.security.body;
+    }
   }
   if (!Array.isArray(merged.security.bullets) || merged.security.bullets.length === 0) {
     merged.security.bullets = [...DEFAULT_LANDING.security.bullets];
   } else {
-    merged.security.bullets = (merged.security.bullets as string[]).map((b) => {
+    merged.security.bullets = (merged.security.bullets as string[]).map((b: string) => {
       const t = String(b);
       if (/no portfolio data sent to chatgpt|other external model providers/i.test(t)) {
         return "Approved Open AI model only if the organisation requests it";
@@ -1068,17 +1096,31 @@ export function mergeConfig(partial: any): LandingConfig {
       ) {
         return "In-house AI by default — answers stay in your org session";
       }
+      if (/^MFA \(authenticator\) required/i.test(t)) {
+        return "MFA (TOTP authenticator) required for all users";
+      }
       return t;
     });
-    const haveBullet = merged.security.bullets.map((b) => String(b).toLowerCase());
+    const haveBullet = merged.security.bullets.map((b: string) => String(b).toLowerCase());
     for (const b of DEFAULT_LANDING.security.bullets) {
-      const already = haveBullet.some((h) =>
-        /in-house ai|external (model|ai)|approved open ai|chatgpt/i.test(h),
-      );
-      if (
-        /in-house ai|external (model|ai)|approved open ai|chatgpt/i.test(b) &&
-        !already
-      ) {
+      const key =
+        /in-house ai|external (model|ai)|approved open ai|chatgpt/i.test(b)
+          ? "ai"
+          : /BYOD|bring.?your.?own/i.test(b)
+            ? "byod"
+            : /SSO/i.test(b)
+              ? "sso"
+              : /TOTP|authenticator|MFA/i.test(b)
+                ? "mfa"
+                : null;
+      if (!key) continue;
+      const already = haveBullet.some((h: string) => {
+        if (key === "ai") return /in-house ai|external (model|ai)|approved open ai|chatgpt/i.test(h);
+        if (key === "byod") return /byod|bring.?your.?own/i.test(h);
+        if (key === "sso") return /sso/i.test(h);
+        return /totp|authenticator|mfa/i.test(h);
+      });
+      if (!already) {
         merged.security.bullets.push(b);
         haveBullet.push(b.toLowerCase());
       }
@@ -1090,8 +1132,14 @@ export function mergeConfig(partial: any): LandingConfig {
   };
   if (!Array.isArray(merged.trust_strip.items) || merged.trust_strip.items.length === 0) {
     merged.trust_strip.items = [...DEFAULT_LANDING.trust_strip.items];
-  } else if (!merged.trust_strip.items.some((i: string) => /in-house ai/i.test(i))) {
-    merged.trust_strip.items = ["In-house AI", ...merged.trust_strip.items].slice(0, 6);
+  } else {
+    const items = [...merged.trust_strip.items] as string[];
+    if (!items.some((i: string) => /in-house ai/i.test(i))) {
+      items.unshift("In-house AI");
+    }
+    if (!items.some((i: string) => /SSO/i.test(i))) items.push("Optional SSO");
+    if (!items.some((i: string) => /BYOD/i.test(i))) items.push("Optional BYOD");
+    merged.trust_strip.items = items.slice(0, 6);
   }
   merged.capabilities = {
     ...DEFAULT_LANDING.capabilities,
@@ -1107,7 +1155,11 @@ export function mergeConfig(partial: any): LandingConfig {
       if (
         (cap.title === "Enterprise Security" ||
           cap.title === "Audit & Evidence" ||
-          cap.title === "In-house AI") &&
+          cap.title === "In-house AI" ||
+          cap.title === "Optional BYOD" ||
+          cap.title === "Optional SSO" ||
+          cap.title === "Resource Timesheets" ||
+          cap.title === "Integrations") &&
         !have.has(cap.title)
       ) {
         merged.capabilities.items.push(cap);
@@ -1117,14 +1169,37 @@ export function mergeConfig(partial: any): LandingConfig {
     const defaultInhouseAi = DEFAULT_LANDING.capabilities.items.find(
       (c) => c.title === "In-house AI",
     );
-    if (defaultInhouseAi) {
+    const defaultEnterpriseSec = DEFAULT_LANDING.capabilities.items.find(
+      (c) => c.title === "Enterprise Security",
+    );
+    const defaultResourceCap = DEFAULT_LANDING.capabilities.items.find(
+      (c) => c.title === "Resource Capacity",
+    );
+    if (defaultInhouseAi || defaultEnterpriseSec || defaultResourceCap) {
       merged.capabilities.items = merged.capabilities.items.map((cap: LandingCap) => {
         if (
+          defaultInhouseAi &&
           cap.title === "In-house AI" &&
           typeof cap.desc === "string" &&
           /without sending data to external|no external/i.test(cap.desc)
         ) {
           return { ...cap, desc: defaultInhouseAi.desc };
+        }
+        if (
+          defaultEnterpriseSec &&
+          cap.title === "Enterprise Security" &&
+          typeof cap.desc === "string" &&
+          !/SSO|TOTP/i.test(cap.desc)
+        ) {
+          return { ...cap, desc: defaultEnterpriseSec.desc };
+        }
+        if (
+          defaultResourceCap &&
+          cap.title === "Resource Capacity" &&
+          typeof cap.desc === "string" &&
+          !/timesheet|actual/i.test(cap.desc)
+        ) {
+          return { ...cap, desc: defaultResourceCap.desc };
         }
         return cap;
       });
