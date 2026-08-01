@@ -2,11 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { assertPlatformAdmin } from "@/lib/user-admin.functions";
-import {
-  encryptByodSecret,
-  isByodKekConfigured,
-  secretHint,
-} from "@/lib/byod-crypto.server";
+import { encryptByodSecret, isByodKekConfigured, secretHint } from "@/lib/byod-crypto.server";
 import {
   loadByodRow,
   normalizeSupabaseUrl,
@@ -109,8 +105,7 @@ export const upsertOrgByodConnection = createServerFn({ method: "POST" })
     // Changing URL/keys after active → require re-test
     if (
       existing?.status === "active" &&
-      (newSecret ||
-        (data.supabase_url !== undefined && supabase_url !== existing.supabase_url))
+      (newSecret || (data.supabase_url !== undefined && supabase_url !== existing.supabase_url))
     ) {
       status = "configured";
       await setOrgByodActive(data.org_id, false);
@@ -149,9 +144,7 @@ export const upsertOrgByodConnection = createServerFn({ method: "POST" })
       eventType: "admin_action",
       entityType: "org_byod_connections",
       entityId: data.org_id,
-      summary: newSecret
-        ? "BYOD connection saved (secret replaced)"
-        : "BYOD connection saved",
+      summary: newSecret ? "BYOD connection saved (secret replaced)" : "BYOD connection saved",
       meta: {
         enabled,
         status,
@@ -211,7 +204,12 @@ export const testOrgByodConnection = createServerFn({ method: "POST" })
       throw new Error("Server missing BYOD_SECRETS_KEK — cannot decrypt secrets.");
     }
     const row = await loadByodRow(data.org_id);
-    if (!row?.supabase_url || !row.secret_configured || !row.secret_ciphertext || !row.secret_nonce) {
+    if (
+      !row?.supabase_url ||
+      !row.secret_configured ||
+      !row.secret_ciphertext ||
+      !row.secret_nonce
+    ) {
       throw new Error("Save a customer database URL and service role secret before testing.");
     }
 
@@ -257,9 +255,7 @@ export const testOrgByodConnection = createServerFn({ method: "POST" })
 
 export const setOrgByodActiveState = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z.object({ org_id: z.string().uuid(), active: z.boolean() }).parse(d),
-  )
+  .inputValidator((d) => z.object({ org_id: z.string().uuid(), active: z.boolean() }).parse(d))
   .handler(async ({ data, context }): Promise<ByodPublicStatus> => {
     await assertPlatformAdmin(context.supabase, context.userId);
     const row = await loadByodRow(data.org_id);
@@ -322,4 +318,31 @@ export const probeOrgDataClientMode = createServerFn({ method: "POST" })
     await assertPlatformAdmin(context.supabase, context.userId);
     const resolved = await resolveOrgDataClient(data.org_id);
     return { org_id: data.org_id, mode: resolved.mode };
+  });
+
+/**
+ * Platform admin: download the concatenated BYOD tenant schema pack
+ * (migrations minus control-plane-only files) for customer DB prep.
+ */
+export const getByodSchemaPack = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertPlatformAdmin(context.supabase, context.userId);
+    const { buildByodSchemaPack } = await import("@/lib/byod-schema.server");
+    const pack = await buildByodSchemaPack();
+
+    const { writeSecurityEvent } = await import("@/lib/security-audit");
+    await writeSecurityEvent({
+      actorUserId: context.userId,
+      eventType: "admin_action",
+      entityType: "byod_schema",
+      summary: `Downloaded BYOD schema pack (${pack.included.length} migrations)`,
+      meta: {
+        filename: pack.filename,
+        included_count: pack.included.length,
+        excluded_count: pack.excluded.length,
+      },
+    });
+
+    return pack;
   });

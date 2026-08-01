@@ -6,11 +6,11 @@ The runtime uses a PostgREST-compatible HTTPS API (same shape as Supabase’s RE
 
 ## Model
 
-| Plane | Location |
-|-------|----------|
-| Control plane (orgs, users, billing, white-label, BYOD config) | Always iProjectX data plane |
-| Tenant business data (projects, RAID, …) when BYOD **active** | Customer database (server-side client) |
-| Tenant business data when BYOD **off** | iProjectX data plane (unchanged) |
+| Plane                                                          | Location                               |
+| -------------------------------------------------------------- | -------------------------------------- |
+| Control plane (orgs, users, billing, white-label, BYOD config) | Always iProjectX data plane            |
+| Tenant business data (projects, RAID, …) when BYOD **active**  | Customer database (server-side client) |
+| Tenant business data when BYOD **off**                         | iProjectX data plane (unchanged)       |
 
 ## Secrets
 
@@ -23,11 +23,13 @@ The runtime uses a PostgREST-compatible HTTPS API (same shape as Supabase’s RE
 
 **Platform → White Label & Branding** → select organisation → **Customer-hosted database (BYOD)**
 
-1. Set `BYOD_SECRETS_KEK` in the deployment environment  
-2. Apply migration `supabase/migrations/20260729120000_org_byod_connections.sql`  
-3. Paste customer **database API URL** (HTTPS) + service role / admin secret → **Save**  
-4. **Test connection**  
-5. Toggle **Use customer DB** (requires successful test)
+1. Set `BYOD_SECRETS_KEK` in the deployment environment
+2. Apply migration `supabase/migrations/20260729120000_org_byod_connections.sql` (control plane)
+3. Click **Download schema** and send `iprojectx-byod-schema-YYYY-MM-DD.sql` to the customer
+4. Customer applies that SQL on their Postgres (see below)
+5. Paste customer **database API URL** (HTTPS) + service role / admin secret → **Save**
+6. **Test connection**
+7. Toggle **Use customer DB** (requires successful test)
 
 ## Runtime
 
@@ -44,4 +46,11 @@ Browser queries still use the shared publishable client today for most screens. 
 
 ## Customer project prep
 
-Apply the same schema migrations to the customer database before expecting portfolio features to work. Connection test only verifies URL + service-role authentication against a PostgREST-compatible API.
+1. Receive the **BYOD schema pack** from the platform admin (**Download schema** on the BYOD panel), or regenerate it from the same migration set in-repo.
+2. Apply the SQL file to the customer Postgres database (`psql -f iprojectx-byod-schema-….sql` or your migration runner).
+3. Expose a PostgREST-compatible HTTPS API with a service-role / admin secret.
+4. Hand the URL + secret back to the platform admin for Save → Test → Activate.
+
+The pack concatenates tenant-relevant migrations from `supabase/migrations/` and **excludes** control-plane-only files (billing, landing, EOI/legal, support tickets, BYOD secrets table, SSO/IP/AI org flags, org integrations). Auth, billing, white-label, and BYOD connection secrets always stay on the iProjectX plane.
+
+Connection test only verifies URL + service-role authentication — portfolio features need the schema applied first.

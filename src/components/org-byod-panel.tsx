@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
   Database,
+  Download,
   EyeOff,
   Loader2,
   PlugZap,
@@ -18,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
   clearOrgByodSecret,
+  getByodSchemaPack,
   getOrgByodStatus,
   setOrgByodActiveState,
   testOrgByodConnection,
@@ -55,19 +57,14 @@ function statusClass(s: ByodPublicStatus["status"]) {
   }
 }
 
-export function OrgByodPanel({
-  orgId,
-  orgName,
-}: {
-  orgId: string;
-  orgName: string;
-}) {
+export function OrgByodPanel({ orgId, orgName }: { orgId: string; orgName: string }) {
   const qc = useQueryClient();
   const getStatus = useServerFn(getOrgByodStatus);
   const upsert = useServerFn(upsertOrgByodConnection);
   const clearSecret = useServerFn(clearOrgByodSecret);
   const testConn = useServerFn(testOrgByodConnection);
   const setActive = useServerFn(setOrgByodActiveState);
+  const fetchSchemaPack = useServerFn(getByodSchemaPack);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["org-byod", orgId],
@@ -144,6 +141,23 @@ export function OrgByodPanel({
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const schemaMut = useMutation({
+    mutationFn: () => fetchSchemaPack(),
+    onSuccess: (pack) => {
+      const blob = new Blob([pack.sql], { type: "application/sql;charset=utf-8" });
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = pack.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(href);
+      toast.success(`Downloaded ${pack.filename} (${pack.included.length} migrations)`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   if (isLoading) {
     return (
       <Card>
@@ -165,7 +179,8 @@ export function OrgByodPanel({
     );
   }
 
-  const canActivate = data.secret_configured && (data.status === "tested" || data.status === "active");
+  const canActivate =
+    data.secret_configured && (data.status === "tested" || data.status === "active");
   const showSecretInput = !data.secret_configured || replaceSecret;
 
   return (
@@ -177,10 +192,10 @@ export function OrgByodPanel({
         </CardTitle>
         <CardDescription>
           Optional for <strong>{orgName}</strong>. By default, organisations use the shared
-          iProjectX data plane. When active, server-side tenant data is read/written against
-          this customer-hosted database URL (any HTTPS Postgres/PostgREST-compatible API —
-          including self-hosted or third-party hosts, not only one vendor). Auth, billing, and
-          white-label stay on iProjectX.
+          iProjectX data plane. When active, server-side tenant data is read/written against this
+          customer-hosted database URL (any HTTPS Postgres/PostgREST-compatible API — including
+          self-hosted or third-party hosts, not only one vendor). Auth, billing, and white-label
+          stay on iProjectX.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -217,8 +232,8 @@ export function OrgByodPanel({
               autoComplete="off"
             />
             <p className="text-[11px] text-muted-foreground">
-              HTTPS endpoint for the customer database API (PostgREST-compatible). Not limited to
-              a Supabase hostname.
+              HTTPS endpoint for the customer database API (PostgREST-compatible). Not limited to a
+              Supabase hostname.
             </p>
           </div>
           <div className="space-y-1.5 md:col-span-2">
@@ -344,6 +359,16 @@ export function OrgByodPanel({
               <PlugZap className="mr-1.5 h-3.5 w-3.5" />
               {testMut.isPending ? "Testing…" : "Test connection"}
             </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={schemaMut.isPending}
+              onClick={() => schemaMut.mutate()}
+            >
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+              {schemaMut.isPending ? "Preparing…" : "Download schema"}
+            </Button>
           </div>
 
           <label className="flex items-center gap-2 text-sm">
@@ -357,8 +382,8 @@ export function OrgByodPanel({
         </div>
 
         <p className="text-[11px] text-muted-foreground">
-          The customer database must receive iProjectX schema migrations before portfolio data will
-          work. Until then, Test connection only verifies URL + admin credentials.
+          Download the BYOD schema pack and apply it on the customer database before activating.
+          Test connection only verifies URL + admin credentials until that schema is present.
           {data.last_tested_at
             ? ` Last tested ${new Date(data.last_tested_at).toLocaleString()}.`
             : ""}
