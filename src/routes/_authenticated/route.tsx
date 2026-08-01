@@ -1,8 +1,10 @@
 import { createFileRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { useAuth } from "@/lib/auth-context";
 import { readOrgAuthEntrySlug } from "@/lib/org-auth-entry";
 import { getMfaStatus } from "@/lib/mfa";
+import { assertClientIpAllowedForHomeOrg } from "@/lib/org-ip-restriction.functions";
 import { toast } from "sonner";
 import { PageLoading, SessionPending } from "@/components/page-loading";
 import { AppShell } from "@/components/app-shell";
@@ -22,17 +24,21 @@ export const Route = createFileRoute("/_authenticated")({
  *    nested main scrollport or fixed overlay for soft checks.
  * 3. Soft security rechecks redirect to /mfa — they do not remount loaders.
  * 4. Org white-label membership is enforced in auth.tsx BEFORE /mfa.
+ * 5. Per-org IP allowlist is re-checked here (VPN / network change mid-session).
  */
 function Gate() {
   const { session, profile, loading, sessionChecked, signOut } = useAuth();
   const navigate = useNavigate();
+  const assertHomeOrgIp = useServerFn(assertClientIpAllowedForHomeOrg);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const pathnameRef = useRef(pathname);
   pathnameRef.current = pathname;
   const bareShell = pathname.startsWith("/onboarding");
 
   const mfaVerifiedUserRef = useRef<string | null>(null);
+  const ipVerifiedUserRef = useRef<string | null>(null);
   const [mfaReady, setMfaReady] = useState(false);
+  const [ipReady, setIpReady] = useState(false);
 
   const goMfa = (mode: "challenge" | "enroll") => {
     navigate({
@@ -53,7 +59,9 @@ function Gate() {
 
     if (!session) {
       mfaVerifiedUserRef.current = null;
+      ipVerifiedUserRef.current = null;
       setMfaReady(false);
+      setIpReady(false);
       const slug = readOrgAuthEntrySlug();
       if (slug) {
         void navigate({ to: "/auth", search: { org: slug }, replace: true });
@@ -76,11 +84,38 @@ function Gate() {
 
     if (mfaVerifiedUserRef.current === session.user.id) {
       if (!mfaReady) markMfaReady(session.user.id);
-      return;
     }
 
     let cancelled = false;
     void (async () => {
+      // IP allowlist before MFA so restricted networks never reach challenge UI.
+      if (ipVerifiedUserRef.current !== session.user.id) {
+        try {
+          const ip = await assertHomeOrgIp();
+          if (cancelled) return;
+          if (!ip.allowed) {
+            toast.error(ip.message);
+            void signOut();
+            return;
+          }
+          ipVerifiedUserRef.current = session.user.id;
+          setIpReady(true);
+        } catch (e) {
+          if (cancelled) return;
+          toast.error(
+            e instanceof Error
+              ? e.message
+              : "Could not verify IP restriction for your organisation.",
+          );
+          void signOut();
+          return;
+        }
+      } else if (!ipReady) {
+        setIpReady(true);
+      }
+
+      if (mfaVerifiedUserRef.current === session.user.id) return;
+
       try {
         const mfa = await getMfaStatus();
         if (cancelled) return;
@@ -111,13 +146,25 @@ function Gate() {
     navigate,
     signOut,
     mfaReady,
+    ipReady,
+    assertHomeOrgIp,
   ]);
 
   // Soft recheck: route transition only — never tear down the shell.
   useEffect(() => {
-    if (!mfaReady || !session) return;
+    if (!mfaReady || !ipReady || !session) return;
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
+      void assertHomeOrgIp()
+        .then((ip) => {
+          if (!ip.allowed) {
+            ipVerifiedUserRef.current = null;
+            setIpReady(false);
+            toast.error(ip.message);
+            void signOut();
+          }
+        })
+        .catch(() => {});
       void getMfaStatus()
         .then((mfa) => {
           if (mfa.needsChallenge || mfa.currentLevel === "aal1") {
@@ -135,7 +182,7 @@ function Gate() {
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mfaReady, session?.user?.id, navigate]);
+  }, [mfaReady, ipReady, session?.user?.id, navigate, assertHomeOrgIp, signOut]);
 
   // ── Cold gate (no shell yet) ──────────────────────────────────────────
   if (!sessionChecked || !session) {
@@ -144,7 +191,7 @@ function Gate() {
   if (profile?.is_active === false) {
     return <PageLoading label="Account inactive…" fullScreen />;
   }
-  if (!mfaReady) {
+  if (!ipReady || !mfaReady) {
     return <PageLoading label="Verifying security…" fullScreen />;
   }
 

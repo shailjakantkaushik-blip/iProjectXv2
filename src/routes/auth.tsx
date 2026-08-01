@@ -34,6 +34,10 @@ import {
   getOrgBranding,
 } from "@/lib/org-branding.functions";
 import {
+  assertClientIpAllowedForHomeOrg,
+  assertClientIpAllowedForOrgSlug,
+} from "@/lib/org-ip-restriction.functions";
+import {
   AuthLayout,
   PasswordField,
   type AuthBrand,
@@ -168,6 +172,8 @@ function AuthPage() {
   const { session, loading, profile } = useAuth();
   const navigate = useNavigate();
   const assertOrgMembership = useServerFn(assertUserBelongsToOrgSlug);
+  const assertOrgIp = useServerFn(assertClientIpAllowedForOrgSlug);
+  const assertHomeOrgIp = useServerFn(assertClientIpAllowedForHomeOrg);
   const recordAuth = useServerFn(recordAuthSecurityEvent);
   const recordFail = useServerFn(recordFailedLogin);
   const [busy, setBusy] = useState(false);
@@ -226,6 +232,18 @@ function AuthPage() {
       try {
         const result = await assertOrgMembership({ data: { slug } });
         if (result.allowed) {
+          const ip = await assertOrgIp({ data: { slug } });
+          if (!ip.allowed) {
+            // IP deny always clears the session — this user belongs to the org
+            // but must not enter from a non-allowlisted network.
+            await supabase.auth.signOut({ scope: "local" });
+            showOrgAccessAlert({
+              title: "Network not allowed",
+              message: ip.message,
+              sessionPreserved: false,
+            });
+            return false;
+          }
           rememberOrgAuthEntry(result.orgSlug);
           return true;
         }
@@ -255,7 +273,7 @@ function AuthPage() {
         return false;
       }
     },
-    [assertOrgMembership, showOrgAccessAlert, orgLabel, session?.user?.id, profile],
+    [assertOrgMembership, assertOrgIp, showOrgAccessAlert, orgLabel, session?.user?.id, profile],
   );
 
   // Existing session on /auth: do NOT auto-redirect into the app. That made
@@ -467,6 +485,31 @@ function AuthPage() {
     } else {
       // General /auth sign-in — do not treat membership as org-link entry.
       clearOrgAuthEntry();
+      try {
+        const ip = await assertHomeOrgIp();
+        if (!ip.allowed) {
+          await supabase.auth.signOut({ scope: "local" });
+          setBusy(false);
+          showOrgAccessAlert({
+            title: "Network not allowed",
+            message: ip.message,
+            sessionPreserved: false,
+          });
+          return;
+        }
+      } catch (e) {
+        await supabase.auth.signOut({ scope: "local" });
+        setBusy(false);
+        showOrgAccessAlert({
+          title: "Network not allowed",
+          message:
+            e instanceof Error
+              ? e.message
+              : "Could not verify IP restriction for your organisation. Try again.",
+          sessionPreserved: false,
+        });
+        return;
+      }
     }
 
     // MFA challenge before entering the app (AAL1 → AAL2).

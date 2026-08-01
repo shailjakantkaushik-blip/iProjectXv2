@@ -17,11 +17,7 @@ import {
   type LogoDisplaySize,
 } from "@/lib/landing-config";
 import { ColorPaletteEditor } from "@/components/color-palette-editor";
-import {
-  defaultOrgColorTheme,
-  normalizeOrgColorTheme,
-  type OrgColorTheme,
-} from "@/lib/org-theme";
+import { defaultOrgColorTheme, normalizeOrgColorTheme, type OrgColorTheme } from "@/lib/org-theme";
 import { OrgStyleThemeEditor, StyleThemePicker } from "@/components/style-theme-picker";
 import {
   normalizeOrgStyleTheme,
@@ -31,13 +27,11 @@ import {
   type StyleThemeId,
   isStyleThemeId,
 } from "@/lib/style-theme";
-import {
-  fetchLandingConfig,
-  saveLandingConfig,
-  type LandingConfig,
-} from "@/lib/landing-config";
+import { fetchLandingConfig, saveLandingConfig, type LandingConfig } from "@/lib/landing-config";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { OrgByodPanel } from "@/components/org-byod-panel";
+import { parseIpAllowlist } from "@/lib/ip-allowlist";
 
 export const Route = createFileRoute("/_authenticated/platform/branding")({
   beforeLoad: () => {
@@ -77,6 +71,8 @@ type Org = {
   sso_provider_id: string | null;
   sso_domains: string[] | null;
   sso_button_label: string | null;
+  ip_restriction_enabled: boolean | null;
+  ip_allowlist: string[] | null;
 };
 
 function PlatformBrandingPage() {
@@ -91,7 +87,7 @@ function PlatformBrandingPage() {
       const { data, error } = await supabase
         .from("organizations")
         .select(
-          "id,name,slug,plan,brand_name,primary_color,accent_color,logo_url,palette,ui_config,sso_enabled,sso_provider_id,sso_domains,sso_button_label",
+          "id,name,slug,plan,brand_name,primary_color,accent_color,logo_url,palette,ui_config,sso_enabled,sso_provider_id,sso_domains,sso_button_label,ip_restriction_enabled,ip_allowlist",
         )
         .order("name");
       if (error) throw error;
@@ -131,10 +127,11 @@ function PlatformBrandingPage() {
           <Palette className="h-7 w-7" /> White Label & Branding
         </h1>
         <p className="text-sm text-muted-foreground">
-          Manage display name, logo, colour palette, style themes, per-org SSO, and optional
-          customer-hosted database (BYOD — any PostgREST-compatible HTTPS API, not only one
-          vendor) for each organisation (platform admin only). Style themes change UI chrome —
-          sections, buttons, navigation shape, and motion — without changing colour palettes.
+          Manage display name, logo, colour palette, style themes, per-org SSO, IP address
+          restriction, and optional customer-hosted database (BYOD — any PostgREST-compatible HTTPS
+          API, not only one vendor) for each organisation (platform admin only). Style themes change
+          UI chrome — sections, buttons, navigation shape, and motion — without changing colour
+          palettes.
         </p>
       </div>
 
@@ -176,7 +173,9 @@ function PlatformBrandingPage() {
 
       <div className="grid gap-4 md:grid-cols-[260px_1fr]">
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base">Organisations</CardTitle></CardHeader>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Organisations</CardTitle>
+          </CardHeader>
           <CardContent className="p-2">
             {isLoading && <div className="text-xs text-muted-foreground p-2">Loading…</div>}
             <div className="space-y-1 max-h-[70vh] overflow-auto">
@@ -226,7 +225,9 @@ function PlatformBrandingPage() {
 
 function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const existingUi = (org.ui_config && typeof org.ui_config === "object" ? org.ui_config : {}) as OrgUiConfig;
+  const existingUi = (
+    org.ui_config && typeof org.ui_config === "object" ? org.ui_config : {}
+  ) as OrgUiConfig;
   const existingBranding = existingUi.branding ?? {};
   const [brandName, setBrandName] = useState(org.brand_name ?? org.name ?? "");
   const [logoUrl, setLogoUrl] = useState<string | null>(org.logo_url ?? null);
@@ -260,8 +261,12 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
   const [ssoDomains, setSsoDomains] = useState(
     Array.isArray(org.sso_domains) ? org.sso_domains.join(", ") : "",
   );
-  const [ssoButtonLabel, setSsoButtonLabel] = useState(
-    org.sso_button_label ?? "Sign in with SSO",
+  const [ssoButtonLabel, setSsoButtonLabel] = useState(org.sso_button_label ?? "Sign in with SSO");
+  const [ipRestrictionEnabled, setIpRestrictionEnabled] = useState(
+    Boolean(org.ip_restriction_enabled),
+  );
+  const [ipAllowlistText, setIpAllowlistText] = useState(
+    Array.isArray(org.ip_allowlist) ? org.ip_allowlist.join("\n") : "",
   );
 
   const handleLogoPick = (file: File) => {
@@ -304,6 +309,13 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
         .split(/[,;\s]+/)
         .map((d) => d.trim().toLowerCase())
         .filter(Boolean);
+      const parsedAllowlist = parseIpAllowlist(ipAllowlistText);
+      if (!parsedAllowlist.ok) throw new Error(parsedAllowlist.error);
+      if (ipRestrictionEnabled && parsedAllowlist.entries.length === 0) {
+        throw new Error(
+          "Add at least one IP address or CIDR before enabling IP address restriction.",
+        );
+      }
       const { error } = await supabase
         .from("organizations")
         .update({
@@ -316,6 +328,8 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
           sso_provider_id: ssoProviderId.trim() || null,
           sso_domains: domains,
           sso_button_label: ssoButtonLabel.trim() || null,
+          ip_restriction_enabled: ipRestrictionEnabled,
+          ip_allowlist: parsedAllowlist.entries,
         })
         .eq("id", org.id);
       if (error) throw error;
@@ -369,8 +383,8 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
           <p className="mt-1 text-xs text-muted-foreground">
             Share this URL with the organisation. It opens their branded sign-in page and{" "}
             <b>only members of this organisation</b> can sign in. Generic{" "}
-            <code className="rounded bg-muted px-1">/auth</code> stays platform-branded with no
-            org lock. Canonical:{" "}
+            <code className="rounded bg-muted px-1">/auth</code> stays platform-branded with no org
+            lock. Canonical:{" "}
             <code className="rounded bg-muted px-1 py-0.5 text-[11px]">
               {authQueryPath || "/auth?org=&lt;slug&gt;"}
             </code>
@@ -379,7 +393,12 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
             <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
               <Input readOnly value={loginUrl} className="font-mono text-xs" />
               <div className="flex shrink-0 gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={() => void copyLoginLink()}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void copyLoginLink()}
+                >
                   <Copy className="mr-1.5 h-3.5 w-3.5" /> Copy
                 </Button>
                 <Button type="button" variant="ghost" size="sm" asChild>
@@ -391,8 +410,8 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
             </div>
           ) : (
             <p className="mt-2 text-sm text-amber-700 dark:text-amber-400">
-              This organisation has no slug yet. Set a slug under Organisations &amp; Users to enable
-              a dedicated login link.
+              This organisation has no slug yet. Set a slug under Organisations &amp; Users to
+              enable a dedicated login link.
             </p>
           )}
         </div>
@@ -478,8 +497,8 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
         <div className="space-y-2">
           <Label>Organisation colour palette</Label>
           <p className="text-xs text-muted-foreground">
-            Templates plus custom hex codes. When set, this organisation&apos;s palette overrides the
-            platform theme inside the app.
+            Templates plus custom hex codes. When set, this organisation&apos;s palette overrides
+            the platform theme inside the app.
           </p>
           <ColorPaletteEditor value={colorTheme} onChange={setColorTheme} />
         </div>
@@ -501,8 +520,8 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
               <p className="mt-1 text-xs text-muted-foreground">
                 When enabled, the white-label login page shows an SSO button. Register the IdP in
                 Supabase Auth first (<code className="text-[11px]">supabase sso add</code> or
-                Dashboard → Authentication → SSO), then paste the provider UUID and/or email
-                domains here.
+                Dashboard → Authentication → SSO), then paste the provider UUID and/or email domains
+                here.
               </p>
             </div>
             <Switch checked={ssoEnabled} onCheckedChange={setSsoEnabled} />
@@ -544,6 +563,39 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
           )}
         </div>
 
+        <div className="space-y-3 rounded-lg border p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <Label>IP address restriction</Label>
+              <p className="mt-1 text-xs text-muted-foreground">
+                When enabled, members of this organisation can only sign in and use the app from the
+                IP addresses or CIDR ranges listed below. Checked on white-label and general
+                sign-in, and again when opening the app. Platform admins are not blocked so a bad
+                allowlist can be fixed.
+              </p>
+            </div>
+            <Switch checked={ipRestrictionEnabled} onCheckedChange={setIpRestrictionEnabled} />
+          </div>
+          {ipRestrictionEnabled && (
+            <div className="space-y-1.5">
+              <Label htmlFor={`ip-allowlist-${org.id}`}>Allowed IPs / CIDRs</Label>
+              <Textarea
+                id={`ip-allowlist-${org.id}`}
+                value={ipAllowlistText}
+                onChange={(e) => setIpAllowlistText(e.target.value)}
+                placeholder={"203.0.113.10\n10.0.0.0/8\n2001:db8::/32"}
+                className="min-h-[110px] font-mono text-xs"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                One entry per line (or comma-separated). Examples:{" "}
+                <code className="text-[11px]">203.0.113.10</code>,{" "}
+                <code className="text-[11px]">10.0.0.0/8</code>. At least one entry is required when
+                restriction is on.
+              </p>
+            </div>
+          )}
+        </div>
+
         <div className="rounded-lg border bg-muted/30 p-4">
           <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
             Brand mark preview
@@ -556,7 +608,10 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
               {logoUrl ? (
                 <img src={logoUrl} alt="" className="max-h-full max-w-full object-contain" />
               ) : (
-                <span className="text-sm font-bold" style={{ color: colorTheme.palette.textOnAccent }}>
+                <span
+                  className="text-sm font-bold"
+                  style={{ color: colorTheme.palette.textOnAccent }}
+                >
                   {(brandName || org.name || "?").slice(0, 2).toUpperCase()}
                 </span>
               )}

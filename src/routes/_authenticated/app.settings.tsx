@@ -139,8 +139,9 @@ function SettingsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Palette className="h-5 w-5" /> White Label & Branding</CardTitle>
           <CardDescription>
-            Brand name, logo, and colour palette are managed by the platform team under White Label &amp; Branding.
-            Organisation admins cannot edit the palette here.
+            Brand name, logo, colour palette, SSO, and IP address restriction are managed by the
+            platform team under White Label &amp; Branding. Organisation admins cannot edit them
+            here.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">

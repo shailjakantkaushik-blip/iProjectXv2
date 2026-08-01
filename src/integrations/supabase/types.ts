@@ -1267,6 +1267,8 @@ export type Database = {
           fy_start_month: number
           id: string
           inhouse_ai_model_enabled: boolean
+          ip_allowlist: string[]
+          ip_restriction_enabled: boolean
           logo_url: string | null
           name: string
           override_max_projects: number | null
@@ -1291,6 +1293,8 @@ export type Database = {
           fy_start_month?: number
           id?: string
           inhouse_ai_model_enabled?: boolean
+          ip_allowlist?: string[]
+          ip_restriction_enabled?: boolean
           logo_url?: string | null
           name: string
           override_max_projects?: number | null
@@ -1315,6 +1319,8 @@ export type Database = {
           fy_start_month?: number
           id?: string
           inhouse_ai_model_enabled?: boolean
+          ip_allowlist?: string[]
+          ip_restriction_enabled?: boolean
           logo_url?: string | null
           name?: string
           override_max_projects?: number | null
