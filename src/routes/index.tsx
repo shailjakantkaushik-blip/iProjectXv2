@@ -1750,6 +1750,7 @@ function SecurityTour({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: strin
   const controls = [
     { label: "Identity", value: "TOTP MFA required" },
     { label: "SSO", value: "Optional SAML" },
+    { label: "Network", value: "Optional IP allowlist" },
     { label: "Data plane", value: "Shared or BYOD" },
     { label: "Tenancy", value: "Row-level RLS" },
     { label: "Intelligence", value: "In-house AI" },

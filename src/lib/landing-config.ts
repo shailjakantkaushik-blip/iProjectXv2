@@ -705,10 +705,11 @@ export const DEFAULT_LANDING: LandingConfig = {
   security: {
     eyebrow: "Trust & security",
     title: "Protect the portfolio. Still deliver the intelligence.",
-    body: "iProjectX is multi-tenant by design: mandatory authenticator MFA, optional SSO, row-level isolation, hardened sessions, and admin audit trails — plus optional Bring-Your-Own-Database for tenant data residency. In-house AI answers from your live PMO data inside your organisation session by default; an Approved Open AI model is available only if an organisation requests it. Built for SOC 2 and ISO 27001 readiness — without overstating certification status.",
+    body: "iProjectX is multi-tenant by design: mandatory authenticator MFA, optional SSO, optional IP-based organisation restriction, row-level isolation, hardened sessions, and admin audit trails — plus optional Bring-Your-Own-Database for tenant data residency. In-house AI answers from your live PMO data inside your organisation session by default; an Approved Open AI model is available only if an organisation requests it. Built for SOC 2 and ISO 27001 readiness — without overstating certification status.",
     bullets: [
       "MFA (TOTP authenticator) required for all users",
       "Optional per-organisation SSO (SAML) when provisioned",
+      "Optional IP-based organisation restriction (allowlist / CIDR)",
       "Optional BYOD — tenant registers on your PostgREST-compatible DB",
       "Row-level security isolating every organisation’s data",
       "In-house AI by default — answers stay in your org session",
@@ -1069,14 +1070,16 @@ export function mergeConfig(partial: any): LandingConfig {
       merged.security.body,
     ) ||
       (!/BYOD|bring.?your.?own/i.test(merged.security.body) &&
-        !/optional SSO|optional.*SSO/i.test(merged.security.body)))
+        !/optional SSO|optional.*SSO/i.test(merged.security.body)) ||
+      !/IP-based|IP allowlist|CIDR/i.test(merged.security.body))
   ) {
-    // Prefer current defaults when body is stale (missing SSO/BYOD or old AI claims).
+    // Prefer current defaults when body is stale (missing SSO/BYOD/IP or old AI claims).
     if (
       /without shipping|no portfolio data sent to chatgpt|no external model/i.test(
         merged.security.body,
       ) ||
-      !/BYOD|bring.?your.?own/i.test(merged.security.body)
+      !/BYOD|bring.?your.?own/i.test(merged.security.body) ||
+      !/IP-based|IP allowlist|CIDR/i.test(merged.security.body)
     ) {
       merged.security.body = DEFAULT_LANDING.security.body;
     }
@@ -1108,15 +1111,18 @@ export function mergeConfig(partial: any): LandingConfig {
           ? "ai"
           : /BYOD|bring.?your.?own/i.test(b)
             ? "byod"
-            : /SSO/i.test(b)
-              ? "sso"
-              : /TOTP|authenticator|MFA/i.test(b)
-                ? "mfa"
-                : null;
+            : /IP-based|IP allowlist|CIDR/i.test(b)
+              ? "ip"
+              : /SSO/i.test(b)
+                ? "sso"
+                : /TOTP|authenticator|MFA/i.test(b)
+                  ? "mfa"
+                  : null;
       if (!key) continue;
       const already = haveBullet.some((h: string) => {
         if (key === "ai") return /in-house ai|external (model|ai)|approved open ai|chatgpt/i.test(h);
         if (key === "byod") return /byod|bring.?your.?own/i.test(h);
+        if (key === "ip") return /ip-based|ip allowlist|cidr/i.test(h);
         if (key === "sso") return /sso/i.test(h);
         return /totp|authenticator|mfa/i.test(h);
       });
