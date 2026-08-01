@@ -60,8 +60,9 @@ type LandingLoaderData = {
 
 export const Route = createFileRoute("/")({
   loader: async (): Promise<LandingLoaderData> => {
-    // Instant paint on repeat visits: don't block the route on Supabase.
+    // Instant paint on repeat visits from cache (logos + palette kept).
     // Never trust cached signup_enabled (avoids Get started flash).
+    // First visit (no cache): await live config so we never flash DEFAULT branding.
     if (typeof window !== "undefined") {
       const cached = readCachedLandingConfig();
       if (cached) {
@@ -71,7 +72,8 @@ export const Route = createFileRoute("/")({
     return { cfg: await fetchLandingConfig(), needsRevalidate: false };
   },
   staleTime: 60_000,
-  pendingMs: 0,
+  // Only show pending when the loader is slow (first visit / cold network).
+  pendingMs: 120,
   pendingComponent: LandingPending,
   component: LandingPage,
   head: () => ({
@@ -97,16 +99,21 @@ export const Route = createFileRoute("/")({
 });
 
 function LandingPending() {
+  // Prefer cached brand palette/theme. With no cache, stay neutral — never paint
+  // DEFAULT_LANDING navy/accent (that was the reload colour-profile flash).
   const cached = typeof window !== "undefined" ? readCachedLandingConfigForPaint() : null;
-  const p = cached?.palette ?? DEFAULT_LANDING.palette;
   const theme = cached?.theme ?? "light";
-  const bg = theme === "dark" ? p.navy : "#ffffff";
+  const bg = cached
+    ? theme === "dark"
+      ? cached.palette.navy
+      : "#ffffff"
+    : "#ffffff";
   return (
     <PageLoading
-      label="Loading iProjectX…"
+      label="Loading…"
       fullScreen
       style={{ background: bg }}
-      className={theme === "dark" ? "text-white" : undefined}
+      className={theme === "dark" && cached ? "text-white" : undefined}
     />
   );
 }
@@ -330,7 +337,27 @@ function LandingPage() {
     let cancelled = false;
     void fetchLandingConfig()
       .then((live) => {
-        if (!cancelled) setCfg(live);
+        if (cancelled) return;
+        // Apply live config without wiping a good cached brand if the fetch
+        // somehow returns empty logo URLs while cache had them.
+        setCfg((prev: LandingConfig) => {
+          const prevLogo = resolveBrandLogoUrl(prev.brand, "landing");
+          const liveLogo = resolveBrandLogoUrl(live.brand, "landing");
+          if (prevLogo && !liveLogo) {
+            return {
+              ...live,
+              brand: {
+                ...live.brand,
+                logo_url: prev.brand.logo_url,
+                logo_url_landing: prev.brand.logo_url_landing,
+                logo_url_auth: prev.brand.logo_url_auth || prev.brand.logo_url,
+                logo_url_app: prev.brand.logo_url_app || prev.brand.logo_url,
+              },
+              palette: live.palette?.navy ? live.palette : prev.palette,
+            };
+          }
+          return live;
+        });
       })
       .catch(() => {});
     return () => {

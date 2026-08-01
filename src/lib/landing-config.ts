@@ -1278,9 +1278,9 @@ export function readCachedLandingConfig(): LandingConfig | null {
 }
 
 /**
- * Cache for theme paint only. Logos are stripped so a stale cached mark
- * never flashes before live config arrives (old logo → new logo blink).
- * Signup is also forced off for the same reason.
+ * Cache for first paint (pending + SSR-adjacent shells).
+ * Keep palette, theme, and logos so reload never flashes DEFAULT_LANDING
+ * branding. Only force signup off (avoids Get started button flash).
  */
 export function readCachedLandingConfigForPaint(): LandingConfig | null {
   const cached = readCachedLandingConfig();
@@ -1288,13 +1288,6 @@ export function readCachedLandingConfigForPaint(): LandingConfig | null {
   return {
     ...cached,
     signup_enabled: false,
-    brand: {
-      ...cached.brand,
-      logo_url: "",
-      logo_url_landing: "",
-      logo_url_auth: "",
-      logo_url_app: "",
-    },
   };
 }
 

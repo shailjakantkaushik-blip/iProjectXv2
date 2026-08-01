@@ -90,6 +90,58 @@ function ProjectsList() {
     staleTime: 60_000,
   });
 
+  const { data: stakeholders = [] } = useQuery({
+    queryKey: ["stakeholders", orgId, "projects-sponsor"],
+    queryFn: async () =>
+      ((await (supabase as any)
+        .from("stakeholders")
+        .select("id,project_id,name,is_sponsor")
+        .order("name")).data as any[]) ?? [],
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+
+  const stakeholdersByProject = useMemo(() => {
+    const m = new Map<string, any[]>();
+    for (const s of stakeholders) {
+      const list = m.get(s.project_id) || [];
+      list.push(s);
+      m.set(s.project_id, list);
+    }
+    for (const [, list] of m) {
+      list.sort(
+        (a, b) =>
+          Number(!!b.is_sponsor) - Number(!!a.is_sponsor) ||
+          String(a.name).localeCompare(String(b.name)),
+      );
+    }
+    return m;
+  }, [stakeholders]);
+
+  const setPrimarySponsor = async (projectId: string, stakeholderId: string) => {
+    const st = stakeholderId
+      ? stakeholders.find((s: any) => s.id === stakeholderId)
+      : null;
+    const patch: Record<string, unknown> = {
+      sponsor_stakeholder_id: stakeholderId || null,
+    };
+    if (st?.name) patch.sponsor = st.name;
+    const { error } = await (supabase as any).from("projects").update(patch).eq("id", projectId);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    if (stakeholderId && st && !st.is_sponsor) {
+      await (supabase as any)
+        .from("stakeholders")
+        .update({ is_sponsor: true })
+        .eq("id", stakeholderId);
+    }
+    qc.invalidateQueries({ queryKey: ["projects", orgId] });
+    qc.invalidateQueries({ queryKey: ["stakeholders", orgId] });
+    toast.success("Sponsor updated");
+  };
+
   const programs = useMemo(
     () =>
       Array.from(new Set(projects.map((p: any) => p.program).filter(Boolean))).sort() as string[],
@@ -537,13 +589,32 @@ function ProjectsList() {
                       />
                     </td>
                     <td>
-                      <EditableCell
-                        table="projects"
-                        rowId={p.id}
-                        field="sponsor"
-                        value={p.sponsor}
-                        invalidateKeys={["projects"]}
-                      />
+                      <div className="flex min-w-[9rem] flex-col gap-1">
+                        {(stakeholdersByProject.get(p.id) || []).length > 0 ? (
+                          <select
+                            className="st-input h-8 text-xs"
+                            value={p.sponsor_stakeholder_id || ""}
+                            disabled={!canEdit}
+                            onChange={(e) => void setPrimarySponsor(p.id, e.target.value)}
+                            title="Primary sponsor from project stakeholders"
+                          >
+                            <option value="">— Stakeholder —</option>
+                            {(stakeholdersByProject.get(p.id) || []).map((s: any) => (
+                              <option key={s.id} value={s.id}>
+                                {s.name}
+                                {s.is_sponsor ? " (sponsor)" : ""}
+                              </option>
+                            ))}
+                          </select>
+                        ) : null}
+                        <EditableCell
+                          table="projects"
+                          rowId={p.id}
+                          field="sponsor"
+                          value={p.sponsor}
+                          invalidateKeys={["projects"]}
+                        />
+                      </div>
                     </td>
                     <td>
                       <EditableCell

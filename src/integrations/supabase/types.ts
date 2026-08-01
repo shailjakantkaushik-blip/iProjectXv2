@@ -1597,6 +1597,7 @@ export type Database = {
           rag: Database["public"]["Enums"]["project_rag"] | null
           roi_percent: number | null
           sponsor: string | null
+          sponsor_stakeholder_id: string | null
           start_date: string | null
           status: Database["public"]["Enums"]["project_status"] | null
           streams_enabled: boolean
@@ -1642,6 +1643,7 @@ export type Database = {
           rag?: Database["public"]["Enums"]["project_rag"] | null
           roi_percent?: number | null
           sponsor?: string | null
+          sponsor_stakeholder_id?: string | null
           start_date?: string | null
           status?: Database["public"]["Enums"]["project_status"] | null
           streams_enabled?: boolean
@@ -1687,6 +1689,7 @@ export type Database = {
           rag?: Database["public"]["Enums"]["project_rag"] | null
           roi_percent?: number | null
           sponsor?: string | null
+          sponsor_stakeholder_id?: string | null
           start_date?: string | null
           status?: Database["public"]["Enums"]["project_status"] | null
           streams_enabled?: boolean
@@ -1706,6 +1709,13 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "projects_sponsor_stakeholder_id_fkey"
+            columns: ["sponsor_stakeholder_id"]
+            isOneToOne: false
+            referencedRelation: "stakeholders"
             referencedColumns: ["id"]
           },
         ]
@@ -2209,11 +2219,13 @@ export type Database = {
           id: string
           influence: string | null
           interest: string | null
+          is_sponsor: boolean
           name: string
           org_id: string
           project_id: string
           role: string | null
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           created_at?: string
@@ -2222,11 +2234,13 @@ export type Database = {
           id?: string
           influence?: string | null
           interest?: string | null
+          is_sponsor?: boolean
           name: string
           org_id: string
           project_id: string
           role?: string | null
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           created_at?: string
@@ -2235,11 +2249,13 @@ export type Database = {
           id?: string
           influence?: string | null
           interest?: string | null
+          is_sponsor?: boolean
           name?: string
           org_id?: string
           project_id?: string
           role?: string | null
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -2254,6 +2270,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stakeholders_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]

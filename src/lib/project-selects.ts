@@ -12,6 +12,7 @@ export const PROJECT_PORTFOLIO_SELECT = [
   "portfolio",
   "program",
   "sponsor",
+  "sponsor_stakeholder_id",
   "priority",
   "status",
   "rag",
