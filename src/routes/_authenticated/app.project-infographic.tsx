@@ -509,12 +509,6 @@ function InfographicPage() {
   });
 
   // ── Hooks that must run every render (React #310) — before any early return ──
-  const streamById = useMemo(() => {
-    const m = new Map<string, any>();
-    (projectStreams as any[]).forEach((s) => m.set(s.id, s));
-    return m;
-  }, [projectStreams]);
-
   const resourceById = useMemo(() => {
     const m = new Map<string, any>();
     (allResources as any[]).forEach((r) => m.set(r.id, r));
