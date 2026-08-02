@@ -24,7 +24,15 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { FileText, Link as LinkIcon, Save, Plus, Trash2, Presentation, FileDown } from "lucide-react";
+import {
+  FileText,
+  Link as LinkIcon,
+  Save,
+  Plus,
+  Trash2,
+  Presentation,
+  FileDown,
+} from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -42,11 +50,8 @@ import { Button } from "@/components/ui/button";
 import { downloadProjectBriefPPT } from "@/lib/project-brief-ppt";
 import { exportElementPDF } from "@/components/page-export";
 import { ExpandableChart } from "@/components/expandable-chart";
-import { isDoneGateStatus, resolveCurrentStage } from "@/lib/project-phase";
-import {
-  phaseSpendByStage,
-  type MonthlyFinanceRow,
-} from "@/lib/finance-lifecycle";
+import { isDoneGateStatus, resolveCurrentStage, sortGatesByOrgOrder } from "@/lib/project-phase";
+import { phaseSpendByStage, type MonthlyFinanceRow } from "@/lib/finance-lifecycle";
 import {
   expandProjectsToTimelineLanes,
   fetchProjectStreams,
@@ -58,6 +63,7 @@ import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-tabl
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
 import { entryHours } from "@/lib/resource-allocation-analytics";
+import { ProjectInfographicWorkItems } from "@/components/project-infographic-work-items";
 
 export const Route = createFileRoute("/_authenticated/app/project-infographic")({
   validateSearch: (s: Record<string, unknown>) => ({ pid: (s.pid as string) || "" }),
@@ -357,7 +363,8 @@ function InfographicPage() {
 
   const { data: allResources = [] } = useQuery({
     queryKey: ["resources", organization?.id],
-    queryFn: async () => (await supabase.from("resources").select(RESOURCES_SELECT as "*")).data ?? [],
+    queryFn: async () =>
+      (await supabase.from("resources").select(RESOURCES_SELECT as "*")).data ?? [],
     enabled: !!organization?.id,
   });
 
@@ -428,7 +435,12 @@ function InfographicPage() {
   const { data: benefits = [] } = useQuery({
     queryKey: ["benefits", project?.id],
     queryFn: async () =>
-      (await supabase.from("benefits").select(BENEFITS_SELECT as "*").eq("project_id", project.id)).data ?? [],
+      (
+        await supabase
+          .from("benefits")
+          .select(BENEFITS_SELECT as "*")
+          .eq("project_id", project.id)
+      ).data ?? [],
     enabled: !!project,
   });
   const { data: risks = [] } = useQuery({
@@ -446,7 +458,12 @@ function InfographicPage() {
   const { data: issues = [] } = useQuery({
     queryKey: ["issues", project?.id],
     queryFn: async () =>
-      (await supabase.from("issues").select(ISSUES_SELECT as "*").eq("project_id", project.id)).data ?? [],
+      (
+        await supabase
+          .from("issues")
+          .select(ISSUES_SELECT as "*")
+          .eq("project_id", project.id)
+      ).data ?? [],
     enabled: !!project,
   });
   const { data: milestones = [] } = useQuery({
@@ -538,9 +555,7 @@ function InfographicPage() {
   const allocationMonths = useMemo(() => {
     const keys = Array.from(
       new Set([
-        ...(projectAllocations as any[])
-          .map((a) => normAllocMonth(a.period_month))
-          .filter(Boolean),
+        ...(projectAllocations as any[]).map((a) => normAllocMonth(a.period_month)).filter(Boolean),
         ...projectTimesheetActuals.map((a) => a.month).filter(Boolean),
       ]),
     ).sort();
@@ -653,13 +668,7 @@ function InfographicPage() {
         desc: r.title,
         probability: r.probability >= 4 ? "High" : r.probability >= 2 ? "Medium" : "Low",
         impact:
-          r.impact >= 4
-            ? "Critical"
-            : r.impact >= 3
-              ? "High"
-              : r.impact >= 2
-                ? "Medium"
-                : "Low",
+          r.impact >= 4 ? "Critical" : r.impact >= 3 ? "High" : r.impact >= 2 ? "Medium" : "Low",
         rag: (r.severity || 0) >= 12 ? "Red" : (r.severity || 0) >= 6 ? "Amber" : "Green",
         owner: r.owner,
         due: r.due_date,
@@ -700,55 +709,85 @@ function InfographicPage() {
   );
   const raidTable = useColumnarTable(raidRows, raidColumns);
 
-  const milestoneRows = useMemo(() => {
-    if (!project) return [] as any[];
-    return (gates as any[]).map((g: any, i: number) => {
-      const stream = g.stream_id ? streamById.get(g.stream_id) : null;
-      return {
-        id: g.id,
-        gate_id: "SG" + String(i + 1).padStart(4, "0"),
-        project_code: project.project_code || "",
-        project_name: project.name,
-        stream_label: stream ? formatStreamLabel(stream) : "",
-        stream_ref: stream ? formatProjectStreamRef(project, stream) : "",
-        gate_name: g.gate_name,
-        planned_date: g.planned_date,
-        actual_date: g.actual_date,
-        status: g.status || "Planned",
-        approver: g.approver || "",
-        notes: g.notes || "",
-        sponsor: project.sponsor || "",
-        program: project.program || "",
-      };
-    });
-  }, [project, gates, streamById]);
+  /** Upcoming milestones grouped by stream (or project when no streams). */
+  const milestoneSections = useMemo(() => {
+    if (!project)
+      return [] as {
+        key: string;
+        streamLabel: string;
+        streamRef: string;
+        project_code: string;
+        project_name: string;
+        program: string;
+        sponsor: string;
+        rows: {
+          id: string;
+          gate_id: string;
+          gate_name: string;
+          planned_date: string | null;
+          actual_date: string | null;
+          status: string;
+          approver: string;
+          notes: string;
+        }[];
+      }[];
 
-  const milestoneColumns: ColumnarColumn<any>[] = useMemo(
-    () => [
-      { key: "gate_id", label: "Gate ID" },
-      { key: "project_code", label: "Project ID" },
-      { key: "project_name", label: "Project Name" },
-      ...(hasStreams
-        ? [
-            {
-              key: "stream",
-              label: "Stream",
-              getValue: (g: any) => g.stream_label || g.stream_ref || "",
-            },
-          ]
-        : []),
-      { key: "gate_name", label: "Stage Gate" },
-      { key: "planned_date", label: "Planned Date" },
-      { key: "actual_date", label: "Actual Date" },
-      { key: "status", label: "Status" },
-      { key: "approver", label: "Approver" },
-      { key: "notes", label: "Notes" },
-      { key: "sponsor", label: "Sponsor" },
-      { key: "program", label: "Program" },
-    ],
-    [hasStreams],
-  );
-  const milestoneTable = useColumnarTable(milestoneRows, milestoneColumns);
+    const mapGate = (g: any, idx: number) => ({
+      id: g.id as string,
+      gate_id: "SG" + String(idx + 1).padStart(4, "0"),
+      gate_name: g.gate_name as string,
+      planned_date: g.planned_date as string | null,
+      actual_date: g.actual_date as string | null,
+      status: (g.status as string) || "Planned",
+      approver: (g.approver as string) || "",
+      notes: (g.notes as string) || "",
+    });
+
+    const sortedStreams = [...(projectStreams as any[])].sort(
+      (a, b) =>
+        (a.sort_order ?? 0) - (b.sort_order ?? 0) ||
+        String(a.name || "").localeCompare(String(b.name || "")),
+    );
+
+    if (sortedStreams.length > 0) {
+      let seq = 0;
+      return sortedStreams
+        .map((stream) => {
+          const streamGates = sortGatesByOrgOrder(
+            (gates as any[]).filter(
+              (g) => g.stream_id === stream.id || (!g.stream_id && stream.is_default),
+            ),
+            PHASES,
+          );
+          const rows = streamGates.map((g) => mapGate(g, seq++));
+          return {
+            key: stream.id as string,
+            streamLabel: formatStreamLabel(stream),
+            streamRef: formatProjectStreamRef(project, stream),
+            project_code: project.project_code || "",
+            project_name: project.name as string,
+            program: (project.program as string) || "",
+            sponsor: (project.sponsor as string) || "",
+            rows,
+          };
+        })
+        .filter((s) => s.rows.length > 0);
+    }
+
+    const projectGates = sortGatesByOrgOrder(gates as any[], PHASES);
+    return [
+      {
+        key: "project",
+        streamLabel: "Project",
+        streamRef: project.project_code || project.name || "Project",
+        project_code: project.project_code || "",
+        project_name: project.name as string,
+        program: (project.program as string) || "",
+        sponsor: (project.sponsor as string) || "",
+        rows: projectGates.map((g, i) => mapGate(g, i)),
+      },
+    ].filter((s) => s.rows.length > 0);
+  }, [project, projectStreams, gates]);
 
   /** Monthly cashflow keyed by stream_id, else project_id (null-stream / no-stream projects). */
   const monthlyByLane = useMemo(() => {
@@ -767,8 +806,7 @@ function InfographicPage() {
     () =>
       [...(projectStreams as any[])].sort(
         (a, b) =>
-          (a.sort_order ?? 0) - (b.sort_order ?? 0) ||
-          String(a.name).localeCompare(String(b.name)),
+          (a.sort_order ?? 0) - (b.sort_order ?? 0) || String(a.name).localeCompare(String(b.name)),
       ),
     [projectStreams],
   );
@@ -821,8 +859,7 @@ function InfographicPage() {
             const streamGates = (gates as any[]).filter(
               (g) => g.stream_id === stream.id || (!g.stream_id && stream.is_default),
             );
-            const rows =
-              monthlyByLane.get(stream.id) || monthlyByLane.get(project.id) || [];
+            const rows = monthlyByLane.get(stream.id) || monthlyByLane.get(project.id) || [];
             const byName = new Map<string, any>();
             streamGates.forEach((g) => byName.set((g.gate_name || "").trim(), g));
             const cards = PHASES.map((name) => {
@@ -958,16 +995,9 @@ function InfographicPage() {
       Number(project.capex_approved || 0) + Number(project.opex_approved || 0) ||
       0,
   );
-  const incurred =
-    Number(project.capex_incurred || 0) + Number(project.opex_incurred || 0);
-  const ftePlan = (monthly as any[]).reduce(
-    (s, m) => s + Number(m.opex_labor_planned || 0),
-    0,
-  );
-  const fteActual = (monthly as any[]).reduce(
-    (s, m) => s + Number(m.opex_labor_actual || 0),
-    0,
-  );
+  const incurred = Number(project.capex_incurred || 0) + Number(project.opex_incurred || 0);
+  const ftePlan = (monthly as any[]).reduce((s, m) => s + Number(m.opex_labor_planned || 0), 0);
+  const fteActual = (monthly as any[]).reduce((s, m) => s + Number(m.opex_labor_actual || 0), 0);
   const forecast = Number(
     project.forecast ||
       project.forecast_at_completion ||
@@ -1143,806 +1173,861 @@ function InfographicPage() {
       />
 
       <div ref={exportRef} className="space-y-4 bg-background">
-      {/* Project header */}
-      <SectionFrame>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            <div className="text-xs text-muted-foreground">
-              {project.project_code} · {project.program || "—"}
-            </div>
-            <div className="text-2xl font-bold">{project.name}</div>
-            <div className="text-sm text-muted-foreground mt-1">
-              {project.description || "No description."}
-            </div>
-          </div>
-          <div className="flex flex-col items-end gap-1">
-            <RagChip rag={project.rag} />
-            <div className="text-xs text-muted-foreground">
-              Sponsor: <span className="font-medium text-foreground">{project.sponsor || "—"}</span>
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Priority:{" "}
-              <span className="font-medium text-foreground">{project.priority || "—"}</span>
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Method:{" "}
-              <span className="font-medium text-foreground">{project.delivery_method || "—"}</span>
-            </div>
-          </div>
-        </div>
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Duration
-            </div>
-            <div className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">
-              {durationLabel}
-            </div>
-            <div className="text-[11px] text-muted-foreground">
-              {fmtDate(project.planned_start_date || project.start_date)} →{" "}
-              {fmtDate(project.planned_end_date || project.end_date || project.target_go_live)}
-            </div>
-          </div>
-          <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Cost
-            </div>
-            <div className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">
-              {money(budget)}
-            </div>
-            <div className="text-[11px] text-muted-foreground">
-              Budget · Actual {money(incurred)} · FAC {money(forecast)}
-            </div>
-          </div>
-          <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Go-Live Date
-            </div>
-            <div className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">
-              {fmtDate(goLive)}
-            </div>
-            <div className="text-[11px] text-muted-foreground">Target go-live</div>
-          </div>
-        </div>
-      </SectionFrame>
-
-      {/* Stage Gates & Phase $ header */}
-      <SectionFrame>
-        <div className="flex flex-wrap items-center gap-3 mb-3">
-          <div className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-            🔷 Stage Gates &amp; Phase $
-          </div>
-          <span className="text-xs text-slate-600 ml-2">Health:</span>
-          <HealthChip label={`Schedule · ${scheduleHealth}`} rag={scheduleHealth} />
-          <HealthChip label={`Financial · ${financialHealth}`} rag={financialHealth} />
-          <HealthChip label={`Overall · ${overallHealth}`} rag={overallHealth} />
-          <span className="text-xs text-slate-600 ml-2">
-            <span className="font-semibold">Budget</span>{" "}
-            <code className="bg-slate-100 px-1 rounded">{moneyM(budget)}</code> ·{" "}
-            <span className="font-semibold">**Actual**</span> {moneyM(incurred)} (
-            {utilPct.toFixed(1)}%) · <span className="font-semibold">Remaining</span>{" "}
-            {moneyM(remaining)}
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <ExpandableChart
-            title="Phase Budget / Forecast / Actual"
-            heightClass="h-72"
-            legend={
-              hasPhaseFinancials ? undefined : (
-                <div className="text-[11px] text-slate-500 text-center">
-                  No phase-level financials captured on stage gates yet.
-                </div>
-              )
-            }
-          >
-            <BarChart data={phaseChart} margin={{ top: 10, right: 15, left: 0, bottom: 70 }}>
-              <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-              <XAxis
-                dataKey="name"
-                tick={{ fontSize: 9 }}
-                angle={-25}
-                textAnchor="end"
-                interval={0}
-                height={70}
-              />
-              <YAxis tick={{ fontSize: 10 }} tickFormatter={money} />
-              <Tooltip formatter={(v: number) => money(v)} />
-              <Legend verticalAlign="top" height={26} wrapperStyle={{ fontSize: 10 }} />
-              <Bar dataKey="Phase Budget" fill="#3b82f6" />
-              <Bar dataKey="Phase Forecast" fill="#8b5cf6" />
-              <Bar dataKey="Phase Actual Spend" fill="#f59e0b" />
-            </BarChart>
-          </ExpandableChart>
-
-          <div className="bg-white rounded border border-slate-200 p-2">
-            <Gauge
-              value={incurred}
-              max={Math.max(approved, budget, 1)}
-              label="Spend vs Approved Budget"
-              color={finHealthPct > 1 ? "#ef4444" : finHealthPct > 0.9 ? "#f59e0b" : "#22c55e"}
-            />
-            <div className="mt-2 grid grid-cols-2 gap-2 px-1">
-              <div className="rounded bg-slate-50 px-2 py-1.5 text-center">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  Planned FTE
-                </div>
-                <div className="text-sm font-semibold tabular-nums text-indigo-700">
-                  {money(ftePlan)}
-                </div>
-              </div>
-              <div className="rounded bg-slate-50 px-2 py-1.5 text-center">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  Actual FTE
-                </div>
-                <div className="text-sm font-semibold tabular-nums text-amber-700">
-                  {money(fteActual)}
-                </div>
-              </div>
-            </div>
-            <p className="mt-1 px-1 text-[10px] text-muted-foreground">
-              Planned FTE from work-item hours × rates; actual FTE from timesheets (in incurred).
-            </p>
-          </div>
-        </div>
-      </SectionFrame>
-
-      {/* Stage Gate cards — one lane per stream */}
-      <SectionFrame>
-        <SectionTitle>Stage Gates{hasStreams ? " by Stream" : ""}</SectionTitle>
-        <div className="space-y-5">
-          {streamGateSections.map((section) => (
-            <div key={section.stream?.id || "project"}>
-              {hasStreams ? (
-                <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold text-foreground">{section.streamLabel}</span>
-                  <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    {section.streamRef}
-                  </span>
-                </div>
-              ) : null}
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8">
-                {section.cards.map((p) => {
-                  const s = STATUS_STYLE[p.status] || STATUS_STYLE["Not Started"];
-                  const done = isDoneGateStatus(p.status);
-                  return (
-                    <div
-                      key={`${section.streamRef}:${p.name}`}
-                      className={`bg-white rounded-lg border border-slate-200 p-3 ring-1 ${s.ring} min-h-[110px]`}
-                    >
-                      <div className="flex items-start gap-2">
-                        <div
-                          className={`w-5 h-5 rounded-full ${s.dot} flex items-center justify-center text-white text-[10px] font-bold shrink-0`}
-                          title={done ? "Approved / completed" : p.status}
-                        >
-                          {done ? "✓" : "○"}
-                        </div>
-                        <div className="text-xs font-semibold text-slate-800 leading-tight">{p.name}</div>
-                      </div>
-                      <div className={`text-xs mt-2 font-medium ${s.text}`}>{p.status}</div>
-                      {p.planned && (
-                        <div className="text-[10px] text-slate-500 mt-1">Plan: {fmtDate(p.planned)}</div>
-                      )}
-                      {p.actual && (
-                        <div className="text-[10px] text-slate-500">Actual: {fmtDate(p.actual)}</div>
-                      )}
-                      {(p.budget > 0 || p.actualSpend > 0) && (
-                        <div className="text-[10px] text-slate-600 mt-1 border-t pt-1">
-                          <div>Bud: {money(p.budget)}</div>
-                          <div>Act: {money(p.actualSpend)}</div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-      </SectionFrame>
-
-      {/* Project Timeline — matches Executive Dashboard timeline */}
-      <SectionFrame>
-        <SectionTitle>📅 Project Timeline</SectionTitle>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm mb-4">
-          <div>
-            <div className="text-xs text-muted-foreground">Start</div>
-            <div className="font-medium">{fmtDate(project.start_date)}</div>
-          </div>
-          <div>
-            <div className="text-xs text-muted-foreground">Target Go-Live</div>
-            <div className="font-medium">{fmtDate(project.target_go_live)}</div>
-          </div>
-          <div>
-            <div className="text-xs text-muted-foreground">End</div>
-            <div className="font-medium">{fmtDate(project.end_date)}</div>
-          </div>
-        </div>
-        <div className="mb-2 flex flex-wrap items-center gap-2" data-export-hide>
-          <label
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background/95 px-2 py-1 text-[11px] font-medium text-foreground shadow-sm hover:bg-muted"
-            title="Show planned vs actual timelines"
-          >
-            <input
-              type="checkbox"
-              checked={showPvA}
-              onChange={(e) => setShowPvA(e.target.checked)}
-              className="h-3 w-3"
-            />
-            Planned vs Actual
-          </label>
-          {hasStreams ? (
-            <label
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background/95 px-2 py-1 text-[11px] font-medium text-foreground shadow-sm hover:bg-muted"
-              title="Show project rollup lane (start→end + financials from streams)"
-            >
-              <input
-                type="checkbox"
-                checked={showProjectTimeline}
-                onChange={(e) => setShowProjectTimeline(e.target.checked)}
-                className="h-3 w-3"
-              />
-              Project timeline
-            </label>
-          ) : null}
-          <label
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background/95 px-2 py-1 text-[11px] font-medium text-foreground shadow-sm hover:bg-muted"
-            title="Show or hide stage-gate markers on the timeline"
-          >
-            <input
-              type="checkbox"
-              checked={showGates}
-              onChange={(e) => setShowGates(e.target.checked)}
-              className="h-3 w-3"
-            />
-            Stage gates
-          </label>
-        </div>
-        <PortfolioTimeline
-          projects={timelineLanes}
-          gates={gates}
-          title={
-            hasStreams
-              ? `${project.name || "Project"} · Streams`
-              : project.name || "Project Timeline"
-          }
-          showPlannedVsActual={showPvA}
-          showGates={showGates}
-          showProjectTimeline={showProjectTimeline}
-          captureId="project-timeline-capture"
-        />
-      </SectionFrame>
-
-      {/* Financials & Benefits */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {/* Project header */}
         <SectionFrame>
-          <ExpandableChart
-            title="Monthly Financials — Planned vs Actual vs Forecast"
-            heightClass="h-56"
-            legend={
-              <div className="grid grid-cols-4 gap-2 mt-2 text-xs">
-                <MiniKpi label="Budget" value={moneyM(budget)} color="#3b82f6" />
-                <MiniKpi label="Forecast" value={moneyM(forecast)} color="#8b5cf6" />
-                <MiniKpi label="Actual" value={moneyM(incurred)} color="#f59e0b" />
-                <MiniKpi label="Remaining" value={moneyM(remaining)} color="#22c55e" />
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="text-xs text-muted-foreground">
+                {project.project_code} · {project.program || "—"}
               </div>
-            }
-          >
-            <LineChart data={monthlyChart} margin={{ top: 10, right: 15, left: 0, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-              <XAxis dataKey="month" tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} tickFormatter={money} />
-              <Tooltip formatter={(v: number) => money(v)} />
-              <Legend verticalAlign="top" height={26} wrapperStyle={{ fontSize: 10 }} />
-              <Line type="monotone" dataKey="Planned" stroke="#3b82f6" strokeWidth={2} />
-              <Line type="monotone" dataKey="Actual" stroke="#22c55e" strokeWidth={2} />
-              <Line
-                type="monotone"
-                dataKey="Forecast"
-                stroke="#f59e0b"
-                strokeWidth={2}
-                strokeDasharray="4 3"
-              />
-            </LineChart>
-          </ExpandableChart>
+              <div className="text-2xl font-bold">{project.name}</div>
+              <div className="text-sm text-muted-foreground mt-1">
+                {project.description || "No description."}
+              </div>
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              <RagChip rag={project.rag} />
+              <div className="text-xs text-muted-foreground">
+                Sponsor:{" "}
+                <span className="font-medium text-foreground">{project.sponsor || "—"}</span>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Priority:{" "}
+                <span className="font-medium text-foreground">{project.priority || "—"}</span>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Method:{" "}
+                <span className="font-medium text-foreground">
+                  {project.delivery_method || "—"}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Duration
+              </div>
+              <div className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">
+                {durationLabel}
+              </div>
+              <div className="text-[11px] text-muted-foreground">
+                {fmtDate(project.planned_start_date || project.start_date)} →{" "}
+                {fmtDate(project.planned_end_date || project.end_date || project.target_go_live)}
+              </div>
+            </div>
+            <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Cost
+              </div>
+              <div className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">
+                {money(budget)}
+              </div>
+              <div className="text-[11px] text-muted-foreground">
+                Budget · Actual {money(incurred)} · FAC {money(forecast)}
+              </div>
+            </div>
+            <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Go-Live Date
+              </div>
+              <div className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">
+                {fmtDate(goLive)}
+              </div>
+              <div className="text-[11px] text-muted-foreground">Target go-live</div>
+            </div>
+          </div>
         </SectionFrame>
 
+        {/* Stage Gates & Phase $ header */}
         <SectionFrame>
-          <SectionTitle>Benefits</SectionTitle>
-          <div className="grid grid-cols-3 gap-2 mb-3">
-            <KpiCard
-              label="Expected"
-              value={moneyM(
-                benefits.reduce((s: number, b: any) => s + Number(b.target_value || 0), 0),
-              )}
-              accent="#3b82f6"
-            />
-            <KpiCard
-              label="Realised"
-              value={moneyM(
-                benefits.reduce((s: number, b: any) => s + Number(b.realised_value || 0), 0),
-              )}
-              accent="#22c55e"
-            />
-            <KpiCard
-              label="Realisation %"
-              value={(() => {
-                const t = benefits.reduce(
-                  (s: number, b: any) => s + Number(b.target_value || 0),
-                  0,
-                );
-                const r = benefits.reduce(
-                  (s: number, b: any) => s + Number(b.realised_value || 0),
-                  0,
-                );
-                return (t ? (r / t) * 100 : 0).toFixed(1) + "%";
-              })()}
-              accent="#8b5cf6"
-            />
+          <div className="flex flex-wrap items-center gap-3 mb-3">
+            <div className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+              🔷 Stage Gates &amp; Phase $
+            </div>
+            <span className="text-xs text-slate-600 ml-2">Health:</span>
+            <HealthChip label={`Schedule · ${scheduleHealth}`} rag={scheduleHealth} />
+            <HealthChip label={`Financial · ${financialHealth}`} rag={financialHealth} />
+            <HealthChip label={`Overall · ${overallHealth}`} rag={overallHealth} />
+            <span className="text-xs text-slate-600 ml-2">
+              <span className="font-semibold">Budget</span>{" "}
+              <code className="bg-slate-100 px-1 rounded">{moneyM(budget)}</code> ·{" "}
+              <span className="font-semibold">**Actual**</span> {moneyM(incurred)} (
+              {utilPct.toFixed(1)}%) · <span className="font-semibold">Remaining</span>{" "}
+              {moneyM(remaining)}
+            </span>
           </div>
-          <ExpandableChart title="Benefits — Target vs Realised" heightClass="h-48">
-            <BarChart data={benefitsChart} margin={{ top: 15, right: 10, left: 0, bottom: 30 }}>
-              <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-              <XAxis
-                dataKey="name"
-                tick={{ fontSize: 9 }}
-                angle={-15}
-                textAnchor="end"
-                interval={0}
-              />
-              <YAxis tick={{ fontSize: 10 }} tickFormatter={money} />
-              <Tooltip formatter={(v: number) => money(v)} />
-              <Legend verticalAlign="top" height={26} wrapperStyle={{ fontSize: 10 }} />
-              <Bar dataKey="Target" name="Target Value" fill="#1d4ed8" />
-              <Bar dataKey="Realised" name="Realised Value" fill="#93c5fd">
-                <LabelList
-                  dataKey="Realised"
-                  position="top"
-                  formatter={(v: number) => money(v)}
-                  style={{ fontSize: 9, fill: "#334155" }}
-                />
-              </Bar>
-            </BarChart>
-          </ExpandableChart>
-        </SectionFrame>
-      </div>
 
-      {/* Top Risks & Issues */}
-      <SectionFrame>
-        <SectionTitle>⚠️ Top Risks &amp; Issues</SectionTitle>
-        <ColumnarToolbar
-          globalQ={raidTable.globalQ}
-          onGlobalQ={raidTable.setGlobalQ}
-          shown={raidTable.rows.length}
-          total={raidTable.total}
-          dirty={raidTable.isDirty}
-          onClear={raidTable.clearAll}
-          placeholder="Search risks & issues…"
-        />
-        <div className="overflow-x-auto">
-          <table className="st-table text-xs">
-            <thead>
-              <tr>
-                {raidColumns.map((col) => (
-                  <ColumnarTh
-                    key={col.key}
-                    column={col}
-                    filter={raidTable.filters[col.key]}
-                    onFilter={(v) => raidTable.setColumnFilter(col.key, v)}
-                    sortKey={raidTable.sortKey}
-                    sortDir={raidTable.sortDir}
-                    onToggleSort={raidTable.toggleSort}
-                  />
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {raidTable.rows.map((r) => (
-                <tr key={r.raid}>
-                  <td className="font-mono">{r.raid}</td>
-                  <td className="font-mono text-blue-600">{r.project_code || "—"}</td>
-                  <td>{r.type}</td>
-                  <td>{r.desc}</td>
-                  <td>{r.probability}</td>
-                  <td>{r.impact}</td>
-                  <td>
-                    <RagChip rag={r.rag} />
-                  </td>
-                  <td>{r.owner || "NA"}</td>
-                  <td>{fmtDate(r.due)}</td>
-                  <td>{r.mitigation || "—"}</td>
-                  <td>{r.status}</td>
-                </tr>
-              ))}
-              {raidTable.total === 0 && (
-                <tr>
-                  <td colSpan={11} className="text-center text-slate-500 py-4">
-                    No open risks or issues.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </SectionFrame>
-
-      {/* Upcoming Milestones — sourced from Stage Gate register */}
-      <SectionFrame>
-        <SectionTitle>📌 Upcoming Milestones (Stage Gates)</SectionTitle>
-        <ColumnarToolbar
-          globalQ={milestoneTable.globalQ}
-          onGlobalQ={milestoneTable.setGlobalQ}
-          shown={milestoneTable.rows.length}
-          total={milestoneTable.total}
-          dirty={milestoneTable.isDirty}
-          onClear={milestoneTable.clearAll}
-          placeholder="Search milestones…"
-        />
-        <div className="overflow-x-auto">
-          <table className="st-table text-xs">
-            <thead>
-              <tr>
-                {milestoneColumns.map((col) => (
-                  <ColumnarTh
-                    key={col.key}
-                    column={col}
-                    filter={milestoneTable.filters[col.key]}
-                    onFilter={(v) => milestoneTable.setColumnFilter(col.key, v)}
-                    sortKey={milestoneTable.sortKey}
-                    sortDir={milestoneTable.sortDir}
-                    onToggleSort={milestoneTable.toggleSort}
-                  />
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {milestoneTable.total === 0 ? (
-                <tr>
-                  <td colSpan={milestoneColumns.length} className="text-center text-slate-500 py-4">
-                    No stage gates captured.
-                  </td>
-                </tr>
-              ) : (
-                milestoneTable.rows.map((g) => (
-                  <tr key={g.id}>
-                    <td className="font-mono">{g.gate_id}</td>
-                    <td className="font-mono text-blue-600">{g.project_code || "—"}</td>
-                    <td>{g.project_name}</td>
-                    {hasStreams ? (
-                      <td>
-                        {g.stream_label ? (
-                          <div className="leading-tight">
-                            <div>{g.stream_label}</div>
-                            <div className="font-mono text-[10px] text-muted-foreground">
-                              {g.stream_ref}
-                            </div>
-                          </div>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                    ) : null}
-                    <td>{g.gate_name}</td>
-                    <td>{fmtDate(g.planned_date)}</td>
-                    <td>{g.actual_date ? fmtDate(g.actual_date) : "NA"}</td>
-                    <td>{g.status || "Planned"}</td>
-                    <td>{g.approver || "NA"}</td>
-                    <td>{g.notes || "NA"}</td>
-                    <td>{g.sponsor || "NA"}</td>
-                    <td>{g.program || "NA"}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </SectionFrame>
-
-      {/* Project Brief — tabbed form */}
-      <ProjectBrief project={project} milestones={milestones as any[]} risks={risks as any[]} deps={deps as any[]} />
-
-      {/* Stage Gates table */}
-      <SectionFrame>
-        <SectionTitle>Stage Gate Detail{hasStreams ? " by Stream" : ""}</SectionTitle>
-        <ColumnarToolbar
-          globalQ={gateDetailTable.globalQ}
-          onGlobalQ={gateDetailTable.setGlobalQ}
-          shown={gateDetailTable.rows.length}
-          total={gateDetailTable.total}
-          dirty={gateDetailTable.isDirty}
-          onClear={gateDetailTable.clearAll}
-          placeholder="Search stage gates…"
-        />
-        <div className="overflow-x-auto">
-          <table className="st-table text-xs">
-            <thead>
-              <tr>
-                {gateDetailColumns.map((col) => (
-                  <ColumnarTh
-                    key={col.key}
-                    column={col}
-                    filter={gateDetailTable.filters[col.key]}
-                    onFilter={(v) => gateDetailTable.setColumnFilter(col.key, v)}
-                    sortKey={gateDetailTable.sortKey}
-                    sortDir={gateDetailTable.sortDir}
-                    onToggleSort={gateDetailTable.toggleSort}
-                    align={
-                      col.key === "budget" || col.key === "forecast" || col.key === "actualSpend"
-                        ? "right"
-                        : "left"
-                    }
-                    className={
-                      col.key === "budget" || col.key === "forecast" || col.key === "actualSpend"
-                        ? "text-right"
-                        : undefined
-                    }
-                  />
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {gateDetailTable.rows.map((p) => (
-                <tr key={p.key}>
-                  {hasStreams ? (
-                    <td>
-                      <div className="leading-tight">
-                        <div className="font-medium">{p.streamLabel}</div>
-                        <div className="font-mono text-[10px] text-muted-foreground">
-                          {p.streamRef}
-                        </div>
-                      </div>
-                    </td>
-                  ) : null}
-                  <td className="font-medium">{p.name}</td>
-                  <td>{p.status}</td>
-                  <td>{fmtDate(p.planned)}</td>
-                  <td>{fmtDate(p.actual)}</td>
-                  <td>{p.approver || "—"}</td>
-                  <td className="text-right tabular-nums">{money(p.budget)}</td>
-                  <td className="text-right tabular-nums">{money(p.forecast)}</td>
-                  <td className="text-right tabular-nums">{money(p.actualSpend)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </SectionFrame>
-
-      {/* Resources & allocations — plan vs actual by project (streams rolled up) */}
-      <SectionFrame>
-        <SectionTitle>Resources & allocations (by project)</SectionTitle>
-        <p className="mb-3 text-xs text-muted-foreground">
-          Planned allocation vs approved timesheet actuals for this project (streams rolled up).
-          Actual % converts timesheet hours to % of monthly FTE capacity. Statuses:{" "}
-          <strong>Plan</strong> from allocation %, <strong>Actual</strong> from timesheet %,{" "}
-          <strong>Plan vs actual</strong> from actual÷plan (Over &gt;110%, Optimal ≥60%, else Under;
-          Unplanned when hours are booked with no plan).
-        </p>
-        {resourcePlanRows.length === 0 ? (
-          <div className="rounded-md border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
-            No resource allocations or timesheet actuals for this project yet.
-          </div>
-        ) : (
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <ExpandableChart
-              title="Resource utilisation — plan % vs actual %"
+              title="Phase Budget / Forecast / Actual"
               heightClass="h-72"
               legend={
-                <div className="mt-1 flex flex-wrap justify-end gap-3 text-xs">
-                  <span className="flex items-center gap-1">
-                    <span className="inline-block h-3 w-3 rounded-sm" style={{ background: PLAN_BAR }} />
-                    Plan
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span
-                      className="inline-block h-3 w-3 rounded-sm"
-                      style={{ background: ACTUAL_BAR }}
-                    />
-                    Actual
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span
-                      className="inline-block h-3 w-3 rounded-sm"
-                      style={{ background: ALLOC_STATUS.Over }}
-                    />{" "}
-                    Over
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span
-                      className="inline-block h-3 w-3 rounded-sm"
-                      style={{ background: ALLOC_STATUS.Optimal }}
-                    />{" "}
-                    Optimal
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span
-                      className="inline-block h-3 w-3 rounded-sm"
-                      style={{ background: ALLOC_STATUS.Under }}
-                    />{" "}
-                    Under
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span
-                      className="inline-block h-3 w-3 rounded-sm"
-                      style={{ background: ALLOC_STATUS.Unplanned }}
-                    />{" "}
-                    Unplanned
-                  </span>
-                </div>
+                hasPhaseFinancials ? undefined : (
+                  <div className="text-[11px] text-slate-500 text-center">
+                    No phase-level financials captured on stage gates yet.
+                  </div>
+                )
               }
             >
-              <BarChart data={resourceUtilChart} margin={{ top: 20, right: 48, left: 12, bottom: 56 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+              <BarChart data={phaseChart} margin={{ top: 10, right: 15, left: 0, bottom: 70 }}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                 <XAxis
-                  dataKey="resource"
-                  fontSize={11}
+                  dataKey="name"
+                  tick={{ fontSize: 9 }}
                   angle={-25}
                   textAnchor="end"
                   interval={0}
-                  height={56}
+                  height={70}
                 />
-                <YAxis
-                  fontSize={11}
-                  domain={[0, 120]}
-                  label={{ value: "% of capacity", angle: -90, position: "insideLeft", fontSize: 11 }}
+                <YAxis tick={{ fontSize: 10 }} tickFormatter={money} />
+                <Tooltip formatter={(v: number) => money(v)} />
+                <Legend verticalAlign="top" height={26} wrapperStyle={{ fontSize: 10 }} />
+                <Bar dataKey="Phase Budget" fill="#3b82f6" />
+                <Bar dataKey="Phase Forecast" fill="#8b5cf6" />
+                <Bar dataKey="Phase Actual Spend" fill="#f59e0b" />
+              </BarChart>
+            </ExpandableChart>
+
+            <div className="bg-white rounded border border-slate-200 p-2">
+              <Gauge
+                value={incurred}
+                max={Math.max(approved, budget, 1)}
+                label="Spend vs Approved Budget"
+                color={finHealthPct > 1 ? "#ef4444" : finHealthPct > 0.9 ? "#f59e0b" : "#22c55e"}
+              />
+              <div className="mt-2 grid grid-cols-2 gap-2 px-1">
+                <div className="rounded bg-slate-50 px-2 py-1.5 text-center">
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    Planned FTE
+                  </div>
+                  <div className="text-sm font-semibold tabular-nums text-indigo-700">
+                    {money(ftePlan)}
+                  </div>
+                </div>
+                <div className="rounded bg-slate-50 px-2 py-1.5 text-center">
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    Actual FTE
+                  </div>
+                  <div className="text-sm font-semibold tabular-nums text-amber-700">
+                    {money(fteActual)}
+                  </div>
+                </div>
+              </div>
+              <p className="mt-1 px-1 text-[10px] text-muted-foreground">
+                Planned FTE from work-item hours × rates; actual FTE from timesheets (in incurred).
+              </p>
+            </div>
+          </div>
+        </SectionFrame>
+
+        {/* Stage Gate cards — one lane per stream */}
+        <SectionFrame>
+          <SectionTitle>Stage Gates{hasStreams ? " by Stream" : ""}</SectionTitle>
+          <div className="space-y-5">
+            {streamGateSections.map((section) => (
+              <div key={section.stream?.id || "project"}>
+                {hasStreams ? (
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">
+                      {section.streamLabel}
+                    </span>
+                    <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {section.streamRef}
+                    </span>
+                  </div>
+                ) : null}
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8">
+                  {section.cards.map((p) => {
+                    const s = STATUS_STYLE[p.status] || STATUS_STYLE["Not Started"];
+                    const done = isDoneGateStatus(p.status);
+                    return (
+                      <div
+                        key={`${section.streamRef}:${p.name}`}
+                        className={`bg-white rounded-lg border border-slate-200 p-3 ring-1 ${s.ring} min-h-[110px]`}
+                      >
+                        <div className="flex items-start gap-2">
+                          <div
+                            className={`w-5 h-5 rounded-full ${s.dot} flex items-center justify-center text-white text-[10px] font-bold shrink-0`}
+                            title={done ? "Approved / completed" : p.status}
+                          >
+                            {done ? "✓" : "○"}
+                          </div>
+                          <div className="text-xs font-semibold text-slate-800 leading-tight">
+                            {p.name}
+                          </div>
+                        </div>
+                        <div className={`text-xs mt-2 font-medium ${s.text}`}>{p.status}</div>
+                        {p.planned && (
+                          <div className="text-[10px] text-slate-500 mt-1">
+                            Plan: {fmtDate(p.planned)}
+                          </div>
+                        )}
+                        {p.actual && (
+                          <div className="text-[10px] text-slate-500">
+                            Actual: {fmtDate(p.actual)}
+                          </div>
+                        )}
+                        {(p.budget > 0 || p.actualSpend > 0) && (
+                          <div className="text-[10px] text-slate-600 mt-1 border-t pt-1">
+                            <div>Bud: {money(p.budget)}</div>
+                            <div>Act: {money(p.actualSpend)}</div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </SectionFrame>
+
+        {/* Project Timeline — matches Executive Dashboard timeline */}
+        <SectionFrame>
+          <SectionTitle>📅 Project Timeline</SectionTitle>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm mb-4">
+            <div>
+              <div className="text-xs text-muted-foreground">Start</div>
+              <div className="font-medium">{fmtDate(project.start_date)}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Target Go-Live</div>
+              <div className="font-medium">{fmtDate(project.target_go_live)}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">End</div>
+              <div className="font-medium">{fmtDate(project.end_date)}</div>
+            </div>
+          </div>
+          <div className="mb-2 flex flex-wrap items-center gap-2" data-export-hide>
+            <label
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background/95 px-2 py-1 text-[11px] font-medium text-foreground shadow-sm hover:bg-muted"
+              title="Show planned vs actual timelines"
+            >
+              <input
+                type="checkbox"
+                checked={showPvA}
+                onChange={(e) => setShowPvA(e.target.checked)}
+                className="h-3 w-3"
+              />
+              Planned vs Actual
+            </label>
+            {hasStreams ? (
+              <label
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background/95 px-2 py-1 text-[11px] font-medium text-foreground shadow-sm hover:bg-muted"
+                title="Show project rollup lane (start→end + financials from streams)"
+              >
+                <input
+                  type="checkbox"
+                  checked={showProjectTimeline}
+                  onChange={(e) => setShowProjectTimeline(e.target.checked)}
+                  className="h-3 w-3"
                 />
-                <Tooltip formatter={(v: number) => `${v}%`} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="planPct" name="Plan %" fill={PLAN_BAR} radius={[3, 3, 0, 0]}>
+                Project timeline
+              </label>
+            ) : null}
+            <label
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background/95 px-2 py-1 text-[11px] font-medium text-foreground shadow-sm hover:bg-muted"
+              title="Show or hide stage-gate markers on the timeline"
+            >
+              <input
+                type="checkbox"
+                checked={showGates}
+                onChange={(e) => setShowGates(e.target.checked)}
+                className="h-3 w-3"
+              />
+              Stage gates
+            </label>
+          </div>
+          <PortfolioTimeline
+            projects={timelineLanes}
+            gates={gates}
+            title={
+              hasStreams
+                ? `${project.name || "Project"} · Streams`
+                : project.name || "Project Timeline"
+            }
+            showPlannedVsActual={showPvA}
+            showGates={showGates}
+            showProjectTimeline={showProjectTimeline}
+            captureId="project-timeline-capture"
+          />
+        </SectionFrame>
+
+        {/* Financials & Benefits */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <SectionFrame>
+            <ExpandableChart
+              title="Monthly Financials — Planned vs Actual vs Forecast"
+              heightClass="h-56"
+              legend={
+                <div className="grid grid-cols-4 gap-2 mt-2 text-xs">
+                  <MiniKpi label="Budget" value={moneyM(budget)} color="#3b82f6" />
+                  <MiniKpi label="Forecast" value={moneyM(forecast)} color="#8b5cf6" />
+                  <MiniKpi label="Actual" value={moneyM(incurred)} color="#f59e0b" />
+                  <MiniKpi label="Remaining" value={moneyM(remaining)} color="#22c55e" />
+                </div>
+              }
+            >
+              <LineChart data={monthlyChart} margin={{ top: 10, right: 15, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                <XAxis dataKey="month" tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 10 }} tickFormatter={money} />
+                <Tooltip formatter={(v: number) => money(v)} />
+                <Legend verticalAlign="top" height={26} wrapperStyle={{ fontSize: 10 }} />
+                <Line type="monotone" dataKey="Planned" stroke="#3b82f6" strokeWidth={2} />
+                <Line type="monotone" dataKey="Actual" stroke="#22c55e" strokeWidth={2} />
+                <Line
+                  type="monotone"
+                  dataKey="Forecast"
+                  stroke="#f59e0b"
+                  strokeWidth={2}
+                  strokeDasharray="4 3"
+                />
+              </LineChart>
+            </ExpandableChart>
+          </SectionFrame>
+
+          <SectionFrame>
+            <SectionTitle>Benefits</SectionTitle>
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <KpiCard
+                label="Expected"
+                value={moneyM(
+                  benefits.reduce((s: number, b: any) => s + Number(b.target_value || 0), 0),
+                )}
+                accent="#3b82f6"
+              />
+              <KpiCard
+                label="Realised"
+                value={moneyM(
+                  benefits.reduce((s: number, b: any) => s + Number(b.realised_value || 0), 0),
+                )}
+                accent="#22c55e"
+              />
+              <KpiCard
+                label="Realisation %"
+                value={(() => {
+                  const t = benefits.reduce(
+                    (s: number, b: any) => s + Number(b.target_value || 0),
+                    0,
+                  );
+                  const r = benefits.reduce(
+                    (s: number, b: any) => s + Number(b.realised_value || 0),
+                    0,
+                  );
+                  return (t ? (r / t) * 100 : 0).toFixed(1) + "%";
+                })()}
+                accent="#8b5cf6"
+              />
+            </div>
+            <ExpandableChart title="Benefits — Target vs Realised" heightClass="h-48">
+              <BarChart data={benefitsChart} margin={{ top: 15, right: 10, left: 0, bottom: 30 }}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                <XAxis
+                  dataKey="name"
+                  tick={{ fontSize: 9 }}
+                  angle={-15}
+                  textAnchor="end"
+                  interval={0}
+                />
+                <YAxis tick={{ fontSize: 10 }} tickFormatter={money} />
+                <Tooltip formatter={(v: number) => money(v)} />
+                <Legend verticalAlign="top" height={26} wrapperStyle={{ fontSize: 10 }} />
+                <Bar dataKey="Target" name="Target Value" fill="#1d4ed8" />
+                <Bar dataKey="Realised" name="Realised Value" fill="#93c5fd">
                   <LabelList
-                    dataKey="planPct"
+                    dataKey="Realised"
                     position="top"
-                    formatter={(v: number) => `${v}%`}
-                    fontSize={9}
-                  />
-                </Bar>
-                <Bar dataKey="actualPct" name="Actual %" fill={ACTUAL_BAR} radius={[3, 3, 0, 0]}>
-                  <LabelList
-                    dataKey="actualPct"
-                    position="top"
-                    formatter={(v: number) => `${v}%`}
-                    fontSize={9}
+                    formatter={(v: number) => money(v)}
+                    style={{ fontSize: 9, fill: "#334155" }}
                   />
                 </Bar>
               </BarChart>
             </ExpandableChart>
+          </SectionFrame>
+        </div>
 
-            <div className="overflow-auto">
-              <table className="w-full min-w-[36rem] border-collapse text-xs">
-                <thead>
-                  <tr className="border-b bg-[#f1f3f6]">
-                    <th className="px-2 py-1.5 text-left font-semibold">Resource</th>
-                    <th className="px-2 py-1.5 text-right font-semibold tabular-nums">Plan %</th>
-                    <th className="px-2 py-1.5 text-right font-semibold tabular-nums">Actual %</th>
-                    <th className="px-2 py-1.5 text-left font-semibold">Plan status</th>
-                    <th className="px-2 py-1.5 text-left font-semibold">Actual status</th>
-                    <th className="px-2 py-1.5 text-left font-semibold">Plan vs actual</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {resourceUtilChart.map((u) => (
-                    <tr key={u.resourceId} className="border-b border-[#eef0f3]">
-                      <td className="px-2 py-1.5 font-medium">{u.resource}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">{u.planPct}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">{u.actualPct}</td>
-                      <td className="px-2 py-1.5">{statusChip(u.planStatus)}</td>
-                      <td className="px-2 py-1.5">{statusChip(u.actualStatus)}</td>
-                      <td className="px-2 py-1.5">{statusChip(u.pvaStatus)}</td>
-                    </tr>
+        {/* Top Risks & Issues */}
+        <SectionFrame>
+          <SectionTitle>⚠️ Top Risks &amp; Issues</SectionTitle>
+          <ColumnarToolbar
+            globalQ={raidTable.globalQ}
+            onGlobalQ={raidTable.setGlobalQ}
+            shown={raidTable.rows.length}
+            total={raidTable.total}
+            dirty={raidTable.isDirty}
+            onClear={raidTable.clearAll}
+            placeholder="Search risks & issues…"
+          />
+          <div className="overflow-x-auto">
+            <table className="st-table text-xs">
+              <thead>
+                <tr>
+                  {raidColumns.map((col) => (
+                    <ColumnarTh
+                      key={col.key}
+                      column={col}
+                      filter={raidTable.filters[col.key]}
+                      onFilter={(v) => raidTable.setColumnFilter(col.key, v)}
+                      sortKey={raidTable.sortKey}
+                      sortDir={raidTable.sortDir}
+                      onToggleSort={raidTable.toggleSort}
+                    />
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </tr>
+              </thead>
+              <tbody>
+                {raidTable.rows.map((r) => (
+                  <tr key={r.raid}>
+                    <td className="font-mono">{r.raid}</td>
+                    <td className="font-mono text-blue-600">{r.project_code || "—"}</td>
+                    <td>{r.type}</td>
+                    <td>{r.desc}</td>
+                    <td>{r.probability}</td>
+                    <td>{r.impact}</td>
+                    <td>
+                      <RagChip rag={r.rag} />
+                    </td>
+                    <td>{r.owner || "NA"}</td>
+                    <td>{fmtDate(r.due)}</td>
+                    <td>{r.mitigation || "—"}</td>
+                    <td>{r.status}</td>
+                  </tr>
+                ))}
+                {raidTable.total === 0 && (
+                  <tr>
+                    <td colSpan={11} className="text-center text-slate-500 py-4">
+                      No open risks or issues.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </SectionFrame>
 
-            <div>
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Month-wise allocation heatmap · by project (plan / actual)
-              </div>
-              <p className="mb-2 text-[11px] text-muted-foreground">
-                Each cell shows <span style={{ color: PLAN_BAR }}>plan%</span> /{" "}
-                <span style={{ color: ACTUAL_BAR }}>actual%</span>. Colour uses the higher of the two.
-              </p>
-              <div className="max-h-[420px] overflow-auto">
-                <table className="w-max border-separate border-spacing-0 text-xs">
+        {/* Upcoming Milestones — stage gates grouped by stream / project */}
+        <SectionFrame>
+          <SectionTitle>
+            📌 Upcoming Milestones (Stage Gates){hasStreams ? " by Stream" : ""}
+          </SectionTitle>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Ordered by stream and stage-gate sequence for{" "}
+            <span className="font-medium text-foreground">
+              {project.project_code || project.name}
+            </span>
+            {project.program ? (
+              <>
+                {" "}
+                · Program <span className="font-medium text-foreground">{project.program}</span>
+              </>
+            ) : null}
+            .
+          </p>
+          {milestoneSections.length === 0 ? (
+            <p className="py-4 text-center text-sm text-slate-500">No stage gates captured.</p>
+          ) : (
+            <div className="space-y-5">
+              {milestoneSections.map((section) => (
+                <div key={section.key}>
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    {hasStreams ? (
+                      <>
+                        <span className="text-sm font-semibold text-foreground">
+                          {section.streamLabel}
+                        </span>
+                        <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          {section.streamRef}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-sm font-semibold text-foreground">
+                        {section.project_code || section.project_name}
+                      </span>
+                    )}
+                    <span className="text-[11px] text-muted-foreground">
+                      {section.rows.length} gate{section.rows.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto rounded-md border border-slate-200">
+                    <table className="st-table text-xs">
+                      <thead>
+                        <tr>
+                          <th>Gate ID</th>
+                          <th>Project</th>
+                          <th>Stage Gate</th>
+                          <th>Planned</th>
+                          <th>Actual</th>
+                          <th>Status</th>
+                          <th>Approver</th>
+                          <th>Notes</th>
+                          <th>Sponsor</th>
+                          <th>Program</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {section.rows.map((g) => (
+                          <tr key={g.id}>
+                            <td className="font-mono">{g.gate_id}</td>
+                            <td>
+                              <div className="leading-tight">
+                                <div className="font-mono text-blue-600">
+                                  {section.project_code || "—"}
+                                </div>
+                                <div className="text-[10px] text-muted-foreground">
+                                  {section.project_name}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="font-medium">{g.gate_name}</td>
+                            <td>{fmtDate(g.planned_date)}</td>
+                            <td>{g.actual_date ? fmtDate(g.actual_date) : "NA"}</td>
+                            <td>{g.status || "Planned"}</td>
+                            <td>{g.approver || "NA"}</td>
+                            <td>{g.notes || "NA"}</td>
+                            <td>{section.sponsor || "NA"}</td>
+                            <td>{section.program || "NA"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionFrame>
+
+        <ProjectInfographicWorkItems
+          projectId={project.id}
+          projectStreams={projectStreams as any[]}
+        />
+
+        {/* Project Brief — tabbed form */}
+        <ProjectBrief
+          project={project}
+          milestones={milestones as any[]}
+          risks={risks as any[]}
+          deps={deps as any[]}
+        />
+
+        {/* Stage Gates table */}
+        <SectionFrame>
+          <SectionTitle>Stage Gate Detail{hasStreams ? " by Stream" : ""}</SectionTitle>
+          <ColumnarToolbar
+            globalQ={gateDetailTable.globalQ}
+            onGlobalQ={gateDetailTable.setGlobalQ}
+            shown={gateDetailTable.rows.length}
+            total={gateDetailTable.total}
+            dirty={gateDetailTable.isDirty}
+            onClear={gateDetailTable.clearAll}
+            placeholder="Search stage gates…"
+          />
+          <div className="overflow-x-auto">
+            <table className="st-table text-xs">
+              <thead>
+                <tr>
+                  {gateDetailColumns.map((col) => (
+                    <ColumnarTh
+                      key={col.key}
+                      column={col}
+                      filter={gateDetailTable.filters[col.key]}
+                      onFilter={(v) => gateDetailTable.setColumnFilter(col.key, v)}
+                      sortKey={gateDetailTable.sortKey}
+                      sortDir={gateDetailTable.sortDir}
+                      onToggleSort={gateDetailTable.toggleSort}
+                      align={
+                        col.key === "budget" || col.key === "forecast" || col.key === "actualSpend"
+                          ? "right"
+                          : "left"
+                      }
+                      className={
+                        col.key === "budget" || col.key === "forecast" || col.key === "actualSpend"
+                          ? "text-right"
+                          : undefined
+                      }
+                    />
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {gateDetailTable.rows.map((p) => (
+                  <tr key={p.key}>
+                    {hasStreams ? (
+                      <td>
+                        <div className="leading-tight">
+                          <div className="font-medium">{p.streamLabel}</div>
+                          <div className="font-mono text-[10px] text-muted-foreground">
+                            {p.streamRef}
+                          </div>
+                        </div>
+                      </td>
+                    ) : null}
+                    <td className="font-medium">{p.name}</td>
+                    <td>{p.status}</td>
+                    <td>{fmtDate(p.planned)}</td>
+                    <td>{fmtDate(p.actual)}</td>
+                    <td>{p.approver || "—"}</td>
+                    <td className="text-right tabular-nums">{money(p.budget)}</td>
+                    <td className="text-right tabular-nums">{money(p.forecast)}</td>
+                    <td className="text-right tabular-nums">{money(p.actualSpend)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SectionFrame>
+
+        {/* Resources & allocations — plan vs actual by project (streams rolled up) */}
+        <SectionFrame>
+          <SectionTitle>Resources & allocations (by project)</SectionTitle>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Planned allocation vs approved timesheet actuals for this project (streams rolled up).
+            Actual % converts timesheet hours to % of monthly FTE capacity. Statuses:{" "}
+            <strong>Plan</strong> from allocation %, <strong>Actual</strong> from timesheet %,{" "}
+            <strong>Plan vs actual</strong> from actual÷plan (Over &gt;110%, Optimal ≥60%, else
+            Under; Unplanned when hours are booked with no plan).
+          </p>
+          {resourcePlanRows.length === 0 ? (
+            <div className="rounded-md border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
+              No resource allocations or timesheet actuals for this project yet.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <ExpandableChart
+                title="Resource utilisation — plan % vs actual %"
+                heightClass="h-72"
+                legend={
+                  <div className="mt-1 flex flex-wrap justify-end gap-3 text-xs">
+                    <span className="flex items-center gap-1">
+                      <span
+                        className="inline-block h-3 w-3 rounded-sm"
+                        style={{ background: PLAN_BAR }}
+                      />
+                      Plan
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span
+                        className="inline-block h-3 w-3 rounded-sm"
+                        style={{ background: ACTUAL_BAR }}
+                      />
+                      Actual
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span
+                        className="inline-block h-3 w-3 rounded-sm"
+                        style={{ background: ALLOC_STATUS.Over }}
+                      />{" "}
+                      Over
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span
+                        className="inline-block h-3 w-3 rounded-sm"
+                        style={{ background: ALLOC_STATUS.Optimal }}
+                      />{" "}
+                      Optimal
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span
+                        className="inline-block h-3 w-3 rounded-sm"
+                        style={{ background: ALLOC_STATUS.Under }}
+                      />{" "}
+                      Under
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span
+                        className="inline-block h-3 w-3 rounded-sm"
+                        style={{ background: ALLOC_STATUS.Unplanned }}
+                      />{" "}
+                      Unplanned
+                    </span>
+                  </div>
+                }
+              >
+                <BarChart
+                  data={resourceUtilChart}
+                  margin={{ top: 20, right: 48, left: 12, bottom: 56 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+                  <XAxis
+                    dataKey="resource"
+                    fontSize={11}
+                    angle={-25}
+                    textAnchor="end"
+                    interval={0}
+                    height={56}
+                  />
+                  <YAxis
+                    fontSize={11}
+                    domain={[0, 120]}
+                    label={{
+                      value: "% of capacity",
+                      angle: -90,
+                      position: "insideLeft",
+                      fontSize: 11,
+                    }}
+                  />
+                  <Tooltip formatter={(v: number) => `${v}%`} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Bar dataKey="planPct" name="Plan %" fill={PLAN_BAR} radius={[3, 3, 0, 0]}>
+                    <LabelList
+                      dataKey="planPct"
+                      position="top"
+                      formatter={(v: number) => `${v}%`}
+                      fontSize={9}
+                    />
+                  </Bar>
+                  <Bar dataKey="actualPct" name="Actual %" fill={ACTUAL_BAR} radius={[3, 3, 0, 0]}>
+                    <LabelList
+                      dataKey="actualPct"
+                      position="top"
+                      formatter={(v: number) => `${v}%`}
+                      fontSize={9}
+                    />
+                  </Bar>
+                </BarChart>
+              </ExpandableChart>
+
+              <div className="overflow-auto">
+                <table className="w-full min-w-[36rem] border-collapse text-xs">
                   <thead>
-                    <tr>
-                      <th className="sticky left-0 top-0 z-30 w-40 min-w-40 max-w-40 bg-background px-1.5 py-1 text-left shadow-[2px_0_4px_-2px_rgba(15,23,42,0.18)]">
-                        Resource
+                    <tr className="border-b bg-[#f1f3f6]">
+                      <th className="px-2 py-1.5 text-left font-semibold">Resource</th>
+                      <th className="px-2 py-1.5 text-right font-semibold tabular-nums">Plan %</th>
+                      <th className="px-2 py-1.5 text-right font-semibold tabular-nums">
+                        Actual %
                       </th>
-                      {allocationMonths.map((m) => (
-                        <th
-                          key={m.key}
-                          className="sticky top-0 z-20 w-16 min-w-16 bg-background p-0.5 text-center font-normal text-muted-foreground"
-                        >
-                          {m.label}
-                        </th>
-                      ))}
-                      <th className="sticky top-0 z-20 bg-background px-1.5 py-1 text-right whitespace-nowrap">
-                        Avg P / A
-                      </th>
+                      <th className="px-2 py-1.5 text-left font-semibold">Plan status</th>
+                      <th className="px-2 py-1.5 text-left font-semibold">Actual status</th>
+                      <th className="px-2 py-1.5 text-left font-semibold">Plan vs actual</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {resourcePlanRows.map((r) => {
-                      const monthCount = Math.max(1, allocationMonths.length);
-                      const avgPlan = Math.round(r.planTotal / monthCount);
-                      const avgActual = Math.round(r.actualTotal / monthCount);
-                      return (
-                        <tr key={r.key}>
-                          <td className="sticky left-0 z-10 w-40 min-w-40 max-w-40 bg-background px-1.5 py-0.5 font-medium shadow-[2px_0_4px_-2px_rgba(15,23,42,0.18)]">
-                            <div className="truncate" title={r.name}>
-                              {r.name}
-                            </div>
-                            {r.role ? (
-                              <div
-                                className="truncate text-[10px] font-normal text-muted-foreground"
-                                title={r.role}
-                              >
-                                {r.role}
-                              </div>
-                            ) : null}
-                          </td>
-                          {allocationMonths.map((m) => {
-                            const planPct = Math.round(r.planMonths[m.key] || 0);
-                            const actualPct = Math.round(r.actualMonths[m.key] || 0);
-                            const peak = Math.max(planPct, actualPct);
-                            return (
-                              <td key={m.key} className="p-0.5">
-                                <div
-                                  className="flex h-8 w-16 flex-col items-center justify-center rounded text-[9px] font-semibold leading-tight tabular-nums"
-                                  style={{
-                                    background: heatColor(peak),
-                                    color: peak === 0 ? "#64748b" : "#fff",
-                                  }}
-                                  title={`${r.name} · ${m.label}: plan ${planPct}% · actual ${actualPct}%`}
-                                >
-                                  <span>{planPct}%</span>
-                                  <span className="opacity-90">{actualPct}%</span>
-                                </div>
-                              </td>
-                            );
-                          })}
-                          <td className="px-1.5 py-0.5 text-right font-semibold tabular-nums text-[11px]">
-                            {avgPlan}% / {avgActual}%
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {resourceUtilChart.map((u) => (
+                      <tr key={u.resourceId} className="border-b border-[#eef0f3]">
+                        <td className="px-2 py-1.5 font-medium">{u.resource}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">{u.planPct}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">{u.actualPct}</td>
+                        <td className="px-2 py-1.5">{statusChip(u.planStatus)}</td>
+                        <td className="px-2 py-1.5">{statusChip(u.actualStatus)}</td>
+                        <td className="px-2 py-1.5">{statusChip(u.pvaStatus)}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
-              <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <span
-                    className="inline-block h-2.5 w-2.5 rounded-sm"
-                    style={{ background: PLAN_BAR }}
-                  />
-                  Top = plan
-                </span>
-                <span className="flex items-center gap-1">
-                  <span
-                    className="inline-block h-2.5 w-2.5 rounded-sm"
-                    style={{ background: ACTUAL_BAR }}
-                  />
-                  Bottom = actual
-                </span>
-                <div className="flex max-w-xs flex-1 items-center gap-2">
-                  <span>0%</span>
-                  <div
-                    className="h-2 flex-1 rounded"
-                    style={{
-                      background:
-                        "linear-gradient(to right, rgb(22,163,74), rgb(234,179,8), rgb(220,38,38))",
-                    }}
-                  />
-                  <span>120%</span>
+
+              <div>
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Month-wise allocation heatmap · by project (plan / actual)
+                </div>
+                <p className="mb-2 text-[11px] text-muted-foreground">
+                  Each cell shows <span style={{ color: PLAN_BAR }}>plan%</span> /{" "}
+                  <span style={{ color: ACTUAL_BAR }}>actual%</span>. Colour uses the higher of the
+                  two.
+                </p>
+                <div className="max-h-[420px] overflow-auto">
+                  <table className="w-max border-separate border-spacing-0 text-xs">
+                    <thead>
+                      <tr>
+                        <th className="sticky left-0 top-0 z-30 w-40 min-w-40 max-w-40 bg-background px-1.5 py-1 text-left shadow-[2px_0_4px_-2px_rgba(15,23,42,0.18)]">
+                          Resource
+                        </th>
+                        {allocationMonths.map((m) => (
+                          <th
+                            key={m.key}
+                            className="sticky top-0 z-20 w-16 min-w-16 bg-background p-0.5 text-center font-normal text-muted-foreground"
+                          >
+                            {m.label}
+                          </th>
+                        ))}
+                        <th className="sticky top-0 z-20 bg-background px-1.5 py-1 text-right whitespace-nowrap">
+                          Avg P / A
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {resourcePlanRows.map((r) => {
+                        const monthCount = Math.max(1, allocationMonths.length);
+                        const avgPlan = Math.round(r.planTotal / monthCount);
+                        const avgActual = Math.round(r.actualTotal / monthCount);
+                        return (
+                          <tr key={r.key}>
+                            <td className="sticky left-0 z-10 w-40 min-w-40 max-w-40 bg-background px-1.5 py-0.5 font-medium shadow-[2px_0_4px_-2px_rgba(15,23,42,0.18)]">
+                              <div className="truncate" title={r.name}>
+                                {r.name}
+                              </div>
+                              {r.role ? (
+                                <div
+                                  className="truncate text-[10px] font-normal text-muted-foreground"
+                                  title={r.role}
+                                >
+                                  {r.role}
+                                </div>
+                              ) : null}
+                            </td>
+                            {allocationMonths.map((m) => {
+                              const planPct = Math.round(r.planMonths[m.key] || 0);
+                              const actualPct = Math.round(r.actualMonths[m.key] || 0);
+                              const peak = Math.max(planPct, actualPct);
+                              return (
+                                <td key={m.key} className="p-0.5">
+                                  <div
+                                    className="flex h-8 w-16 flex-col items-center justify-center rounded text-[9px] font-semibold leading-tight tabular-nums"
+                                    style={{
+                                      background: heatColor(peak),
+                                      color: peak === 0 ? "#64748b" : "#fff",
+                                    }}
+                                    title={`${r.name} · ${m.label}: plan ${planPct}% · actual ${actualPct}%`}
+                                  >
+                                    <span>{planPct}%</span>
+                                    <span className="opacity-90">{actualPct}%</span>
+                                  </div>
+                                </td>
+                              );
+                            })}
+                            <td className="px-1.5 py-0.5 text-right font-semibold tabular-nums text-[11px]">
+                              {avgPlan}% / {avgActual}%
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <span
+                      className="inline-block h-2.5 w-2.5 rounded-sm"
+                      style={{ background: PLAN_BAR }}
+                    />
+                    Top = plan
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span
+                      className="inline-block h-2.5 w-2.5 rounded-sm"
+                      style={{ background: ACTUAL_BAR }}
+                    />
+                    Bottom = actual
+                  </span>
+                  <div className="flex max-w-xs flex-1 items-center gap-2">
+                    <span>0%</span>
+                    <div
+                      className="h-2 flex-1 rounded"
+                      style={{
+                        background:
+                          "linear-gradient(to right, rgb(22,163,74), rgb(234,179,8), rgb(220,38,38))",
+                      }}
+                    />
+                    <span>120%</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
-      </SectionFrame>
+          )}
+        </SectionFrame>
       </div>
     </div>
   );
@@ -2416,7 +2501,7 @@ function ProjectBrief({
                   shown={linkTable.rows.length}
                   total={linkTable.total}
                   dirty={linkTable.isDirty}
-          onClear={linkTable.clearAll}
+                  onClear={linkTable.clearAll}
                   placeholder="Search document links…"
                 />
                 <div className="overflow-x-auto rounded border border-slate-200 bg-white">

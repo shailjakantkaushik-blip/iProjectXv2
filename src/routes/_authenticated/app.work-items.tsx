@@ -3,7 +3,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchProjectOptions, projectOptionsQueryKey, compareProjectsByCodeName, projectUsesStageGates, projectUsesSprints } from "@/lib/project-options";
+import {
+  fetchProjectOptions,
+  projectOptionsQueryKey,
+  compareProjectsByCodeName,
+  projectUsesStageGates,
+  projectUsesSprints,
+} from "@/lib/project-options";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -12,10 +18,7 @@ import { fetchOrgStreams, formatProjectStreamRef, formatStreamLabel } from "@/li
 import { fetchStageGates } from "@/lib/stage-gates";
 import { sortGatesByOrgOrder } from "@/lib/project-phase";
 import { WORK_ITEMS_SELECT, RESOURCE_ALLOCATIONS_SELECT } from "@/lib/query-selects";
-import {
-  sumLaneAllocatedHours,
-  type AllocationPlanRow,
-} from "@/lib/resource-allocation-analytics";
+import { sumLaneAllocatedHours, type AllocationPlanRow } from "@/lib/resource-allocation-analytics";
 import {
   buildWorkItemDemandSlices,
   sumLaneDemandHours,
@@ -56,8 +59,7 @@ const numH = (v: unknown) => {
 };
 
 const money = (n: number) =>
-  "$" +
-  new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(n || 0);
+  "$" + new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(n || 0);
 
 type ResourceRow = {
   id: string;
@@ -75,6 +77,14 @@ function WorkItemsPage() {
   const userId = session?.user?.id;
   const qc = useQueryClient();
   const [mineOnly, setMineOnly] = useState(false);
+  const [fProgram, setFProgram] = useState("All");
+  const [fProject, setFProject] = useState("All");
+  const [fStream, setFStream] = useState("All");
+  const [fGate, setFGate] = useState("All");
+  const [fSprint, setFSprint] = useState("All");
+  const [fStatus, setFStatus] = useState("All");
+  const [depPred, setDepPred] = useState("");
+  const [depSucc, setDepSucc] = useState("");
 
   const { data: projects = [] } = useQuery({
     queryKey: projectOptionsQueryKey(orgId),
@@ -88,13 +98,21 @@ function WorkItemsPage() {
     enabled: !!orgId,
   });
 
-  const { data: stageGates = [], error: gatesError, isError: gatesIsError } = useQuery({
+  const {
+    data: stageGates = [],
+    error: gatesError,
+    isError: gatesIsError,
+  } = useQuery({
     queryKey: ["stage_gates", orgId],
     queryFn: fetchStageGates,
     enabled: !!orgId,
   });
 
-  const { data: sprints = [], error: sprintsError, isError: sprintsIsError } = useQuery({
+  const {
+    data: sprints = [],
+    error: sprintsError,
+    isError: sprintsIsError,
+  } = useQuery({
     queryKey: ["sprints", orgId, "work-items"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -124,7 +142,8 @@ function WorkItemsPage() {
   });
 
   const orgPhases = useMemo(
-    () => (gateDefs as { gate_name?: string }[]).map((d) => d.gate_name).filter(Boolean) as string[],
+    () =>
+      (gateDefs as { gate_name?: string }[]).map((d) => d.gate_name).filter(Boolean) as string[],
     [gateDefs],
   );
 
@@ -246,12 +265,39 @@ function WorkItemsPage() {
     return m;
   }, [assignees]);
 
+  const linksQ = useQuery({
+    queryKey: ["work_item_links", orgId, "register"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("work_item_links" as any)
+        .select("id,predecessor_id,successor_id,link_type,lag_days")
+        .eq("org_id", orgId!);
+      if (error) throw error;
+      return (data ?? []) as unknown as {
+        id: string;
+        predecessor_id: string;
+        successor_id: string;
+        link_type: string;
+        lag_days: number | null;
+      }[];
+    },
+    enabled: !!orgId,
+  });
+  const links = linksQ.data ?? [];
+
+  const predecessorsByItem = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const l of links) {
+      const list = m.get(l.successor_id) || [];
+      list.push(l.predecessor_id);
+      m.set(l.successor_id, list);
+    }
+    return m;
+  }, [links]);
+
   const resourceById = useMemo(() => new Map(resources.map((r) => [r.id, r])), [resources]);
 
-  const projectById = useMemo(
-    () => new Map(projects.map((p: any) => [p.id, p])),
-    [projects],
-  );
+  const projectById = useMemo(() => new Map(projects.map((p: any) => [p.id, p])), [projects]);
 
   const streamsByProject = useMemo(() => {
     const m = new Map<string, any[]>();
@@ -266,10 +312,7 @@ function WorkItemsPage() {
     return m;
   }, [streams]);
 
-  const streamById = useMemo(
-    () => new Map((streams as any[]).map((s) => [s.id, s])),
-    [streams],
-  );
+  const streamById = useMemo(() => new Map((streams as any[]).map((s) => [s.id, s])), [streams]);
 
   const gateById = useMemo(() => new Map(stageGates.map((g) => [g.id, g])), [stageGates]);
   const sprintById = useMemo(() => new Map(sprints.map((s) => [s.id, s])), [sprints]);
@@ -335,25 +378,83 @@ function WorkItemsPage() {
       pending: allocated - workPlanned,
       plannedFteCost,
     };
-  }, [
-    form.project_id,
-    form.stream_id,
-    form.stage_gate_id,
-    allocations,
-    demandSlices,
-  ]);
+  }, [form.project_id, form.stream_id, form.stage_gate_id, allocations, demandSlices]);
+
+  const programs = useMemo(
+    () =>
+      Array.from(
+        new Set(projects.map((p: any) => p.program).filter((v: unknown): v is string => !!v)),
+      ).sort() as string[],
+    [projects],
+  );
+
+  const filterStreams = useMemo(() => {
+    if (fProject !== "All") return streamsByProject.get(fProject) || [];
+    return streams as any[];
+  }, [fProject, streamsByProject, streams]);
+
+  const filterGates = useMemo(() => {
+    let list = stageGates as typeof stageGates;
+    if (fProject !== "All") list = list.filter((g) => g.project_id === fProject);
+    if (fStream !== "All") {
+      list = list.filter((g) => !g.stream_id || g.stream_id === fStream);
+    }
+    return sortGatesByOrgOrder(list, orgPhases) as typeof stageGates;
+  }, [stageGates, fProject, fStream, orgPhases]);
+
+  const filterSprints = useMemo(() => {
+    if (fProject === "All") return sprints;
+    return sprints.filter((s) => s.project_id === fProject);
+  }, [sprints, fProject]);
+
+  const resetFilters = () => {
+    setFProgram("All");
+    setFProject("All");
+    setFStream("All");
+    setFGate("All");
+    setFSprint("All");
+    setFStatus("All");
+    setMineOnly(false);
+  };
 
   const visibleBase = useMemo(() => {
-    if (!mineOnly) return items;
-    if (!myResource?.id && !userId) return [];
     return items.filter((i) => {
-      const team = assigneesByWorkItem.get(i.id) || [];
-      if (myResource?.id && team.includes(myResource.id)) return true;
-      // Legacy: owner_user_id still set
-      if (userId && i.owner_user_id === userId) return true;
-      return false;
+      if (mineOnly) {
+        const team = assigneesByWorkItem.get(i.id) || [];
+        const mine =
+          (myResource?.id && team.includes(myResource.id)) ||
+          (userId && i.owner_user_id === userId);
+        if (!mine) return false;
+      }
+      const proj = projectById.get(i.project_id) as any;
+      if (fProgram !== "All" && (proj?.program || "") !== fProgram) return false;
+      if (fProject !== "All" && i.project_id !== fProject) return false;
+      if (fStream !== "All" && (i.stream_id || "") !== fStream) return false;
+      if (fGate !== "All" && (i.stage_gate_id || "") !== fGate) return false;
+      if (fSprint === "__none__") {
+        if (i.sprint_id) return false;
+      } else if (fSprint !== "All" && (i.sprint_id || "") !== fSprint) {
+        return false;
+      }
+      if (fStatus !== "All" && (i.status || "") !== fStatus) return false;
+      return true;
     });
-  }, [items, mineOnly, userId, myResource, assigneesByWorkItem]);
+  }, [
+    items,
+    mineOnly,
+    userId,
+    myResource,
+    assigneesByWorkItem,
+    projectById,
+    fProgram,
+    fProject,
+    fStream,
+    fGate,
+    fSprint,
+    fStatus,
+  ]);
+
+  const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
   const columns: ColumnarColumn<any>[] = useMemo(
     () => [
@@ -361,6 +462,11 @@ function WorkItemsPage() {
         key: "project",
         label: "Project",
         getValue: (i) => (projectById.get(i.project_id) as any)?.project_code || "",
+      },
+      {
+        key: "program",
+        label: "Program",
+        getValue: (i) => (projectById.get(i.project_id) as any)?.program || "",
       },
       {
         key: "stream",
@@ -373,6 +479,19 @@ function WorkItemsPage() {
       },
       { key: "wbs_code", label: "WBS" },
       { key: "title", label: "Title" },
+      {
+        key: "depends_on",
+        label: "Depends on",
+        getValue: (i) =>
+          (predecessorsByItem.get(i.id) || [])
+            .map((pid) => {
+              const p = itemById.get(pid);
+              if (!p) return "";
+              return p.wbs_code ? `${p.wbs_code} · ${p.title}` : p.title || "";
+            })
+            .filter(Boolean)
+            .join("; "),
+      },
       {
         key: "stage_gate",
         label: "Stage gate",
@@ -426,11 +545,28 @@ function WorkItemsPage() {
       },
       { key: "planned_end", label: "End" },
     ],
-    [projectById, streamById, assigneesByWorkItem, resourceById, gateById, sprintById, allocations],
+    [
+      projectById,
+      streamById,
+      assigneesByWorkItem,
+      resourceById,
+      gateById,
+      sprintById,
+      allocations,
+      predecessorsByItem,
+      itemById,
+    ],
   );
 
   const numericColKeys = useMemo(
-    () => new Set(["lane_allocated", "estimate_hours", "actual_hours", "pending_hours", "percent_complete"]),
+    () =>
+      new Set([
+        "lane_allocated",
+        "estimate_hours",
+        "actual_hours",
+        "pending_hours",
+        "percent_complete",
+      ]),
     [],
   );
 
@@ -557,7 +693,10 @@ function WorkItemsPage() {
 
   const patch = useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: Record<string, unknown> }) => {
-      const { error } = await supabase.from("work_items" as any).update(updates as never).eq("id", id);
+      const { error } = await supabase
+        .from("work_items" as any)
+        .update(updates as never)
+        .eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["work_items", orgId] }),
@@ -566,7 +705,10 @@ function WorkItemsPage() {
 
   const del = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("work_items" as any).delete().eq("id", id);
+      const { error } = await supabase
+        .from("work_items" as any)
+        .delete()
+        .eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -576,9 +718,64 @@ function WorkItemsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const addDependency = useMutation({
+    mutationFn: async () => {
+      if (!orgId) throw new Error("No org");
+      if (!depPred || !depSucc) throw new Error("Pick both predecessor and successor");
+      if (depPred === depSucc) throw new Error("A work item cannot depend on itself");
+      const pred = itemById.get(depPred);
+      const succ = itemById.get(depSucc);
+      if (pred && succ && pred.project_id !== succ.project_id) {
+        throw new Error("Dependencies must be within the same project");
+      }
+      const { error } = await supabase.from("work_item_links" as any).insert({
+        org_id: orgId,
+        predecessor_id: depPred,
+        successor_id: depSucc,
+        link_type: "FS",
+        lag_days: 0,
+      } as never);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["work_item_links", orgId] });
+      toast.success("Dependency added");
+      setDepPred("");
+      setDepSucc("");
+    },
+    onError: (e: Error) => {
+      if (/work_item_links|schema cache|does not exist/i.test(e.message)) {
+        toast.error("Apply ppm_platform_depth migration, then Reload schema");
+      } else toast.error(e.message);
+    },
+  });
+
+  const removeDependency = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("work_item_links" as any)
+        .delete()
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["work_item_links", orgId] });
+      toast.success("Dependency removed");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const done = items.filter((i) => i.status === "Done").length;
   const blocked = items.filter((i) => i.status === "Blocked").length;
   const inProgress = items.filter((i) => i.status === "In Progress").length;
+  const filtersDirty =
+    mineOnly ||
+    fProgram !== "All" ||
+    fProject !== "All" ||
+    fStream !== "All" ||
+    fGate !== "All" ||
+    fSprint !== "All" ||
+    fStatus !== "All";
 
   return (
     <PageExport name="Work_Items" title="Work Items">
@@ -732,7 +929,9 @@ function WorkItemsPage() {
             Assign to me
           </label>
           <div className="md:col-span-2">
-            <div className="mb-1 text-[11px] font-medium text-muted-foreground">Assigned resources</div>
+            <div className="mb-1 text-[11px] font-medium text-muted-foreground">
+              Assigned resources
+            </div>
             <ResourceMultiSelect
               resources={activeResources}
               value={form.assignee_ids}
@@ -765,11 +964,15 @@ function WorkItemsPage() {
           <div className="mt-3 grid grid-cols-2 gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-[11px] sm:grid-cols-4">
             <div>
               <div className="text-muted-foreground">Lane allocated (resource plan)</div>
-              <div className="font-semibold tabular-nums">{formLanePlan.allocated.toFixed(1)} h</div>
+              <div className="font-semibold tabular-nums">
+                {formLanePlan.allocated.toFixed(1)} h
+              </div>
             </div>
             <div>
               <div className="text-muted-foreground">Work items planned</div>
-              <div className="font-semibold tabular-nums">{formLanePlan.workPlanned.toFixed(1)} h</div>
+              <div className="font-semibold tabular-nums">
+                {formLanePlan.workPlanned.toFixed(1)} h
+              </div>
             </div>
             <div>
               <div className="text-muted-foreground">Pending to assign</div>
@@ -798,10 +1001,224 @@ function WorkItemsPage() {
           resource allocation (pending = allocated − work planned). Planned FTE $ is hours ×
           assignee cost rates. Actual hours come from approved timesheets. Assign resources so
           timesheet placeholders appear for their linked logins; stream defaults to Core. Use{" "}
-          <span className="font-medium text-foreground">Stage gate</span> for Waterfall/Hybrid
-          phase attribution, and <span className="font-medium text-foreground">Sprint</span> for
+          <span className="font-medium text-foreground">Stage gate</span> for Waterfall/Hybrid phase
+          attribution, and <span className="font-medium text-foreground">Sprint</span> for
           Agile/Hybrid iteration capture (create sprints under Agile / Sprints first).
         </p>
+      </SectionFrame>
+
+      <SectionFrame>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <SectionTitle>Filters</SectionTitle>
+          <button
+            type="button"
+            className="rounded-md border border-input bg-background px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
+            disabled={!filtersDirty}
+            onClick={resetFilters}
+          >
+            Reset
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Program
+            </span>
+            <select
+              className="st-input"
+              value={fProgram}
+              onChange={(e) => {
+                setFProgram(e.target.value);
+                setFProject("All");
+                setFStream("All");
+                setFGate("All");
+                setFSprint("All");
+              }}
+            >
+              <option value="All">All programs</option>
+              {programs.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Project
+            </span>
+            <select
+              className="st-input"
+              value={fProject}
+              onChange={(e) => {
+                setFProject(e.target.value);
+                setFStream("All");
+                setFGate("All");
+                setFSprint("All");
+              }}
+            >
+              <option value="All">All projects</option>
+              {projectsOrdered
+                .filter((p: any) => fProgram === "All" || (p.program || "") === fProgram)
+                .map((p: any) => (
+                  <option key={p.id} value={p.id}>
+                    {p.project_code} · {p.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Stream
+            </span>
+            <select
+              className="st-input"
+              value={fStream}
+              onChange={(e) => {
+                setFStream(e.target.value);
+                setFGate("All");
+              }}
+            >
+              <option value="All">All streams</option>
+              {filterStreams.map((s: any) => (
+                <option key={s.id} value={s.id}>
+                  {formatStreamLabel(s)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Stage gate
+            </span>
+            <select className="st-input" value={fGate} onChange={(e) => setFGate(e.target.value)}>
+              <option value="All">All stage gates</option>
+              {filterGates.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.gate_name || "Gate"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Sprint
+            </span>
+            <select
+              className="st-input"
+              value={fSprint}
+              onChange={(e) => setFSprint(e.target.value)}
+            >
+              <option value="All">All sprints</option>
+              <option value="__none__">No sprint</option>
+              {filterSprints.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {formatSprintLabel(s)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Status
+            </span>
+            <select
+              className="st-input"
+              value={fStatus}
+              onChange={(e) => setFStatus(e.target.value)}
+            >
+              <option value="All">All statuses</option>
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Showing <span className="font-semibold text-foreground">{visibleBase.length}</span> of{" "}
+          {items.length} work items
+          {mineOnly ? " · assigned to me" : ""}.
+        </p>
+      </SectionFrame>
+
+      <SectionFrame>
+        <SectionTitle>Work item dependencies</SectionTitle>
+        {linksQ.isError ? (
+          <p className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            Dependency links need the ppm_platform_depth migration. You can still manage work items
+            without links.
+          </p>
+        ) : null}
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
+          <select className="st-input" value={depPred} onChange={(e) => setDepPred(e.target.value)}>
+            <option value="">— Predecessor (must finish first) —</option>
+            {visibleBase.map((w) => (
+              <option key={w.id} value={w.id}>
+                {(projectById.get(w.project_id) as any)?.project_code || "?"} ·{" "}
+                {w.wbs_code ? `${w.wbs_code} · ` : ""}
+                {w.title}
+              </option>
+            ))}
+          </select>
+          <select className="st-input" value={depSucc} onChange={(e) => setDepSucc(e.target.value)}>
+            <option value="">— Successor (depends on predecessor) —</option>
+            {visibleBase.map((w) => (
+              <option key={w.id} value={w.id}>
+                {(projectById.get(w.project_id) as any)?.project_code || "?"} ·{" "}
+                {w.wbs_code ? `${w.wbs_code} · ` : ""}
+                {w.title}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="st-btn-primary"
+            disabled={addDependency.isPending || !depPred || !depSucc}
+            onClick={() => addDependency.mutate()}
+          >
+            {addDependency.isPending ? "Saving…" : "Add FS dependency"}
+          </button>
+        </div>
+        {links.length > 0 ? (
+          <ul className="mt-3 space-y-1 text-xs">
+            {links
+              .filter((l) => itemById.has(l.predecessor_id) && itemById.has(l.successor_id))
+              .slice(0, 12)
+              .map((l) => {
+                const pred = itemById.get(l.predecessor_id);
+                const succ = itemById.get(l.successor_id);
+                return (
+                  <li
+                    key={l.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded border border-border px-2 py-1"
+                  >
+                    <span>
+                      <span className="font-medium">{pred?.title}</span>
+                      <span className="text-muted-foreground"> → </span>
+                      <span className="font-medium">{succ?.title}</span>
+                      <span className="ml-2 text-[10px] uppercase text-muted-foreground">
+                        {l.link_type || "FS"}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      className="text-destructive hover:underline"
+                      onClick={() => removeDependency.mutate(l.id)}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                );
+              })}
+          </ul>
+        ) : (
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Capture finish-to-start dependencies between work items. Full critical-path analysis is
+            on Schedule — Critical Path.
+          </p>
+        )}
       </SectionFrame>
 
       <SectionFrame>
@@ -809,19 +1226,15 @@ function WorkItemsPage() {
         {itemsQ.isError ? (
           <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
             Failed to load work items: {(itemsQ.error as Error)?.message || "Unknown error"}
-            <button
-              type="button"
-              className="ml-2 underline"
-              onClick={() => void itemsQ.refetch()}
-            >
+            <button type="button" className="ml-2 underline" onClick={() => void itemsQ.refetch()}>
               Retry
             </button>
           </div>
         ) : null}
         {gatesIsError ? (
           <div className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
-            Stage gates failed to load: {(gatesError as Error)?.message || "Unknown error"}. Dropdowns
-            will be empty until this succeeds (often fixed by Reload schema in Supabase).
+            Stage gates failed to load: {(gatesError as Error)?.message || "Unknown error"}.
+            Dropdowns will be empty until this succeeds (often fixed by Reload schema in Supabase).
             <button
               type="button"
               className="ml-2 underline"
@@ -846,14 +1259,14 @@ function WorkItemsPage() {
         ) : null}
         {!gatesIsError && stageGates.length === 0 ? (
           <div className="mb-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
-            No stage gates found for this organisation. Re-run the wipe-and-seed SQL (or create gates on
-            each stream) so Work Items and timelines can show phases.
+            No stage gates found for this organisation. Re-run the wipe-and-seed SQL (or create
+            gates on each stream) so Work Items and timelines can show phases.
           </div>
         ) : null}
         {!sprintsIsError && sprints.length === 0 ? (
           <div className="mb-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
-            No sprints found. Create sprints under Agile / Sprints for Agile or Hybrid projects, then
-            link work items here.
+            No sprints found. Create sprints under Agile / Sprints for Agile or Hybrid projects,
+            then link work items here.
           </div>
         ) : null}
         <ColumnarToolbar
@@ -924,7 +1337,9 @@ function WorkItemsPage() {
                                   onChange={(e) => {
                                     const stream_id = e.target.value || null;
                                     const updates: Record<string, unknown> = { stream_id };
-                                    const gate = i.stage_gate_id ? gateById.get(i.stage_gate_id) : null;
+                                    const gate = i.stage_gate_id
+                                      ? gateById.get(i.stage_gate_id)
+                                      : null;
                                     if (
                                       !stream_id ||
                                       (gate?.stream_id && gate.stream_id !== stream_id)
@@ -954,6 +1369,12 @@ function WorkItemsPage() {
                                 {i.wbs_code || "—"}
                               </td>
                             );
+                          case "program":
+                            return (
+                              <td key={col.key} className="whitespace-nowrap">
+                                {(proj as any)?.program || "—"}
+                              </td>
+                            );
                           case "title":
                             return (
                               <td key={col.key} className="min-w-[11rem] max-w-[16rem]">
@@ -962,6 +1383,20 @@ function WorkItemsPage() {
                                 </span>
                               </td>
                             );
+                          case "depends_on": {
+                            const depLabel = String(col.getValue?.(i) || "");
+                            return (
+                              <td key={col.key} className="min-w-[9rem] max-w-[14rem] text-[11px]">
+                                {depLabel ? (
+                                  <span className="line-clamp-2" title={depLabel}>
+                                    {depLabel}
+                                  </span>
+                                ) : (
+                                  "—"
+                                )}
+                              </td>
+                            );
+                          }
                           case "stage_gate":
                             return (
                               <td key={col.key} className="min-w-[8rem]">
@@ -1034,7 +1469,9 @@ function WorkItemsPage() {
                                       id: i.id,
                                       updates: {
                                         estimate_hours:
-                                          e.target.value === "" ? null : Number(e.target.value) || 0,
+                                          e.target.value === ""
+                                            ? null
+                                            : Number(e.target.value) || 0,
                                       },
                                     })
                                   }
@@ -1043,7 +1480,10 @@ function WorkItemsPage() {
                             );
                           case "actual_hours":
                             return (
-                              <td key={col.key} className="st-num text-right tabular-nums whitespace-nowrap">
+                              <td
+                                key={col.key}
+                                className="st-num text-right tabular-nums whitespace-nowrap"
+                              >
                                 {numH(i.actual_hours).toFixed(1)}
                               </td>
                             );
@@ -1053,7 +1493,9 @@ function WorkItemsPage() {
                                 key={col.key}
                                 className="st-num text-right tabular-nums font-medium whitespace-nowrap"
                               >
-                                {Math.max(0, numH(i.estimate_hours) - numH(i.actual_hours)).toFixed(1)}
+                                {Math.max(0, numH(i.estimate_hours) - numH(i.actual_hours)).toFixed(
+                                  1,
+                                )}
                               </td>
                             );
                           case "status":
