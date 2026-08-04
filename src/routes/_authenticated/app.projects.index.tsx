@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useRef, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, canEditProjects, isAdmin } from "@/lib/auth-context";
 import { useCapabilityPermission } from "@/lib/permissions";
@@ -14,9 +15,8 @@ import {
 } from "@/components/ui/select";
 import { SectionFrame, SectionTitle, PageHeading, KpiCard, RagChip } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
-import { ExportableChart } from "@/components/chart-export";
 import { EditableCell } from "@/components/editable-cell";
-import { Plus, Upload, Download, FileDown } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Upload, Download, FileDown } from "lucide-react";
 import { toast } from "sonner";
 import { downloadTemplate, exportProjects, parseWorkbook } from "@/lib/excel";
 import {
@@ -29,16 +29,20 @@ import {
   YAxis,
   Tooltip,
   LabelList,
-  Legend,
   CartesianGrid,
 } from "recharts";
 import { RAG_COLORS, PRIORITY_COLORS, CHART_SERIES } from "@/lib/chart-theme";
-import { PROJECT_PORTFOLIO_SELECT } from "@/lib/project-selects";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { PageLoading } from "@/components/page-loading";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
+import {
+  getPortfolioKpis,
+  getPortfolioStats,
+  listPortfolioProjects,
+} from "@/lib/portfolio.functions";
+import { DEFAULT_PAGE_SIZE } from "@/lib/portfolio-paging";
 
 export const Route = createFileRoute("/_authenticated/app/projects/")({
   component: ProjectsList,
@@ -61,32 +65,60 @@ function ProjectsList() {
   const [prog, setProg] = useState("All");
   const [ragF, setRagF] = useState("All");
   const [statusF, setStatusF] = useState("All");
+  const [offset, setOffset] = useState(0);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
+  const listProjects = useServerFn(listPortfolioProjects);
+  const fetchKpis = useServerFn(getPortfolioKpis);
+  const fetchStats = useServerFn(getPortfolioStats);
 
   const orgId = organization?.id;
+  const pageSize = DEFAULT_PAGE_SIZE;
+
+  useEffect(() => {
+    setOffset(0);
+  }, [prog, ragF, statusF]);
+
   const {
-    data: projects = [],
+    data: pageData,
     isLoading,
     isError,
     error,
     refetch,
     isFetching,
   } = useQuery({
-    queryKey: ["projects", orgId],
-    queryFn: async () => {
-      const { data, error: qErr } = await supabase
-        .from("projects")
-        .select(PROJECT_PORTFOLIO_SELECT as "*")
-        .order("created_at", { ascending: false });
-      if (qErr) throw qErr;
-      return data ?? [];
-    },
-    // Wait for org — a disabled query is not "loading", so without this gate
-    // the register briefly renders as empty until refresh.
+    queryKey: ["projects", orgId, "page", offset, pageSize, prog, ragF, statusF],
+    queryFn: () =>
+      listProjects({
+        data: {
+          orgId: orgId!,
+          offset,
+          limit: pageSize,
+          program: prog,
+          rag: ragF,
+          status: statusF,
+        },
+      }),
     enabled: !!orgId,
     retry: 2,
+    staleTime: 60_000,
+  });
+
+  const projects = (pageData?.rows ?? []) as any[];
+  const pageTotal = pageData?.total ?? 0;
+
+  const { data: kpis } = useQuery({
+    queryKey: ["portfolio-kpis", orgId],
+    queryFn: () => fetchKpis({ data: { orgId: orgId! } }),
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+
+  const { data: stats } = useQuery({
+    queryKey: ["portfolio-stats", orgId],
+    queryFn: () => fetchStats({ data: { orgId: orgId! } }),
+    enabled: !!orgId,
     staleTime: 60_000,
   });
 
@@ -138,31 +170,25 @@ function ProjectsList() {
         .eq("id", stakeholderId);
     }
     qc.invalidateQueries({ queryKey: ["projects", orgId] });
+    qc.invalidateQueries({ queryKey: ["portfolio-kpis", orgId] });
+    qc.invalidateQueries({ queryKey: ["portfolio-stats", orgId] });
     qc.invalidateQueries({ queryKey: ["stakeholders", orgId] });
     toast.success("Sponsor updated");
   };
 
-  const programs = useMemo(
-    () =>
-      Array.from(new Set(projects.map((p: any) => p.program).filter(Boolean))).sort() as string[],
-    [projects],
-  );
-  const statuses = useMemo(
-    () =>
-      Array.from(new Set(projects.map((p: any) => p.status).filter(Boolean))).sort() as string[],
-    [projects],
-  );
+  const programs = useMemo(() => {
+    const keys = Object.keys(stats?.by_program ?? {}).filter((k) => k && k !== "Unassigned");
+    const fromPage = projects.map((p: any) => p.program).filter(Boolean) as string[];
+    return Array.from(new Set([...keys, ...fromPage])).sort();
+  }, [stats, projects]);
 
-  const filtered = useMemo(
-    () =>
-      projects.filter(
-        (p: any) =>
-          (prog === "All" || p.program === prog) &&
-          (ragF === "All" || p.rag === ragF) &&
-          (statusF === "All" || p.status === statusF),
-      ),
-    [projects, prog, ragF, statusF],
-  );
+  const statuses = useMemo(() => {
+    const keys = Object.keys(stats?.by_status ?? {}).filter((k) => k && k !== "Unknown");
+    const fromPage = projects.map((p: any) => p.status).filter(Boolean) as string[];
+    return Array.from(new Set([...keys, ...fromPage])).sort();
+  }, [stats, projects]);
+
+  const filtered = projects;
 
   const columns: ColumnarColumn<any>[] = useMemo(
     () => [
@@ -199,6 +225,8 @@ function ProjectsList() {
       if (error) throw error;
       toast.success(`Imported ${rows.length} projects`);
       qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["portfolio-kpis"] });
+      qc.invalidateQueries({ queryKey: ["portfolio-stats"] });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Import failed");
     } finally {
@@ -207,61 +235,51 @@ function ProjectsList() {
     }
   };
 
-  // KPIs + chart buckets — memoized so table filter typing stays smooth.
-  const { totalBudget, capexIncurred, active, completed, atRisk, utilPct, ragData } = useMemo(() => {
-    const totalBudget = filtered.reduce((s, p: any) => s + Number(p.budget || 0), 0);
-    const capexIncurred = filtered.reduce((s, p: any) => s + Number(p.capex_incurred || 0), 0);
-    const active = filtered.filter((p: any) => p.status === "In Progress").length;
-    const completed = filtered.filter((p: any) => p.status === "Completed").length;
-    const atRisk = filtered.filter((p: any) => p.rag === "Red" || p.rag === "Amber").length;
-    return {
-      totalBudget,
-      capexIncurred,
-      active,
-      completed,
-      atRisk,
-      utilPct: totalBudget > 0 ? Math.round((capexIncurred / totalBudget) * 100) : 0,
-      ragData: ["Green", "Amber", "Red"]
-        .map((r) => ({
-          name: r,
-          value: filtered.filter((p: any) => p.rag === r).length,
-          color: RAG_COLORS[r],
-        }))
-        .filter((d) => d.value > 0),
-    };
-  }, [filtered]);
+  // Org-wide KPIs/charts from summary + aggregate RPCs (not the current page).
+  const totalBudget = Number(stats?.budget_total ?? kpis?.approved_funding ?? 0);
+  const capexIncurred = Number(stats?.capex_incurred ?? kpis?.incurred ?? 0);
+  const active = Number(stats?.active ?? kpis?.active_count ?? 0);
+  const completed = Number(stats?.completed ?? 0);
+  const atRisk = Number((kpis?.rag_amber ?? 0) + (kpis?.rag_red ?? 0));
+  const utilPct = totalBudget > 0 ? Math.round((capexIncurred / totalBudget) * 100) : 0;
+  const projectCount = Number(stats?.total ?? kpis?.project_count ?? pageTotal);
+
+  const ragData = useMemo(() => {
+    const by = stats?.by_rag ?? {};
+    return ["Green", "Amber", "Red"]
+      .map((r) => ({
+        name: r,
+        value: Number(by[r] ?? by[r.toLowerCase()] ?? 0),
+        color: RAG_COLORS[r],
+      }))
+      .filter((d) => d.value > 0);
+  }, [stats]);
 
   const byProgram = useMemo(() => {
-    const m = new Map<string, { name: string; count: number; budget: number }>();
-    filtered.forEach((p: any) => {
-      const k = p.program || "Unassigned";
-      const cur = m.get(k) || { name: k, count: 0, budget: 0 };
-      cur.count += 1;
-      cur.budget += Number(p.budget || 0);
-      m.set(k, cur);
-    });
-    return Array.from(m.values()).sort((a, b) => b.budget - a.budget);
-  }, [filtered]);
+    const by = stats?.by_program ?? {};
+    return Object.entries(by)
+      .map(([name, count]) => ({ name, count: Number(count) || 0, budget: 0 }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 12);
+  }, [stats]);
 
   const byPriority = useMemo(() => {
     const order = ["P4 - Low", "P3 - Medium", "P2 - High", "P1 - Critical"];
-    const m = new Map<string, number>();
-    filtered.forEach((p: any) => {
-      const k = p.priority || "Unassigned";
-      m.set(k, (m.get(k) || 0) + 1);
-    });
+    const by = stats?.by_priority ?? {};
     const rank = (n: string) => {
       const i = order.indexOf(n);
       return i === -1 ? order.length : i;
     };
-    return Array.from(m, ([name, count]) => ({
-      name,
-      count,
-      color: PRIORITY_COLORS[name] || "#94a3b8",
-    })).sort((a, b) => rank(a.name) - rank(b.name));
-  }, [filtered]);
+    return Object.entries(by)
+      .map(([name, count]) => ({
+        name,
+        count: Number(count) || 0,
+        color: PRIORITY_COLORS[name] || "#94a3b8",
+      }))
+      .sort((a, b) => rank(a.name) - rank(b.name));
+  }, [stats]);
 
-  if (authLoading || !orgId || (isLoading && projects.length === 0)) {
+  if (authLoading || !orgId || (isLoading && projects.length === 0 && !pageData)) {
     return <PageLoading label="Loading projects…" />;
   }
   if (isError) {
@@ -379,7 +397,7 @@ function ProjectsList() {
       <SectionFrame>
         <SectionTitle>Register KPIs</SectionTitle>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <KpiCard label="Projects" value={filtered.length} accent="#3b82f6" />
+          <KpiCard label="Projects" value={projectCount} accent="#3b82f6" />
           <KpiCard label="Active" value={active} accent="#06b6d4" />
           <KpiCard label="Completed" value={completed} accent="#22c55e" />
           <KpiCard label="At Risk" value={atRisk} accent="#f59e0b" />
@@ -430,7 +448,7 @@ function ProjectsList() {
         </SectionFrame>
 
         <SectionFrame className="lg:col-span-2">
-          <ExpandableChart title="Budget by Program" heightClass="h-56">
+          <ExpandableChart title="Projects by Program" heightClass="h-56">
             <BarChart data={byProgram} margin={{ top: 15, right: 10, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
               <XAxis
@@ -441,16 +459,15 @@ function ProjectsList() {
                 textAnchor="end"
                 height={50}
               />
-              <YAxis tick={{ fontSize: 10 }} tickFormatter={money} />
-              <Tooltip formatter={(v: number) => money(v)} />
-              <Bar dataKey="budget" radius={[4, 4, 0, 0]}>
+              <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+              <Tooltip />
+              <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                 {byProgram.map((_, i) => (
                   <Cell key={i} fill={PROGRAM_COLORS[i % PROGRAM_COLORS.length]} />
                 ))}
                 <LabelList
-                  dataKey="budget"
+                  dataKey="count"
                   position="top"
-                  formatter={(v: number) => money(v)}
                   style={{ fontSize: 10, fill: "#475569" }}
                 />
               </Bar>
@@ -491,8 +508,11 @@ function ProjectsList() {
 
       <SectionFrame>
         <SectionTitle>
-          Portfolio Register ({table.rows.length}
-          {table.rows.length !== table.total ? ` of ${table.total}` : ""})
+          Portfolio Register ({pageTotal.toLocaleString()} total
+          {pageTotal > pageSize
+            ? ` · showing ${offset + 1}–${Math.min(offset + projects.length, pageTotal)}`
+            : ""}
+          )
           {isFetching ? (
             <span className="ml-2 text-[11px] font-normal text-muted-foreground">Updating…</span>
           ) : null}
@@ -717,6 +737,35 @@ function ProjectsList() {
             </table>
           </div>
         )}
+        {pageTotal > pageSize ? (
+          <div className="mt-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span>
+              Page {Math.floor(offset / pageSize) + 1} of {Math.max(1, Math.ceil(pageTotal / pageSize))}
+            </span>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={offset <= 0 || isFetching}
+                onClick={() => setOffset((o) => Math.max(0, o - pageSize))}
+              >
+                <ChevronLeft className="mr-1 h-3.5 w-3.5" />
+                Previous
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!pageData?.hasMore || isFetching}
+                onClick={() => setOffset((o) => o + pageSize)}
+              >
+                Next
+                <ChevronRight className="ml-1 h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </SectionFrame>
     </PageExport>
   );

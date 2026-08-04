@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-08-01T05:31:30.158Z",
+  "generatedAt": "2026-08-04T00:59:53.656Z",
   "filename": "iprojectx-byod-schema.sql",
-  "includedCount": 56,
+  "includedCount": 57,
   "excludedCount": 12,
   "included": [
     "20260720095542_fe684dfb-a86c-4dee-8677-269ef34d6e6d.sql",
@@ -59,7 +59,8 @@
     "20260730140000_opex_other_costs.sql",
     "20260730150000_work_items_sprint_id.sql",
     "20260730160000_ppm_platform_depth.sql",
-    "20260801120000_stakeholder_user_sponsor.sql"
+    "20260801120000_stakeholder_user_sponsor.sql",
+    "20260804120000_scale_hardening.sql"
   ],
   "excluded": [
     "20260721003000_invoice_template_config.sql",
@@ -75,5 +76,5 @@
     "20260731120000_org_integrations.sql",
     "20260801140000_org_ip_restriction.sql"
   ],
-  "bytes": 285471
+  "bytes": 306122
 }

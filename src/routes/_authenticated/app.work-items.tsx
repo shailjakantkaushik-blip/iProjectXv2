@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useMemo, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -17,7 +18,7 @@ import { PageLoading } from "@/components/page-loading";
 import { fetchOrgStreams, formatProjectStreamRef, formatStreamLabel } from "@/lib/project-streams";
 import { fetchStageGates } from "@/lib/stage-gates";
 import { sortGatesByOrgOrder } from "@/lib/project-phase";
-import { WORK_ITEMS_SELECT, RESOURCE_ALLOCATIONS_SELECT } from "@/lib/query-selects";
+import { RESOURCE_ALLOCATIONS_SELECT } from "@/lib/query-selects";
 import { sumLaneAllocatedHours, type AllocationPlanRow } from "@/lib/resource-allocation-analytics";
 import {
   buildWorkItemDemandSlices,
@@ -29,6 +30,10 @@ import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
 import { ColumnGlossary } from "@/components/column-glossary";
 import { ResourceMultiSelect } from "@/components/resource-multi-select";
+import { listPortfolioWorkItems } from "@/lib/portfolio.functions";
+import { DEFAULT_PAGE_SIZE } from "@/lib/portfolio-paging";
+import { Button } from "@/components/ui/button";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/app/work-items")({
   component: WorkItemsPage,
@@ -76,6 +81,7 @@ function WorkItemsPage() {
   const orgId = organization?.id;
   const userId = session?.user?.id;
   const qc = useQueryClient();
+  const listWorkItems = useServerFn(listPortfolioWorkItems);
   const [mineOnly, setMineOnly] = useState(false);
   const [fProgram, setFProgram] = useState("All");
   const [fProject, setFProject] = useState("All");
@@ -83,8 +89,14 @@ function WorkItemsPage() {
   const [fGate, setFGate] = useState("All");
   const [fSprint, setFSprint] = useState("All");
   const [fStatus, setFStatus] = useState("All");
+  const [offset, setOffset] = useState(0);
   const [depPred, setDepPred] = useState("");
   const [depSucc, setDepSucc] = useState("");
+  const pageSize = DEFAULT_PAGE_SIZE;
+
+  useEffect(() => {
+    setOffset(0);
+  }, [fProject, fStream, fGate, fSprint, fStatus, fProgram, mineOnly]);
 
   const { data: projects = [] } = useQuery({
     queryKey: projectOptionsQueryKey(orgId),
@@ -199,37 +211,51 @@ function WorkItemsPage() {
 
   // Distinct key from Data Editor (`["work_items", orgId]`) so column shapes don't collide.
   const itemsQ = useQuery({
-    queryKey: ["work_items", orgId, "register"],
+    queryKey: [
+      "work_items",
+      orgId,
+      "register",
+      offset,
+      pageSize,
+      fProject,
+      fStream,
+      fGate,
+      fSprint,
+      fStatus,
+    ],
     queryFn: async () => {
-      if (!orgId) return [];
-      const primary = await supabase
-        .from("work_items" as any)
-        .select(WORK_ITEMS_SELECT as "*")
-        .eq("org_id", orgId)
-        .order("sort_order")
-        .order("planned_end");
-      if (!primary.error) return (primary.data ?? []) as any[];
-
-      // Fallback: broader select if schema cache lags behind WORK_ITEMS_SELECT
-      const fallback = await supabase
-        .from("work_items" as any)
-        .select("*")
-        .eq("org_id", orgId)
-        .order("sort_order");
-      if (fallback.error) throw fallback.error;
-      return (fallback.data ?? []) as any[];
+      if (!orgId) {
+        return { rows: [] as any[], total: 0, hasMore: false, offset: 0, limit: pageSize };
+      }
+      return listWorkItems({
+        data: {
+          orgId,
+          offset,
+          limit: pageSize,
+          projectId: fProject !== "All" ? fProject : null,
+          streamId: fStream !== "All" ? fStream : null,
+          stageGateId: fGate !== "All" ? fGate : null,
+          sprintId: fSprint !== "All" && fSprint !== "__none__" ? fSprint : null,
+          status: fStatus !== "All" ? fStatus : null,
+        },
+      });
     },
     enabled: !!orgId,
+    staleTime: 30_000,
   });
-  const items = itemsQ.data ?? [];
+  const items = (itemsQ.data?.rows ?? []) as any[];
+  const itemsTotal = itemsQ.data?.total ?? 0;
   const isLoading = itemsQ.isLoading && !itemsQ.data;
+  const itemIds = useMemo(() => items.map((i) => i.id).filter(Boolean), [items]);
 
   const assigneesQ = useQuery({
-    queryKey: ["work_item_assignees", orgId],
+    queryKey: ["work_item_assignees", orgId, "page", itemIds.join(",")],
     queryFn: async () => {
+      if (!itemIds.length) return [];
       const { data, error } = await supabase
         .from("work_item_assignees" as any)
-        .select("id,work_item_id,resource_id,user_id");
+        .select("id,work_item_id,resource_id,user_id")
+        .in("work_item_id", itemIds);
       if (error) throw error;
       return (data ?? []) as unknown as {
         id: string;
@@ -238,7 +264,7 @@ function WorkItemsPage() {
         user_id: string | null;
       }[];
     },
-    enabled: !!orgId,
+    enabled: !!orgId && itemIds.length > 0,
   });
   const assignees = assigneesQ.data ?? [];
 
@@ -266,12 +292,16 @@ function WorkItemsPage() {
   }, [assignees]);
 
   const linksQ = useQuery({
-    queryKey: ["work_item_links", orgId, "register"],
+    queryKey: ["work_item_links", orgId, "register", itemIds.join(",")],
     queryFn: async () => {
+      if (!itemIds.length) return [];
       const { data, error } = await supabase
         .from("work_item_links" as any)
         .select("id,predecessor_id,successor_id,link_type,lag_days")
-        .eq("org_id", orgId!);
+        .eq("org_id", orgId!)
+        .or(
+          `successor_id.in.(${itemIds.join(",")}),predecessor_id.in.(${itemIds.join(",")})`,
+        );
       if (error) throw error;
       return (data ?? []) as unknown as {
         id: string;
@@ -281,7 +311,7 @@ function WorkItemsPage() {
         lag_days: number | null;
       }[];
     },
-    enabled: !!orgId,
+    enabled: !!orgId && itemIds.length > 0,
   });
   const links = linksQ.data ?? [];
 
@@ -417,6 +447,7 @@ function WorkItemsPage() {
     setMineOnly(false);
   };
 
+  // Server already applies project/stream/gate/sprint/status; keep program + mine on the page.
   const visibleBase = useMemo(() => {
     return items.filter((i) => {
       if (mineOnly) {
@@ -428,31 +459,10 @@ function WorkItemsPage() {
       }
       const proj = projectById.get(i.project_id) as any;
       if (fProgram !== "All" && (proj?.program || "") !== fProgram) return false;
-      if (fProject !== "All" && i.project_id !== fProject) return false;
-      if (fStream !== "All" && (i.stream_id || "") !== fStream) return false;
-      if (fGate !== "All" && (i.stage_gate_id || "") !== fGate) return false;
-      if (fSprint === "__none__") {
-        if (i.sprint_id) return false;
-      } else if (fSprint !== "All" && (i.sprint_id || "") !== fSprint) {
-        return false;
-      }
-      if (fStatus !== "All" && (i.status || "") !== fStatus) return false;
+      if (fSprint === "__none__" && i.sprint_id) return false;
       return true;
     });
-  }, [
-    items,
-    mineOnly,
-    userId,
-    myResource,
-    assigneesByWorkItem,
-    projectById,
-    fProgram,
-    fProject,
-    fStream,
-    fGate,
-    fSprint,
-    fStatus,
-  ]);
+  }, [items, mineOnly, userId, myResource, assigneesByWorkItem, projectById, fProgram, fSprint]);
 
   const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
@@ -1137,9 +1147,10 @@ function WorkItemsPage() {
           </label>
         </div>
         <p className="mt-2 text-[11px] text-muted-foreground">
-          Showing <span className="font-semibold text-foreground">{visibleBase.length}</span> of{" "}
-          {items.length} work items
-          {mineOnly ? " · assigned to me" : ""}.
+          Showing <span className="font-semibold text-foreground">{visibleBase.length}</span> on this
+          page · <span className="font-semibold text-foreground">{itemsTotal.toLocaleString()}</span>{" "}
+          match server filters
+          {mineOnly ? " · assigned to me (page filter)" : ""}.
         </p>
       </SectionFrame>
 
@@ -1577,6 +1588,36 @@ function WorkItemsPage() {
             </table>
           </div>
         )}
+        {itemsTotal > pageSize ? (
+          <div className="mt-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span>
+              Page {Math.floor(offset / pageSize) + 1} of{" "}
+              {Math.max(1, Math.ceil(itemsTotal / pageSize))}
+            </span>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={offset <= 0 || itemsQ.isFetching}
+                onClick={() => setOffset((o) => Math.max(0, o - pageSize))}
+              >
+                <ChevronLeft className="mr-1 h-3.5 w-3.5" />
+                Previous
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!itemsQ.data?.hasMore || itemsQ.isFetching}
+                onClick={() => setOffset((o) => o + pageSize)}
+              >
+                Next
+                <ChevronRight className="ml-1 h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </SectionFrame>
 
       <ColumnGlossary

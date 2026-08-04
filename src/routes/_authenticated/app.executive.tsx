@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { useState, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -44,8 +45,9 @@ import { darkenHex, scheduleCompletionPct } from "@/lib/schedule-progress";
 import { computeTimelineBounds } from "@/components/portfolio-timeline";
 import { FyPicker, ProjectPicker } from "@/components/portfolio-filters";
 import { unwrapList } from "@/lib/query";
+import { listPortfolioProjects } from "@/lib/portfolio.functions";
+import { MAX_PAGE_SIZE } from "@/lib/portfolio-paging";
 import {
-  PROJECT_PORTFOLIO_SELECT,
   FINANCIALS_MONTHLY_SELECT,
   FINANCIALS_MONTHLY_SELECT_MIN,
   STAGE_GATE_DEFINITIONS_SELECT,
@@ -79,6 +81,7 @@ function moneyM(n: number) { return `$${(n / 1e6).toFixed(1)}M`; }
 function ExecutiveDashboard() {
   const { organization } = useAuth();
   const qc = useQueryClient();
+  const listProjects = useServerFn(listPortfolioProjects);
   const [portfolio, setPortfolio] = useState("All");
   const [program, setProgram] = useState("All");
   const [sponsor, setSponsor] = useState("All");
@@ -95,22 +98,24 @@ function ExecutiveDashboard() {
   const [exporting, setExporting] = useState(false);
 
   const projectsQ = useQuery({
-    queryKey: ["projects", organization?.id],
+    queryKey: ["projects", organization?.id, "executive"],
     queryFn: async () => {
       try {
-        return unwrapList(
-          await supabase
-            .from("projects")
-            .select(PROJECT_PORTFOLIO_SELECT as "*")
-            .order("project_code")
-            .order("name"),
-        );
+        const page = await listProjects({
+          data: {
+            orgId: organization!.id,
+            offset: 0,
+            limit: MAX_PAGE_SIZE,
+          },
+        });
+        return page.rows as any[];
       } catch (err) {
         logQueryError("executive.projects", err);
         throw new Error(queryErrorMessage(err));
       }
     },
     enabled: !!organization,
+    staleTime: 60_000,
   });
 
   const gatesQ = useQuery({
