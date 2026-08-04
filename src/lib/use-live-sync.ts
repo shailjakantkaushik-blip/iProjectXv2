@@ -6,15 +6,15 @@ import { supabase } from "@/integrations/supabase/client";
  * Map DB tables → React Query key prefixes to invalidate.
  * Never invalidate the entire cache — that causes multi-query refetch storms.
  */
-const TABLE_QUERY_KEYS: Record<string, string[]> = {
-  projects: ["projects"],
+export const TABLE_QUERY_KEYS: Record<string, string[]> = {
+  projects: ["projects", "portfolio-kpis", "portfolio-stats"],
   project_streams: ["project_streams", "projects"],
   milestones: ["milestones", "milestones-feed"],
   stage_gates: ["stage_gates", "projects"],
   stage_gate_definitions: ["stage_gate_definitions"],
-  risks: ["risks"],
-  issues: ["issues"],
-  actions: ["actions"],
+  risks: ["risks", "portfolio-kpis"],
+  issues: ["issues", "portfolio-kpis"],
+  actions: ["actions", "portfolio-kpis"],
   decisions: ["decisions"],
   dependencies: ["dependencies"],
   financials_monthly: ["financials_monthly", "monthly"],
@@ -26,8 +26,6 @@ const TABLE_QUERY_KEYS: Record<string, string[]> = {
   timesheets: ["timesheets"],
   timesheet_entries: ["timesheet_entries", "timesheets"],
   timesheet_approvals: ["timesheet_approvals", "timesheets"],
-  // work_item_assignees: only invalidate when that page is open — avoid boot fan-out
-  // before the timesheets migration is applied on every environment.
   work_item_assignees: ["work_item_assignees", "work_items"],
   sprints: ["sprints", "work_items"],
   status_updates: ["status_updates"],
@@ -40,8 +38,7 @@ const TABLE_QUERY_KEYS: Record<string, string[]> = {
   scenario_projects: ["scenario_projects", "portfolio_scenarios"],
   documents: ["documents"],
   lessons_learned: ["lessons_learned"],
-  // Notifications have their own realtime channel in the bell — do not fan out.
-  work_items: ["work_items"],
+  work_items: ["work_items", "portfolio-kpis"],
   work_item_links: ["work_item_links", "work_items"],
   entity_comments: ["entity_comments"],
   stage_gate_checklist_items: ["stage_gate_checklist_items"],
@@ -50,6 +47,8 @@ const TABLE_QUERY_KEYS: Record<string, string[]> = {
   audit_events: ["audit_events", "audit-log"],
   support_tickets: ["support_tickets", "support"],
   support_ticket_comments: ["support_ticket_comments", "support_tickets", "support"],
+  org_kpi_summaries: ["portfolio-kpis"],
+  export_jobs: ["export_jobs"],
 };
 
 /** High-churn tables: debounce longer so rapid edits don't refetch full sheets. */
@@ -60,16 +59,106 @@ const HIGH_CHURN = new Set([
   "status_updates",
 ]);
 
-/** Realtime tables we listen to (exclude notifications — handled by the bell). */
+/** Always excluded from global fan-out (own channels / optional). */
 const REALTIME_OPTIONAL = new Set([
   "timesheets",
   "timesheet_entries",
   "timesheet_approvals",
   "work_item_assignees",
 ]);
-const TABLES = Object.keys(TABLE_QUERY_KEYS).filter(
-  (t) => t !== "notifications" && !REALTIME_OPTIONAL.has(t),
-);
+
+/** Minimal always-on set — cheap invalidation for shell + KPI freshness. */
+export const LIVE_SYNC_CORE_TABLES = [
+  "projects",
+  "project_streams",
+  "org_kpi_summaries",
+] as const;
+
+/** Route presets — subscribe only to what the open surface needs. */
+export const LIVE_SYNC_ROUTE_TABLES: Record<string, readonly string[]> = {
+  "/app": [...LIVE_SYNC_CORE_TABLES, "status_updates"],
+  "/app/executive": [
+    ...LIVE_SYNC_CORE_TABLES,
+    "stage_gates",
+    "financials_monthly",
+    "risks",
+    "milestones",
+  ],
+  "/app/executive-cockpit": [
+    ...LIVE_SYNC_CORE_TABLES,
+    "stage_gates",
+    "decisions",
+    "actions",
+    "benefits",
+    "fy_allocations",
+    "risks",
+  ],
+  "/app/executive-reports": [
+    ...LIVE_SYNC_CORE_TABLES,
+    "risks",
+    "actions",
+    "stage_gates",
+    "milestones",
+  ],
+  "/app/timeline": [...LIVE_SYNC_CORE_TABLES, "stage_gates"],
+  "/app/projects": [...LIVE_SYNC_CORE_TABLES, "stakeholders", "stage_gates"],
+  "/app/financials": [
+    ...LIVE_SYNC_CORE_TABLES,
+    "financials_monthly",
+    "fy_allocations",
+    "opex_other_costs",
+  ],
+  "/app/work-items": [
+    ...LIVE_SYNC_CORE_TABLES,
+    "work_items",
+    "work_item_links",
+    "work_item_assignees",
+    "sprints",
+    "stage_gates",
+    "resource_allocations",
+  ],
+  "/app/work-board": [...LIVE_SYNC_CORE_TABLES, "work_items", "sprints"],
+  "/app/timesheets": [
+    ...LIVE_SYNC_CORE_TABLES,
+    "work_items",
+    "timesheets",
+    "timesheet_entries",
+    "timesheet_approvals",
+    "resources",
+  ],
+  "/app/resources": [...LIVE_SYNC_CORE_TABLES, "resources", "resource_allocations"],
+  "/app/risks": [...LIVE_SYNC_CORE_TABLES, "risks", "issues"],
+  "/app/project-infographic": [
+    ...LIVE_SYNC_CORE_TABLES,
+    "stage_gates",
+    "milestones",
+    "risks",
+    "issues",
+    "work_items",
+    "work_item_links",
+    "financials_monthly",
+    "documents",
+    "resource_allocations",
+  ],
+  "/app/data-editor": [...LIVE_SYNC_CORE_TABLES, "export_jobs"],
+  "/app/audit-log": ["audit_events", "export_jobs"],
+};
+
+export function resolveLiveSyncTables(pathname: string | undefined): string[] {
+  if (!pathname) return [...LIVE_SYNC_CORE_TABLES];
+  // Longest prefix match
+  let best: readonly string[] | null = null;
+  let bestLen = -1;
+  for (const [route, tables] of Object.entries(LIVE_SYNC_ROUTE_TABLES)) {
+    if (pathname === route || pathname.startsWith(route + "/")) {
+      if (route.length > bestLen) {
+        best = tables;
+        bestLen = route.length;
+      }
+    }
+  }
+  return [...(best ?? LIVE_SYNC_CORE_TABLES)];
+}
 
 const BC_NAME = "pmo-data-sync";
 const DEBOUNCE_MS = 800;
@@ -100,28 +189,35 @@ function debounceFor(tables: Iterable<string>): number {
   return DEBOUNCE_MS;
 }
 
+export type LiveSyncOptions = {
+  /** Explicit table allowlist. When omitted, uses route presets / core. */
+  tables?: string[];
+  /** Current pathname for route-scoped presets. */
+  pathname?: string;
+};
+
 /**
- * Global live-sync: edits (this tab, another tab, or another user) mark the
- * *related* React Query caches stale so open views refresh — without
- * refetching every query in the app.
- *
- * Egress safeguards:
- * - scoped invalidation (active queries only)
- * - longer debounce for high-churn finance/resource tables
- * - pause flush while the tab is hidden (flush on focus)
+ * Route-scoped live-sync: edits mark related React Query caches stale.
+ * Subscribes only to tables needed by the open surface (plus core), not ~30
+ * global postgres_changes listeners.
  */
-export function useLiveSync(orgId: string | undefined) {
+export function useLiveSync(orgId: string | undefined, options?: LiveSyncOptions) {
   const qc = useQueryClient();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingTables = useRef<Set<string>>(new Set());
 
+  const tablesKey = (options?.tables ?? resolveLiveSyncTables(options?.pathname)).join(",");
+
   useEffect(() => {
     if (!orgId) return;
+
+    const listenTables = (options?.tables ?? resolveLiveSyncTables(options?.pathname)).filter(
+      (t) => t !== "notifications" && TABLE_QUERY_KEYS[t],
+    );
 
     const flush = () => {
       timerRef.current = null;
       if (pendingTables.current.size === 0) return;
-      // Defer network while backgrounded — same UX when user returns.
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
         return;
       }
@@ -150,7 +246,6 @@ export function useLiveSync(orgId: string | undefined) {
     const onLocal = (ev: Event) => {
       const detail = (ev as CustomEvent).detail as { table?: string } | undefined;
       const table = detail?.table;
-      // Prefer the edited table; fall back to common portfolio keys only.
       scheduleInvalidate(table || "projects");
       try {
         bc?.postMessage({ tables: [table || "projects"], t: Date.now() });
@@ -172,8 +267,6 @@ export function useLiveSync(orgId: string | undefined) {
       /* ignore */
     }
 
-    // Defer the heavy realtime fan-out until the browser is idle so first paint
-    // and first queries are not competing with ~30 postgres_changes listeners.
     let channel: ReturnType<typeof supabase.channel> | null = null;
     let idleId: number | null = null;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -181,8 +274,12 @@ export function useLiveSync(orgId: string | undefined) {
 
     const startRealtime = () => {
       if (cancelled || channel) return;
-      channel = supabase.channel(`org-sync-${orgId}`);
-      TABLES.forEach((table) => {
+      // Include optional high-churn tables only when the route asked for them.
+      const tables = listenTables.filter(
+        (t) => !REALTIME_OPTIONAL.has(t) || listenTables.includes(t),
+      );
+      channel = supabase.channel(`org-sync-${orgId}-${tables.length}`);
+      tables.forEach((table) => {
         (channel as any).on(
           "postgres_changes",
           { event: "*", schema: "public", table, filter: `org_id=eq.${orgId}` },
@@ -223,5 +320,6 @@ export function useLiveSync(orgId: string | undefined) {
       }
       if (channel) supabase.removeChannel(channel);
     };
-  }, [orgId, qc]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId, qc, tablesKey]);
 }

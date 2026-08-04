@@ -1,4 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { useRef, useState } from "react";
 import { useAuth, canEditProjects } from "@/lib/auth-context";
 import { PageHeading, SectionFrame } from "@/components/streamlit";
@@ -10,6 +12,11 @@ import { Upload, Download, Plus, Loader2 } from "lucide-react";
 import { TABLES } from "@/lib/data-tables";
 import { TableEditor } from "@/components/table-editor";
 import { useCapabilityPermission } from "@/lib/permissions";
+import {
+  enqueueOrgExportJob,
+  getOrgExportJob,
+  processOrgExportJobChunk,
+} from "@/lib/export-jobs.functions";
 
 export const Route = createFileRoute("/_authenticated/app/data-editor")({ component: Page });
 
@@ -18,9 +25,24 @@ function Page() {
   const canEdit = canEditProjects(roles);
   const canUpload = useCapabilityPermission("template_upload").canEdit;
   const canDataEdit = useCapabilityPermission("data_editor").canEdit;
-  const [busy, setBusy] = useState<"export" | "import" | null>(null);
+  const [busy, setBusy] = useState<"export" | "import" | "async" | null>(null);
   const [report, setReport] = useState<ImportReport[] | null>(null);
+  const [asyncJobId, setAsyncJobId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const enqueueExport = useServerFn(enqueueOrgExportJob);
+  const getExportJob = useServerFn(getOrgExportJob);
+  const processExportChunk = useServerFn(processOrgExportJobChunk);
+
+  const asyncJobQ = useQuery({
+    queryKey: ["export_jobs", organization?.id, asyncJobId],
+    queryFn: () =>
+      getExportJob({ data: { orgId: organization!.id, jobId: asyncJobId! } }),
+    enabled: Boolean(organization?.id && asyncJobId),
+    refetchInterval: (q) => {
+      const st = (q.state.data as { status?: string } | undefined)?.status;
+      return st === "queued" || st === "running" ? 1500 : false;
+    },
+  });
 
   const handleExport = async () => {
     if (!organization) return;
@@ -31,6 +53,33 @@ function Page() {
     } catch (e: any) {
       toast.error(e.message ?? "Export failed");
     } finally { setBusy(null); }
+  };
+
+  const handleAsyncExport = async () => {
+    if (!organization) return;
+    setBusy("async");
+    try {
+      const job = await enqueueExport({
+        data: { orgId: organization.id, kind: "org_workbook" },
+      });
+      setAsyncJobId(job.id);
+      toast.success("Queued async export — draining chunks…");
+      let done = false;
+      let guard = 0;
+      while (!done && guard < 200) {
+        guard += 1;
+        const chunk = await processExportChunk({
+          data: { orgId: organization.id, jobId: job.id, chunkSize: 500 },
+        });
+        done = Boolean(chunk.done);
+        if (!done) await new Promise((r) => setTimeout(r, 50));
+      }
+      toast.success(done ? "Async export finished scanning tables" : "Async export still running");
+    } catch (e: any) {
+      toast.error(e.message ?? "Async export failed");
+    } finally {
+      setBusy(null);
+    }
   };
 
   const handleImport = async (file: File) => {
@@ -66,6 +115,20 @@ function Page() {
               {busy === "export" ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />}
               Download data
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy === "async"}
+              onClick={() => void handleAsyncExport()}
+              title="Chunked export for large organisations (BYOD-aware)"
+            >
+              {busy === "async" ? (
+                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="mr-1 h-4 w-4" />
+              )}
+              Async export
+            </Button>
             {canUpload && (
               <>
                 <input
@@ -89,6 +152,22 @@ function Page() {
           </div>
         }
       />
+
+      {asyncJobId && asyncJobQ.data ? (
+        <SectionFrame className="mb-4">
+          <div className="text-sm font-semibold mb-1">Async export job</div>
+          <p className="text-xs text-muted-foreground">
+            Status: <span className="font-medium text-foreground">{asyncJobQ.data.status}</span>
+            {" · "}
+            Progress: {asyncJobQ.data.progress_pct}%
+            {" · "}
+            Rows scanned: {Number(asyncJobQ.data.row_count || 0).toLocaleString()}
+            {asyncJobQ.data.error_message
+              ? ` · Error: ${asyncJobQ.data.error_message}`
+              : ""}
+          </p>
+        </SectionFrame>
+      ) : null}
 
       {report && (
         <SectionFrame className="mb-4">

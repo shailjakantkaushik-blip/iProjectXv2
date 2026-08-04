@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -30,7 +31,8 @@ import {
   portfolioSegmentLabels,
   projectPortfolio,
 } from "@/lib/project-health";
-import { PROJECT_PORTFOLIO_SELECT } from "@/lib/project-selects";
+import { getPortfolioKpis, listPortfolioProjects } from "@/lib/portfolio.functions";
+import { MAX_PAGE_SIZE } from "@/lib/portfolio-paging";
 
 export const Route = createFileRoute("/_authenticated/app/executive-cockpit")({
   head: () => ({
@@ -81,12 +83,25 @@ function ExecutiveCockpit() {
   const { organization } = useAuth();
   const orgId = organization?.id;
   const fyStartMonth = organization?.fy_start_month || 4;
+  const listProjects = useServerFn(listPortfolioProjects);
+  const fetchKpis = useServerFn(getPortfolioKpis);
 
-  const { data: projects = [] } = useQuery({
-    queryKey: ["projects", orgId],
-    queryFn: async () =>
-      (await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*")).data ?? [],
+  const { data: projectPage } = useQuery({
+    queryKey: ["projects", orgId, "cockpit"],
+    queryFn: () =>
+      listProjects({
+        data: { orgId: orgId!, offset: 0, limit: MAX_PAGE_SIZE },
+      }),
     enabled: !!orgId,
+    staleTime: 60_000,
+  });
+  const projects = (projectPage?.rows ?? []) as any[];
+
+  const { data: kpis } = useQuery({
+    queryKey: ["portfolio-kpis", orgId],
+    queryFn: () => fetchKpis({ data: { orgId: orgId! } }),
+    enabled: !!orgId,
+    staleTime: 60_000,
   });
   const { data: gates = [] } = useQuery({
     queryKey: ["stage_gates", orgId],
@@ -300,6 +315,18 @@ function ExecutiveCockpit() {
     };
   }, [projects, benefits, decisions, actions, gates]);
 
+  // Prefer org_kpi_summaries rollup for headline financial / RAG KPIs.
+  const approvedFundingK = kpis?.from_cache ? kpis.approved_funding : approvedFunding;
+  const actualSpendK = kpis?.from_cache ? kpis.incurred : actualSpend;
+  const remainingK = Math.max(0, approvedFundingK - actualSpendK);
+  const facK = kpis?.from_cache ? kpis.forecast_at_completion : fac;
+  const totalK = kpis?.from_cache ? Math.max(1, kpis.project_count) : total;
+  const onTrackK = kpis?.from_cache ? kpis.rag_green : onTrack;
+  const atRiskK = kpis?.from_cache ? kpis.rag_amber : atRisk;
+  const delayedK = kpis?.from_cache ? kpis.rag_red : delayed;
+  const benefitsForecastK = kpis?.from_cache ? kpis.benefits_target : benefitsForecast;
+  const benefitsRealisedK = kpis?.from_cache ? kpis.benefits_realised : benefitsRealised;
+
   // ---------- Budget vs Forecast by FY ----------
   const fyData = useMemo(() => {
     const map = new Map<string, { fy: string; budget: number; forecast: number }>();
@@ -368,10 +395,10 @@ function ExecutiveCockpit() {
           <KpiCard label="Total Portfolio Value" value={money(totalValue)} />
           <KpiCard label="Total CAPEX Budget" value={money(capexApproved)} />
           <KpiCard label="Total OPEX Budget" value={money(opexApproved)} />
-          <KpiCard label="Approved Funding" value={money(approvedFunding)} />
-          <KpiCard label="Actual Spend to Date" value={money(actualSpend)} />
-          <KpiCard label="Remaining Portfolio Budget" value={money(remaining)} />
-          <KpiCard label="Forecast at Completion" value={money(fac)} />
+          <KpiCard label="Approved Funding" value={money(approvedFundingK)} />
+          <KpiCard label="Actual Spend to Date" value={money(actualSpendK)} />
+          <KpiCard label="Remaining Portfolio Budget" value={money(remainingK)} />
+          <KpiCard label="Forecast at Completion" value={money(facK)} />
         </div>
       </SectionFrame>
 
@@ -379,9 +406,9 @@ function ExecutiveCockpit() {
       <SectionFrame exportName="cockpit-delivery">
         <SectionTitle>Delivery</SectionTitle>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <KpiCard label="On Track (%)" value={pct(onTrack, total)} accent="#22c55e" />
-          <KpiCard label="At Risk (%)" value={pct(atRisk, total)} accent="#f59e0b" />
-          <KpiCard label="Critical (RAG) (%)" value={pct(delayed, total)} accent="#ef4444" />
+          <KpiCard label="On Track (%)" value={pct(onTrackK, totalK)} accent="#22c55e" />
+          <KpiCard label="At Risk (%)" value={pct(atRiskK, totalK)} accent="#f59e0b" />
+          <KpiCard label="Critical (RAG) (%)" value={pct(delayedK, totalK)} accent="#ef4444" />
           <KpiCard label="Total Strategic Programs" value={strategicPrograms} />
           <KpiCard label="Total CAPEX Programs" value={capexPrograms} />
           <KpiCard label="Total Unfunded Initiatives" value={unfundedInitiatives} />
@@ -392,8 +419,8 @@ function ExecutiveCockpit() {
       <SectionFrame exportName="cockpit-benefits-governance">
         <SectionTitle>Benefits & Governance</SectionTitle>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-          <KpiCard label="Benefits Forecast" value={money(benefitsForecast)} />
-          <KpiCard label="Benefits Realised" value={money(benefitsRealised)} accent="#22c55e" />
+          <KpiCard label="Benefits Forecast" value={money(benefitsForecastK)} />
+          <KpiCard label="Benefits Realised" value={money(benefitsRealisedK)} accent="#22c55e" />
           <KpiCard label="Decisions Awaiting Approval" value={decisionsPending} accent="#3b82f6" />
           <KpiCard
             label="Overdue Actions"
