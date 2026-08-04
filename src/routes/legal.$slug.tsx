@@ -216,10 +216,10 @@ function LegalPolicyPage() {
       />
 
       <nav
-        className="sticky top-0 z-40 border-b backdrop-blur-xl"
+        className="sticky top-0 z-40 border-b"
         style={{
           borderColor: p.surface,
-          background: isDark ? `${p.navy}f0` : "rgba(255,255,255,0.92)",
+          background: isDark ? p.navy : "#ffffff",
         }}
       >
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-5 sm:px-6">

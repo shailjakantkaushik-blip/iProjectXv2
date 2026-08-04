@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect } from "react";
 import {
   fetchLandingConfig,
   readCachedLandingConfigForPaint,
@@ -58,20 +57,13 @@ function ContactPage() {
   const isDark = cfg.theme === "dark";
   const pageBg = isDark ? p.navy : "#fafbfc";
 
-  useEffect(() => {
-    document.documentElement.style.scrollBehavior = "smooth";
-    return () => {
-      document.documentElement.style.scrollBehavior = "";
-    };
-  }, []);
-
   return (
     <div className="min-h-screen antialiased" style={{ ...BODY, background: pageBg, color: p.textBody }}>
       <nav
-        className="sticky top-0 z-40 border-b backdrop-blur-xl"
+        className="sticky top-0 z-40 border-b"
         style={{
           borderColor: p.surface,
-          background: isDark ? `${p.navy}f0` : "rgba(255,255,255,0.92)",
+          background: isDark ? p.navy : "#ffffff",
         }}
       >
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-6">
