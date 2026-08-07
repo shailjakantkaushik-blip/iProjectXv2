@@ -178,6 +178,8 @@ function AuthPage() {
   const recordFail = useServerFn(recordFailedLogin);
   const [busy, setBusy] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  /** Bumped to reset the Turnstile widget after a consumed/failed challenge. */
+  const [captchaResetNonce, setCaptchaResetNonce] = useState(0);
   const [mode, setMode] = useState<"auth" | "forgot">("auth");
   const [forgotEmail, setForgotEmail] = useState("");
   const [orgAlert, setOrgAlert] = useState<OrgAccessAlert | null>(null);
@@ -355,6 +357,12 @@ function AuthPage() {
   }, []);
   const handleExpire = useCallback(() => setCaptchaToken(null), []);
 
+  /** Clear a used/invalid captcha and ask the widget for a fresh challenge. */
+  const refreshCaptcha = useCallback(() => {
+    setCaptchaToken(null);
+    setCaptchaResetNonce((n) => n + 1);
+  }, []);
+
   const ensureCaptcha = async (): Promise<boolean> => {
     if (!captchaRequired) return true;
     if (!captchaToken) {
@@ -363,10 +371,13 @@ function AuthPage() {
     }
     try {
       await verifyTurnstile({ data: { token: captchaToken } });
+      // Token is single-use after server verify — drop it so Sign in cannot
+      // stay enabled on a dead token if the rest of the flow fails.
+      setCaptchaToken(null);
       return true;
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Human check failed. Try again.");
-      setCaptchaToken(null);
+      refreshCaptcha();
       return false;
     }
   };
@@ -375,18 +386,23 @@ function AuthPage() {
     e.preventDefault();
     if (!forgotEmail) return;
     setBusy(true);
-    if (!(await ensureCaptcha())) {
+    try {
+      if (!(await ensureCaptcha())) return;
+      const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+      toast.success("Password reset link sent. Check your email.");
+      setMode("auth");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not send reset link.");
+    } finally {
       setBusy(false);
-      return;
+      refreshCaptcha();
     }
-    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-    setBusy(false);
-    setCaptchaToken(null);
-    if (error) return toast.error(error.message);
-    toast.success("Password reset link sent. Check your email.");
-    setMode("auth");
   };
 
   const onSsoSignIn = async () => {
@@ -394,6 +410,7 @@ function AuthPage() {
     if (!sso?.enabled) return;
     setBusy(true);
     setOrgAlert(null);
+    let redirected = false;
     try {
       const redirectTo = `${window.location.origin}/auth${
         targetOrgSlug ? `?org=${encodeURIComponent(targetOrgSlug)}` : ""
@@ -406,24 +423,23 @@ function AuthPage() {
             : null;
       if (!opts) {
         toast.error("SSO is not fully configured for this organisation.");
-        setBusy(false);
         return;
       }
       const { data, error } = await supabase.auth.signInWithSSO(opts);
       if (error) {
         toast.error(error.message);
-        setBusy(false);
         return;
       }
       if (data?.url) {
+        redirected = true;
         window.location.assign(data.url);
         return;
       }
       toast.error("SSO provider did not return a sign-in URL.");
-      setBusy(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "SSO sign-in failed");
-      setBusy(false);
+    } finally {
+      if (!redirected) setBusy(false);
     }
   };
 
@@ -435,103 +451,104 @@ function AuthPage() {
     setBusy(true);
     setOrgAlert(null);
     setOrgGateBlocked(false);
-    if (!(await ensureCaptcha())) {
-      setBusy(false);
-      return;
-    }
-    // If a prior session is still present (e.g. browser restored it), clear it
-    // before signing in — especially when the email differs — so the new
-    // credentials actually become the active user.
-    const currentEmail = session?.user?.email?.toLowerCase() || null;
-    if (session && (!currentEmail || currentEmail !== email.toLowerCase())) {
-      await supabase.auth.signOut({ scope: "local" });
-    }
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    if (error) {
-      setBusy(false);
-      void recordFail({ data: { email, reason: error.message } });
-      return toast.error(error.message);
-    }
-    setSwitchingAccount(false);
+    let leftAuthPage = false;
     try {
-      sessionStorage.removeItem("iprojectx.auth.email-draft");
-    } catch {
-      /* private mode */
-    }
-
-    // Org white-label gate MUST run before MFA redirect. Previously MFA sent
-    // users to /mfa?next=/app and skipped membership checks, so credentials
-    // from Org A could enter the app via Org B's login link.
-    if (orgRequested) {
-      if (!targetOrgSlug) {
+      if (!(await ensureCaptcha())) return;
+      // If a prior session is still present (e.g. browser restored it), clear it
+      // before signing in — especially when the email differs — so the new
+      // credentials actually become the active user.
+      const currentEmail = session?.user?.email?.toLowerCase() || null;
+      if (session && (!currentEmail || currentEmail !== email.toLowerCase())) {
         await supabase.auth.signOut({ scope: "local" });
-        setBusy(false);
-        showOrgAccessAlert({
-          title: "Invalid organisation sign-in link",
-          message:
-            "This link is missing a valid organisation. Use the link from your administrator, or sign in on the general page.",
-          sessionPreserved: false,
-        });
+      }
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error) {
+        void recordFail({ data: { email, reason: error.message } });
+        toast.error(error.message);
         return;
       }
-      const ok = await rejectWrongOrgSession(targetOrgSlug, true);
-      if (!ok) {
-        setBusy(false);
-        return;
-      }
-    } else {
-      // General /auth sign-in — do not treat membership as org-link entry.
-      clearOrgAuthEntry();
+      setSwitchingAccount(false);
       try {
-        const ip = await assertHomeOrgIp();
-        if (!ip.allowed) {
+        sessionStorage.removeItem("iprojectx.auth.email-draft");
+      } catch {
+        /* private mode */
+      }
+
+      // Org white-label gate MUST run before MFA redirect. Previously MFA sent
+      // users to /mfa?next=/app and skipped membership checks, so credentials
+      // from Org A could enter the app via Org B's login link.
+      if (orgRequested) {
+        if (!targetOrgSlug) {
           await supabase.auth.signOut({ scope: "local" });
-          setBusy(false);
           showOrgAccessAlert({
-            title: "Network not allowed",
-            message: ip.message,
+            title: "Invalid organisation sign-in link",
+            message:
+              "This link is missing a valid organisation. Use the link from your administrator, or sign in on the general page.",
             sessionPreserved: false,
           });
           return;
         }
-      } catch (e) {
-        await supabase.auth.signOut({ scope: "local" });
-        setBusy(false);
-        showOrgAccessAlert({
-          title: "Network not allowed",
-          message:
-            e instanceof Error
-              ? e.message
-              : "Could not verify IP restriction for your organisation. Try again.",
-          sessionPreserved: false,
-        });
-        return;
+        const ok = await rejectWrongOrgSession(targetOrgSlug, true);
+        if (!ok) return;
+      } else {
+        // General /auth sign-in — do not treat membership as org-link entry.
+        clearOrgAuthEntry();
+        try {
+          const ip = await assertHomeOrgIp();
+          if (!ip.allowed) {
+            await supabase.auth.signOut({ scope: "local" });
+            showOrgAccessAlert({
+              title: "Network not allowed",
+              message: ip.message,
+              sessionPreserved: false,
+            });
+            return;
+          }
+        } catch (err) {
+          await supabase.auth.signOut({ scope: "local" });
+          showOrgAccessAlert({
+            title: "Network not allowed",
+            message:
+              err instanceof Error
+                ? err.message
+                : "Could not verify IP restriction for your organisation. Try again.",
+            sessionPreserved: false,
+          });
+          return;
+        }
       }
-    }
 
-    // MFA challenge before entering the app (AAL1 → AAL2).
-    try {
-      const mfa = await getMfaStatus();
-      if (mfa.needsChallenge) {
-        setBusy(false);
-        navigate({ to: "/mfa", search: { mode: "challenge", next: "/app" }, replace: true });
-        return;
+      // MFA challenge before entering the app (AAL1 → AAL2).
+      try {
+        const mfa = await getMfaStatus();
+        if (mfa.needsChallenge) {
+          leftAuthPage = true;
+          navigate({ to: "/mfa", search: { mode: "challenge", next: "/app" }, replace: true });
+          return;
+        }
+      } catch {
+        /* If MFA APIs unavailable (not enabled in project), continue; Gate will re-check. */
       }
-    } catch {
-      /* If MFA APIs unavailable (not enabled in project), continue; Gate will re-check. */
-    }
 
-    setBusy(false);
-    try {
-      await recordAuth({ data: { eventType: "login", summary: "Password login" } });
-    } catch {
-      /* non-blocking */
+      try {
+        await recordAuth({ data: { eventType: "login", summary: "Password login" } });
+      } catch {
+        /* non-blocking */
+      }
+      toast.success("Signed in");
+      leftAuthPage = true;
+      navigate({ to: "/app", replace: true });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Sign in failed. Try again.");
+    } finally {
+      setBusy(false);
+      // Captcha was consumed on verify — reset so Sign in is not stuck muted
+      // after wrong-org / bad password / network errors (refresh used to fix this).
+      if (!leftAuthPage) refreshCaptcha();
     }
-    toast.success("Signed in");
-    navigate({ to: "/app", replace: true });
   };
 
   const dismissOrgAlert = () => setOrgAlert(null);
@@ -563,6 +580,7 @@ function AuthPage() {
   const onSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setBusy(true);
+    let leftAuthPage = false;
     try {
       if (orgRequested) {
         toast.error(
@@ -596,9 +614,13 @@ function AuthPage() {
       }
       clearOrgAuthEntry();
       toast.success("Account created — check email if confirmation is required.");
+      leftAuthPage = true;
       navigate({ to: "/app", replace: true });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Sign up failed. Try again.");
     } finally {
       setBusy(false);
+      if (!leftAuthPage) refreshCaptcha();
     }
   };
 
@@ -687,7 +709,11 @@ function AuthPage() {
             />
           </div>
           {captchaRequired && (
-            <TurnstileWidget onToken={handleToken} onExpire={handleExpire} />
+            <TurnstileWidget
+              onToken={handleToken}
+              onExpire={handleExpire}
+              resetNonce={captchaResetNonce}
+            />
           )}
           <Button
             type="submit"
@@ -776,6 +802,7 @@ function AuthPage() {
               captchaRequired={captchaRequired}
               onToken={handleToken}
               onExpire={handleExpire}
+              captchaResetNonce={captchaResetNonce}
               submitDisabled={submitDisabled}
               busy={busy}
               sso={orgBrand?.sso ?? null}
@@ -817,7 +844,11 @@ function AuthPage() {
                 placeholder="At least 6 characters"
               />
               {captchaRequired && (
-                <TurnstileWidget onToken={handleToken} onExpire={handleExpire} />
+                <TurnstileWidget
+                  onToken={handleToken}
+                  onExpire={handleExpire}
+                  resetNonce={captchaResetNonce}
+                />
               )}
               <Button type="submit" className="h-10 w-full" disabled={submitDisabled}>
                 {busy ? "Creating…" : "Create account"}
@@ -832,6 +863,7 @@ function AuthPage() {
           captchaRequired={captchaRequired}
           onToken={handleToken}
           onExpire={handleExpire}
+          captchaResetNonce={captchaResetNonce}
           submitDisabled={submitDisabled}
           busy={busy}
           sso={orgBrand?.sso ?? null}
@@ -849,6 +881,7 @@ function SignInForm({
   captchaRequired,
   onToken,
   onExpire,
+  captchaResetNonce,
   submitDisabled,
   busy,
   sso,
@@ -859,6 +892,7 @@ function SignInForm({
   captchaRequired: boolean;
   onToken: (t: string) => void;
   onExpire: () => void;
+  captchaResetNonce: number;
   submitDisabled: boolean;
   busy: boolean;
   sso: NonNullable<AuthOrgBrand>["sso"] | null | undefined;
@@ -938,7 +972,9 @@ function SignInForm({
           Forgot password?
         </button>
       </div>
-      {captchaRequired && <TurnstileWidget onToken={onToken} onExpire={onExpire} />}
+      {captchaRequired && (
+        <TurnstileWidget onToken={onToken} onExpire={onExpire} resetNonce={captchaResetNonce} />
+      )}
       <Button type="submit" className="h-10 w-full" disabled={submitDisabled}>
         {busy ? "Signing in…" : "Sign in"}
       </Button>
