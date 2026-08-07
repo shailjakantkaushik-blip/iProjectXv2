@@ -1,19 +1,29 @@
 /**
  * Portfolio health helpers — align cockpit / segmentation with canonical
- * `projects.portfolio` and compute Schedule/Financial/Delivery/Benefit RAGs
- * (ported from PMO_ENTERPRISE_TOOL/utils/portfolio_engine.py).
+ * `projects.portfolio` and compute Schedule/Financial/Delivery/Benefit RAGs.
+ *
+ * Prefer `evaluateProjectHealth` from `@/lib/project-health-engine` for the
+ * full weighted score, early warnings, predictive health, and auto-forecast.
  */
 
 import {
   projectApprovedFunding,
-  projectBenefitsRealised,
-  projectBenefitsTarget,
-  projectForecast,
-  projectIncurred,
   type ProjectFinanceLike,
 } from "@/lib/project-finance";
 import { projectScheduleEnd, projectScheduleStart } from "@/lib/project-dates";
 import { scheduleCompletionPct } from "@/lib/schedule-progress";
+import {
+  evaluateProjectHealth,
+  type HealthEngineResult,
+} from "@/lib/project-health-engine";
+
+export {
+  evaluateProjectHealth,
+  scoreToRag,
+  HEALTH_DIMENSION_WEIGHTS,
+  HEALTH_DIMENSION_LABELS,
+} from "@/lib/project-health-engine";
+export type { HealthEngineResult, HealthEngineInput } from "@/lib/project-health-engine";
 
 export const PORTFOLIO_CATEGORIES = [
   "Business Strategic",
@@ -112,18 +122,6 @@ export function projectGovernanceChannel(
   return funding > threshold ? `Channel B (>$${Math.round(threshold / 1000)}K)` : `Channel A (<$${Math.round(threshold / 1000)}K)`;
 }
 
-function normalizeRag(v: unknown): RagTone {
-  const s = String(v || "").trim().toLowerCase();
-  if (s === "red") return "Red";
-  if (s === "amber" || s === "yellow") return "Amber";
-  return "Green";
-}
-
-function worstRag(...tones: RagTone[]): RagTone {
-  const rank = { Green: 0, Amber: 1, Red: 2 };
-  return tones.reduce((w, t) => (rank[t] > rank[w] ? t : w), "Green" as RagTone);
-}
-
 export type ProjectHealthComputed = {
   portfolio: string;
   governance_channel: string;
@@ -133,94 +131,46 @@ export type ProjectHealthComputed = {
   delivery_rag: RagTone;
   benefit_rag: RagTone;
   overall_rag: RagTone;
+  /** Weighted 0–100 score from the Project Health Engine. */
+  health_score: number;
+  engine: HealthEngineResult;
 };
 
+function dimRag(engine: HealthEngineResult, key: string, fallback: RagTone): RagTone {
+  return (engine.dimensions.find((d) => d.key === key)?.rag as RagTone) || fallback;
+}
+
 /**
- * Compute health dimensions for one project.
- * Schedule uses time-elapsed vs calendar window; financial uses FAC vs funding;
- * benefit uses realised/target; delivery uses overdue stage gates or project RAG.
+ * Compute health for one project via the weighted Health Engine.
+ * `overall_rag` is derived from the score (not manual entry).
  */
 export function computeProjectHealth(
   project: ProjectHealthLike,
   gates: StageGateHealthLike[] = [],
   nowMs: number = Date.now(),
 ): ProjectHealthComputed {
+  const engine = evaluateProjectHealth({
+    project,
+    gates,
+    nowMs,
+  });
+
   const start = projectScheduleStart(project);
   const end = projectScheduleEnd(project);
   const startMs = start ? new Date(start).getTime() : NaN;
   const endMs = end ? new Date(end).getTime() : NaN;
   const progress = scheduleCompletionPct(startMs, endMs, nowMs);
 
-  // Schedule: progress vs elapsed fraction of the window
-  let schedule_rag: RagTone = "Green";
-  if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs) {
-    const duration = endMs - startMs;
-    const elapsed = Math.max(0, nowMs - startMs);
-    const expected = Math.min(1, elapsed / duration);
-    const actual = progress / 100;
-    const variance = actual - expected;
-    if (variance < -0.1) schedule_rag = "Red";
-    else if (variance < -0.05) schedule_rag = "Amber";
-  }
-
-  const approved = projectApprovedFunding(project);
-  const forecast = projectForecast(project);
-  let financial_rag: RagTone = "Green";
-  if (approved > 0) {
-    const finVar = (forecast - approved) / approved;
-    if (finVar > 0.1) financial_rag = "Red";
-    else if (finVar > 0.05) financial_rag = "Amber";
-  } else if (forecast > 0 || projectIncurred(project) > 0) {
-    financial_rag = "Amber";
-  }
-
-  const benT = projectBenefitsTarget(project);
-  const benR = projectBenefitsRealised(project);
-  let benefit_rag: RagTone = "Green";
-  if (benT > 0) {
-    const rate = benR / benT;
-    if (rate >= 0.7) benefit_rag = "Green";
-    else if (rate >= 0.3) benefit_rag = "Amber";
-    else benefit_rag = "Red";
-  } else if (benR > 0) {
-    benefit_rag = "Green";
-  }
-
-  const today = new Date(nowMs);
-  today.setHours(0, 0, 0, 0);
-  let maxDaysLate = 0;
-  for (const g of gates) {
-    if (!g.planned_date) continue;
-    const status = String(g.status || "").toLowerCase();
-    if (status === "approved" || status === "complete" || status === "completed" || status === "passed") {
-      continue;
-    }
-    const planned = new Date(g.planned_date);
-    if (Number.isNaN(planned.getTime())) continue;
-    planned.setHours(0, 0, 0, 0);
-    if (planned >= today) continue;
-    const days = Math.round((today.getTime() - planned.getTime()) / 86_400_000);
-    if (days > maxDaysLate) maxDaysLate = days;
-  }
-  let delivery_rag: RagTone;
-  if (gates.length > 0) {
-    if (maxDaysLate < 1) delivery_rag = "Green";
-    else if (maxDaysLate < 15) delivery_rag = "Amber";
-    else delivery_rag = "Red";
-  } else {
-    delivery_rag = normalizeRag(project.rag);
-  }
-
-  const overall_rag = worstRag(schedule_rag, financial_rag, delivery_rag, benefit_rag);
-
   return {
     portfolio: projectPortfolio(project),
     governance_channel: projectGovernanceChannel(project),
-    progress_percent: progress,
-    schedule_rag,
-    financial_rag,
-    delivery_rag,
-    benefit_rag,
-    overall_rag,
+    progress_percent: Math.round(engine.workPct * 100) || progress,
+    schedule_rag: dimRag(engine, "schedule", "Green"),
+    financial_rag: dimRag(engine, "financial", "Green"),
+    delivery_rag: dimRag(engine, "delivery", "Green"),
+    benefit_rag: dimRag(engine, "benefits", "Green"),
+    overall_rag: engine.rag,
+    health_score: engine.score,
+    engine,
   };
 }

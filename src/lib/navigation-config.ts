@@ -33,6 +33,7 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
     items: [
       { to: "/app/", label: "Home", icon: "Home", exact: true },
       { to: "/app/my-work", label: "My Work", icon: "Briefcase" },
+      { to: "/app/portfolio-pulse", label: "Portfolio Pulse", icon: "Activity" },
       { to: "/app/executive-cockpit", label: "Executive Cockpit", icon: "Rocket" },
       { to: "/app/executive", label: "Executive Dashboard", icon: "LayoutDashboard" },
       { to: "/app/ai-assist", label: "In-house AI", icon: "Sparkles" },

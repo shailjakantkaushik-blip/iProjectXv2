@@ -64,6 +64,7 @@ import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
 import { entryHours } from "@/lib/resource-allocation-analytics";
 import { ProjectInfographicWorkItems } from "@/components/project-infographic-work-items";
+import { ProjectHealthEnginePanel } from "@/components/project-health-engine-panel";
 
 export const Route = createFileRoute("/_authenticated/app/project-infographic")({
   validateSearch: (s: Record<string, unknown>) => ({ pid: (s.pid as string) || "" }),
@@ -1232,6 +1233,15 @@ function InfographicPage() {
             </div>
           </div>
         </SectionFrame>
+
+        <ProjectHealthEnginePanel
+          project={project}
+          gates={(gates as any[]).filter((g) => g.project_id === project.id)}
+          risks={risks as any[]}
+          dependencies={deps as any[]}
+          monthly={monthly as any[]}
+          allocations={projectAllocations as any[]}
+        />
 
         {/* Stage Gates & Phase $ header */}
         <SectionFrame>

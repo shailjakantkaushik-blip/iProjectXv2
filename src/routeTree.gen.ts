@@ -55,6 +55,7 @@ import { Route as AuthenticatedAppPageDownloadsRouteImport } from './routes/_aut
 import { Route as AuthenticatedAppPermissionsRouteImport } from './routes/_authenticated/app.permissions'
 import { Route as AuthenticatedAppPhaseFinancialsRouteImport } from './routes/_authenticated/app.phase-financials'
 import { Route as AuthenticatedAppPortfolioMovementsRouteImport } from './routes/_authenticated/app.portfolio-movements'
+import { Route as AuthenticatedAppPortfolioPulseRouteImport } from './routes/_authenticated/app.portfolio-pulse'
 import { Route as AuthenticatedAppPortfolioSegmentationRouteImport } from './routes/_authenticated/app.portfolio-segmentation'
 import { Route as AuthenticatedAppPrioritisationRouteImport } from './routes/_authenticated/app.prioritisation'
 import { Route as AuthenticatedAppProgramsRouteImport } from './routes/_authenticated/app.programs'
@@ -359,6 +360,12 @@ const AuthenticatedAppPortfolioMovementsRoute =
   AuthenticatedAppPortfolioMovementsRouteImport.update({
     id: '/portfolio-movements',
     path: '/portfolio-movements',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
+const AuthenticatedAppPortfolioPulseRoute =
+  AuthenticatedAppPortfolioPulseRouteImport.update({
+    id: '/portfolio-pulse',
+    path: '/portfolio-pulse',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
 const AuthenticatedAppPortfolioSegmentationRoute =
@@ -709,6 +716,7 @@ export interface FileRoutesByFullPath {
   '/app/permissions': typeof AuthenticatedAppPermissionsRoute
   '/app/phase-financials': typeof AuthenticatedAppPhaseFinancialsRoute
   '/app/portfolio-movements': typeof AuthenticatedAppPortfolioMovementsRoute
+  '/app/portfolio-pulse': typeof AuthenticatedAppPortfolioPulseRoute
   '/app/portfolio-segmentation': typeof AuthenticatedAppPortfolioSegmentationRoute
   '/app/prioritisation': typeof AuthenticatedAppPrioritisationRoute
   '/app/programs': typeof AuthenticatedAppProgramsRoute
@@ -806,6 +814,7 @@ export interface FileRoutesByTo {
   '/app/permissions': typeof AuthenticatedAppPermissionsRoute
   '/app/phase-financials': typeof AuthenticatedAppPhaseFinancialsRoute
   '/app/portfolio-movements': typeof AuthenticatedAppPortfolioMovementsRoute
+  '/app/portfolio-pulse': typeof AuthenticatedAppPortfolioPulseRoute
   '/app/portfolio-segmentation': typeof AuthenticatedAppPortfolioSegmentationRoute
   '/app/prioritisation': typeof AuthenticatedAppPrioritisationRoute
   '/app/programs': typeof AuthenticatedAppProgramsRoute
@@ -905,6 +914,7 @@ export interface FileRoutesById {
   '/_authenticated/app/permissions': typeof AuthenticatedAppPermissionsRoute
   '/_authenticated/app/phase-financials': typeof AuthenticatedAppPhaseFinancialsRoute
   '/_authenticated/app/portfolio-movements': typeof AuthenticatedAppPortfolioMovementsRoute
+  '/_authenticated/app/portfolio-pulse': typeof AuthenticatedAppPortfolioPulseRoute
   '/_authenticated/app/portfolio-segmentation': typeof AuthenticatedAppPortfolioSegmentationRoute
   '/_authenticated/app/prioritisation': typeof AuthenticatedAppPrioritisationRoute
   '/_authenticated/app/programs': typeof AuthenticatedAppProgramsRoute
@@ -1005,6 +1015,7 @@ export interface FileRouteTypes {
     | '/app/permissions'
     | '/app/phase-financials'
     | '/app/portfolio-movements'
+    | '/app/portfolio-pulse'
     | '/app/portfolio-segmentation'
     | '/app/prioritisation'
     | '/app/programs'
@@ -1102,6 +1113,7 @@ export interface FileRouteTypes {
     | '/app/permissions'
     | '/app/phase-financials'
     | '/app/portfolio-movements'
+    | '/app/portfolio-pulse'
     | '/app/portfolio-segmentation'
     | '/app/prioritisation'
     | '/app/programs'
@@ -1200,6 +1212,7 @@ export interface FileRouteTypes {
     | '/_authenticated/app/permissions'
     | '/_authenticated/app/phase-financials'
     | '/_authenticated/app/portfolio-movements'
+    | '/_authenticated/app/portfolio-pulse'
     | '/_authenticated/app/portfolio-segmentation'
     | '/_authenticated/app/prioritisation'
     | '/_authenticated/app/programs'
@@ -1589,6 +1602,13 @@ declare module '@tanstack/react-router' {
       path: '/portfolio-movements'
       fullPath: '/app/portfolio-movements'
       preLoaderRoute: typeof AuthenticatedAppPortfolioMovementsRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/app/portfolio-pulse': {
+      id: '/_authenticated/app/portfolio-pulse'
+      path: '/portfolio-pulse'
+      fullPath: '/app/portfolio-pulse'
+      preLoaderRoute: typeof AuthenticatedAppPortfolioPulseRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
     '/_authenticated/app/portfolio-segmentation': {
@@ -2004,6 +2024,7 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppPermissionsRoute: typeof AuthenticatedAppPermissionsRoute
   AuthenticatedAppPhaseFinancialsRoute: typeof AuthenticatedAppPhaseFinancialsRoute
   AuthenticatedAppPortfolioMovementsRoute: typeof AuthenticatedAppPortfolioMovementsRoute
+  AuthenticatedAppPortfolioPulseRoute: typeof AuthenticatedAppPortfolioPulseRoute
   AuthenticatedAppPortfolioSegmentationRoute: typeof AuthenticatedAppPortfolioSegmentationRoute
   AuthenticatedAppPrioritisationRoute: typeof AuthenticatedAppPrioritisationRoute
   AuthenticatedAppProgramsRoute: typeof AuthenticatedAppProgramsRoute
@@ -2071,6 +2092,7 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppPhaseFinancialsRoute: AuthenticatedAppPhaseFinancialsRoute,
   AuthenticatedAppPortfolioMovementsRoute:
     AuthenticatedAppPortfolioMovementsRoute,
+  AuthenticatedAppPortfolioPulseRoute: AuthenticatedAppPortfolioPulseRoute,
   AuthenticatedAppPortfolioSegmentationRoute:
     AuthenticatedAppPortfolioSegmentationRoute,
   AuthenticatedAppPrioritisationRoute: AuthenticatedAppPrioritisationRoute,

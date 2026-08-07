@@ -84,6 +84,16 @@ export const LIVE_SYNC_ROUTE_TABLES: Record<string, readonly string[]> = {
     "risks",
     "milestones",
   ],
+  "/app/portfolio-pulse": [
+    ...LIVE_SYNC_CORE_TABLES,
+    "stage_gates",
+    "work_items",
+    "risks",
+    "dependencies",
+    "decisions",
+    "resource_allocations",
+    "financials_monthly",
+  ],
   "/app/executive-cockpit": [
     ...LIVE_SYNC_CORE_TABLES,
     "stage_gates",
