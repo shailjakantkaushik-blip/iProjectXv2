@@ -43,7 +43,12 @@ import {
 } from "@/lib/project-streams";
 import { darkenHex, scheduleCompletionPct } from "@/lib/schedule-progress";
 import { computeTimelineBounds } from "@/components/portfolio-timeline";
-import { FyPicker, ProjectPicker } from "@/components/portfolio-filters";
+import {
+  ExecutivePortfolioFilters,
+  applyExecutivePortfolioFilters,
+  emptyExecutiveFilters,
+  type ExecutivePortfolioFilterState,
+} from "@/components/portfolio-filters";
 import { unwrapList } from "@/lib/query";
 import { listPortfolioProjects } from "@/lib/portfolio.functions";
 import { MAX_PAGE_SIZE } from "@/lib/portfolio-paging";
@@ -92,14 +97,8 @@ function ExecutiveDashboard() {
   const { organization } = useAuth();
   const qc = useQueryClient();
   const listProjects = useServerFn(listPortfolioProjects);
-  const [portfolio, setPortfolio] = useState("All");
-  const [program, setProgram] = useState("All");
-  const [sponsor, setSponsor] = useState("All");
-  const [priority, setPriority] = useState("All");
-  const [status, setStatus] = useState("All");
-  /** Empty = all fiscal years; otherwise match projects that touch any selected FY. */
-  const [fySelected, setFySelected] = useState<string[]>([]);
-  const [projectIds, setProjectIds] = useState<string[]>([]);
+  const [filters, setFilters] = useState<ExecutivePortfolioFilterState>(emptyExecutiveFilters);
+  const { fySelected } = filters;
   type TimelineView = "Portfolio" | "Program" | "Health" | "Priority" | "Theme" | "Sponsor" | "Status";
   const [timelineView, setTimelineView] = useState<TimelineView>("Program");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -254,36 +253,11 @@ function ExecutiveDashboard() {
   };
 
   const fyStartMonth = organization?.fy_start_month || 4;
-  const opts = (col: string) => Array.from(new Set(projects.map((p: any) => p[col]).filter(Boolean))).sort();
 
-  const fyOptions = useMemo(() => {
-    const s = new Set<string>();
-    projects.forEach((p: any) => {
-      const a = fyOf(projectScheduleStart(p), fyStartMonth);
-      const b = fyOf(projectScheduleEnd(p), fyStartMonth);
-      if (a) s.add(a); if (b) s.add(b);
-    });
-    return Array.from(s).sort();
-  }, [projects, fyStartMonth]);
-
-  const filtered = useMemo(() => {
-    const idSet = projectIds.length ? new Set(projectIds) : null;
-    const fySet = fySelected.length ? new Set(fySelected) : null;
-    return projects.filter((p: any) => {
-      if (idSet && !idSet.has(p.id)) return false;
-      if (portfolio !== "All" && (p.portfolio || "Unassigned") !== portfolio) return false;
-      if (program !== "All" && p.program !== program) return false;
-      if (sponsor !== "All" && p.sponsor !== sponsor) return false;
-      if (priority !== "All" && p.priority !== priority) return false;
-      if (status !== "All" && p.status !== status) return false;
-      if (fySet) {
-        const a = fyOf(projectScheduleStart(p), fyStartMonth);
-        const b = fyOf(projectScheduleEnd(p), fyStartMonth);
-        if ((!a || !fySet.has(a)) && (!b || !fySet.has(b))) return false;
-      }
-      return true;
-    });
-  }, [projects, portfolio, program, sponsor, priority, status, fySelected, fyStartMonth, projectIds]);
+  const filtered = useMemo(
+    () => applyExecutivePortfolioFilters(projects, filters, fyStartMonth),
+    [projects, filters, fyStartMonth],
+  );
 
   const filteredIds = useMemo(
     () => new Set(filtered.map((p: any) => p.id as string)),
@@ -803,66 +777,12 @@ function ExecutiveDashboard() {
         </div>
       )}
       <SectionFrame className="section-frame--filters" exportable={false}>
-        <div className="mb-3 page-heading text-base font-semibold">Portfolio filters</div>
-        <div className="relative z-30 flex flex-wrap items-center gap-2">
-          <ProjectPicker
-            projects={projects}
-            selected={projectIds}
-            onChange={setProjectIds}
-          />
-          {[
-            [
-              "Portfolio",
-              portfolio,
-              setPortfolio,
-              Array.from(
-                new Set(projects.map((p: any) => p.portfolio || "Unassigned").filter(Boolean)),
-              ).sort(),
-            ],
-            ["Program", program, setProgram, opts("program")],
-            ["Sponsor", sponsor, setSponsor, opts("sponsor")],
-            ["Priority", priority, setPriority, opts("priority")],
-            ["Status", status, setStatus, opts("status")],
-          ].map(([label, val, setter, options]: any) => (
-            <select
-              key={label}
-              value={val}
-              onChange={(e) => setter(e.target.value)}
-              className="ui-btn rounded-md border border-border bg-surface px-2 py-1 text-xs"
-            >
-              <option value="All">{label}: All</option>
-              {options.map((o: string) => (
-                <option key={o} value={o}>
-                  {label}: {o}
-                </option>
-              ))}
-            </select>
-          ))}
-          <FyPicker options={fyOptions} selected={fySelected} onChange={setFySelected} />
-          {(projectIds.length > 0 ||
-            portfolio !== "All" ||
-            program !== "All" ||
-            sponsor !== "All" ||
-            priority !== "All" ||
-            status !== "All" ||
-            fySelected.length > 0) && (
-            <button
-              type="button"
-              className="ui-btn rounded-md border border-border bg-surface px-2 py-1 text-xs hover:bg-muted"
-              onClick={() => {
-                setProjectIds([]);
-                setPortfolio("All");
-                setProgram("All");
-                setSponsor("All");
-                setPriority("All");
-                setStatus("All");
-                setFySelected([]);
-              }}
-            >
-              Reset
-            </button>
-          )}
-        </div>
+        <ExecutivePortfolioFilters
+          projects={projects}
+          value={filters}
+          onChange={setFilters}
+          fyStartMonth={fyStartMonth}
+        />
       </SectionFrame>
 
       {/* Key Metrics */}
