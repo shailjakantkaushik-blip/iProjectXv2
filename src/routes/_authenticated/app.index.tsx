@@ -15,11 +15,13 @@ import {
   Menu,
   Eye,
   Rocket,
+  Activity,
   type LucideIcon,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { CartoonWelcomeBanner } from "@/components/cartoon-mascots";
+import { PortfolioPulsePanel } from "@/components/portfolio-pulse-panel";
 import { useAuth, type AppRole } from "@/lib/auth-context";
 import { canActOnDecision } from "@/lib/decision-approval";
 import { useAllowedPages } from "@/lib/permissions";
@@ -59,6 +61,12 @@ const ALL: Record<string, Shortcut> = {
     label: "Executive Dashboard",
     desc: "Portfolio cockpit — KPIs, RAG, ROI, timelines",
     icon: LayoutDashboard,
+  },
+  pulse: {
+    to: "/app/portfolio-pulse",
+    label: "Portfolio Pulse",
+    desc: "Health by area + what changed this week",
+    icon: Activity,
   },
   cockpit: {
     to: "/app/executive-cockpit",
@@ -124,7 +132,17 @@ const ALL: Record<string, Shortcut> = {
 
 function shortcutsForRoles(roles: AppRole[]): Shortcut[] {
   if (roles.includes("executive")) {
-    return [ALL.cockpit, ALL.executive, ALL.risks, ALL.financials, ALL.decisions, ALL.myWork, ALL.ai, ALL.projects];
+    return [
+      ALL.pulse,
+      ALL.cockpit,
+      ALL.executive,
+      ALL.risks,
+      ALL.financials,
+      ALL.decisions,
+      ALL.myWork,
+      ALL.ai,
+      ALL.projects,
+    ];
   }
   if (roles.includes("admin") || roles.includes("org_admin")) {
     return [
@@ -255,6 +273,8 @@ function Home() {
           </>
         )}
       </SectionFrame>
+
+      {canView("/app/portfolio-pulse") ? <PortfolioPulsePanel compact /> : null}
 
       <SectionFrame>
         <SectionTitle>Jump to · tailored for your role</SectionTitle>

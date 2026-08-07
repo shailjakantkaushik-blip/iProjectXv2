@@ -66,6 +66,7 @@ export type HealthRiskLike = {
   priority?: string | null;
   rating?: string | null;
   residual_rating?: string | null;
+  severity?: number | null;
   probability?: number | null;
   impact?: number | null;
 };
@@ -86,7 +87,9 @@ export type HealthChangeRequestLike = {
 
 export type HealthAllocationLike = {
   allocation_pct?: number | null;
+  allocation_percent?: number | null;
   hours_per_week?: number | null;
+  allocated_hours?: number | null;
   fte?: number | null;
 };
 
@@ -198,6 +201,7 @@ function isOpenRisk(r: HealthRiskLike): boolean {
 function isCriticalRisk(r: HealthRiskLike): boolean {
   const p = String(r.priority || r.rating || r.residual_rating || "").toLowerCase();
   if (p.includes("critical") || p.includes("very high") || p === "red") return true;
+  if (num(r.severity) >= 12) return true;
   const score = num(r.probability) * num(r.impact);
   return score >= 15;
 }
@@ -320,8 +324,18 @@ function scoreResource(
 ): { score: number; detail: string } {
   const util =
     allocations.length > 0
-      ? allocations.reduce((s, a) => s + Math.max(num(a.allocation_pct), num(a.fte) * 100, 0), 0) /
-        Math.max(1, allocations.length)
+      ? allocations.reduce(
+          (s, a) =>
+            s +
+            Math.max(
+              num(a.allocation_pct),
+              num(a.allocation_percent),
+              num(a.fte) * 100,
+              num(a.allocated_hours) > 0 ? Math.min(150, (num(a.allocated_hours) / 40) * 100) : 0,
+              0,
+            ),
+          0,
+        ) / Math.max(1, allocations.length)
       : ftePlan > 0
         ? (fteActual / ftePlan) * 100
         : 0;
@@ -693,8 +707,18 @@ export function evaluateProjectHealth(input: HealthEngineInput): HealthEngineRes
 
   const utilPct =
     allocations.length > 0
-      ? allocations.reduce((s, a) => s + Math.max(num(a.allocation_pct), num(a.fte) * 100, 0), 0) /
-        Math.max(1, allocations.length)
+      ? allocations.reduce(
+          (s, a) =>
+            s +
+            Math.max(
+              num(a.allocation_pct),
+              num(a.allocation_percent),
+              num(a.fte) * 100,
+              num(a.allocated_hours) > 0 ? Math.min(150, (num(a.allocated_hours) / 40) * 100) : 0,
+              0,
+            ),
+          0,
+        ) / Math.max(1, allocations.length)
       : ftePlan > 0
         ? (fteActual / ftePlan) * 100
         : 0;
