@@ -908,12 +908,14 @@ function SignInForm({
     }
   });
 
-  const ssoReady =
-    !!sso?.enabled && (!!sso.provider_id || (sso.domains?.length ?? 0) > 0);
+  // Show whenever SSO is toggled on for the org. Provider ID / domains are
+  // validated on click — hiding the button when those were empty made enable
+  // look broken after save.
+  const ssoEnabled = !!sso?.enabled;
 
   return (
     <form onSubmit={onSignIn} className="space-y-4 pt-4">
-      {ssoReady && (
+      {ssoEnabled && (
         <div className="space-y-3">
           <Button
             type="button"
