@@ -10,17 +10,29 @@ export type AssistDomain =
   | "benefits";
 
 const DOMAIN_PAGES: Record<AssistDomain, string[]> = {
-  projects: ["/app/projects", "/app/executive", "/app/executive-cockpit", "/app/my-work"],
+  projects: [
+    "/app/projects",
+    "/app/executive",
+    "/app/executive-cockpit",
+    "/app/executive-intelligence",
+    "/app/my-work",
+  ],
   risks: ["/app/risks", "/app/risk-roadmap"],
-  decisions: ["/app/decisions", "/app/my-work"],
-  actions: ["/app/actions", "/app/my-work"],
+  decisions: ["/app/decisions", "/app/my-work", "/app/executive-intelligence"],
+  actions: ["/app/actions", "/app/my-work", "/app/executive-intelligence"],
   budget: [
     "/app/financials",
     "/app/fy-allocation",
     "/app/phase-financials",
     "/app/cost-vs-benefit",
+    "/app/executive-intelligence",
   ],
-  benefits: ["/app/benefits", "/app/cost-vs-benefit", "/app/financials"],
+  benefits: [
+    "/app/benefits",
+    "/app/cost-vs-benefit",
+    "/app/financials",
+    "/app/executive-intelligence",
+  ],
 };
 
 const TOPIC_DOMAIN: Partial<Record<AssistTopic, AssistDomain>> = {
