@@ -7913,13 +7913,13 @@ BEGIN
     SELECT
       COUNT(*)::int AS project_count,
       COUNT(*) FILTER (
-        WHERE COALESCE(status, '') NOT ILIKE '%closed%'
-          AND COALESCE(status, '') NOT ILIKE '%complete%'
-          AND COALESCE(status, '') NOT ILIKE '%cancelled%'
+        WHERE COALESCE(status::text, '') NOT ILIKE '%closed%'
+          AND COALESCE(status::text, '') NOT ILIKE '%complete%'
+          AND COALESCE(status::text, '') NOT ILIKE '%cancelled%'
       )::int AS active_count,
-      COUNT(*) FILTER (WHERE lower(COALESCE(rag, '')) IN ('green', 'g'))::int AS rag_green,
-      COUNT(*) FILTER (WHERE lower(COALESCE(rag, '')) IN ('amber', 'yellow', 'a'))::int AS rag_amber,
-      COUNT(*) FILTER (WHERE lower(COALESCE(rag, '')) IN ('red', 'r'))::int AS rag_red,
+      COUNT(*) FILTER (WHERE lower(COALESCE(rag::text, '')) IN ('green', 'g'))::int AS rag_green,
+      COUNT(*) FILTER (WHERE lower(COALESCE(rag::text, '')) IN ('amber', 'yellow', 'a'))::int AS rag_amber,
+      COUNT(*) FILTER (WHERE lower(COALESCE(rag::text, '')) IN ('red', 'r'))::int AS rag_red,
       COALESCE(SUM(
         CASE
           WHEN COALESCE(budget, 0) > 0 THEN budget
