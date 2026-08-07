@@ -47,6 +47,16 @@ import { FyPicker, ProjectPicker } from "@/components/portfolio-filters";
 import { unwrapList } from "@/lib/query";
 import { listPortfolioProjects } from "@/lib/portfolio.functions";
 import { MAX_PAGE_SIZE } from "@/lib/portfolio-paging";
+import { ExplainThis } from "@/components/explain-this";
+import {
+  explainActualSpend,
+  explainBudget,
+  explainForecast,
+  explainGeneric,
+  explainRemaining,
+  type MetricExplanation,
+} from "@/lib/explain-metric";
+import type { MonthlyFinanceRow } from "@/lib/finance-lifecycle";
 import {
   FINANCIALS_MONTHLY_SELECT,
   FINANCIALS_MONTHLY_SELECT_MIN,
@@ -182,11 +192,37 @@ function ExecutiveDashboard() {
     enabled: !!organization,
   });
 
+  const milestonesQ = useQuery({
+    queryKey: ["milestones", organization?.id, "explain"],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("milestones")
+          .select("id,project_id,name,planned_date,actual_date,status")
+      ).data ?? [],
+    enabled: !!organization,
+    staleTime: 60_000,
+  });
+  const otherCostsQ = useQuery({
+    queryKey: ["opex_other_costs", organization?.id, "explain"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("opex_other_costs" as any)
+        .select("id,project_id,amount,category,vendor,description,period_month,cost_date");
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
+    enabled: !!organization,
+    staleTime: 60_000,
+  });
+
   const projects = projectsQ.data ?? [];
   const gates = gatesQ.data ?? [];
   const streams = streamsQ.data ?? [];
   const gateDefs = gateDefsQ.data ?? [];
   const monthly = monthlyQ.data ?? [];
+  const milestones = milestonesQ.data ?? [];
+  const otherCosts = otherCostsQ.data ?? [];
   // Cold load only — keep the dashboard visible while background refetch runs.
   // Projects + streams are required for the shell; gates/monthly degrade softly.
   const showColdLoad =
@@ -303,6 +339,60 @@ function ExecutiveDashboard() {
       return { data: series, color };
     };
 
+    const mRows = monthly.filter((m: any) => filteredIds.has(m.project_id)) as MonthlyFinanceRow[];
+    const ms = milestones.filter((m: any) => filteredIds.has(m.project_id));
+    const gs = gates.filter((g: any) => filteredIds.has(g.project_id));
+    const oc = otherCosts.filter((c: any) => filteredIds.has(c.project_id));
+
+    const explainByLabel: Record<string, MetricExplanation> = {
+      "Approved Funding": explainBudget({
+        label: "Approved Funding",
+        budget: approvedFunding,
+        forecast: totalForecast,
+        projects: filtered,
+      }),
+      Incurred: explainActualSpend({
+        label: "Incurred",
+        actual: totalIncurred,
+        monthly: mRows,
+        otherCosts: oc,
+        projects: filtered,
+      }),
+      Forecast: explainForecast({
+        label: "Forecast",
+        currentForecast: totalForecast,
+        monthly: mRows,
+        milestones: ms,
+        gates: gs,
+        otherCosts: oc,
+        projects: filtered,
+      }),
+      Remaining: explainRemaining({
+        remaining,
+        approved: approvedFunding,
+        incurred: totalIncurred,
+      }),
+      Overdue: explainGeneric({
+        label: "Overdue",
+        value: overdue,
+        headline: `${overdue} project${overdue === 1 ? "" : "s"} past planned end without completion`,
+        bullets: [
+          `${active} active · ${completed} completed`,
+          "Overdue uses planned end date vs today for incomplete work",
+        ],
+      }),
+      "RAG Score": explainGeneric({
+        label: "RAG Score",
+        value: `${ragScore}%`,
+        headline: `${ragScore}% of filtered projects are Green`,
+        bullets: [
+          `Green ${filtered.filter((p: any) => p.rag === "Green").length}`,
+          `Amber ${filtered.filter((p: any) => p.rag === "Amber").length}`,
+          `Red ${filtered.filter((p: any) => p.rag === "Red").length}`,
+        ],
+      }),
+    };
+
     return {
       approvedFunding,
       totalIncurred,
@@ -313,22 +403,40 @@ function ExecutiveDashboard() {
           label: "Approved Funding",
           value: money(approvedFunding),
           spark: buildSpark("capex_planned", "#1d4ed8"),
+          explain: explainByLabel["Approved Funding"],
         },
         {
           label: "Incurred",
           value: money(totalIncurred),
           spark: buildSpark("capex_actual", "#15803d"),
+          explain: explainByLabel.Incurred,
         },
         {
           label: "Forecast",
           value: money(totalForecast),
           spark: buildSpark("capex_forecast", "#f59e0b"),
+          explain: explainByLabel.Forecast,
         },
-        { label: "Remaining", value: money(remaining), spark: buildSpark(null, "#8b5cf6") },
+        {
+          label: "Remaining",
+          value: money(remaining),
+          spark: buildSpark(null, "#8b5cf6"),
+          explain: explainByLabel.Remaining,
+        },
         { label: "Active", value: active, spark: buildSpark(null, "#06b6d4") },
         { label: "Completed", value: completed, spark: buildSpark(null, "#15803d") },
-        { label: "Overdue", value: overdue, spark: buildSpark(null, "#dc2626") },
-        { label: "RAG Score", value: `${ragScore}%`, spark: buildSpark(null, "#8b5cf6") },
+        {
+          label: "Overdue",
+          value: overdue,
+          spark: buildSpark(null, "#dc2626"),
+          explain: explainByLabel.Overdue,
+        },
+        {
+          label: "RAG Score",
+          value: `${ragScore}%`,
+          spark: buildSpark(null, "#8b5cf6"),
+          explain: explainByLabel["RAG Score"],
+        },
       ],
       ragData: ["Green", "Amber", "Red"]
         .map((r) => ({
@@ -343,7 +451,7 @@ function ExecutiveDashboard() {
         { name: "Remaining", value: remaining },
       ],
     };
-  }, [filtered, filteredIds, monthly]);
+  }, [filtered, filteredIds, monthly, milestones, otherCosts, gates]);
 
   // Monthly Spend ($M) — Actual vs Forecast, bucketed by year-month (last 12)
   const monthlySpend = useMemo(() => {
@@ -763,7 +871,12 @@ function ExecutiveDashboard() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
           {kpis.map((k) => (
             <div key={k.label} className="rounded-md border border-border bg-surface p-3">
-              <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{k.label}</div>
+              <div className="flex items-start justify-between gap-1">
+                <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  {k.label}
+                </div>
+                {"explain" in k && k.explain ? <ExplainThis explanation={k.explain} size="xs" /> : null}
+              </div>
               <div className="mt-0.5 text-lg font-bold text-foreground">{k.value}</div>
               <div className="mt-1 h-10">
                 <ResponsiveContainer>

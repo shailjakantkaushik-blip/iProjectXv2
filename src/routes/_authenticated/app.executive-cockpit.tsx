@@ -33,6 +33,9 @@ import {
 } from "@/lib/project-health";
 import { getPortfolioKpis, listPortfolioProjects } from "@/lib/portfolio.functions";
 import { MAX_PAGE_SIZE } from "@/lib/portfolio-paging";
+import { FINANCIALS_MONTHLY_SELECT } from "@/lib/query-selects";
+import { explainPortfolioSnapshot } from "@/lib/explain-metric";
+import type { MonthlyFinanceRow } from "@/lib/finance-lifecycle";
 
 export const Route = createFileRoute("/_authenticated/app/executive-cockpit")({
   head: () => ({
@@ -144,6 +147,40 @@ function ExecutiveCockpit() {
           .select("id,fy,budget,forecast,capex,opex,benefits,allocated_amount,forecast_amount")
       ).data ?? [],
     enabled: !!orgId,
+  });
+  const { data: monthly = [] } = useQuery({
+    queryKey: ["financials_monthly", orgId, "explain"],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("financials_monthly")
+          .select(FINANCIALS_MONTHLY_SELECT as "*")
+      ).data ?? [],
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+  const { data: milestones = [] } = useQuery({
+    queryKey: ["milestones", orgId, "explain"],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("milestones")
+          .select("id,project_id,name,planned_date,actual_date,status")
+      ).data ?? [],
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+  const { data: otherCosts = [] } = useQuery({
+    queryKey: ["opex_other_costs", orgId, "explain"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("opex_other_costs" as any)
+        .select("id,project_id,amount,category,vendor,description,period_month,cost_date");
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
+    enabled: !!orgId,
+    staleTime: 60_000,
   });
   const { data: profiles = [] } = useQuery({
     queryKey: ["profiles", orgId],
@@ -327,6 +364,18 @@ function ExecutiveCockpit() {
   const benefitsForecastK = kpis?.from_cache ? kpis.benefits_target : benefitsForecast;
   const benefitsRealisedK = kpis?.from_cache ? kpis.benefits_realised : benefitsRealised;
 
+  const explains = useMemo(
+    () =>
+      explainPortfolioSnapshot({
+        projects,
+        monthly: monthly as MonthlyFinanceRow[],
+        milestones: milestones as any[],
+        gates: gates as any[],
+        otherCosts: otherCosts as any[],
+      }),
+    [projects, monthly, milestones, gates, otherCosts],
+  );
+
   // ---------- Budget vs Forecast by FY ----------
   const fyData = useMemo(() => {
     const map = new Map<string, { fy: string; budget: number; forecast: number }>();
@@ -392,13 +441,33 @@ function ExecutiveCockpit() {
       <SectionFrame exportName="cockpit-financial">
         <SectionTitle>Financial</SectionTitle>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
-          <KpiCard label="Total Portfolio Value" value={money(totalValue)} />
+          <KpiCard
+            label="Total Portfolio Value"
+            value={money(totalValue)}
+            explain={explains.budget}
+          />
           <KpiCard label="Total CAPEX Budget" value={money(capexApproved)} />
           <KpiCard label="Total OPEX Budget" value={money(opexApproved)} />
-          <KpiCard label="Approved Funding" value={money(approvedFundingK)} />
-          <KpiCard label="Actual Spend to Date" value={money(actualSpendK)} />
-          <KpiCard label="Remaining Portfolio Budget" value={money(remainingK)} />
-          <KpiCard label="Forecast at Completion" value={money(facK)} />
+          <KpiCard
+            label="Approved Funding"
+            value={money(approvedFundingK)}
+            explain={explains.budget}
+          />
+          <KpiCard
+            label="Actual Spend to Date"
+            value={money(actualSpendK)}
+            explain={explains.actual}
+          />
+          <KpiCard
+            label="Remaining Portfolio Budget"
+            value={money(remainingK)}
+            explain={explains.remaining}
+          />
+          <KpiCard
+            label="Forecast at Completion"
+            value={money(facK)}
+            explain={explains.forecast}
+          />
         </div>
       </SectionFrame>
 
@@ -419,8 +488,17 @@ function ExecutiveCockpit() {
       <SectionFrame exportName="cockpit-benefits-governance">
         <SectionTitle>Benefits & Governance</SectionTitle>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-          <KpiCard label="Benefits Forecast" value={money(benefitsForecastK)} />
-          <KpiCard label="Benefits Realised" value={money(benefitsRealisedK)} accent="#22c55e" />
+          <KpiCard
+            label="Benefits Forecast"
+            value={money(benefitsForecastK)}
+            explain={explains.benefits}
+          />
+          <KpiCard
+            label="Benefits Realised"
+            value={money(benefitsRealisedK)}
+            accent="#22c55e"
+            explain={explains.benefits}
+          />
           <KpiCard label="Decisions Awaiting Approval" value={decisionsPending} accent="#3b82f6" />
           <KpiCard
             label="Overdue Actions"

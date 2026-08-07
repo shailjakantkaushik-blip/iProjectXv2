@@ -58,6 +58,13 @@ import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-tabl
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
 import { OpexOtherCostsPanel } from "@/components/opex-other-costs-panel";
+import {
+  explainActualSpend,
+  explainBudget,
+  explainForecast,
+  explainGeneric,
+  explainRemaining,
+} from "@/lib/explain-metric";
 
 export const Route = createFileRoute("/_authenticated/app/financials")({
   component: FinancialsPage,
@@ -118,6 +125,27 @@ function FinancialsPage() {
   const { data: gates = [] } = useQuery({
     queryKey: ["stage_gates", organization?.id],
     queryFn: async () => (await supabase.from("stage_gates").select(STAGE_GATES_SELECT as "*")).data ?? [],
+    enabled: !!organization,
+  });
+  const { data: milestones = [] } = useQuery({
+    queryKey: ["milestones", organization?.id, "explain"],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("milestones")
+          .select("id,project_id,name,planned_date,actual_date,status")
+      ).data ?? [],
+    enabled: !!organization,
+  });
+  const { data: otherCosts = [] } = useQuery({
+    queryKey: ["opex_other_costs", organization?.id, "explain"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("opex_other_costs" as any)
+        .select("id,project_id,amount,category,vendor,description,period_month,cost_date");
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
     enabled: !!organization,
   });
 
@@ -328,6 +356,104 @@ function FinancialsPage() {
 
   const fteLaborPlanned = mFiltered.reduce((s, m) => s + Number(m.opex_labor_planned || 0), 0);
   const fteLaborActual = mFiltered.reduce((s, m) => s + Number(m.opex_labor_actual || 0), 0);
+
+  const explainCtx = useMemo(() => {
+    const ms = (milestones as any[]).filter((m) => ids.has(m.project_id));
+    const gs = (gates as any[]).filter((g) => ids.has(g.project_id));
+    const oc = (otherCosts as any[]).filter((c) => ids.has(c.project_id));
+    return {
+      forecast: explainForecast({
+        label: "Σ Forecast (all months)",
+        currentForecast: monthlyForecast,
+        monthly: mFiltered,
+        milestones: ms,
+        gates: gs,
+        otherCosts: oc,
+        projects: filtered,
+      }),
+      registerFac: explainForecast({
+        label: "Register FAC",
+        currentForecast: registerFac,
+        monthly: mFiltered,
+        milestones: ms,
+        gates: gs,
+        otherCosts: oc,
+        projects: filtered,
+      }),
+      actual: explainActualSpend({
+        label: "Σ Actual (all months)",
+        actual: monthlyActual,
+        monthly: mFiltered,
+        otherCosts: oc,
+        projects: filtered,
+      }),
+      budget: explainBudget({
+        label: "Total Budget",
+        budget: totalBudget,
+        forecast: phaseScoped ? monthlyForecast : registerFac,
+        projects: filtered,
+      }),
+      incurred: explainActualSpend({
+        label: "Total Incurred",
+        actual: totalIncurred,
+        monthly: mFiltered,
+        otherCosts: oc,
+        projects: filtered,
+      }),
+      remaining: explainRemaining({
+        label: "Remaining",
+        remaining: Math.max(0, totalBudget - totalIncurred),
+        approved: totalBudget,
+        incurred: totalIncurred,
+      }),
+      fteActual: explainGeneric({
+        label: "Actual FTE $",
+        value: money(fteLaborActual),
+        headline:
+          fteLaborPlanned > 0
+            ? `Actual FTE is ${(((fteLaborActual - fteLaborPlanned) / fteLaborPlanned) * 100).toFixed(0)}% ${fteLaborActual >= fteLaborPlanned ? "above" : "below"} plan`
+            : `Actual FTE labor is ${money(fteLaborActual)}`,
+        bullets: [
+          `Planned FTE $ ${money(fteLaborPlanned)}`,
+          `Actual FTE $ ${money(fteLaborActual)}`,
+          `Variance ${money(fteLaborActual - fteLaborPlanned)}`,
+        ],
+      }),
+      planVsActual: explainGeneric({
+        label: "Σ Plan − Σ Actual",
+        value: money(planVsActualVar),
+        headline:
+          planVsActualVar < 0
+            ? `Actuals exceed plan by ${money(Math.abs(planVsActualVar))}`
+            : `Plan exceeds actuals by ${money(planVsActualVar)} (underspend / timing)`,
+        bullets: [
+          `Σ Planned ${money(monthlyPlanned)}`,
+          `Σ Actual ${money(monthlyActual)}`,
+          monthlyPlanned
+            ? `Actual / Planned ${planVsActualPct.toFixed(1)}%`
+            : "No planned cashflow rows in filter",
+        ],
+      }),
+    };
+  }, [
+    milestones,
+    gates,
+    otherCosts,
+    ids,
+    monthlyForecast,
+    mFiltered,
+    filtered,
+    registerFac,
+    monthlyActual,
+    totalBudget,
+    phaseScoped,
+    totalIncurred,
+    fteLaborActual,
+    fteLaborPlanned,
+    planVsActualVar,
+    monthlyPlanned,
+    planVsActualPct,
+  ]);
   // Portfolio benefit/cost ratio (not EVM CPI). Per-project helper used in table contexts.
   const benefitCostRatio =
     totalIncurred > 0
@@ -478,21 +604,29 @@ function FinancialsPage() {
             value={money(monthlyPlanned)}
             sub="Should ≈ Total Budget"
             accent="#93c5fd"
+            explain={explainCtx.budget}
           />
           <KpiCard
             label="Σ Actual (all months)"
             value={money(monthlyActual)}
             sub="Should ≈ Total Incurred"
             accent="#1d4ed8"
+            explain={explainCtx.actual}
           />
           <KpiCard
             label="Σ Forecast (all months)"
             value={money(monthlyForecast)}
             sub={!phaseScoped ? "Should ≈ Register FAC" : undefined}
             accent="#f59e0b"
+            explain={explainCtx.forecast}
           />
           {!phaseScoped ? (
-            <KpiCard label="Register FAC" value={money(registerFac)} accent="#8b5cf6" />
+            <KpiCard
+              label="Register FAC"
+              value={money(registerFac)}
+              accent="#8b5cf6"
+              explain={explainCtx.registerFac}
+            />
           ) : null}
           <KpiCard
             label="Avg monthly planned"
@@ -519,11 +653,13 @@ function FinancialsPage() {
                 : undefined
             }
             accent={planVsActualVar < 0 ? "#ef4444" : "#22c55e"}
+            explain={explainCtx.planVsActual}
           />
           <KpiCard
             label="Actual / Planned"
             value={monthlyPlanned ? `${planVsActualPct.toFixed(1)}%` : "—"}
             accent={planVsActualPct > 100 ? "#ef4444" : "#0ea5e9"}
+            explain={explainCtx.planVsActual}
           />
         </div>
       </SectionFrame>
@@ -535,14 +671,30 @@ function FinancialsPage() {
           <KpiCard label="CAPEX Incurred" value={money(capexIncurred)} accent="#3b82f6" />
           <KpiCard label="OPEX Approved" value={money(opexApproved)} accent="#15803d" />
           <KpiCard label="OPEX Incurred" value={money(opexIncurred)} accent="#22c55e" />
-          <KpiCard label="Total Budget" value={money(totalBudget)} accent="#8b5cf6" />
-          <KpiCard label="Total Incurred" value={money(totalIncurred)} accent="#f59e0b" />
+          <KpiCard
+            label="Total Budget"
+            value={money(totalBudget)}
+            accent="#8b5cf6"
+            explain={explainCtx.budget}
+          />
+          <KpiCard
+            label="Total Incurred"
+            value={money(totalIncurred)}
+            accent="#f59e0b"
+            explain={explainCtx.incurred}
+          />
           <KpiCard label="Planned FTE $" value={money(fteLaborPlanned)} accent="#6366f1" />
-          <KpiCard label="Actual FTE $" value={money(fteLaborActual)} accent="#ea580c" />
+          <KpiCard
+            label="Actual FTE $"
+            value={money(fteLaborActual)}
+            accent="#ea580c"
+            explain={explainCtx.fteActual}
+          />
           <KpiCard
             label="Spend %"
             value={`${spendPct.toFixed(1)}%`}
             accent={spendPct > 100 ? "#ef4444" : spendPct > 85 ? "#f59e0b" : "#22c55e"}
+            explain={explainCtx.remaining}
           />
           <KpiCard
             label="Benefits / Cost Ratio"

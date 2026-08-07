@@ -1,6 +1,8 @@
 import { lazy, Suspense, useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { usePageDownloadAllowed } from "@/lib/page-download";
+import { ExplainThis } from "@/components/explain-this";
+import type { MetricExplanation } from "@/lib/explain-metric";
 
 /** Lazy so PPT/PDF/Excel export code is never on the cold-reload critical path. */
 const DownloadMenu = lazy(async () => {
@@ -83,18 +85,24 @@ export function KpiCard({
   value,
   sub,
   accent,
+  explain,
 }: {
   label: string;
   value: ReactNode;
   sub?: ReactNode;
   accent?: string;
+  /** Optional "Explain This" drivers for the KPI value. */
+  explain?: MetricExplanation | null;
 }) {
   return (
     <div
       className="kpi-card min-w-0"
       style={accent ? { borderTopColor: accent, borderTopWidth: 3 } : undefined}
     >
-      <div className="kpi-label truncate">{label}</div>
+      <div className="flex items-start justify-between gap-1">
+        <div className="kpi-label min-w-0 truncate">{label}</div>
+        {explain ? <ExplainThis explanation={explain} size="xs" /> : null}
+      </div>
       <div className="kpi-value break-words" style={accent ? { color: accent } : undefined}>
         {value}
       </div>

@@ -43,6 +43,7 @@ import {
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
+import { explainForecast, explainGeneric } from "@/lib/explain-metric";
 
 export const Route = createFileRoute("/_authenticated/app/phase-financials")({
   component: PhaseFinancialsPage,
@@ -426,6 +427,39 @@ function PhaseFinancialsPage() {
     .filter((r) => r.count > 0)
     .map((r) => ({ name: r.stage, value: r.count }));
 
+  const explainForecastPhase = explainForecast({
+    label: "Phase Forecast",
+    currentForecast: totalForecast,
+    monthly: monthly as MonthlyFinanceRow[],
+    projects: filtered as any[],
+  });
+  const explainFte = explainGeneric({
+    label: "FTE actual",
+    value: fmtM(totalFteActual),
+    headline:
+      totalFtePlan > 0
+        ? `Actual FTE is ${(((totalFteActual - totalFtePlan) / totalFtePlan) * 100).toFixed(0)}% ${totalFteActual >= totalFtePlan ? "above" : "below"} plan across phase windows`
+        : `Actual FTE in phase windows is ${fmtM(totalFteActual)}`,
+    bullets: [
+      `FTE plan ${fmtM(totalFtePlan)}`,
+      `FTE actual ${fmtM(totalFteActual)}`,
+      `Variance ${fmtM(totalFteActual - totalFtePlan)}`,
+    ],
+  });
+  const explainConsumed = explainGeneric({
+    label: "Actual / Planned",
+    value: `${consumed.toFixed(1)}%`,
+    headline:
+      consumed > 100
+        ? `Actuals exceed phase planned spend (${consumed.toFixed(1)}%)`
+        : `Phase actuals are at ${consumed.toFixed(1)}% of planned`,
+    bullets: [
+      `Planned ${fmtM(totalPlanned)}`,
+      `Actual ${fmtM(totalActual)}`,
+      `Forecast ${fmtM(totalForecast)}`,
+    ],
+  });
+
   return (
     <PageExport name="Phase_Financials" title="Phase Financials">
       <PageHeading icon="💠">Phase Financials</PageHeading>
@@ -448,14 +482,25 @@ function PhaseFinancialsPage() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
           <KpiCard label="Stages" value={orgPhases.length} accent="#3b82f6" />
           <KpiCard label="Planned" value={fmtM(totalPlanned)} accent="#8b5cf6" />
-          <KpiCard label="Forecast" value={fmtM(totalForecast)} accent="#06b6d4" />
+          <KpiCard
+            label="Forecast"
+            value={fmtM(totalForecast)}
+            accent="#06b6d4"
+            explain={explainForecastPhase}
+          />
           <KpiCard label="Actual" value={fmtM(totalActual)} accent="#f59e0b" />
           <KpiCard label="FTE plan" value={fmtM(totalFtePlan)} accent="#6366f1" />
-          <KpiCard label="FTE actual" value={fmtM(totalFteActual)} accent="#ea580c" />
+          <KpiCard
+            label="FTE actual"
+            value={fmtM(totalFteActual)}
+            accent="#ea580c"
+            explain={explainFte}
+          />
           <KpiCard
             label="Actual / Planned"
             value={`${consumed.toFixed(1)}%`}
             accent={consumed > 100 ? "#ef4444" : "#22c55e"}
+            explain={explainConsumed}
           />
         </div>
       </SectionFrame>
