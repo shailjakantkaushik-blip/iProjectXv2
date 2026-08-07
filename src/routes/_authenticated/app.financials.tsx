@@ -616,7 +616,13 @@ function FinancialsPage() {
           <KpiCard
             label="Σ Forecast (all months)"
             value={money(monthlyForecast)}
-            sub={!phaseScoped ? "Should ≈ Register FAC" : undefined}
+            sub={
+              !phaseScoped
+                ? Math.abs(monthlyForecast - registerFac) >= 1000
+                  ? `≠ Register FAC ${money(registerFac)} — monthly plan sum`
+                  : "Matches Register FAC"
+                : undefined
+            }
             accent="#f59e0b"
             explain={explainCtx.forecast}
           />
@@ -624,6 +630,11 @@ function FinancialsPage() {
             <KpiCard
               label="Register FAC"
               value={money(registerFac)}
+              sub={
+                Math.abs(monthlyForecast - registerFac) >= 1000
+                  ? `≠ Σ Forecast ${money(monthlyForecast)} — project register`
+                  : "Matches Σ Forecast"
+              }
               accent="#8b5cf6"
               explain={explainCtx.registerFac}
             />

@@ -65,7 +65,11 @@ export type OtherCostLike = {
 function moneyShort(n: number): string {
   const v = Math.abs(n);
   const sign = n < 0 ? "-" : "";
-  if (v >= 1_000_000) return `${sign}$${(v / 1_000_000).toFixed(2)}M`;
+  if (v >= 1_000_000) {
+    // Match compact UI ($1.1M / $1.05M), not always two decimals.
+    const m = (v / 1_000_000).toFixed(2).replace(/\.?0+$/, "");
+    return `${sign}$${m}M`;
+  }
   if (v >= 1_000) return `${sign}$${Math.round(v / 1_000)}K`;
   return `${sign}$${Math.round(v).toLocaleString()}`;
 }
@@ -93,16 +97,18 @@ function groupByMonth(rows: MonthlyFinanceRow[]): Map<string, MonthlyFinanceRow[
   return m;
 }
 
-function slippedItems(items: (MilestoneLike | StageGateLike)[]): string[] {
+type SlipHit = { label: string; days: number };
+
+function collectSlips(items: (MilestoneLike | StageGateLike)[], kind: "milestone" | "gate"): SlipHit[] {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const out: string[] = [];
+  const out: SlipHit[] = [];
   for (const g of items) {
     const name =
       ("gate_name" in g && g.gate_name) ||
       ("name" in g && g.name) ||
       ("title" in g && g.title) ||
-      "Milestone";
+      (kind === "gate" ? "Gate" : "Milestone");
     const planned = g.planned_date || ("due_date" in g ? g.due_date : null);
     if (!planned) continue;
     const p = new Date(planned);
@@ -113,19 +119,23 @@ function slippedItems(items: (MilestoneLike | StageGateLike)[]): string[] {
       const a = new Date(g.actual_date);
       if (!Number.isNaN(a.getTime()) && a.getTime() > p.getTime() + 2 * 86_400_000) {
         const days = Math.round((a.getTime() - p.getTime()) / 86_400_000);
-        out.push(`${name} slipped ${days} days`);
+        out.push({ label: `${name} slipped ${days} days`, days });
       }
       continue;
     }
     if (!done && p < today) {
       const days = Math.round((today.getTime() - p.getTime()) / 86_400_000);
-      out.push(`${name} overdue by ${days} days`);
+      out.push({ label: `${name} overdue by ${days} days`, days });
     }
   }
-  return out;
+  return out.sort((a, b) => b.days - a.days);
 }
 
-/** Build MoM forecast explanation matching the product story. */
+/**
+ * Explain a forecast / FAC figure.
+ * Primary drivers are financial (approved funding, monthly cashflow, FTE, vendor).
+ * Schedule slips are context only — they do not invent a $ change.
+ */
 export function explainForecast(opts: {
   label?: string;
   currentForecast: number;
@@ -136,7 +146,15 @@ export function explainForecast(opts: {
   projects?: ProjectFinanceLike[];
 }): MetricExplanation {
   const label = opts.label || "Forecast";
+  const forecast = opts.currentForecast;
+  const projects = opts.projects || [];
+  const approved = projects.reduce((s, p) => s + projectApprovedFunding(p), 0);
+  const registerFac = projects.reduce((s, p) => s + projectForecast(p), 0);
   const monthly = opts.monthly || [];
+  const monthlyFc = sumMonthlyForecast(monthly);
+  const monthlyPlanned = sumMonthlyPlanned(monthly);
+  const monthlyActual = sumMonthlyActual(monthly);
+
   const byMonth = groupByMonth(monthly);
   const months = [...byMonth.keys()].sort();
   const nowKey = monthKey(new Date());
@@ -146,65 +164,70 @@ export function explainForecast(opts: {
   const priorKey = curKey ? prevMonthKey(curKey) : "";
   const curRows = curKey ? byMonth.get(curKey) || [] : [];
   const priorRows = priorKey ? byMonth.get(priorKey) || [] : [];
-
   const curMonthFc = sumMonthlyForecast(curRows);
   const priorMonthFc = sumMonthlyForecast(priorRows);
-  const deltaMonth = curMonthFc - priorMonthFc;
-
-  // Prefer register FAC MoM proxy: total forecast sum change isn't historical —
-  // use current-month forecast delta as the primary narrative when available.
-  const delta =
-    priorRows.length || curRows.length
-      ? deltaMonth
-      : opts.currentForecast - (opts.projects || []).reduce((s, p) => s + projectApprovedFunding(p), 0);
+  const monthDelta = curMonthFc - priorMonthFc;
+  const hasRecentMonthPair =
+    !!curKey &&
+    !!priorKey &&
+    curRows.length > 0 &&
+    priorRows.length > 0 &&
+    // Only treat as "last month" when the current bucket is the calendar month (or adjacent).
+    Math.abs(new Date(curKey).getTime() - new Date(nowKey).getTime()) < 62 * 86_400_000;
 
   const drivers: ExplainDriver[] = [];
   const bullets: string[] = [];
+  let dollarDrivers = 0;
 
-  // FTE plan vs actual (current month, fall back to all months)
-  const fteScope = curRows.length ? curRows : monthly;
-  const ftePlan = fteScope.reduce((s, r) => s + num(r.opex_labor_planned), 0);
-  const fteActual = fteScope.reduce((s, r) => s + num(r.opex_labor_actual), 0);
+  // 1) Forecast vs approved funding (primary board narrative)
+  if (approved > 0) {
+    const over = forecast - approved;
+    if (Math.abs(over) >= 500) {
+      const text =
+        over > 0
+          ? `Forecast is ${moneyShort(over)} above approved funding (${moneyShort(forecast)} vs ${moneyShort(approved)})`
+          : `Forecast is ${moneyShort(Math.abs(over))} below approved funding (${moneyShort(forecast)} vs ${moneyShort(approved)})`;
+      bullets.push(text);
+      drivers.push({ label: text, impact: over });
+      dollarDrivers++;
+    } else {
+      bullets.push(`Forecast matches approved funding at ${moneyShort(approved)}`);
+    }
+  }
+
+  // 2) Register FAC vs monthly cashflow forecast (common source of $1.1M vs $1.05M confusion).
+  // Always compare the two sources — not currentForecast to itself when explaining Σ Forecast.
+  if (monthlyFc > 0 && registerFac > 0 && Math.abs(monthlyFc - registerFac) >= 1_000) {
+    const text = `Monthly plan Σ forecast is ${moneyShort(monthlyFc)}; Register FAC is ${moneyShort(registerFac)} — these are different measures`;
+    bullets.push(text);
+    drivers.push({ label: text, impact: monthlyFc - registerFac });
+    dollarDrivers++;
+  }
+
+  // 3) FTE plan vs actual (all months for FAC context)
+  const ftePlan = monthly.reduce((s, r) => s + num(r.opex_labor_planned), 0);
+  const fteActual = monthly.reduce((s, r) => s + num(r.opex_labor_actual), 0);
   if (ftePlan > 0 && fteActual > 0) {
     const pctAbove = ((fteActual - ftePlan) / ftePlan) * 100;
     if (Math.abs(pctAbove) >= 3) {
       const dir = pctAbove > 0 ? "above" : "below";
-      const text = `Actual FTE is ${Math.abs(pctAbove).toFixed(0)}% ${dir} plan`;
+      const text = `Actual FTE $ is ${Math.abs(pctAbove).toFixed(0)}% ${dir} plan (${moneyShort(fteActual)} vs ${moneyShort(ftePlan)})`;
       bullets.push(text);
       drivers.push({
         label: text,
-        detail: `FTE $ ${moneyShort(fteActual)} vs plan ${moneyShort(ftePlan)}`,
         impact: fteActual - ftePlan,
       });
+      dollarDrivers++;
     }
-  } else if (fteActual > 0 && ftePlan <= 0) {
-    bullets.push(`Actual FTE labor recorded at ${moneyShort(fteActual)} (no plan baseline)`);
-    drivers.push({ label: "Actual FTE labor", impact: fteActual });
   }
 
-  // Milestone / gate slips
-  const slips = [
-    ...slippedItems(opts.milestones || []),
-    ...slippedItems(opts.gates || []),
-  ];
-  if (slips.length) {
-    const n = slips.length;
-    const text =
-      n === 1
-        ? `One milestone slipped (${slips[0]})`
-        : `${n} milestones slipped (e.g. ${slips[0]})`;
-    bullets.push(text);
-    drivers.push({
-      label: text,
-      detail: slips.slice(0, 4).join("; "),
-    });
-  }
-
-  // Vendor / other OpEx in current (or recent) month
+  // 4) Vendor / other OpEx (recent two months if available, else all)
   const costScope = (opts.otherCosts || []).filter((c) => {
+    if (!hasRecentMonthPair) return true;
     const pm = c.period_month || c.cost_date;
-    if (!pm || !curKey) return true;
-    return monthKey(pm) === curKey || monthKey(pm) === priorKey;
+    if (!pm) return true;
+    const k = monthKey(pm);
+    return k === curKey || k === priorKey;
   });
   const vendorCosts = costScope.filter((c) =>
     /vendor|contractor|consult/i.test(
@@ -212,9 +235,8 @@ export function explainForecast(opts: {
     ),
   );
   const vendorTotal = vendorCosts.reduce((s, c) => s + num(c.amount), 0);
-  const otherTotal = costScope.reduce((s, c) => s + num(c.amount), 0);
   if (vendorTotal > 0) {
-    const text = `Vendor cost ${delta >= 0 ? "increased" : "contributed"} by ${moneyShort(vendorTotal)}`;
+    const text = `Vendor / contractor costs ${moneyShort(vendorTotal)} in the recent period`;
     bullets.push(text);
     drivers.push({
       label: text,
@@ -224,64 +246,67 @@ export function explainForecast(opts: {
         .join(", "),
       impact: vendorTotal,
     });
-  } else if (otherTotal > 0) {
-    const text = `Other OpEx of ${moneyShort(otherTotal)} in the recent period`;
-    bullets.push(text);
-    drivers.push({ label: text, impact: otherTotal });
+    dollarDrivers++;
   }
 
-  // Monthly other actual from financials_monthly
-  const otherActual = fteScope.reduce((s, r) => s + num(r.opex_other_actual), 0);
+  const otherActual = monthly.reduce((s, r) => s + num(r.opex_other_actual), 0);
   if (otherActual > 0 && vendorTotal <= 0) {
-    const text = `Other OpEx actual ${moneyShort(otherActual)}`;
-    if (!bullets.some((b) => /Other OpEx/i.test(b))) {
-      bullets.push(text);
-      drivers.push({ label: text, impact: otherActual });
-    }
+    const text = `Other OpEx actual ${moneyShort(otherActual)} in monthly cashflow`;
+    bullets.push(text);
+    drivers.push({ label: text, impact: otherActual });
+    dollarDrivers++;
   }
 
-  // Planned vs forecast pressure
-  const approved = (opts.projects || []).reduce((s, p) => s + projectApprovedFunding(p), 0);
-  if (approved > 0 && opts.currentForecast > approved * 1.02) {
-    const over = opts.currentForecast - approved;
-    const text = `Forecast is ${moneyShort(over)} above approved funding`;
+  // 5) Recent month cashflow movement (only when months are current)
+  if (hasRecentMonthPair && Math.abs(monthDelta) >= 1_000) {
+    const dir = monthDelta > 0 ? "up" : "down";
+    const text = `Monthly forecast cashflow ${dir} ${moneyShort(Math.abs(monthDelta))} (${monthLabel(priorKey)} → ${monthLabel(curKey)})`;
     bullets.push(text);
-    drivers.push({ label: text, impact: over });
+    drivers.push({ label: text, impact: monthDelta });
+    dollarDrivers++;
+  }
+
+  // 6) Schedule context — separate gates vs milestones; do not claim they caused the $ figure
+  const gateSlips = collectSlips(opts.gates || [], "gate");
+  const mileSlips = collectSlips(opts.milestones || [], "milestone");
+  if (gateSlips.length) {
+    const text = `${gateSlips.length} stage gate${gateSlips.length === 1 ? "" : "s"} overdue/slipped (e.g. ${gateSlips[0].label}) — schedule risk, not a direct $ add`;
+    bullets.push(text);
+    drivers.push({ label: text, detail: gateSlips.slice(0, 3).map((s) => s.label).join("; ") });
+  }
+  if (mileSlips.length) {
+    const text = `${mileSlips.length} milestone${mileSlips.length === 1 ? "" : "s"} overdue/slipped (e.g. ${mileSlips[0].label}) — schedule risk, not a direct $ add`;
+    bullets.push(text);
+    drivers.push({ label: text, detail: mileSlips.slice(0, 3).map((s) => s.label).join("; ") });
   }
 
   if (!bullets.length) {
-    const planned = sumMonthlyPlanned(monthly);
-    const actual = sumMonthlyActual(monthly);
-    if (planned > 0) {
+    if (monthlyPlanned > 0) {
       bullets.push(
-        `Portfolio actuals are ${moneyShort(actual)} against ${moneyShort(planned)} planned in monthly cashflow`,
+        `Monthly actuals ${moneyShort(monthlyActual)} vs planned ${moneyShort(monthlyPlanned)}`,
       );
     }
-    bullets.push(
-      `Current ${label.toLowerCase()} is ${moneyShort(opts.currentForecast)}` +
-        (approved ? ` vs ${moneyShort(approved)} approved funding` : ""),
-    );
+    bullets.push(`${label} is ${moneyShort(forecast)} on the current register.`);
   }
 
-  const direction = delta > 0 ? "increased" : delta < 0 ? "decreased" : "held steady";
   const headline =
-    Math.abs(delta) >= 1
-      ? `${label} ${direction} by ${moneyShort(Math.abs(delta))} over the last month primarily because:`
-      : `${label} is ${moneyShort(opts.currentForecast)}. Key drivers:`;
+    approved > 0 && Math.abs(forecast - approved) >= 500
+      ? `${label} is ${moneyShort(forecast)} (${forecast > approved ? "+" : "−"}${moneyShort(Math.abs(forecast - approved))} vs ${moneyShort(approved)} budget). Drivers:`
+      : `${label} is ${moneyShort(forecast)}. Drivers:`;
 
   const confidence: MetricExplanation["confidence"] =
-    monthly.length && (ftePlan > 0 || slips.length || vendorTotal > 0)
-      ? "high"
-      : monthly.length
-        ? "medium"
-        : "low";
+    dollarDrivers >= 2 ? "high" : dollarDrivers === 1 || monthly.length ? "medium" : "low";
 
   return {
     title: label,
     headline,
     bullets: bullets.slice(0, 6),
     drivers: drivers.slice(0, 6),
-    periodLabel: curKey ? `${monthLabel(priorKey || curKey)} → ${monthLabel(curKey)}` : undefined,
+    periodLabel: hasRecentMonthPair
+      ? `${monthLabel(priorKey)} → ${monthLabel(curKey)} (monthly cashflow)`
+      : approved > 0
+        ? `${label} ${moneyShort(forecast)} · Budget ${moneyShort(approved)}`
+        : undefined,
     confidence,
   };
 }
