@@ -515,11 +515,13 @@ function ExecutiveCockpit() {
                 <th className="px-3 py-2 text-left">Sponsor</th>
                 <th className="px-3 py-2 text-left">Delivery Lead</th>
                 <th className="px-3 py-2 text-right">Progress %</th>
-                <th className="px-3 py-2 text-left">Schedule Health</th>
-                <th className="px-3 py-2 text-left">Financial Health</th>
-                <th className="px-3 py-2 text-left">Delivery Health</th>
-                <th className="px-3 py-2 text-left">Benefit Health</th>
-                <th className="px-3 py-2 text-left">Overall RAG</th>
+                <th className="px-3 py-2 text-right">Health Score</th>
+                <th className="px-3 py-2 text-left">Schedule</th>
+                <th className="px-3 py-2 text-left">Financial</th>
+                <th className="px-3 py-2 text-left">Delivery</th>
+                <th className="px-3 py-2 text-left">Benefit</th>
+                <th className="px-3 py-2 text-left">Calculated RAG</th>
+                <th className="px-3 py-2 text-left">30d Forecast</th>
               </tr>
             </thead>
             <tbody>
@@ -540,6 +542,9 @@ function ExecutiveCockpit() {
                   <td className="px-3 py-2">{p.sponsor || "—"}</td>
                   <td className="px-3 py-2">{p.delivery_lead || "—"}</td>
                   <td className="px-3 py-2 text-right">{Math.round(num(p.progress_percent))}</td>
+                  <td className="px-3 py-2 text-right font-semibold tabular-nums">
+                    {num(p.health_score) || "—"}
+                  </td>
                   <td className="px-3 py-2">
                     <RagChip rag={p.schedule_rag} label={p.schedule_rag} />
                   </td>
@@ -555,13 +560,23 @@ function ExecutiveCockpit() {
                   <td className="px-3 py-2">
                     <RagChip rag={p.overall_rag || p.rag} label={p.overall_rag || p.rag} />
                   </td>
+                  <td className="px-3 py-2">
+                    <span className="mr-1 tabular-nums text-xs">
+                      {p.engine?.predictive?.forecastScore30d ?? "—"}
+                    </span>
+                    {p.engine?.predictive?.likelyRag ? (
+                      <RagChip rag={p.engine.predictive.likelyRag} />
+                    ) : null}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
         <div className="mt-2 text-xs text-muted-foreground">
-          Showing {healthRows.length} of {healthRows.length} row(s).
+          Health Score is calculated (Schedule 20% · Financial 20% · Scope 10% · Delivery 15% ·
+          Resource 10% · Risk 10% · Dependencies 10% · Benefits 5%). Open a project infographic for
+          early warnings and action layer. Showing {healthRows.length} row(s).
         </div>
       </SectionFrame>
 

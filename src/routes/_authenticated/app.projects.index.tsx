@@ -300,7 +300,7 @@ function ProjectsList() {
       <PageHeading
         icon="📁"
         title="Project Register"
-        subtitle="Full portfolio inventory with filters, KPIs & analytics."
+        subtitle="Full portfolio inventory with filters, KPIs & analytics. Calculated health scores live on Project Infographic / Executive Cockpit."
 
         actions={
           <div className="flex flex-wrap gap-2">
