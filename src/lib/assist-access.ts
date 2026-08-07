@@ -14,11 +14,8 @@ const DOMAIN_PAGES: Record<AssistDomain, string[]> = {
     "/app/projects",
     "/app/executive",
     "/app/executive-cockpit",
-<<<<<<< HEAD
     "/app/portfolio-pulse",
-=======
     "/app/executive-intelligence",
->>>>>>> origin/cursor/executive-intelligence-503d
     "/app/my-work",
   ],
   risks: ["/app/risks", "/app/risk-roadmap"],

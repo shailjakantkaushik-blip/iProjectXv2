@@ -64,9 +64,7 @@ import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
 import { entryHours } from "@/lib/resource-allocation-analytics";
 import { ProjectInfographicWorkItems } from "@/components/project-infographic-work-items";
-<<<<<<< HEAD
 import { ProjectHealthEnginePanel } from "@/components/project-health-engine-panel";
-=======
 import { ExplainThis } from "@/components/explain-this";
 import {
   explainActualSpend,
@@ -75,7 +73,6 @@ import {
   explainRemaining,
   type MetricExplanation,
 } from "@/lib/explain-metric";
->>>>>>> origin/cursor/explain-this-503d
 
 export const Route = createFileRoute("/_authenticated/app/project-infographic")({
   validateSearch: (s: Record<string, unknown>) => ({ pid: (s.pid as string) || "" }),
