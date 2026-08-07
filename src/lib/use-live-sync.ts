@@ -164,6 +164,17 @@ export const LIVE_SYNC_ROUTE_TABLES: Record<string, readonly string[]> = {
     "resources",
   ],
   "/app/resources": [...LIVE_SYNC_CORE_TABLES, "resources", "resource_allocations"],
+  "/app/stage-gates": [
+    ...LIVE_SYNC_CORE_TABLES,
+    "stage_gates",
+    "stage_gate_definitions",
+    "stage_gate_checklist_items",
+    "stage_gate_checklist_responses",
+  ],
+  "/app/stage-gate-config": [
+    "stage_gate_definitions",
+    "stage_gate_checklist_items",
+  ],
   "/app/risks": [...LIVE_SYNC_CORE_TABLES, "risks", "issues"],
   "/app/project-infographic": [
     ...LIVE_SYNC_CORE_TABLES,

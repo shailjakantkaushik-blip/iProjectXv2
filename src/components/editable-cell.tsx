@@ -6,6 +6,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { syncScheduleDates } from "@/lib/project-dates";
 import { persistCurrentPhaseFromGates } from "@/lib/project-phase";
+import { fetchGateChecklistBlockReason } from "@/lib/stage-gate-checklist";
+import { useAuth } from "@/lib/auth-context";
 
 type FieldType = "text" | "number" | "date" | "select";
 
@@ -28,6 +30,7 @@ export function EditableCell({
 }: Props) {
   const { canEdit: tableEdit } = useTablePermission(table);
   const canEdit = !!forceEditable || tableEdit;
+  const { organization } = useAuth();
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<string>(value == null ? "" : String(value));
@@ -49,6 +52,26 @@ export function EditableCell({
       if (type === "date") payload = draft === "" ? null : draft;
       if (type === "text" && draft === "") payload = null;
       if (type === "select" && draft === "") payload = null;
+
+      // Governance: block Approve when required checklist items are open.
+      if (
+        table === "stage_gates" &&
+        field === "status" &&
+        /approved/i.test(String(payload || "")) &&
+        organization?.id
+      ) {
+        const { data: gate } = await (supabase as any)
+          .from("stage_gates")
+          .select("id,gate_name,org_id")
+          .eq("id", rowId)
+          .maybeSingle();
+        const reason = await fetchGateChecklistBlockReason(supabase as any, {
+          orgId: gate?.org_id || organization.id,
+          stageGateId: rowId,
+          gateName: String(gate?.gate_name || ""),
+        });
+        if (reason) throw new Error(reason);
+      }
 
       // Projects: keep schedule start/end aligned when planned/actual dates change.
       if (

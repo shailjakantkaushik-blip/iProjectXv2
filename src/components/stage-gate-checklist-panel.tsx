@@ -1,9 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { EntityComments } from "@/components/entity-comments";
+import {
+  approvalBlockedReason,
+  summarizeGateChecklist,
+  type GateChecklistSummary,
+} from "@/lib/stage-gate-checklist";
+import { persistCurrentPhaseFromGates } from "@/lib/project-phase";
 
 type ChecklistItem = {
   id: string;
@@ -23,13 +30,39 @@ type ChecklistResponse = {
   evidence_notes: string | null;
 };
 
+export function GateChecklistBadge({ summary }: { summary: GateChecklistSummary }) {
+  if (summary.total === 0) {
+    return (
+      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+        No checklist
+      </span>
+    );
+  }
+  if (summary.requiredOpen > 0) {
+    return (
+      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
+        {summary.pct}% · {summary.requiredOpen} req open
+      </span>
+    );
+  }
+  return (
+    <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">
+      {summary.pct}% · ready
+    </span>
+  );
+}
+
 /** Checklist + evidence for one stage gate instance. */
 export function StageGateChecklistPanel({
   stageGateId,
   gateName,
+  projectId,
+  currentStatus,
 }: {
   stageGateId: string;
   gateName: string;
+  projectId?: string | null;
+  currentStatus?: string | null;
 }) {
   const { organization, session } = useAuth();
   const orgId = organization?.id;
@@ -73,10 +106,21 @@ export function StageGateChecklistPanel({
   }, [respQ.data]);
 
   const items = itemsQ.data ?? [];
-  const done = items.filter((i) => respByItem.get(i.id)?.completed).length;
-  const requiredMissing = items.filter(
-    (i) => i.required && !respByItem.get(i.id)?.completed,
-  ).length;
+  const summary = useMemo(
+    () =>
+      summarizeGateChecklist(
+        items,
+        (respQ.data ?? []).map((r) => ({
+          checklist_item_id: r.checklist_item_id,
+          completed: r.completed,
+        })),
+      ),
+    [items, respQ.data],
+  );
+  const done = summary.done;
+  const requiredMissing = summary.requiredOpen;
+  const blockReason = approvalBlockedReason(summary);
+  const alreadyApproved = /approved/i.test(String(currentStatus || ""));
 
   const upsert = useMutation({
     mutationFn: async (opts: {
@@ -118,15 +162,37 @@ export function StageGateChecklistPanel({
     },
     onError: (e: Error) => {
       if (/checklist|schema cache|does not exist/i.test(e.message)) {
-        toast.error("Run ppm_platform_depth.sql in Supabase, then Reload schema");
+        toast.error("Run ppm_platform_depth.sql / checklist governance SQL in Supabase, then Reload schema");
       } else toast.error(e.message);
     },
+  });
+
+  const approveGate = useMutation({
+    mutationFn: async () => {
+      if (blockReason) throw new Error(blockReason);
+      const { error } = await supabase
+        .from("stage_gates")
+        .update({
+          status: "Approved",
+          actual_date: new Date().toISOString().slice(0, 10),
+        } as never)
+        .eq("id", stageGateId);
+      if (error) throw error;
+      if (projectId) {
+        await persistCurrentPhaseFromGates(supabase as any, projectId);
+      }
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["stage_gates"] });
+      toast.success("Gate approved — checklist complete");
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   if (itemsQ.isError || respQ.isError) {
     return (
       <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-        Gate checklists need <code>ppm_platform_depth.sql</code> applied (Reload schema after).
+        Gate checklists need the checklist SQL applied (Reload schema after).
       </p>
     );
   }
@@ -134,8 +200,11 @@ export function StageGateChecklistPanel({
   if (!items.length && !itemsQ.isLoading) {
     return (
       <p className="text-xs text-muted-foreground">
-        No checklist template for gate “{gateName}”. Admins can add rows in Data Editor / SQL
-        (<code>stage_gate_checklist_items</code>).
+        No checklist template for gate “{gateName}”. Admins can add items under{" "}
+        <Link to="/app/stage-gate-config" className="font-medium text-primary hover:underline">
+          Stage Gate Configuration
+        </Link>
+        .
       </p>
     );
   }
@@ -146,6 +215,7 @@ export function StageGateChecklistPanel({
         <span className="font-semibold">
           {done}/{items.length} complete
         </span>
+        <GateChecklistBadge summary={summary} />
         {requiredMissing > 0 ? (
           <span className="rounded bg-amber-100 px-2 py-0.5 font-semibold text-amber-900">
             {requiredMissing} required open
@@ -155,7 +225,23 @@ export function StageGateChecklistPanel({
             Required items done
           </span>
         )}
+        {!alreadyApproved ? (
+          <button
+            type="button"
+            disabled={!!blockReason || approveGate.isPending}
+            title={blockReason || "Approve this gate"}
+            onClick={() => approveGate.mutate()}
+            className="ml-auto rounded-md bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {approveGate.isPending ? "Approving…" : "Approve gate"}
+          </button>
+        ) : (
+          <span className="ml-auto text-[11px] font-semibold text-emerald-700">Approved</span>
+        )}
       </div>
+      {blockReason && !alreadyApproved ? (
+        <p className="text-[11px] text-amber-800">{blockReason}</p>
+      ) : null}
       <ul className="space-y-2">
         {items.map((item) => {
           const resp = respByItem.get(item.id);
