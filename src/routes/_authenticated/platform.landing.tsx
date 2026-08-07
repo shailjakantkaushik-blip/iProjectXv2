@@ -685,6 +685,16 @@ function LandingConfigPage() {
                   onChange={(e) => patch("hero", { subtitle: e.target.value })}
                 />
               </Field>
+              <Field
+                label="After CTA (intelligence narrative under Expression of Interest)"
+                className="md:col-span-2"
+              >
+                <Textarea
+                  rows={4}
+                  value={cfg.hero.after_cta || ""}
+                  onChange={(e) => patch("hero", { after_cta: e.target.value })}
+                />
+              </Field>
             </div>
           </SectionFrame>
         </TabsContent>

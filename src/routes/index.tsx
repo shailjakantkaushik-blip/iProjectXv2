@@ -757,6 +757,14 @@ function Hero({ cfg, onEoiClick }: { cfg: LandingConfig; onEoiClick?: () => void
                 {cfg.hero.secondary_cta}
               </CtaSecondary>
             </div>
+            {cfg.hero.after_cta ? (
+              <p
+                className="mt-10 max-w-lg text-sm leading-relaxed sm:mt-12 sm:text-[15px]"
+                style={{ color: p.textOnDark, opacity: 0.7 }}
+              >
+                {cfg.hero.after_cta}
+              </p>
+            ) : null}
           </Reveal>
         </div>
 
