@@ -8194,11 +8194,11 @@ BEGIN
   SELECT
     count(*)::int,
     count(*) FILTER (
-      WHERE coalesce(status, '') ILIKE 'In Progress'
+      WHERE coalesce(status::text, '') ILIKE 'In Progress'
     )::int,
     count(*) FILTER (
-      WHERE coalesce(status, '') ILIKE 'Completed'
-         OR coalesce(status, '') ILIKE 'Complete'
+      WHERE coalesce(status::text, '') ILIKE 'Completed'
+         OR coalesce(status::text, '') ILIKE 'Complete'
     )::int,
     coalesce(sum(coalesce(budget, 0)), 0),
     coalesce(sum(coalesce(capex_incurred, 0)), 0)
@@ -8208,13 +8208,13 @@ BEGIN
 
   SELECT coalesce(jsonb_object_agg(k, c), '{}'::jsonb) INTO v_by_rag
   FROM (
-    SELECT coalesce(nullif(trim(rag), ''), 'Unknown') AS k, count(*)::int AS c
+    SELECT coalesce(nullif(trim(rag::text), ''), 'Unknown') AS k, count(*)::int AS c
     FROM public.projects WHERE org_id = v_org GROUP BY 1
   ) s;
 
   SELECT coalesce(jsonb_object_agg(k, c), '{}'::jsonb) INTO v_by_status
   FROM (
-    SELECT coalesce(nullif(trim(status), ''), 'Unknown') AS k, count(*)::int AS c
+    SELECT coalesce(nullif(trim(status::text), ''), 'Unknown') AS k, count(*)::int AS c
     FROM public.projects WHERE org_id = v_org GROUP BY 1
   ) s;
 
