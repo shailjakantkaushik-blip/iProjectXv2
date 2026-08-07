@@ -182,7 +182,6 @@ function StageGatesPage() {
   const approved = gates.filter((g: any) => g.status === "Approved").length;
   const inReview = gates.filter((g: any) => g.status === "In Review").length;
   const pending = gates.filter((g: any) => (g.status || "Pending") === "Pending").length;
-  const onHold = gates.filter((g: any) => g.status === "On Hold").length;
   const overdue = gates.filter(
     (g: any) =>
       g.planned_date &&
