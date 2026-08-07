@@ -80,6 +80,8 @@ function DimensionBar({
 }) {
   const color =
     rag === "Green" ? "bg-emerald-500" : rag === "Amber" ? "bg-amber-500" : "bg-rose-500";
+  // Score 0 must still paint a visible critical sliver — width:0% looks like a missing bar.
+  const pct = Math.min(100, Math.max(0, Number(score) || 0));
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2 text-xs">
@@ -89,10 +91,17 @@ function DimensionBar({
         </span>
         <span className="tabular-nums font-semibold">{score}</span>
       </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+      <div
+        className="h-2 overflow-hidden rounded-full bg-muted/80 ring-1 ring-inset ring-border/60"
+        role="meter"
+        aria-label={`${label} score ${score} of 100`}
+        aria-valuenow={score}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
         <div
           className={`h-full rounded-full transition-[width] duration-500 ${color}`}
-          style={{ width: `${score}%` }}
+          style={{ width: pct <= 0 ? "8px" : `${pct}%` }}
         />
       </div>
       <p className="text-[11px] text-muted-foreground">{detail}</p>
