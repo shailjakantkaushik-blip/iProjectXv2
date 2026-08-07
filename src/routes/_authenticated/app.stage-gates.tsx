@@ -1,6 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { PROJECT_PORTFOLIO_SELECT, STAGE_GATES_SELECT, STAGE_GATE_DEFINITIONS_SELECT } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
@@ -8,12 +9,19 @@ import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/com
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, Legend } from "recharts";
 import { GATE_STATUS_COLORS as STATUS_COLORS, CHART_SERIES } from "@/lib/chart-theme";
 import { ExpandableChart } from "@/components/expandable-chart";
-import { resolveCurrentAndNextGate, resolveCurrentStage } from "@/lib/project-phase";
+import { persistCurrentPhaseFromGates, resolveCurrentAndNextGate, resolveCurrentStage } from "@/lib/project-phase";
 import { fetchOrgStreams, formatProjectStreamRef, formatStreamLabel } from "@/lib/project-streams";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
-import { StageGateChecklistPanel } from "@/components/stage-gate-checklist-panel";
+import {
+  GateChecklistBadge,
+  StageGateChecklistPanel,
+} from "@/components/stage-gate-checklist-panel";
+import {
+  approvalBlockedReason,
+  summarizeGateChecklist,
+} from "@/lib/stage-gate-checklist";
 
 export const Route = createFileRoute("/_authenticated/app/stage-gates")({
   component: StageGatesPage,
@@ -23,6 +31,8 @@ const PALETTE = CHART_SERIES;
 
 function StageGatesPage() {
   const { organization } = useAuth();
+  const orgId = organization?.id;
+  const qc = useQueryClient();
   const [checklistGateId, setChecklistGateId] = useState("");
 
   const { data: projects = [] } = useQuery({
@@ -56,6 +66,97 @@ function StageGatesPage() {
     queryKey: ["project_streams", organization?.id],
     queryFn: () => fetchOrgStreams(organization!.id),
     enabled: !!organization?.id,
+  });
+
+  const { data: checklistItems = [] } = useQuery({
+    queryKey: ["stage_gate_checklist_items", orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("stage_gate_checklist_items" as any)
+        .select("id,gate_name,title,required,sort_order")
+        .eq("org_id", orgId!);
+      if (error) return [];
+      return (data ?? []) as unknown as {
+        id: string;
+        gate_name: string;
+        title: string;
+        required: boolean;
+        sort_order: number;
+      }[];
+    },
+    enabled: !!orgId,
+  });
+
+  const { data: checklistResponses = [] } = useQuery({
+    queryKey: ["stage_gate_checklist_responses", orgId, "all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("stage_gate_checklist_responses" as any)
+        .select("stage_gate_id,checklist_item_id,completed")
+        .eq("org_id", orgId!);
+      if (error) return [];
+      return (data ?? []) as unknown as {
+        stage_gate_id: string;
+        checklist_item_id: string;
+        completed: boolean;
+      }[];
+    },
+    enabled: !!orgId,
+  });
+
+  const itemsByGateName = useMemo(() => {
+    const m = new Map<string, typeof checklistItems>();
+    for (const i of checklistItems) {
+      const list = m.get(i.gate_name) || [];
+      list.push(i);
+      m.set(i.gate_name, list);
+    }
+    return m;
+  }, [checklistItems]);
+
+  const responsesByGateId = useMemo(() => {
+    const m = new Map<string, typeof checklistResponses>();
+    for (const r of checklistResponses) {
+      const list = m.get(r.stage_gate_id) || [];
+      list.push(r);
+      m.set(r.stage_gate_id, list);
+    }
+    return m;
+  }, [checklistResponses]);
+
+  const summaryForGate = useCallback(
+    (g: any) =>
+      summarizeGateChecklist(
+        itemsByGateName.get(g?.gate_name || "") || [],
+        responsesByGateId.get(g?.id) || [],
+      ),
+    [itemsByGateName, responsesByGateId],
+  );
+
+  const setGateStatus = useMutation({
+    mutationFn: async ({ id, status, projectId }: { id: string; status: string; projectId: string }) => {
+      const g = gates.find((x: any) => x.id === id) as any;
+      if (/approved/i.test(status) && g) {
+        const reason = approvalBlockedReason(summaryForGate(g));
+        if (reason) throw new Error(reason);
+      }
+      const { error } = await supabase
+        .from("stage_gates")
+        .update({
+          status,
+          ...( /approved/i.test(status)
+            ? { actual_date: new Date().toISOString().slice(0, 10) }
+            : {}),
+        } as never)
+        .eq("id", id);
+      if (error) throw error;
+      if (projectId) await persistCurrentPhaseFromGates(supabase as any, projectId);
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["stage_gates"] });
+      toast.success("Gate status updated");
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   // Gate distribution: rows = gate_name from configured definitions, stacked by status.
@@ -240,15 +341,40 @@ function StageGatesPage() {
         label: "Next Status",
         getValue: (r) => r.next?.status || "",
       },
+      {
+        key: "checklist",
+        label: "Next checklist",
+        getValue: (r) => (r.next ? summaryForGate(r.next).label : ""),
+      },
     ],
-    [],
+    [summaryForGate],
   );
 
   const table = useColumnarTable(register, columns);
 
+  const blockedNextCount = useMemo(
+    () =>
+      register.filter(
+        (r) => r.next && approvalBlockedReason(summaryForGate(r.next)),
+      ).length,
+    [register, summaryForGate],
+  );
+
   return (
     <div>
-      <PageHeading icon="🚦">Stage Gates</PageHeading>
+      <PageHeading
+        icon="🚦"
+        title="Stage Gates"
+        subtitle="Stream / project governance — checklists must be complete before Approve"
+        actions={
+          <Link
+            to="/app/stage-gate-config"
+            className="text-xs font-medium text-primary hover:underline"
+          >
+            Configure gates & checklists →
+          </Link>
+        }
+      />
 
       <SectionFrame>
         <SectionTitle>Gate KPIs</SectionTitle>
@@ -257,16 +383,23 @@ function StageGatesPage() {
           <KpiCard label="Approved" value={approved} />
           <KpiCard label="In Review" value={inReview} />
           <KpiCard label="Pending" value={pending} />
-          <KpiCard label="On Hold" value={onHold} />
           <KpiCard label="Overdue" value={overdue} />
+          <KpiCard
+            label="Next gates blocked"
+            value={blockedNextCount}
+            accent={blockedNextCount ? "#f59e0b" : "#22c55e"}
+          />
         </div>
       </SectionFrame>
 
       <SectionFrame>
         {distribution.length === 0 ? (
           <div className="rounded-md border p-6 text-center text-xs text-muted-foreground">
-            No gates yet. Configure gates in <strong>Stage Gate Config</strong> and add them to
-            projects.
+            No gates yet. Configure gates in{" "}
+            <Link to="/app/stage-gate-config" className="font-medium text-primary hover:underline">
+              Stage Gate Configuration
+            </Link>{" "}
+            and add them to projects.
           </div>
         ) : (
           <ExpandableChart title="Gate Distribution" heightClass="h-72">
@@ -378,14 +511,41 @@ function StageGatesPage() {
                     <td>{next?.planned_date || "—"}</td>
                     <td>
                       {next ? (
-                        <span
-                          className="rounded px-2 py-0.5 text-[11px] text-white"
-                          style={{
-                            background: STATUS_COLORS[next.status || "Pending"] || "#94a3b8",
-                          }}
-                        >
-                          {next.status || "Pending"}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <select
+                            className="st-input !py-0.5 !text-xs"
+                            value={next.status || "Pending"}
+                            onChange={(e) =>
+                              setGateStatus.mutate({
+                                id: next.id,
+                                status: e.target.value,
+                                projectId: project.id,
+                              })
+                            }
+                          >
+                            {["Pending", "In Review", "Approved", "On Hold", "Rejected"].map(
+                              (s) => (
+                                <option key={s} value={s}>
+                                  {s}
+                                </option>
+                              ),
+                            )}
+                          </select>
+                          <button
+                            type="button"
+                            className="text-left text-[10px] font-medium text-primary hover:underline"
+                            onClick={() => setChecklistGateId(next.id)}
+                          >
+                            Open checklist
+                          </button>
+                        </div>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td>
+                      {next ? (
+                        <GateChecklistBadge summary={summaryForGate(next)} />
                       ) : (
                         "—"
                       )}
@@ -398,7 +558,7 @@ function StageGatesPage() {
         </div>
       </SectionFrame>
 
-      <SectionFrame>
+      <SectionFrame id="gate-checklist">
         <SectionTitle>Gate checklist &amp; evidence</SectionTitle>
         <select
           className="st-input mb-3 max-w-xl"
@@ -408,9 +568,15 @@ function StageGatesPage() {
           <option value="">— Select a stage gate —</option>
           {gates.map((g: any) => {
             const p = projects.find((x: any) => x.id === g.project_id) as any;
+            const sum = summaryForGate(g);
             return (
               <option key={g.id} value={g.id}>
-                {(p?.project_code || "?") + " · " + (g.gate_name || "Gate") + " · " + (g.status || "Pending")}
+                {(p?.project_code || "?") +
+                  " · " +
+                  (g.gate_name || "Gate") +
+                  " · " +
+                  (g.status || "Pending") +
+                  (sum.total ? ` · ${sum.label}` : "")}
               </option>
             );
           })}
@@ -420,13 +586,18 @@ function StageGatesPage() {
             const g = gates.find((x: any) => x.id === checklistGateId) as any;
             if (!g) return null;
             return (
-              <StageGateChecklistPanel stageGateId={g.id} gateName={g.gate_name || "Gate"} />
+              <StageGateChecklistPanel
+                stageGateId={g.id}
+                gateName={g.gate_name || "Gate"}
+                projectId={g.project_id}
+                currentStatus={g.status}
+              />
             );
           })()
         ) : (
           <p className="text-sm text-muted-foreground">
-            Pick a gate to complete required checklist items and attach evidence URLs / notes.
-            Collaboration threads appear under the checklist.
+            Pick a gate (or use Open checklist on the register) to complete required items and
+            attach evidence. Required items block Approve.
           </p>
         )}
       </SectionFrame>

@@ -65,6 +65,7 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
       { to: "/app/roadmap-governance", label: "Roadmap × Governance", icon: "Map" },
       { to: "/app/roadmap-analytics", label: "Roadmap Analytics", icon: "TrendingUp" },
       { to: "/app/stage-gates", label: "Stage Gates (Waterfall)", icon: "Flag" },
+      { to: "/app/stage-gate-config", label: "Stage Gate Config", icon: "Settings" },
       { to: "/app/agile", label: "Agile / Sprints", icon: "Zap" },
       { to: "/app/governance-channels", label: "Governance Channel", icon: "Radio" },
       { to: "/app/dependencies", label: "Dependencies", icon: "GitBranch" },

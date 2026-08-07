@@ -7,6 +7,8 @@ import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
 import { toast } from "sonner";
 import { PageLoading } from "@/components/page-loading";
+import { StageGateChecklistAdmin } from "@/components/stage-gate-checklist-admin";
+import { Link } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/_authenticated/app/stage-gate-config")({
   component: StageGateConfigPage,
@@ -89,8 +91,21 @@ function StageGateConfigPage() {
   const renameGate = async (id: string, name: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    const { error } = await supabase.from("stage_gate_definitions").update({ gate_name: trimmed }).eq("id", id);
+    const prev = defs.find((d: any) => d.id === id)?.gate_name as string | undefined;
+    const { error } = await supabase
+      .from("stage_gate_definitions")
+      .update({ gate_name: trimmed })
+      .eq("id", id);
     if (error) return toast.error(error.message);
+    // Keep checklist templates aligned with definition names.
+    if (organization && prev && prev !== trimmed) {
+      await supabase
+        .from("stage_gate_checklist_items" as any)
+        .update({ gate_name: trimmed } as never)
+        .eq("org_id", organization.id)
+        .eq("gate_name", prev);
+      void qc.invalidateQueries({ queryKey: ["stage_gate_checklist_items"] });
+    }
     invalidate();
   };
 
@@ -111,7 +126,11 @@ function StageGateConfigPage() {
     <div>
       <PageHeading icon="🚦">Stage Gate Configuration</PageHeading>
       <div className="mb-4 text-sm text-muted-foreground">
-        Define the stage gates used across your organisation. Order controls how they appear on project timelines and infographics.
+        Define the stage gates used across your organisation and the governance checklist required
+        at each gate. Order controls timelines and infographics.{" "}
+        <Link to="/app/stage-gates" className="font-medium text-primary hover:underline">
+          Open Stage Gates register →
+        </Link>
       </div>
 
       <SectionFrame>
@@ -180,6 +199,10 @@ function StageGateConfigPage() {
           <Save className="h-3.5 w-3.5" /> Changes save automatically.
         </div>
       </SectionFrame>
+
+      <StageGateChecklistAdmin
+        gateNames={defs.filter((d: any) => d.is_active !== false).map((d: any) => d.gate_name)}
+      />
     </div>
   );
 }
