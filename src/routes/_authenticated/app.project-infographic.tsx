@@ -64,7 +64,18 @@ import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
 import { entryHours } from "@/lib/resource-allocation-analytics";
 import { ProjectInfographicWorkItems } from "@/components/project-infographic-work-items";
+<<<<<<< HEAD
 import { ProjectHealthEnginePanel } from "@/components/project-health-engine-panel";
+=======
+import { ExplainThis } from "@/components/explain-this";
+import {
+  explainActualSpend,
+  explainBudget,
+  explainForecast,
+  explainRemaining,
+  type MetricExplanation,
+} from "@/lib/explain-metric";
+>>>>>>> origin/cursor/explain-this-503d
 
 export const Route = createFileRoute("/_authenticated/app/project-infographic")({
   validateSearch: (s: Record<string, unknown>) => ({ pid: (s.pid as string) || "" }),
@@ -477,6 +488,18 @@ function InfographicPage() {
           .eq("project_id", project.id)
           .order("planned_date")
       ).data ?? [],
+    enabled: !!project,
+  });
+  const { data: otherCosts = [] } = useQuery({
+    queryKey: ["opex_other_costs", project?.id, "explain"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("opex_other_costs" as any)
+        .select("id,project_id,amount,category,vendor,description,period_month,cost_date")
+        .eq("project_id", project.id);
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
     enabled: !!project,
   });
   const { data: documents = [] } = useQuery({
@@ -1003,6 +1026,36 @@ function InfographicPage() {
   const remaining = Math.max(0, budget - incurred);
   const utilPct = budget ? (incurred / budget) * 100 : 0;
 
+  const explains = {
+    forecast: explainForecast({
+      label: "Forecast at Completion",
+      currentForecast: forecast,
+      monthly: monthly as MonthlyFinanceRow[],
+      milestones: milestones as any[],
+      gates: gates as any[],
+      otherCosts: otherCosts as any[],
+      projects: [project],
+    }),
+    actual: explainActualSpend({
+      label: "Actual spend",
+      actual: incurred,
+      monthly: monthly as MonthlyFinanceRow[],
+      otherCosts: otherCosts as any[],
+      projects: [project],
+    }),
+    budget: explainBudget({
+      label: "Budget",
+      budget: budget || approved,
+      forecast,
+      projects: [project],
+    }),
+    remaining: explainRemaining({
+      remaining,
+      approved: budget || approved,
+      incurred,
+    }),
+  };
+
   // Project-level phase rollup + stream gate cards (spend from monthly + gate windows)
   const phaseCards = phaseSpendSections.phaseCards;
   const streamGateSections = phaseSpendSections.streamGateSections;
@@ -1212,8 +1265,11 @@ function InfographicPage() {
               </div>
             </div>
             <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5">
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Cost
+              <div className="flex items-start justify-between gap-1">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Cost
+                </div>
+                <ExplainThis explanation={explains.forecast} size="xs" />
               </div>
               <div className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">
                 {money(budget)}
@@ -1467,10 +1523,30 @@ function InfographicPage() {
               heightClass="h-56"
               legend={
                 <div className="grid grid-cols-4 gap-2 mt-2 text-xs">
-                  <MiniKpi label="Budget" value={moneyM(budget)} color="#3b82f6" />
-                  <MiniKpi label="Forecast" value={moneyM(forecast)} color="#8b5cf6" />
-                  <MiniKpi label="Actual" value={moneyM(incurred)} color="#f59e0b" />
-                  <MiniKpi label="Remaining" value={moneyM(remaining)} color="#22c55e" />
+                  <MiniKpi
+                    label="Budget"
+                    value={moneyM(budget)}
+                    color="#3b82f6"
+                    explain={explains.budget}
+                  />
+                  <MiniKpi
+                    label="Forecast"
+                    value={moneyM(forecast)}
+                    color="#8b5cf6"
+                    explain={explains.forecast}
+                  />
+                  <MiniKpi
+                    label="Actual"
+                    value={moneyM(incurred)}
+                    color="#f59e0b"
+                    explain={explains.actual}
+                  />
+                  <MiniKpi
+                    label="Remaining"
+                    value={moneyM(remaining)}
+                    color="#22c55e"
+                    explain={explains.remaining}
+                  />
                 </div>
               }
             >
@@ -2078,13 +2154,26 @@ function BriefField({ label, value }: { label: string; value: string }) {
   );
 }
 
-function MiniKpi({ label, value, color }: { label: string; value: string; color: string }) {
+function MiniKpi({
+  label,
+  value,
+  color,
+  explain,
+}: {
+  label: string;
+  value: string;
+  color: string;
+  explain?: MetricExplanation | null;
+}) {
   return (
     <div
       className="rounded border border-slate-200 bg-white px-2 py-1.5"
       style={{ borderLeft: `3px solid ${color}` }}
     >
-      <div className="text-[10px] text-slate-500">{label}</div>
+      <div className="flex items-start justify-between gap-1">
+        <div className="text-[10px] text-slate-500">{label}</div>
+        {explain ? <ExplainThis explanation={explain} size="xs" /> : null}
+      </div>
       <div className="text-sm font-semibold text-slate-800 tabular-nums">{value}</div>
     </div>
   );
