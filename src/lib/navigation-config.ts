@@ -36,6 +36,7 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
       { to: "/app/portfolio-pulse", label: "Portfolio Pulse", icon: "Activity" },
       { to: "/app/executive-cockpit", label: "Executive Cockpit", icon: "Rocket" },
       { to: "/app/executive", label: "Executive Dashboard", icon: "LayoutDashboard" },
+      { to: "/app/executive-intelligence", label: "Executive Intelligence", icon: "Brain" },
       { to: "/app/ai-assist", label: "In-house AI", icon: "Sparkles" },
       { to: "/app/latest-updates", label: "Latest Updates", icon: "Bell" },
       { to: "/app/support", label: "Support", icon: "LifeBuoy" },

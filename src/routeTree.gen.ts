@@ -39,6 +39,7 @@ import { Route as AuthenticatedAppDependenciesRouteImport } from './routes/_auth
 import { Route as AuthenticatedAppEvmRouteImport } from './routes/_authenticated/app.evm'
 import { Route as AuthenticatedAppExecutiveRouteImport } from './routes/_authenticated/app.executive'
 import { Route as AuthenticatedAppExecutiveCockpitRouteImport } from './routes/_authenticated/app.executive-cockpit'
+import { Route as AuthenticatedAppExecutiveIntelligenceRouteImport } from './routes/_authenticated/app.executive-intelligence'
 import { Route as AuthenticatedAppExecutiveReportsRouteImport } from './routes/_authenticated/app.executive-reports'
 import { Route as AuthenticatedAppFinancialsRouteImport } from './routes/_authenticated/app.financials'
 import { Route as AuthenticatedAppFyAllocationRouteImport } from './routes/_authenticated/app.fy-allocation'
@@ -268,6 +269,12 @@ const AuthenticatedAppExecutiveCockpitRoute =
   AuthenticatedAppExecutiveCockpitRouteImport.update({
     id: '/executive-cockpit',
     path: '/executive-cockpit',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
+const AuthenticatedAppExecutiveIntelligenceRoute =
+  AuthenticatedAppExecutiveIntelligenceRouteImport.update({
+    id: '/executive-intelligence',
+    path: '/executive-intelligence',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
 const AuthenticatedAppExecutiveReportsRoute =
@@ -700,6 +707,7 @@ export interface FileRoutesByFullPath {
   '/app/evm': typeof AuthenticatedAppEvmRoute
   '/app/executive': typeof AuthenticatedAppExecutiveRoute
   '/app/executive-cockpit': typeof AuthenticatedAppExecutiveCockpitRoute
+  '/app/executive-intelligence': typeof AuthenticatedAppExecutiveIntelligenceRoute
   '/app/executive-reports': typeof AuthenticatedAppExecutiveReportsRoute
   '/app/financials': typeof AuthenticatedAppFinancialsRoute
   '/app/fy-allocation': typeof AuthenticatedAppFyAllocationRoute
@@ -798,6 +806,7 @@ export interface FileRoutesByTo {
   '/app/evm': typeof AuthenticatedAppEvmRoute
   '/app/executive': typeof AuthenticatedAppExecutiveRoute
   '/app/executive-cockpit': typeof AuthenticatedAppExecutiveCockpitRoute
+  '/app/executive-intelligence': typeof AuthenticatedAppExecutiveIntelligenceRoute
   '/app/executive-reports': typeof AuthenticatedAppExecutiveReportsRoute
   '/app/financials': typeof AuthenticatedAppFinancialsRoute
   '/app/fy-allocation': typeof AuthenticatedAppFyAllocationRoute
@@ -898,6 +907,7 @@ export interface FileRoutesById {
   '/_authenticated/app/evm': typeof AuthenticatedAppEvmRoute
   '/_authenticated/app/executive': typeof AuthenticatedAppExecutiveRoute
   '/_authenticated/app/executive-cockpit': typeof AuthenticatedAppExecutiveCockpitRoute
+  '/_authenticated/app/executive-intelligence': typeof AuthenticatedAppExecutiveIntelligenceRoute
   '/_authenticated/app/executive-reports': typeof AuthenticatedAppExecutiveReportsRoute
   '/_authenticated/app/financials': typeof AuthenticatedAppFinancialsRoute
   '/_authenticated/app/fy-allocation': typeof AuthenticatedAppFyAllocationRoute
@@ -999,6 +1009,7 @@ export interface FileRouteTypes {
     | '/app/evm'
     | '/app/executive'
     | '/app/executive-cockpit'
+    | '/app/executive-intelligence'
     | '/app/executive-reports'
     | '/app/financials'
     | '/app/fy-allocation'
@@ -1097,6 +1108,7 @@ export interface FileRouteTypes {
     | '/app/evm'
     | '/app/executive'
     | '/app/executive-cockpit'
+    | '/app/executive-intelligence'
     | '/app/executive-reports'
     | '/app/financials'
     | '/app/fy-allocation'
@@ -1196,6 +1208,7 @@ export interface FileRouteTypes {
     | '/_authenticated/app/evm'
     | '/_authenticated/app/executive'
     | '/_authenticated/app/executive-cockpit'
+    | '/_authenticated/app/executive-intelligence'
     | '/_authenticated/app/executive-reports'
     | '/_authenticated/app/financials'
     | '/_authenticated/app/fy-allocation'
@@ -1490,6 +1503,13 @@ declare module '@tanstack/react-router' {
       path: '/executive-cockpit'
       fullPath: '/app/executive-cockpit'
       preLoaderRoute: typeof AuthenticatedAppExecutiveCockpitRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/app/executive-intelligence': {
+      id: '/_authenticated/app/executive-intelligence'
+      path: '/executive-intelligence'
+      fullPath: '/app/executive-intelligence'
+      preLoaderRoute: typeof AuthenticatedAppExecutiveIntelligenceRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
     '/_authenticated/app/executive-reports': {
@@ -2008,6 +2028,7 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppEvmRoute: typeof AuthenticatedAppEvmRoute
   AuthenticatedAppExecutiveRoute: typeof AuthenticatedAppExecutiveRoute
   AuthenticatedAppExecutiveCockpitRoute: typeof AuthenticatedAppExecutiveCockpitRoute
+  AuthenticatedAppExecutiveIntelligenceRoute: typeof AuthenticatedAppExecutiveIntelligenceRoute
   AuthenticatedAppExecutiveReportsRoute: typeof AuthenticatedAppExecutiveReportsRoute
   AuthenticatedAppFinancialsRoute: typeof AuthenticatedAppFinancialsRoute
   AuthenticatedAppFyAllocationRoute: typeof AuthenticatedAppFyAllocationRoute
@@ -2074,6 +2095,8 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppEvmRoute: AuthenticatedAppEvmRoute,
   AuthenticatedAppExecutiveRoute: AuthenticatedAppExecutiveRoute,
   AuthenticatedAppExecutiveCockpitRoute: AuthenticatedAppExecutiveCockpitRoute,
+  AuthenticatedAppExecutiveIntelligenceRoute:
+    AuthenticatedAppExecutiveIntelligenceRoute,
   AuthenticatedAppExecutiveReportsRoute: AuthenticatedAppExecutiveReportsRoute,
   AuthenticatedAppFinancialsRoute: AuthenticatedAppFinancialsRoute,
   AuthenticatedAppFyAllocationRoute: AuthenticatedAppFyAllocationRoute,

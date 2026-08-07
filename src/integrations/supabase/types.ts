@@ -358,6 +358,7 @@ export type Database = {
           approved_by: string | null
           approver_user_id: string | null
           approvers: string | null
+          cost_impact: number | null
           created_at: string
           decided_by: string | null
           decision_date: string | null
@@ -366,12 +367,16 @@ export type Database = {
           id: string
           impact: string | null
           notes: string | null
+          options: string | null
           org_id: string
           outcome: string | null
           owner: string | null
           program: string | null
           project_id: string
           rationale: string | null
+          recommendation: string | null
+          required_date: string | null
+          schedule_impact_days: number | null
           sponsor: string | null
           stage_gate_id: string | null
           status: string | null
@@ -384,6 +389,7 @@ export type Database = {
           approved_by?: string | null
           approver_user_id?: string | null
           approvers?: string | null
+          cost_impact?: number | null
           created_at?: string
           decided_by?: string | null
           decision_date?: string | null
@@ -392,12 +398,16 @@ export type Database = {
           id?: string
           impact?: string | null
           notes?: string | null
+          options?: string | null
           org_id: string
           outcome?: string | null
           owner?: string | null
           program?: string | null
           project_id: string
           rationale?: string | null
+          recommendation?: string | null
+          required_date?: string | null
+          schedule_impact_days?: number | null
           sponsor?: string | null
           stage_gate_id?: string | null
           status?: string | null
@@ -410,6 +420,7 @@ export type Database = {
           approved_by?: string | null
           approver_user_id?: string | null
           approvers?: string | null
+          cost_impact?: number | null
           created_at?: string
           decided_by?: string | null
           decision_date?: string | null
@@ -418,12 +429,16 @@ export type Database = {
           id?: string
           impact?: string | null
           notes?: string | null
+          options?: string | null
           org_id?: string
           outcome?: string | null
           owner?: string | null
           program?: string | null
           project_id?: string
           rationale?: string | null
+          recommendation?: string | null
+          required_date?: string | null
+          schedule_impact_days?: number | null
           sponsor?: string | null
           stage_gate_id?: string | null
           status?: string | null

@@ -150,7 +150,12 @@ function DecisionsPage() {
     owner: "",
     outcome: "In Review" as DecisionOutcome,
     decision_date: new Date().toISOString().slice(0, 10),
+    required_date: "",
     title: "",
+    options: "",
+    recommendation: "",
+    schedule_impact_days: "",
+    cost_impact: "",
     rationale: "",
     notes: "",
   });
@@ -176,7 +181,14 @@ function DecisionsPage() {
         outcome: form.outcome,
         status: form.outcome,
         decision_date: form.decision_date,
+        required_date: form.required_date || null,
         title: form.title,
+        options: form.options || null,
+        recommendation: form.recommendation || null,
+        schedule_impact_days: form.schedule_impact_days
+          ? Number(form.schedule_impact_days)
+          : null,
+        cost_impact: form.cost_impact ? Number(form.cost_impact) : null,
         rationale: form.rationale || null,
         notes: form.notes || null,
       } as never);
@@ -185,7 +197,18 @@ function DecisionsPage() {
     onSuccess: () => {
       invalidate();
       toast.success("Decision recorded — approver notified");
-      setForm((f) => ({ ...f, title: "", rationale: "", notes: "", owner: "" }));
+      setForm((f) => ({
+        ...f,
+        title: "",
+        rationale: "",
+        notes: "",
+        owner: "",
+        options: "",
+        recommendation: "",
+        required_date: "",
+        schedule_impact_days: "",
+        cost_impact: "",
+      }));
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -202,17 +225,22 @@ function DecisionsPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const decide = (id: string, outcome: "Approved" | "Rejected") => {
-    updateDecision.mutate({
-      id,
-      patch: {
-        outcome,
-        status: outcome,
-        decided_by: profile?.full_name || profile?.email || "Approver",
-        approved_by: userId || null,
-        approved_at: new Date().toISOString(),
-      },
-    });
+  const decide = (
+    id: string,
+    outcome: "Approved" | "Rejected" | "On Hold" | "In Review",
+    note?: string,
+  ) => {
+    const patch: Record<string, unknown> = {
+      outcome,
+      status: outcome,
+      decided_by: profile?.full_name || profile?.email || "Approver",
+    };
+    if (outcome === "Approved" || outcome === "Rejected") {
+      patch.approved_by = userId || null;
+      patch.approved_at = new Date().toISOString();
+    }
+    if (note) patch.notes = note;
+    updateDecision.mutate({ id, patch });
   };
 
   const requestApproval = (d: any) => {
@@ -275,6 +303,8 @@ function DecisionsPage() {
       },
       { key: "outcome", label: "Outcome", getValue: (d) => decisionOutcome(d) },
       { key: "decision_date", label: "Date" },
+      { key: "required_date", label: "Required by" },
+      { key: "recommendation", label: "Recommendation" },
       { key: "rationale", label: "Rationale" },
       { key: "notes", label: "Notes" },
     ],
@@ -448,11 +478,46 @@ function DecisionsPage() {
             onChange={(e) => setForm((f) => ({ ...f, decision_date: e.target.value }))}
           />
           <input
-            className="st-input md:col-span-4"
+            className="st-input md:col-span-3"
             placeholder="Decision title"
             value={form.title}
             onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
             required
+          />
+          <input
+            className="st-input"
+            type="date"
+            title="Required by"
+            value={form.required_date}
+            onChange={(e) => setForm((f) => ({ ...f, required_date: e.target.value }))}
+          />
+          <textarea
+            className="st-input md:col-span-2"
+            placeholder="Options (one per line)"
+            rows={2}
+            value={form.options}
+            onChange={(e) => setForm((f) => ({ ...f, options: e.target.value }))}
+          />
+          <textarea
+            className="st-input md:col-span-2"
+            placeholder="Recommendation"
+            rows={2}
+            value={form.recommendation}
+            onChange={(e) => setForm((f) => ({ ...f, recommendation: e.target.value }))}
+          />
+          <input
+            className="st-input"
+            type="number"
+            placeholder="Schedule impact (days) if delayed"
+            value={form.schedule_impact_days}
+            onChange={(e) => setForm((f) => ({ ...f, schedule_impact_days: e.target.value }))}
+          />
+          <input
+            className="st-input"
+            type="number"
+            placeholder="Cost impact ($)"
+            value={form.cost_impact}
+            onChange={(e) => setForm((f) => ({ ...f, cost_impact: e.target.value }))}
           />
           <textarea
             className="st-input md:col-span-2"
@@ -477,8 +542,8 @@ function DecisionsPage() {
           </button>
         </form>
         <p className="mt-2 text-xs text-muted-foreground">
-          Submitting records the decision and notifies the selected approver in-app. If a stage gate
-          is linked, its status and approver sync automatically.
+          Capture options, recommendation, owner, required date, and impact. Approver is notified
+          in-app. Link related risks/issues/actions on Executive Intelligence.
         </p>
       </SectionFrame>
 
@@ -535,7 +600,7 @@ function DecisionsPage() {
               <tbody>
                 {table.rows.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="py-6 text-center text-sm text-muted-foreground">
+                    <td colSpan={15} className="py-6 text-center text-sm text-muted-foreground">
                       No decisions match filters.
                     </td>
                   </tr>
@@ -674,6 +739,31 @@ function DecisionsPage() {
                               >
                                 <X className="h-3.5 w-3.5" /> Reject
                               </button>
+                              <button
+                                type="button"
+                                className="inline-flex min-h-9 items-center justify-center rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                                onClick={() => decide(d.id, "On Hold")}
+                              >
+                                Defer
+                              </button>
+                              <button
+                                type="button"
+                                className="inline-flex min-h-9 items-center justify-center rounded-md border border-sky-300 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-900 hover:bg-sky-100"
+                                onClick={() =>
+                                  decide(
+                                    d.id,
+                                    "In Review",
+                                    [
+                                      d.notes,
+                                      `Info requested ${new Date().toISOString().slice(0, 10)}`,
+                                    ]
+                                      .filter(Boolean)
+                                      .join("\n"),
+                                  )
+                                }
+                              >
+                                Request info
+                              </button>
                             </div>
                           ) : d.approver_user_id && !isDecisionAwaiting(d) ? (
                             <span className="text-[11px] text-muted-foreground">Done</span>
@@ -688,6 +778,25 @@ function DecisionsPage() {
                           ) : (
                             <span className="text-[11px] text-muted-foreground">Assign</span>
                           )}
+                        </td>
+                        <td>
+                          <EditableCell
+                            table="decisions"
+                            rowId={d.id}
+                            field="required_date"
+                            value={d.required_date}
+                            type="date"
+                            invalidateKeys={["decisions"]}
+                          />
+                        </td>
+                        <td className="max-w-[180px]">
+                          <EditableCell
+                            table="decisions"
+                            rowId={d.id}
+                            field="recommendation"
+                            value={d.recommendation}
+                            invalidateKeys={["decisions"]}
+                          />
                         </td>
                         <td className="max-w-[220px]">
                           <EditableCell
