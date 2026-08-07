@@ -113,14 +113,16 @@ export function pulseRagEmoji(rag: RagTone): string {
   return "🔴";
 }
 
-function storageKey(orgId: string) {
-  return `iprojectx.portfolioPulse.${orgId}`;
+function storageKey(orgId: string, scope = "all") {
+  return scope && scope !== "all"
+    ? `iprojectx.portfolioPulse.${orgId}.${scope}`
+    : `iprojectx.portfolioPulse.${orgId}`;
 }
 
-export function readPulseSnapshot(orgId: string): PulseSnapshot | null {
+export function readPulseSnapshot(orgId: string, scope = "all"): PulseSnapshot | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(storageKey(orgId));
+    const raw = window.localStorage.getItem(storageKey(orgId, scope));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PulseSnapshot;
     if (!parsed?.orgId || parsed.orgId !== orgId) return null;
@@ -130,10 +132,10 @@ export function readPulseSnapshot(orgId: string): PulseSnapshot | null {
   }
 }
 
-export function writePulseSnapshot(snapshot: PulseSnapshot): void {
+export function writePulseSnapshot(snapshot: PulseSnapshot, scope = "all"): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(storageKey(snapshot.orgId), JSON.stringify(snapshot));
+    window.localStorage.setItem(storageKey(snapshot.orgId, scope), JSON.stringify(snapshot));
   } catch {
     /* ignore */
   }
@@ -344,11 +346,15 @@ export function toPulseSnapshot(opts: {
  * Update stored snapshot when prior is missing or older than ~6 days,
  * so "this week" comparisons stay meaningful without wiping same-day noise.
  */
-export function maybeRefreshPulseSnapshot(snapshot: PulseSnapshot, nowMs = Date.now()): void {
-  const prev = readPulseSnapshot(snapshot.orgId);
+export function maybeRefreshPulseSnapshot(
+  snapshot: PulseSnapshot,
+  nowMs = Date.now(),
+  scope = "all",
+): void {
+  const prev = readPulseSnapshot(snapshot.orgId, scope);
   const age = prev?.capturedAt ? nowMs - new Date(prev.capturedAt).getTime() : Infinity;
   if (prev && age < 6 * 24 * 60 * 60 * 1000) return;
-  writePulseSnapshot(snapshot);
+  writePulseSnapshot(snapshot, scope);
 }
 
 /** Convenience: evaluate pulse and return snapshot payload in one pass. */
@@ -358,9 +364,12 @@ export function evaluatePortfolioPulse(opts: {
   allRisks?: any[];
   allDecisions?: any[];
   nowMs?: number;
-}): { pulse: PortfolioPulseResult; snapshot: PulseSnapshot } {
+  /** When filters are applied, scope week-over-week snapshots so deltas stay like-for-like. */
+  snapshotScope?: string;
+}): { pulse: PortfolioPulseResult; snapshot: PulseSnapshot; snapshotScope: string } {
   const nowMs = opts.nowMs ?? Date.now();
-  const previous = readPulseSnapshot(opts.orgId);
+  const snapshotScope = opts.snapshotScope || "all";
+  const previous = readPulseSnapshot(opts.orgId, snapshotScope);
   const pulse = buildPortfolioPulse({ ...opts, previous, nowMs });
   const snapshot = toPulseSnapshot({
     orgId: opts.orgId,
@@ -371,5 +380,5 @@ export function evaluatePortfolioPulse(opts: {
     allDecisions: opts.allDecisions,
     nowMs,
   });
-  return { pulse, snapshot };
+  return { pulse, snapshot, snapshotScope };
 }

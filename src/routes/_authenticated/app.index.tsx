@@ -274,7 +274,9 @@ function Home() {
         )}
       </SectionFrame>
 
-      {canView("/app/portfolio-pulse") ? <PortfolioPulsePanel compact /> : null}
+      {canView("/app/portfolio-pulse") ? (
+        <PortfolioPulsePanel compact showFilters={false} />
+      ) : null}
 
       <SectionFrame>
         <SectionTitle>Jump to · tailored for your role</SectionTitle>

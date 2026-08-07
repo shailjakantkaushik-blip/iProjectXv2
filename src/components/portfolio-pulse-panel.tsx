@@ -1,7 +1,7 @@
 /**
  * Portfolio Pulse — event-driven portfolio health + weekly change digest.
  */
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Activity, ArrowRight } from "lucide-react";
@@ -11,6 +11,13 @@ import { PROJECT_PORTFOLIO_SELECT } from "@/lib/project-selects";
 import { MAX_PAGE_SIZE } from "@/lib/portfolio-paging";
 import { SectionFrame, SectionTitle, RagChip } from "@/components/streamlit";
 import { PageLoading } from "@/components/page-loading";
+import {
+  ExecutivePortfolioFilters,
+  applyExecutivePortfolioFilters,
+  emptyExecutiveFilters,
+  executiveFilterScopeKey,
+  type ExecutivePortfolioFilterState,
+} from "@/components/portfolio-filters";
 import {
   evaluatePortfolioPulse,
   maybeRefreshPulseSnapshot,
@@ -39,12 +46,17 @@ function TrendCell({ trend }: { trend: PulseTrend }) {
 export function PortfolioPulsePanel({
   compact = false,
   showTitle = true,
+  showFilters = true,
 }: {
   compact?: boolean;
   showTitle?: boolean;
+  /** Same portfolio filters as Executive Dashboard (default on). */
+  showFilters?: boolean;
 }) {
   const { organization } = useAuth();
   const orgId = organization?.id;
+  const fyStartMonth = organization?.fy_start_month || 4;
+  const [filters, setFilters] = useState<ExecutivePortfolioFilterState>(emptyExecutiveFilters);
 
   const projectsQ = useQuery({
     queryKey: ["projects", orgId, "portfolio-pulse"],
@@ -168,6 +180,13 @@ export function PortfolioPulsePanel({
       risksQ.isLoading ||
       decisionsQ.isLoading);
 
+  const filteredProjects = useMemo(() => {
+    const all = projectsQ.data ?? [];
+    return applyExecutivePortfolioFilters(all, filters, fyStartMonth);
+  }, [projectsQ.data, filters, fyStartMonth]);
+
+  const snapshotScope = useMemo(() => executiveFilterScopeKey(filters), [filters]);
+
   const evaluated = useMemo(() => {
     if (!orgId || !projectsQ.data) return null;
     const wiBy = groupByProjectId(workItemsQ.data ?? []);
@@ -176,8 +195,9 @@ export function PortfolioPulsePanel({
     const depsBy = groupByProjectId(depsQ.data ?? []);
     const allocBy = groupByProjectId(allocationsQ.data ?? []);
     const monthlyBy = groupByProjectId(monthlyQ.data ?? []);
+    const idSet = new Set(filteredProjects.map((p) => p.id as string));
 
-    const projects = projectsQ.data.map((p) => ({
+    const projects = filteredProjects.map((p) => ({
       project: p,
       workItems: wiBy.get(p.id) || [],
       gates: gatesBy.get(p.id) || [],
@@ -187,15 +207,20 @@ export function PortfolioPulsePanel({
       monthly: monthlyBy.get(p.id) || [],
     }));
 
+    const allRisks = (risksQ.data ?? []).filter((r) => idSet.has(r.project_id));
+    const allDecisions = (decisionsQ.data ?? []).filter((d) => idSet.has(d.project_id));
+
     return evaluatePortfolioPulse({
       orgId,
       projects,
-      allRisks: risksQ.data ?? [],
-      allDecisions: decisionsQ.data ?? [],
+      allRisks,
+      allDecisions,
+      snapshotScope,
     });
   }, [
     orgId,
     projectsQ.data,
+    filteredProjects,
     workItemsQ.data,
     gatesQ.data,
     risksQ.data,
@@ -203,11 +228,12 @@ export function PortfolioPulsePanel({
     allocationsQ.data,
     monthlyQ.data,
     decisionsQ.data,
+    snapshotScope,
   ]);
 
   useEffect(() => {
     if (!evaluated) return;
-    maybeRefreshPulseSnapshot(evaluated.snapshot);
+    maybeRefreshPulseSnapshot(evaluated.snapshot, Date.now(), evaluated.snapshotScope);
   }, [evaluated]);
 
   if (!orgId) return null;
@@ -222,6 +248,18 @@ export function PortfolioPulsePanel({
     : "baseline will lock after this visit";
 
   return (
+    <>
+      {showFilters ? (
+        <SectionFrame className="section-frame--filters" exportable={false}>
+          <ExecutivePortfolioFilters
+            projects={projectsQ.data ?? []}
+            value={filters}
+            onChange={setFilters}
+            fyStartMonth={fyStartMonth}
+          />
+        </SectionFrame>
+      ) : null}
+
     <SectionFrame exportName="portfolio-pulse" exportTitle="Portfolio Pulse">
       {showTitle ? (
         <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
@@ -234,7 +272,11 @@ export function PortfolioPulsePanel({
             </SectionTitle>
             <p className="mt-1 text-xs text-muted-foreground">
               Event-driven portfolio health — not a static register. Across {pulse.projectCount}{" "}
-              project{pulse.projectCount === 1 ? "" : "s"}.
+              project{pulse.projectCount === 1 ? "" : "s"}
+              {filteredProjects.length !== (projectsQ.data?.length ?? 0)
+                ? ` (filtered from ${projectsQ.data?.length ?? 0})`
+                : ""}
+              .
             </p>
           </div>
           {!compact ? (
@@ -336,5 +378,6 @@ export function PortfolioPulsePanel({
         </div>
       </div>
     </SectionFrame>
+    </>
   );
 }

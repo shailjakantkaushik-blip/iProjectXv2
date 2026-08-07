@@ -1,6 +1,7 @@
 import { useMemo, useState, useRef, useEffect, useCallback, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { compareProjectsByCodeName } from "@/lib/project-options";
+import { fyOf, projectScheduleEnd, projectScheduleStart } from "@/lib/project-dates";
 
 export type PortfolioFilterState = {
   portfolio: string;
@@ -480,6 +481,178 @@ export function PortfolioFilters({
           Reset
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * Executive Dashboard filter set — Project, Portfolio, Program, Sponsor,
+ * Priority, Status, Fiscal Year. Shared with Portfolio Pulse for parity.
+ */
+export type ExecutivePortfolioFilterState = {
+  portfolio: string;
+  program: string;
+  sponsor: string;
+  priority: string;
+  status: string;
+  projectIds: string[];
+  /** Empty = all fiscal years. */
+  fySelected: string[];
+};
+
+export const emptyExecutiveFilters: ExecutivePortfolioFilterState = {
+  portfolio: "All",
+  program: "All",
+  sponsor: "All",
+  priority: "All",
+  status: "All",
+  projectIds: [],
+  fySelected: [],
+};
+
+export function executiveFiltersActive(f: ExecutivePortfolioFilterState): boolean {
+  return (
+    f.projectIds.length > 0 ||
+    f.portfolio !== "All" ||
+    f.program !== "All" ||
+    f.sponsor !== "All" ||
+    f.priority !== "All" ||
+    f.status !== "All" ||
+    f.fySelected.length > 0
+  );
+}
+
+/** Stable scope key for filtered pulse snapshots (like-for-like week deltas). */
+export function executiveFilterScopeKey(f: ExecutivePortfolioFilterState): string {
+  if (!executiveFiltersActive(f)) return "all";
+  return [
+    f.portfolio,
+    f.program,
+    f.sponsor,
+    f.priority,
+    f.status,
+    [...f.projectIds].sort().join(","),
+    [...f.fySelected].sort().join(","),
+  ].join("|");
+}
+
+export function applyExecutivePortfolioFilters<T extends Record<string, any>>(
+  projects: T[],
+  f: ExecutivePortfolioFilterState,
+  fyStartMonth: number,
+): T[] {
+  const idSet = f.projectIds.length ? new Set(f.projectIds) : null;
+  const fySet = f.fySelected.length ? new Set(f.fySelected) : null;
+  return projects.filter((p) => {
+    if (idSet && !idSet.has(p.id)) return false;
+    if (f.portfolio !== "All" && (p.portfolio || "Unassigned") !== f.portfolio) return false;
+    if (f.program !== "All" && p.program !== f.program) return false;
+    if (f.sponsor !== "All" && p.sponsor !== f.sponsor) return false;
+    if (f.priority !== "All" && p.priority !== f.priority) return false;
+    if (f.status !== "All" && p.status !== f.status) return false;
+    if (fySet) {
+      const a = fyOf(projectScheduleStart(p), fyStartMonth);
+      const b = fyOf(projectScheduleEnd(p), fyStartMonth);
+      if ((!a || !fySet.has(a)) && (!b || !fySet.has(b))) return false;
+    }
+    return true;
+  });
+}
+
+export function ExecutivePortfolioFilters({
+  projects,
+  value,
+  onChange,
+  fyStartMonth = 4,
+  title = "Portfolio filters",
+}: {
+  projects: any[];
+  value: ExecutivePortfolioFilterState;
+  onChange: (v: ExecutivePortfolioFilterState) => void;
+  fyStartMonth?: number;
+  title?: string;
+}) {
+  const opts = useCallback(
+    (col: string) =>
+      Array.from(new Set(projects.map((p: any) => p[col]).filter(Boolean))).sort() as string[],
+    [projects],
+  );
+
+  const portfolioOpts = useMemo(
+    () =>
+      Array.from(
+        new Set(projects.map((p: any) => p.portfolio || "Unassigned").filter(Boolean)),
+      ).sort() as string[],
+    [projects],
+  );
+
+  const fyOptions = useMemo(() => {
+    const s = new Set<string>();
+    projects.forEach((p: any) => {
+      const a = fyOf(projectScheduleStart(p), fyStartMonth);
+      const b = fyOf(projectScheduleEnd(p), fyStartMonth);
+      if (a) s.add(a);
+      if (b) s.add(b);
+    });
+    return Array.from(s).sort();
+  }, [projects, fyStartMonth]);
+
+  const set = <K extends keyof ExecutivePortfolioFilterState>(
+    key: K,
+    next: ExecutivePortfolioFilterState[K],
+  ) => onChange({ ...value, [key]: next });
+
+  const selects: {
+    label: string;
+    key: keyof ExecutivePortfolioFilterState;
+    options: string[];
+  }[] = [
+    { label: "Portfolio", key: "portfolio", options: portfolioOpts },
+    { label: "Program", key: "program", options: opts("program") },
+    { label: "Sponsor", key: "sponsor", options: opts("sponsor") },
+    { label: "Priority", key: "priority", options: opts("priority") },
+    { label: "Status", key: "status", options: opts("status") },
+  ];
+
+  return (
+    <div>
+      {title ? <div className="mb-3 page-heading text-base font-semibold">{title}</div> : null}
+      <div className="relative z-30 flex flex-wrap items-center gap-2">
+        <ProjectPicker
+          projects={projects}
+          selected={value.projectIds}
+          onChange={(v) => set("projectIds", v)}
+        />
+        {selects.map(({ label, key, options }) => (
+          <select
+            key={label}
+            value={String(value[key])}
+            onChange={(e) => set(key, e.target.value as ExecutivePortfolioFilterState[typeof key])}
+            className="ui-btn rounded-md border border-border bg-surface px-2 py-1 text-xs"
+          >
+            <option value="All">{label}: All</option>
+            {options.map((o) => (
+              <option key={o} value={o}>
+                {label}: {o}
+              </option>
+            ))}
+          </select>
+        ))}
+        <FyPicker
+          options={fyOptions}
+          selected={value.fySelected}
+          onChange={(v) => set("fySelected", v)}
+        />
+        {executiveFiltersActive(value) && (
+          <button
+            type="button"
+            className="ui-btn rounded-md border border-border bg-surface px-2 py-1 text-xs hover:bg-muted"
+            onClick={() => onChange(emptyExecutiveFilters)}
+          >
+            Reset
+          </button>
+        )}
+      </div>
     </div>
   );
 }
