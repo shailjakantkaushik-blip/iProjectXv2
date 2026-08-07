@@ -79,18 +79,18 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       {
-        title: "iProjectX — Enterprise PMO command center for portfolios that must not fail",
+        title: "iProjectX — Portfolio Intelligence Platform beyond the register",
       },
       {
         name: "description",
         content:
-          "iProjectX — enterprise PMO with mandatory authenticator MFA, optional SSO & BYOD, multi-tenant security, and In-house AI by default — Approved Open AI model only if your organisation requests it.",
+          "iProjectX — portfolio intelligence with calculated Project Health, Portfolio Pulse, explainable KPIs, executive what-ifs, stage-gate governance, white-label branding, MFA, optional SSO & BYOD, and In-house AI by default.",
       },
-      { property: "og:title", content: "iProjectX — Enterprise PMO command center" },
+      { property: "og:title", content: "iProjectX — Portfolio Intelligence Platform" },
       {
         property: "og:description",
         content:
-          "Live cockpit, RAID, financials, MFA, optional SSO/BYOD, and In-house AI by default — portfolio intelligence without sending data out unless your organisation opts in.",
+          "Not a static register. Calculated health, Portfolio Pulse, explainable financials, white-label, MFA, optional SSO/BYOD, and In-house AI by default.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -122,6 +122,7 @@ const HEADING = { fontFamily: "'Sora', system-ui, sans-serif" as const };
 const BODY = { fontFamily: "'Manrope', system-ui, sans-serif" as const };
 
 const FAILURE_ICONS: Record<string, any> = {
+  "Register theatre": ClipboardX,
   "Executives fly blind": EyeOff,
   "Budget discovered late": Wallet,
   "Stage gates skipped": Ban,
@@ -132,6 +133,11 @@ const FAILURE_ICONS: Record<string, any> = {
   "AI that leaks portfolio data": Brain,
 };
 const WIN_ICONS: Record<string, any> = {
+  "Calculated project health": Gauge,
+  "Portfolio Pulse": Activity,
+  "Explainable KPIs": LineChart,
+  "Executive intelligence": Brain,
+  "Governed stage gates": ShieldCheck,
   "Live executive cockpit": Activity,
   "Financial early warning": Gauge,
   "Auditable stage gates": ShieldCheck,
@@ -139,10 +145,15 @@ const WIN_ICONS: Record<string, any> = {
   "RAID tied to delivery": BadgeCheck,
   "Benefits realisation": LineChart,
   "Hardened tenant security": Shield,
+  "White-label & BYOD": Palette,
   "In-house AI, data stays yours": Sparkles,
   "In-house AI by default": Sparkles,
 };
 const CAP_ICONS: Record<string, any> = {
+  "Project Health Engine": Gauge,
+  "Portfolio Pulse": Activity,
+  "Executive Intelligence": Brain,
+  "Explainable KPIs": LineChart,
   "Executive Cockpit": Activity,
   "Portfolio Timeline": Calendar,
   Financials: LineChart,
@@ -175,6 +186,7 @@ const TRUST_STRIP_ICONS: Record<string, any> = {
   "Excel-native": FileSpreadsheet,
   "Agile + Waterfall": GitBranch,
   "White-label ready": Palette,
+  "Portfolio intelligence": Brain,
 };
 
 const NAV_LINKS = [
@@ -2020,7 +2032,7 @@ function Footer({ cfg }: { cfg: LandingConfig }) {
           <div className="md:col-span-5">
             <BrandMark cfg={cfg} size="xl" />
             <p className="mt-4 max-w-sm text-sm leading-relaxed" style={{ color: p.textMuted }}>
-              {cfg.brand.tagline || "Enterprise PMO Command Center"}
+              {cfg.brand.tagline || "Portfolio Intelligence Platform"}
             </p>
           </div>
           <div className="grid grid-cols-2 gap-8 sm:grid-cols-3 md:col-span-7 md:justify-items-end">

@@ -566,7 +566,7 @@ export const DEFAULT_LANDING: LandingConfig = {
     logo_url_landing: "",
     logo_url_auth: "",
     logo_url_app: "",
-    tagline: "Enterprise PMO Command Center",
+    tagline: "Portfolio Intelligence Platform",
     logo_size_landing: "md",
     logo_custom_landing: { ...DEFAULT_LOGO_CUSTOM },
     logo_size_auth: "lg",
@@ -587,32 +587,36 @@ export const DEFAULT_LANDING: LandingConfig = {
   palette_preset: "iprojectx",
   palette: { ...DEFAULT_PALETTE },
   hero: {
-    eyebrow: "Enterprise PMO Command Center",
-    title: "Master the",
-    title_accent: "Portfolio",
+    eyebrow: "Portfolio Intelligence Platform",
+    title: "Beyond the",
+    title_accent: "Register",
     subtitle:
-      "Stop flying blind. One PMO command center for live portfolio KPIs, resource timesheets, stage-gate governance, optional SSO & BYOD, and Jira integrations — Agile and Waterfall on the same truth.",
+      "iProjectX is not a static portfolio register. It is an intelligence layer over delivery — calculated Project Health, Portfolio Pulse, executive what-ifs, explainable KPIs, and stage-gate governance — with enterprise security, white-label branding, optional SSO, and Bring-Your-Own-Database for tenant data residency.",
     primary_cta: "Expression of Interest",
-    secondary_cta: "See use cases",
+    secondary_cta: "See capabilities",
     alert:
-      "70% of transformation programs fail to deliver expected value without integrated portfolio governance.",
+      "Registers record the past. iProjectX surfaces pressure early, explains forecast variance, and puts the next decision in front of leaders — before the board pack is late.",
   },
   comparison: {
-    heading: "What breaks without iProjectX. What holds together with it.",
+    heading: "What a register cannot do. What portfolio intelligence does.",
     subtitle:
-      "Every red flag below is a failure mode we see in enterprise portfolios that are still run on decks and spreadsheets. Every green marker is what a governed portfolio actually looks like.",
+      "Every red flag below is what happens when portfolios are still run on decks, spreadsheets, and static registers. Every green marker is what happens when health is calculated, explained, and acted on.",
     failures: [
       {
+        title: "Register theatre",
+        desc: "RAG is typed by hand while schedule, FAC, and risks tell a different story.",
+      },
+      {
         title: "Executives fly blind",
-        desc: "Status decks are 2 weeks old by the time the board sees them.",
+        desc: "Status decks are weeks old by the time the board sees them — no pulse, no drivers.",
       },
       {
         title: "Budget discovered late",
-        desc: "Overruns surface only at year-end reconciliation — with no audit trail.",
+        desc: "Overruns surface at year-end reconciliation — with no early warning or explain trail.",
       },
       {
         title: "Stage gates skipped",
-        desc: "Approvals rubber-stamped in email; no evidence, no accountability.",
+        desc: "Approvals rubber-stamped in email; checklists optional, evidence nowhere.",
       },
       {
         title: "Resource double-booking",
@@ -621,10 +625,6 @@ export const DEFAULT_LANDING: LandingConfig = {
       {
         title: "RAID rots in spreadsheets",
         desc: "Risks, actions, issues, decisions decoupled from delivery reality.",
-      },
-      {
-        title: "Benefits never tracked",
-        desc: "Post go-live value promised on the business case is never measured.",
       },
       {
         title: "Weak access control",
@@ -637,32 +637,32 @@ export const DEFAULT_LANDING: LandingConfig = {
     ],
     wins: [
       {
-        title: "Live executive cockpit",
-        desc: "Real-time portfolio KPIs with drill-down to task-level impediments.",
+        title: "Calculated project health",
+        desc: "Weighted score across schedule, financials, scope, delivery, resources, risk, dependencies, and benefits — not manual RAG entry.",
       },
       {
-        title: "Financial early warning",
-        desc: "Automated variance alerts by phase, FY, program and business unit.",
+        title: "Portfolio Pulse",
+        desc: "Event-driven portfolio health by area, with a week-over-week change digest leaders can act on.",
       },
       {
-        title: "Auditable stage gates",
-        desc: "Every approval, rejection and hold is logged with reviewer and date.",
+        title: "Explainable KPIs",
+        desc: "Every material forecast and spend figure comes with drivers — FAC vs budget, monthly plan, schedule risk context.",
       },
       {
-        title: "Capacity heatmaps",
-        desc: "Plan allocation plus timesheet actuals — flag conflicts before they become the reason for a slip.",
+        title: "Executive intelligence",
+        desc: "What-if delay cascades, capacity gaps, funding scenarios, and investment ranking on live portfolio data.",
       },
       {
-        title: "RAID tied to delivery",
-        desc: "Registers linked to projects, stage gates and status updates automatically.",
-      },
-      {
-        title: "Benefits realisation",
-        desc: "Track promised vs actual benefits from business case through steady state.",
+        title: "Governed stage gates",
+        desc: "Approvals with checklist evidence — every hold, reject, and pass is auditable.",
       },
       {
         title: "Hardened tenant security",
-        desc: "MFA for every user, row-level isolation, and admin-only audit evidence packs.",
+        desc: "MFA for every user, optional SSO, IP allowlists, row-level isolation, and admin audit evidence packs.",
+      },
+      {
+        title: "White-label & BYOD",
+        desc: "Your brand in the product shell; optional Bring-Your-Own-Database for tenant data residency.",
       },
       {
         title: "In-house AI by default",
@@ -671,14 +671,14 @@ export const DEFAULT_LANDING: LandingConfig = {
     ],
   },
   cockpit: {
-    eyebrow: "Governance core",
-    title: "The Executive Cockpit",
-    body: "A high-fidelity vantage point built for the board. Portfolio KPIs, RAG heatmaps, financial burn, stage-gate pass rate, benefits and capacity — all live, all drillable.",
+    eyebrow: "Intelligence core",
+    title: "Executive intelligence — not a status slideshow",
+    body: "A live vantage point for the board and PMO: Portfolio Pulse, calculated health, explainable financials, RAG heatmaps, stage-gate pass rate, benefits and capacity — all filterable, all drillable, all tied to the same truth.",
     bullets: [
-      "Interactive RAG status heatmap across projects and programs",
-      "Financial vs strategic value plotting for prioritisation",
-      "One-click drill-down into any risk, action or decision",
-      "Segmentation by portfolio, program, sponsor, theme or BU",
+      "Portfolio Pulse — area health and week-over-week change digest",
+      "Project Health Engine with early warnings and reforecast actions",
+      "Explain This on forecast, budget, and spend KPIs",
+      "Segmentation by portfolio, program, sponsor, priority, status, and FY",
     ],
   },
   timeline: {
@@ -686,7 +686,7 @@ export const DEFAULT_LANDING: LandingConfig = {
     title: "Every project. Every gate. One horizon.",
     body: "A financial-year-aware Gantt with stage-gate diamonds, a live TODAY line, planned vs actual bars, and slip badges the moment a project falls behind. View by portfolio, program, health, priority, sponsor or business unit.",
     bullets: [
-      "Configurable stage gates per organisation",
+      "Configurable stage gates with checklist governance",
       "Planned vs actual with variance in days",
       "Quick-shift dates without leaving the timeline",
     ],
@@ -694,7 +694,7 @@ export const DEFAULT_LANDING: LandingConfig = {
   raid: {
     eyebrow: "Governance & RAID",
     title: "Risks, Actions, Issues, Decisions — one governed spine.",
-    body: "RAID isn't a spreadsheet. In iProjectX, every entry is tied to a project, a stage gate and a status update — with owners, forums, sponsors and approvers.",
+    body: "RAID isn't a spreadsheet. In iProjectX, every entry is tied to a project, a stage gate and a status update — with owners, forums, sponsors and approvers — feeding health, pulse, and executive decisions.",
     chips: [
       "Auto-escalation",
       "Approver audit trail",
@@ -703,14 +703,15 @@ export const DEFAULT_LANDING: LandingConfig = {
     ],
   },
   security: {
-    eyebrow: "Trust & security",
+    eyebrow: "Security · White-label · BYOD",
     title: "Protect the portfolio. Still deliver the intelligence.",
-    body: "iProjectX is multi-tenant by design: mandatory authenticator MFA, optional SSO, optional IP-based organisation restriction, row-level isolation, hardened sessions, and admin audit trails — plus optional Bring-Your-Own-Database for tenant data residency. In-house AI answers from your live PMO data inside your organisation session by default; an Approved Open AI model is available only if an organisation requests it. Built for SOC 2 and ISO 27001 readiness — without overstating certification status.",
+    body: "iProjectX is multi-tenant by design: mandatory authenticator MFA, optional SSO, optional IP-based organisation restriction, row-level isolation, hardened sessions, and admin audit trails — plus optional Bring-Your-Own-Database for tenant data residency and full white-label branding for your organisation. In-house AI answers from your live PMO data inside your organisation session by default; an Approved Open AI model is available only if an organisation requests it. Built for SOC 2 and ISO 27001 readiness — without overstating certification status.",
     bullets: [
       "MFA (TOTP authenticator) required for all users",
       "Optional per-organisation SSO (SAML) when provisioned",
       "Optional IP-based organisation restriction (allowlist / CIDR)",
       "Optional BYOD — tenant registers on your PostgREST-compatible DB",
+      "White-label logos, colors, and themes per organisation",
       "Row-level security isolating every organisation’s data",
       "In-house AI by default — answers stay in your org session",
       "Approved Open AI model only if the organisation requests it",
@@ -723,21 +724,37 @@ export const DEFAULT_LANDING: LandingConfig = {
   trust_strip: {
     items: [
       "MFA for every user",
-      "Optional SSO",
       "Optional BYOD",
-      "Multi-tenant RLS",
+      "White-label ready",
+      "Portfolio intelligence",
       "In-house AI",
-      "Admin audit trails",
+      "Multi-tenant RLS",
     ],
   },
   capabilities: {
-    heading: "Everything a modern PMO actually needs.",
+    heading: "Intelligence, governance, and control — on one truth.",
     subtitle:
-      "Tightly-integrated modules that share the same data model — governance, finance, delivery, security, and private intelligence — with no sync jobs and no drift.",
+      "Not a bolt-on dashboard over a register. Modules share the same data model — calculated health, finance, delivery, security, white-label, and private intelligence — with no sync jobs and no drift.",
     items: [
       {
+        title: "Project Health Engine",
+        desc: "Calculated health across eight dimensions with early warnings, 30-day outlook, and reforecast actions — not manual RAG.",
+      },
+      {
+        title: "Portfolio Pulse",
+        desc: "Event-driven portfolio health by area, with a week-over-week digest of what deteriorated, improved, or became overdue.",
+      },
+      {
+        title: "Executive Intelligence",
+        desc: "What-if delay cascades, capacity gaps, funding scenarios, dependency criticality, and investment ranking.",
+      },
+      {
+        title: "Explainable KPIs",
+        desc: "Plain-language drivers on forecast, spend, and budget — FAC vs approved funding, monthly plan, schedule context.",
+      },
+      {
         title: "Executive Cockpit",
-        desc: "Portfolio KPIs, segmentation, health snapshots, budget & forecast by FY.",
+        desc: "Live portfolio KPIs, segmentation, health snapshots, budget & forecast by FY.",
       },
       {
         title: "Portfolio Timeline",
@@ -745,11 +762,11 @@ export const DEFAULT_LANDING: LandingConfig = {
       },
       {
         title: "Financials",
-        desc: "Monthly cashflow, FY allocation, phase spend, CapEx/OpEx with variance alerts.",
+        desc: "Monthly cashflow, FY allocation, phase spend, CapEx/OpEx with variance alerts and explain trails.",
       },
       {
         title: "Stage-Gate Governance",
-        desc: "Approvals, holds, rejections — configurable per organisation, fully audited.",
+        desc: "Approvals with required checklists — holds and rejections fully audited per organisation.",
       },
       {
         title: "Resource Capacity",
@@ -765,11 +782,11 @@ export const DEFAULT_LANDING: LandingConfig = {
       },
       {
         title: "Dependencies",
-        desc: "Cross-project dependency graph with impact and needed-by dates.",
+        desc: "Cross-project dependency graph with impact, needed-by dates, and criticality for executive what-ifs.",
       },
       {
         title: "Agile + Waterfall",
-        desc: "Sprints, velocity, burndown alongside gates and milestones — one register.",
+        desc: "Sprints, velocity, burndown alongside gates and milestones — one governed delivery spine.",
       },
       {
         title: "Roadmap Analytics",
@@ -781,7 +798,7 @@ export const DEFAULT_LANDING: LandingConfig = {
       },
       {
         title: "Enterprise Security",
-        desc: "Mandatory TOTP MFA, optional SSO, multi-tenant RLS, CSP/HSTS, and hardened browser sessions.",
+        desc: "Mandatory TOTP MFA, optional SSO, IP allowlists, multi-tenant RLS, CSP/HSTS, and hardened browser sessions.",
       },
       {
         title: "Optional BYOD",
@@ -801,7 +818,7 @@ export const DEFAULT_LANDING: LandingConfig = {
       },
       {
         title: "White-label & Themes",
-        desc: "Per-org branding, logo, colors and configurable chart palette.",
+        desc: "Per-org branding, logo, colors, auth experience, and configurable chart palette.",
       },
       {
         title: "Excel-Native",
@@ -809,17 +826,17 @@ export const DEFAULT_LANDING: LandingConfig = {
       },
       {
         title: "Benefits Realisation",
-        desc: "Track promised vs delivered value from business case to steady state.",
+        desc: "Track promised vs delivered value from business case to steady state — scored into project health.",
       },
     ],
   },
   stats: [
-    { value: 16, label: "Core registers" },
-    { value: 9, label: "Live dashboards" },
+    { value: 8, label: "Health dimensions" },
+    { value: 6, label: "Pulse areas" },
     { value: 100, suffix: "%", label: "MFA-enforced" },
-    { value: 21, label: "Editable data tables" },
+    { value: 1, label: "Truth · Agile & Waterfall" },
   ],
-  trusted: { heading: "Trusted by enterprise PMOs", logos: [] },
+  trusted: { heading: "Built for enterprise PMOs that need intelligence, not another register", logos: [] },
   ceo_message: {
     enabled: false,
     title: "A message from our CEO",
@@ -842,8 +859,8 @@ export const DEFAULT_LANDING: LandingConfig = {
     items: [],
   },
   final_cta: {
-    title: "Secure the portfolio outcome.",
-    body: "Deploy iProjectX in weeks, not months. White-label ready, multi-tenant by design, MFA-enforced — with optional SSO and BYOD when you need them. In-house AI by default, and an Approved Open AI model only when your organisation requests it. Admin audit trails and evidence export for enterprise procurement.",
+    title: "Turn the portfolio into an intelligence advantage.",
+    body: "White-label ready. Multi-tenant and MFA-enforced. Optional SSO and BYOD for data residency. In-house AI by default — with an Approved Open AI model only when your organisation requests it. Deploy calculated health, Portfolio Pulse, explainable KPIs, and executive intelligence in weeks — not another spreadsheet register.",
     primary: "Expression of Interest",
     secondary: "Sign in",
   },
@@ -1165,12 +1182,24 @@ export function mergeConfig(partial: any): LandingConfig {
           cap.title === "Optional BYOD" ||
           cap.title === "Optional SSO" ||
           cap.title === "Resource Timesheets" ||
-          cap.title === "Integrations") &&
+          cap.title === "Integrations" ||
+          cap.title === "Project Health Engine" ||
+          cap.title === "Portfolio Pulse" ||
+          cap.title === "Executive Intelligence" ||
+          cap.title === "Explainable KPIs") &&
         !have.has(cap.title)
       ) {
         merged.capabilities.items.push(cap);
         have.add(cap.title);
       }
+    }
+    // Prefer current intelligence framing when saved heading still sounds like a plain PMO toolkit.
+    if (
+      typeof merged.capabilities.heading === "string" &&
+      /everything a modern pmo/i.test(merged.capabilities.heading)
+    ) {
+      merged.capabilities.heading = DEFAULT_LANDING.capabilities.heading;
+      merged.capabilities.subtitle = DEFAULT_LANDING.capabilities.subtitle;
     }
     const defaultInhouseAi = DEFAULT_LANDING.capabilities.items.find(
       (c) => c.title === "In-house AI",
@@ -1229,14 +1258,42 @@ export function mergeConfig(partial: any): LandingConfig {
       }
       return w;
     });
+    // Upgrade stale "register / command center" comparison framing to intelligence narrative.
+    if (
+      typeof merged.comparison.heading === "string" &&
+      /what breaks without|holds together with it/i.test(merged.comparison.heading)
+    ) {
+      merged.comparison.heading = DEFAULT_LANDING.comparison.heading;
+      merged.comparison.subtitle = DEFAULT_LANDING.comparison.subtitle;
+      merged.comparison.failures = [...DEFAULT_LANDING.comparison.failures];
+      merged.comparison.wins = [...DEFAULT_LANDING.comparison.wins];
+    } else {
+      const haveWin = new Set(
+        (merged.comparison.wins as { title?: string }[]).map((w) => String(w?.title || "")),
+      );
+      for (const w of DEFAULT_LANDING.comparison.wins) {
+        if (
+          (/Project Health|Portfolio Pulse|Explainable KPI|Executive intelligence|White-label/i.test(
+            w.title,
+          ) ||
+            /Calculated project health/i.test(w.title)) &&
+          !haveWin.has(w.title)
+        ) {
+          (merged.comparison.wins as typeof DEFAULT_LANDING.comparison.wins).push(w);
+          haveWin.add(w.title);
+        }
+      }
+    }
   }
   if (
     merged.final_cta &&
     typeof merged.final_cta.body === "string" &&
-    /protects your data while still delivering|without sending data to external/i.test(
-      merged.final_cta.body,
-    )
+    (/protects your data while still delivering|without sending data to external|secure the portfolio outcome/i.test(
+      merged.final_cta.body + " " + (merged.final_cta.title || ""),
+    ) ||
+      !/intelligence|portfolio pulse|health|BYOD|white-?label/i.test(merged.final_cta.body))
   ) {
+    merged.final_cta.title = DEFAULT_LANDING.final_cta.title;
     merged.final_cta.body = DEFAULT_LANDING.final_cta.body;
   }
 
@@ -1247,6 +1304,49 @@ export function mergeConfig(partial: any): LandingConfig {
       DEFAULT_LANDING.hero.primary_cta,
     ),
   };
+  // Force intelligence narrative when saved hero still reads like a plain command-center register.
+  if (
+    typeof merged.hero?.subtitle === "string" &&
+    (/stop flying blind|master the/i.test(
+      `${merged.hero.title || ""} ${merged.hero.title_accent || ""} ${merged.hero.subtitle}`,
+    ) ||
+      !/intelligence|health|pulse|explain|BYOD|white-?label/i.test(merged.hero.subtitle))
+  ) {
+    merged.hero = {
+      ...merged.hero,
+      eyebrow: DEFAULT_LANDING.hero.eyebrow,
+      title: DEFAULT_LANDING.hero.title,
+      title_accent: DEFAULT_LANDING.hero.title_accent,
+      subtitle: DEFAULT_LANDING.hero.subtitle,
+      secondary_cta: DEFAULT_LANDING.hero.secondary_cta,
+      alert: DEFAULT_LANDING.hero.alert,
+    };
+  }
+  if (
+    typeof merged.brand?.tagline === "string" &&
+    /command center/i.test(merged.brand.tagline)
+  ) {
+    merged.brand.tagline = DEFAULT_LANDING.brand.tagline;
+  }
+  if (
+    merged.cockpit &&
+    typeof merged.cockpit.title === "string" &&
+    /^the executive cockpit$/i.test(merged.cockpit.title.trim())
+  ) {
+    merged.cockpit = { ...DEFAULT_LANDING.cockpit };
+  }
+  if (
+    Array.isArray(merged.trust_strip?.items) &&
+    !merged.trust_strip.items.some((i: string) => /intelligence|white-?label/i.test(i))
+  ) {
+    merged.trust_strip.items = [...DEFAULT_LANDING.trust_strip.items];
+  }
+  if (
+    Array.isArray(merged.stats) &&
+    merged.stats.some((s: { label?: string }) => /core registers/i.test(String(s?.label || "")))
+  ) {
+    merged.stats = [...DEFAULT_LANDING.stats];
+  }
   merged.final_cta = {
     ...merged.final_cta,
     primary: normalizeEoiCtaLabel(
