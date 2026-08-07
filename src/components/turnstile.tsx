@@ -42,6 +42,11 @@ interface Props {
   onToken: (token: string) => void;
   onExpire?: () => void;
   theme?: "light" | "dark" | "auto";
+  /**
+   * Increment to force a widget reset after a token is consumed or a sign-in
+   * attempt fails. Without this, Sign in stays disabled until a full refresh.
+   */
+  resetNonce?: number;
 }
 
 /**
@@ -54,11 +59,13 @@ export const TurnstileWidget = memo(function TurnstileWidget({
   onToken,
   onExpire,
   theme = "auto",
+  resetNonce = 0,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
   const onTokenRef = useRef(onToken);
   const onExpireRef = useRef(onExpire);
+  const prevResetNonceRef = useRef(resetNonce);
   onTokenRef.current = onToken;
   onExpireRef.current = onExpire;
   const siteKey = getTurnstileSiteKey();
@@ -91,6 +98,7 @@ export const TurnstileWidget = memo(function TurnstileWidget({
             }
           },
         });
+        prevResetNonceRef.current = resetNonce;
       })
       .catch((e) => console.error(e));
     return () => {
@@ -105,6 +113,17 @@ export const TurnstileWidget = memo(function TurnstileWidget({
       }
     };
   }, [siteKey, theme]);
+
+  useEffect(() => {
+    if (prevResetNonceRef.current === resetNonce) return;
+    prevResetNonceRef.current = resetNonce;
+    if (!widgetIdRef.current || !window.turnstile) return;
+    try {
+      window.turnstile.reset(widgetIdRef.current);
+    } catch {
+      /* noop */
+    }
+  }, [resetNonce]);
 
   if (!siteKey) return null;
   return (
