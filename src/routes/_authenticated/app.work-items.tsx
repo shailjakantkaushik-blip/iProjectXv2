@@ -35,7 +35,14 @@ import { DEFAULT_PAGE_SIZE } from "@/lib/portfolio-paging";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
+type WorkItemsSearch = {
+  mine?: boolean;
+};
+
 export const Route = createFileRoute("/_authenticated/app/work-items")({
+  validateSearch: (s: Record<string, unknown>): WorkItemsSearch => ({
+    mine: s.mine === true || s.mine === "1" || s.mine === "true" ? true : undefined,
+  }),
   component: WorkItemsPage,
 });
 
@@ -82,7 +89,8 @@ function WorkItemsPage() {
   const userId = session?.user?.id;
   const qc = useQueryClient();
   const listWorkItems = useServerFn(listPortfolioWorkItems);
-  const [mineOnly, setMineOnly] = useState(false);
+  const search = Route.useSearch();
+  const [mineOnly, setMineOnly] = useState(!!search.mine);
   const [fProgram, setFProgram] = useState("All");
   const [fProject, setFProject] = useState("All");
   const [fStream, setFStream] = useState("All");
@@ -93,6 +101,10 @@ function WorkItemsPage() {
   const [depPred, setDepPred] = useState("");
   const [depSucc, setDepSucc] = useState("");
   const pageSize = DEFAULT_PAGE_SIZE;
+
+  useEffect(() => {
+    if (search.mine) setMineOnly(true);
+  }, [search.mine]);
 
   useEffect(() => {
     setOffset(0);
