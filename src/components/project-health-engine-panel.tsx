@@ -190,6 +190,22 @@ export function ProjectHealthEnginePanel({
     mutationFn: async () => {
       if (!projectId || !health) throw new Error("No forecast available");
       const fac = Math.round(health.forecast.forecastFinalCost);
+      // Prefer writing FAC on the default stream when streams are on — project
+      // FAC is a rollup and would otherwise be overwritten on the next stream edit.
+      const { data: defaultStream } = await supabase
+        .from("project_streams" as never)
+        .select("id")
+        .eq("project_id", projectId)
+        .eq("is_default", true)
+        .maybeSingle();
+      const streamId = (defaultStream as { id?: string } | null)?.id;
+      if (streamId) {
+        const { error: streamErr } = await supabase
+          .from("project_streams" as never)
+          .update({ forecast_at_completion: fac } as never)
+          .eq("id", streamId);
+        if (streamErr) throw streamErr;
+      }
       const { error } = await supabase
         .from("projects")
         .update({ forecast_at_completion: fac } as never)
@@ -199,6 +215,7 @@ export function ProjectHealthEnginePanel({
     },
     onSuccess: (fac) => {
       qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["project_streams"] });
       window.dispatchEvent(new CustomEvent("pmo:data-changed", { detail: { table: "projects" } }));
       toast.success(`FAC reforecast to ${money(fac)}`);
     },
