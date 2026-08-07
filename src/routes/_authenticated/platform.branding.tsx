@@ -518,10 +518,10 @@ function BrandingEditor({ org, onSaved }: { org: Org; onSaved: () => void }) {
             <div>
               <Label>Enterprise SSO (SAML)</Label>
               <p className="mt-1 text-xs text-muted-foreground">
-                When enabled, the white-label login page shows an SSO button. Register the IdP in
-                Supabase Auth first (<code className="text-[11px]">supabase sso add</code> or
-                Dashboard → Authentication → SSO), then paste the provider UUID and/or email domains
-                here.
+                When enabled, the white-label login page shows an SSO button. For the button to
+                redirect successfully, register the IdP in Supabase Auth first (
+                <code className="text-[11px]">supabase sso add</code> or Dashboard → Authentication
+                → SSO), then paste the provider UUID and/or email domains here and save.
               </p>
             </div>
             <Switch checked={ssoEnabled} onCheckedChange={setSsoEnabled} />
