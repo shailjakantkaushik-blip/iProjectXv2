@@ -212,6 +212,8 @@ export type LandingConfig = {
     title: string;
     title_accent: string;
     subtitle: string;
+    /** Intelligence narrative shown under the CTA group (fills the hero text column gap). */
+    after_cta?: string;
     primary_cta: string;
     secondary_cta: string;
     alert: string;
@@ -588,9 +590,11 @@ export const DEFAULT_LANDING: LandingConfig = {
   palette: { ...DEFAULT_PALETTE },
   hero: {
     eyebrow: "Portfolio Intelligence Platform",
-    title: "Beyond the",
-    title_accent: "Register",
+    title: "Master the",
+    title_accent: "Portfolio",
     subtitle:
+      "Stop flying blind. One PMO command center for live portfolio KPIs, resource timesheets, stage-gate governance, optional SSO & BYOD, and Jira integrations — Agile and Waterfall on the same truth.",
+    after_cta:
       "iProjectX is not a static portfolio register. It is an intelligence layer over delivery — calculated Project Health, Portfolio Pulse, executive what-ifs, explainable KPIs, and stage-gate governance — with enterprise security, white-label branding, optional SSO, and Bring-Your-Own-Database for tenant data residency.",
     primary_cta: "Expression of Interest",
     secondary_cta: "See capabilities",
@@ -1304,23 +1308,41 @@ export function mergeConfig(partial: any): LandingConfig {
       DEFAULT_LANDING.hero.primary_cta,
     ),
   };
-  // Force intelligence narrative when saved hero still reads like a plain command-center register.
+  // Keep the classic "Master the Portfolio" opening; place intelligence copy under CTAs.
+  if (
+    typeof merged.hero?.title_accent === "string" &&
+    /register/i.test(merged.hero.title_accent) &&
+    /beyond the/i.test(String(merged.hero.title || ""))
+  ) {
+    merged.hero.title = DEFAULT_LANDING.hero.title;
+    merged.hero.title_accent = DEFAULT_LANDING.hero.title_accent;
+    merged.hero.subtitle = DEFAULT_LANDING.hero.subtitle;
+  }
   if (
     typeof merged.hero?.subtitle === "string" &&
-    (/stop flying blind|master the/i.test(
-      `${merged.hero.title || ""} ${merged.hero.title_accent || ""} ${merged.hero.subtitle}`,
-    ) ||
-      !/intelligence|health|pulse|explain|BYOD|white-?label/i.test(merged.hero.subtitle))
+    /not a static portfolio register/i.test(merged.hero.subtitle)
   ) {
-    merged.hero = {
-      ...merged.hero,
-      eyebrow: DEFAULT_LANDING.hero.eyebrow,
-      title: DEFAULT_LANDING.hero.title,
-      title_accent: DEFAULT_LANDING.hero.title_accent,
-      subtitle: DEFAULT_LANDING.hero.subtitle,
-      secondary_cta: DEFAULT_LANDING.hero.secondary_cta,
-      alert: DEFAULT_LANDING.hero.alert,
-    };
+    // Migrate previous intelligence-as-subtitle into after_cta.
+    if (!merged.hero.after_cta) merged.hero.after_cta = merged.hero.subtitle;
+    merged.hero.subtitle = DEFAULT_LANDING.hero.subtitle;
+    merged.hero.title = DEFAULT_LANDING.hero.title;
+    merged.hero.title_accent = DEFAULT_LANDING.hero.title_accent;
+  }
+  if (!merged.hero.after_cta || !String(merged.hero.after_cta).trim()) {
+    merged.hero.after_cta = DEFAULT_LANDING.hero.after_cta;
+  }
+  if (
+    typeof merged.hero?.eyebrow === "string" &&
+    /command center/i.test(merged.hero.eyebrow) &&
+    !/intelligence/i.test(merged.hero.eyebrow)
+  ) {
+    merged.hero.eyebrow = DEFAULT_LANDING.hero.eyebrow;
+  }
+  if (
+    typeof merged.hero?.secondary_cta === "string" &&
+    /see use cases/i.test(merged.hero.secondary_cta)
+  ) {
+    merged.hero.secondary_cta = DEFAULT_LANDING.hero.secondary_cta;
   }
   if (
     typeof merged.brand?.tagline === "string" &&
