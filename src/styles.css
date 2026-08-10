@@ -453,6 +453,8 @@ textarea.st-input { height: auto; min-height: 64px; }
  */
 html {
   -webkit-text-size-adjust: 100%;
+  /* Never force smooth document scrolling — it lags wheel/trackpad with sticky chrome. */
+  scroll-behavior: auto;
 }
 body {
   overflow-x: hidden;
@@ -685,7 +687,11 @@ html[data-style-theme="aurora"] .shell-root::before {
   box-sizing: border-box;
   /* Sole vertical scrollport inside AppShell — chrome stays fixed. */
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
   animation: none;
+  /* Own stacking context so sticky headers / theme washes don't repaint the scrollport. */
+  isolation: isolate;
+  scrollbar-gutter: stable;
 }
 /* Mobile drawer open: freeze page scroll under the overlay */
 .shell-root[data-mobile-nav-open="1"] .shell-main {

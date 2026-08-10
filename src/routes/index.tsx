@@ -203,24 +203,36 @@ function useCountUp(target: number, duration = 1400) {
   const started = useRef(false);
   useEffect(() => {
     if (!ref.current) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setVal(target);
+      return;
+    }
+    const el = ref.current;
     const io = new IntersectionObserver(
       (entries) => {
-        entries.forEach((e) => {
-          if (e.isIntersecting && !started.current) {
-            started.current = true;
-            const start = performance.now();
-            const tick = (now: number) => {
-              const t = Math.min(1, (now - start) / duration);
-              setVal(Math.round(target * (1 - Math.pow(1 - t, 3))));
-              if (t < 1) requestAnimationFrame(tick);
-            };
-            requestAnimationFrame(tick);
-          }
-        });
+        for (const e of entries) {
+          if (!e.isIntersecting || started.current) continue;
+          started.current = true;
+          io.disconnect();
+          const start = performance.now();
+          let last = -1;
+          const tick = (now: number) => {
+            const t = Math.min(1, (now - start) / duration);
+            const next = Math.round(target * (1 - Math.pow(1 - t, 3)));
+            // Avoid redundant React commits when the displayed integer hasn't changed.
+            if (next !== last) {
+              last = next;
+              setVal(next);
+            }
+            if (t < 1) requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+          break;
+        }
       },
       { threshold: 0.4 },
     );
-    io.observe(ref.current);
+    io.observe(el);
     return () => io.disconnect();
   }, [target, duration]);
   return { ref, val };
@@ -239,14 +251,24 @@ function Reveal({
   const [shown, setShown] = useState(false);
   useEffect(() => {
     if (!ref.current) return;
+    // Skip entrance motion when the user prefers reduced motion — also cheaper while scrolling.
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setShown(true);
+      return;
+    }
+    const el = ref.current;
     const io = new IntersectionObserver(
-      (es) =>
-        es.forEach((e) => {
-          if (e.isIntersecting) setShown(true);
-        }),
-      { threshold: 0.12 },
+      (es) => {
+        for (const e of es) {
+          if (!e.isIntersecting) continue;
+          setShown(true);
+          io.disconnect();
+          break;
+        }
+      },
+      { threshold: 0.08, rootMargin: "40px 0px -8% 0px" },
     );
-    io.observe(ref.current);
+    io.observe(el);
     return () => io.disconnect();
   }, []);
   return (
@@ -255,8 +277,11 @@ function Reveal({
       className={className}
       style={{
         opacity: shown ? 1 : 0,
-        transform: shown ? "translateY(0)" : "translateY(18px)",
-        transition: `opacity 750ms ease ${delay}ms, transform 750ms cubic-bezier(.2,.7,.2,1) ${delay}ms`,
+        transform: shown ? "translateY(0)" : "translateY(12px)",
+        // Shorter motion = less paint contention during fast scroll.
+        transition: shown
+          ? `opacity 420ms ease ${delay}ms, transform 420ms cubic-bezier(.2,.7,.2,1) ${delay}ms`
+          : undefined,
       }}
     >
       {children}
@@ -378,13 +403,8 @@ function LandingPage() {
   }, [needsRevalidate]);
 
   useEffect(() => {
-    document.documentElement.style.scrollBehavior = "smooth";
-    return () => {
-      document.documentElement.style.scrollBehavior = "";
-    };
-  }, []);
-
-  useEffect(() => {
+    // Never set documentElement scroll-behavior: smooth — it makes wheel/trackpad
+    // scrolling feel laggy with sticky headers. Anchor CTAs use scrollIntoView below.
     const w = window as Window & {
       requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
       cancelIdleCallback?: (id: number) => void;
@@ -522,7 +542,15 @@ function CtaSecondary({
 
   if (href.startsWith("#")) {
     return (
-      <a href={href} style={style} className={className}>
+      <a
+        href={href}
+        style={style}
+        className={className}
+        onClick={(e) => {
+          e.preventDefault();
+          scrollToHash(href);
+        }}
+      >
         {children}
       </a>
     );
@@ -534,16 +562,42 @@ function CtaSecondary({
   );
 }
 
+function scrollToHash(hash: string) {
+  if (!hash.startsWith("#") || hash.length < 2) return;
+  const el = document.querySelector(hash);
+  if (!(el instanceof HTMLElement)) return;
+  const reduceMotion =
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // Programmatic only — never set html { scroll-behavior: smooth } for wheel scrolling.
+  el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+}
+
 function Nav({ cfg, signupEnabled }: { cfg: LandingConfig; signupEnabled: boolean }) {
   const p = cfg.palette;
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 12);
-    onScroll();
+    let raf = 0;
+    let last = window.scrollY > 12;
+    setScrolled(last);
+    const onScroll = () => {
+      if (raf) return;
+      raf = window.requestAnimationFrame(() => {
+        raf = 0;
+        const next = window.scrollY > 12;
+        if (next !== last) {
+          last = next;
+          setScrolled(next);
+        }
+      });
+    };
     window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (raf) window.cancelAnimationFrame(raf);
+    };
   }, []);
 
   useEffect(() => {
@@ -555,18 +609,19 @@ function Nav({ cfg, signupEnabled }: { cfg: LandingConfig; signupEnabled: boolea
     return undefined;
   }, [open]);
 
+  // Opaque-ish nav (no backdrop-filter) — blur on sticky headers tanks scroll FPS.
   const navBg =
     cfg.theme === "dark"
       ? scrolled
-        ? `${p.navy}f2`
-        : `${p.navy}cc`
+        ? p.navy
+        : `${p.navy}f5`
       : scrolled
-        ? "rgba(255,255,255,0.92)"
-        : "rgba(255,255,255,0.78)";
+        ? "#ffffff"
+        : "rgba(255,255,255,0.97)";
 
   return (
     <nav
-      className="sticky top-0 z-50 w-full border-b backdrop-blur-xl transition-[background,box-shadow] duration-300"
+      className="sticky top-0 z-50 w-full border-b transition-[background,box-shadow,border-color] duration-200"
       style={{
         borderColor: scrolled ? p.surface : "transparent",
         background: navBg,
@@ -583,6 +638,10 @@ function Nav({ cfg, signupEnabled }: { cfg: LandingConfig; signupEnabled: boolea
             <a
               key={href}
               href={href}
+              onClick={(e) => {
+                e.preventDefault();
+                scrollToHash(href);
+              }}
               className="text-sm font-semibold tracking-tight transition-opacity hover:opacity-70"
               style={{ color: p.textMuted }}
             >
@@ -647,7 +706,11 @@ function Nav({ cfg, signupEnabled }: { cfg: LandingConfig; signupEnabled: boolea
               <a
                 key={href}
                 href={href}
-                onClick={() => setOpen(false)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setOpen(false);
+                  scrollToHash(href);
+                }}
                 className="rounded-md px-3 py-3 text-sm font-semibold"
                 style={{ color: p.textHeading }}
               >
