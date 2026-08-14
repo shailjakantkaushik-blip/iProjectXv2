@@ -111,12 +111,14 @@ export function resolveBrandLogoUrl(
 }
 
 /**
- * Standard iProjectX mark for app shell when neither org white-label nor
- * platform App logo is configured.
+ * App shell logo resolution:
+ * 1) Organisation white-label logo (Platform → Branding), when set
+ * 2) iProjectX platform App shell logo from landing_config (`logo_url_app`,
+ *    with legacy `logo_url` fallback inside resolveBrandLogoUrl)
+ *
+ * Does not substitute a static asset — if the platform has no App shell logo
+ * configured, returns "" so the shell can render a neutral mark.
  */
-export const DEFAULT_IPROJECTX_MARK = "/brand/iprojectx-mark.webp";
-
-/** App shell logo: org white-label → platform app logo → iProjectX mark. */
 export function resolveAppShellLogoUrl(opts: {
   orgLogoUrl?: string | null;
   brand?: Pick<
@@ -129,12 +131,12 @@ export function resolveAppShellLogoUrl(opts: {
       ? opts.orgLogoUrl.trim()
       : "";
   if (org) return org;
-  if (opts.brand) {
-    const platform = resolveBrandLogoUrl(opts.brand, "app");
-    if (platform) return platform;
-  }
-  return DEFAULT_IPROJECTX_MARK;
+  if (!opts.brand) return "";
+  return resolveBrandLogoUrl(opts.brand, "app");
 }
+
+/** Packaged iProjectX mark (processing animation / favicon helpers). Not the app-shell fallback. */
+export const DEFAULT_IPROJECTX_MARK = "/brand/iprojectx-mark.webp";
 
 export function resolveBrandLogoDims(
   brand: LandingConfig["brand"],

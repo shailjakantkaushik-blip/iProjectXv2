@@ -502,7 +502,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     maxWidthPx: 160,
   }) as LogoCustomDims;
   const brandForApp = landing?.brand ?? cached?.brand;
-  // Org white-label logo when set; else platform App logo; else standard iProjectX mark.
+  // Org white-label logo when set; otherwise iProjectX platform App shell logo
+  // (Platform → Landing → App shell logo / logo_url_app).
   const orgLogoUrl =
     typeof organization?.logo_url === "string" ? organization.logo_url.trim() : "";
   const shellLogoUrl = resolveAppShellLogoUrl({
