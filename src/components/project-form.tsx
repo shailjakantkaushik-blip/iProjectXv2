@@ -8,6 +8,10 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { syncScheduleDates } from "@/lib/project-dates";
+import {
+  deliveryMethodsQueryKey,
+  fetchDeliveryMethods,
+} from "@/lib/delivery-methods";
 
 export interface ProjectFormValues {
   project_code?: string | null;
@@ -59,7 +63,6 @@ const OPTS = {
   priority: ["Low", "Medium", "High", "Critical"],
   status: ["Not Started", "In Progress", "On Hold", "Completed", "Cancelled"],
   rag: ["Green", "Amber", "Red"],
-  delivery: ["Waterfall", "Agile", "Hybrid"],
 };
 
 const BRIEF_KEYS = [
@@ -96,6 +99,17 @@ export function ProjectForm({
     },
     enabled: !!organization,
   });
+
+  const { data: deliveryMethods = [] } = useQuery({
+    queryKey: deliveryMethodsQueryKey(organization?.id),
+    queryFn: () => fetchDeliveryMethods(organization!.id, { activeOnly: true }),
+    enabled: !!organization?.id,
+  });
+
+  const deliveryOpts =
+    deliveryMethods.length > 0
+      ? deliveryMethods.map((m) => m.name)
+      : ["Waterfall", "Agile", "Hybrid"];
 
   const briefDefaults: Record<string, string> = {};
   if (defaultValues?.brief && typeof defaultValues.brief === "object") {
@@ -136,6 +150,10 @@ export function ProjectForm({
       delete clean[k];
     }
     clean.brief = brief;
+    const method = deliveryMethods.find(
+      (m) => m.name === clean.delivery_method || m.code === String(clean.delivery_method || "").toLowerCase(),
+    );
+    if (method) clean.delivery_method_id = method.id;
     await onSubmit(clean);
   });
 
@@ -161,7 +179,7 @@ export function ProjectForm({
 
           <Section title="2 · Delivery & Status">
             <div className="grid gap-4 md:grid-cols-4">
-              <Sel label="Delivery Method" reg={register("delivery_method")} opts={OPTS.delivery} />
+              <Sel label="Delivery Method" reg={register("delivery_method")} opts={deliveryOpts} />
               <Sel label="Priority" reg={register("priority")} opts={OPTS.priority} />
               <Sel label="Status" reg={register("status")} opts={OPTS.status} />
               <Sel label="RAG" reg={register("rag")} opts={OPTS.rag} />

@@ -12,6 +12,7 @@ export const TABLE_QUERY_KEYS: Record<string, string[]> = {
   milestones: ["milestones", "milestones-feed"],
   stage_gates: ["stage_gates", "projects"],
   stage_gate_definitions: ["stage_gate_definitions"],
+  delivery_methods: ["delivery_methods"],
   risks: ["risks", "portfolio-kpis"],
   issues: ["issues", "portfolio-kpis"],
   actions: ["actions", "portfolio-kpis"],
@@ -172,6 +173,7 @@ export const LIVE_SYNC_ROUTE_TABLES: Record<string, readonly string[]> = {
     "stage_gate_checklist_responses",
   ],
   "/app/stage-gate-config": [
+    "delivery_methods",
     "stage_gate_definitions",
     "stage_gate_checklist_items",
   ],

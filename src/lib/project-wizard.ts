@@ -131,3 +131,5 @@ export const PRIORITY_OPTS = ["Low", "Medium", "High", "Critical"] as const;
 export const STATUS_OPTS = ["Not Started", "In Progress", "On Hold", "Completed", "Cancelled"] as const;
 export const RAG_OPTS = ["Green", "Amber", "Red"] as const;
 export const DELIVERY_OPTS = ["Waterfall", "Agile", "Hybrid"] as const;
+// Prefer org delivery_methods from the DB (see src/lib/delivery-methods.ts).
+// DELIVERY_OPTS remains as a fallback when the table is not migrated yet.
