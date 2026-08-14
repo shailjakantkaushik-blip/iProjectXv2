@@ -21,22 +21,62 @@ export function userRequiresMfa(): boolean {
   return MFA_REQUIRED_FOR_ALL_USERS;
 }
 
-export async function getMfaStatus(): Promise<MfaStatus> {
-  const [{ data: aal }, { data: factors }] = await Promise.all([
-    supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
-    supabase.auth.mfa.listFactors(),
-  ]);
+type TotpFactorRow = {
+  id: string;
+  status?: string;
+  factor_type?: string;
+  friendly_name?: string | null;
+};
 
-  const verified = (factors?.totp ?? []).filter((f) => f.status === "verified");
+export async function listTotpFactors(): Promise<{
+  verified: TotpFactorRow[];
+  unverified: TotpFactorRow[];
+}> {
+  const { data, error } = await supabase.auth.mfa.listFactors();
+  if (error) throw error;
+
+  const all = (data?.all ?? []) as TotpFactorRow[];
+  const totpAll = all.filter((f) => f.factor_type === "totp");
+  const unverified = totpAll.filter((f) => f.status !== "verified");
+  const verifiedFromAll = totpAll.filter((f) => f.status === "verified");
+  const verified =
+    verifiedFromAll.length > 0
+      ? verifiedFromAll
+      : ((data?.totp ?? []) as TotpFactorRow[]).filter((f) => f.status === "verified");
+
+  return { verified, unverified };
+}
+
+export async function unenrollUnverifiedTotpFactors(): Promise<number> {
+  const { unverified } = await listTotpFactors();
+  let removed = 0;
+  for (const f of unverified) {
+    try {
+      await unenrollTotp(f.id);
+      removed += 1;
+    } catch {
+      /* leftover factor — continue so a fresh enroll can proceed */
+    }
+  }
+  return removed;
+}
+
+export async function getMfaStatus(): Promise<MfaStatus> {
+  const [{ data: aal, error: aalError }, factors] = await Promise.all([
+    supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
+    listTotpFactors(),
+  ]);
+  if (aalError) throw aalError;
+
   const currentLevel = aal?.currentLevel ?? null;
   const nextLevel = aal?.nextLevel ?? null;
 
   return {
     currentLevel,
     nextLevel,
-    verifiedFactorIds: verified.map((f) => f.id),
+    verifiedFactorIds: factors.verified.map((f) => f.id),
     needsChallenge: currentLevel === "aal1" && nextLevel === "aal2",
-    hasVerifiedFactor: verified.length > 0,
+    hasVerifiedFactor: factors.verified.length > 0,
   };
 }
 
@@ -72,7 +112,48 @@ export async function enrollTotp(
     issuer,
   });
   if (error) throw error;
+  if (!data?.id || !data.totp) {
+    throw new Error("Authenticator enrollment did not return a QR code. Try again.");
+  }
   return data;
+}
+
+/**
+ * Enroll a new TOTP factor for first-time setup.
+ * Clears unfinished (unverified) factors first — those block a new QR
+ * ("friendly name already exists") after switching browsers mid-setup.
+ * If a verified authenticator already exists, throws with code
+ * AUTHENTICATOR_ALREADY_VERIFIED so the UI can challenge instead.
+ */
+export async function enrollTotpForSetup(
+  opts: { friendlyName?: string; issuer?: string } = {},
+) {
+  const { verified } = await listTotpFactors();
+  if (verified.length > 0) {
+    const err = new Error("AUTHENTICATOR_ALREADY_VERIFIED") as Error & {
+      code: string;
+      factorId: string;
+    };
+    err.code = "AUTHENTICATOR_ALREADY_VERIFIED";
+    err.factorId = verified[0].id;
+    throw err;
+  }
+
+  await unenrollUnverifiedTotpFactors();
+
+  try {
+    return await enrollTotp(opts);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e ?? "");
+    if (/already exists|friendly name|maximum|too many/i.test(msg)) {
+      await unenrollUnverifiedTotpFactors();
+      return await enrollTotp({
+        ...opts,
+        friendlyName: `Authenticator ${Date.now().toString(36)}`,
+      });
+    }
+    throw e;
+  }
 }
 
 export async function verifyTotpEnrollment(factorId: string, code: string) {

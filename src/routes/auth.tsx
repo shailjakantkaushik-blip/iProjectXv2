@@ -532,12 +532,17 @@ function AuthPage() {
         }
       }
 
-      // MFA challenge before entering the app (AAL1 → AAL2).
+      // MFA: challenge existing authenticator, or enroll if none is verified yet.
       try {
         const mfa = await getMfaStatus();
-        if (mfa.needsChallenge) {
+        if (mfa.hasVerifiedFactor && mfa.currentLevel !== "aal2") {
           leftAuthPage = true;
           navigate({ to: "/mfa", search: { mode: "challenge", next: "/app" }, replace: true });
+          return;
+        }
+        if (!mfa.hasVerifiedFactor) {
+          leftAuthPage = true;
+          navigate({ to: "/mfa", search: { mode: "enroll", next: "/app" }, replace: true });
           return;
         }
       } catch {

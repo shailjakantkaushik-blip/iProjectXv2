@@ -121,7 +121,7 @@ function Gate() {
       try {
         const mfa = await getMfaStatus();
         if (cancelled) return;
-        if (mfa.needsChallenge || mfa.currentLevel === "aal1") {
+        if (mfa.hasVerifiedFactor && (mfa.needsChallenge || mfa.currentLevel !== "aal2")) {
           goMfa("challenge");
           return;
         }
