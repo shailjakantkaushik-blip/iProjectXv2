@@ -10,7 +10,6 @@ import {
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  BarChart3,
   LayoutDashboard,
   FolderKanban,
   AlertTriangle,
