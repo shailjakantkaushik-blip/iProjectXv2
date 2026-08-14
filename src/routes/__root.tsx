@@ -82,7 +82,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: ReactNode }) {
-  // External boot scripts (public/boot/*) — avoids CSP script-src 'unsafe-inline'.
+  // Theme/favicon boot scripts live in public/boot/* (not inline).
+  // Framework hydration still uses inline <Scripts/> — vercel.json CSP must
+  // keep script-src 'unsafe-inline' until per-request nonces are wired.
   return (
     <html lang="en">
       <head>

@@ -19,7 +19,7 @@ Use this after the latest security deploy. Technical controls are largely in pla
 | A5c | **Run audit RLS SQL** | Apply `20260725170000_audit_events_admin_read.sql` in Supabase SQL Editor | ✅ |
 | A5d | **Run hardening SQL** | Apply `20260725120000_security_hardening.sql` if not already | ✅ |
 | A6 | **Confirm sessionStorage** | DevTools → Application → Session Storage has `sb-*-auth-token`. Local Storage should **not** hold that token. | ✅ (covered in smoke) |
-| A7 | **Confirm CSP** | Production response headers include `Content-Security-Policy` with Turnstile + fonts + Supabase. Landing fonts still load. | ✅ (covered in deploy) |
+| A7 | **Confirm CSP** | Production response headers include `Content-Security-Policy` with Turnstile + fonts + Supabase. `script-src` must include `'unsafe-inline'` (TanStack hydration) until nonce CSP exists. Landing must hydrate (not flash then go white). | ✅ (covered in deploy) |
 | A8 | **Manual invoicing only** | No cron needed. Use Platform → Invoices → Email → Mark paid. Optionally set `BILLING_CRON_SECRET` anyway so the unused endpoint stays locked. | ☐ (process choice) |
 | A9 | **Email provider for invoices** | Set `RESEND_API_KEY` or `SENDGRID_API_KEY` + `INVOICE_FROM_EMAIL` in Vercel if you email invoices | ☐ (only if emailing invoices) |
 
