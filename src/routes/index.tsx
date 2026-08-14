@@ -200,6 +200,9 @@ const NAV_LINKS = [
   ["#capabilities", "Capabilities"],
 ] as const;
 
+/** Frozen header: 4rem bar + notch. Tab anchors must use this — not a larger scroll-mt. */
+const LANDING_NAV_H = "calc(4rem + env(safe-area-inset-top, 0px))";
+
 function useCountUp(target: number, duration = 1400) {
   const [val, setVal] = useState(0);
   const ref = useRef<HTMLSpanElement | null>(null);
@@ -429,6 +432,7 @@ function LandingPage() {
     ["--lp-textMuted" as any]: p.textMuted,
     ["--lp-textOnDark" as any]: p.textOnDark,
     ["--lp-textOnAccent" as any]: p.textOnAccent,
+    ["--lp-nav-h" as any]: LANDING_NAV_H,
   } as React.CSSProperties;
 
   return (
@@ -445,7 +449,7 @@ function LandingPage() {
       </a>
       <Nav cfg={cfg} signupEnabled={signupEnabled} />
       {/* Matches frozen nav: 4rem bar + notch inset, so the hero is not tucked under Sign in / logo. */}
-      <div className="h-[calc(4rem+env(safe-area-inset-top,0px))] shrink-0" aria-hidden />
+      <div className="h-[var(--lp-nav-h)] shrink-0" aria-hidden />
       <main id="main" className="min-w-0">
         <Hero cfg={cfg} onEoiClick={() => setEoiOpen(true)} />
         {cfg.hero.alert && <InsightBar cfg={cfg} />}
@@ -1361,7 +1365,7 @@ function ExecutiveCockpitTour({ cfg, sectionBg }: { cfg: LandingConfig; sectionB
   return (
     <section
       id="cockpit"
-      className="scroll-mt-20 overflow-hidden py-20 sm:py-28"
+      className="scroll-mt-[var(--lp-nav-h)] overflow-hidden py-20 sm:py-28"
       style={{ background: sectionBg }}
     >
       <div className="mx-auto max-w-7xl px-5 sm:px-6">
@@ -1492,7 +1496,7 @@ function PortfolioTimelineTour({ cfg }: { cfg: LandingConfig }) {
   return (
     <section
       id="timeline"
-      className="scroll-mt-20 py-20 sm:py-28"
+      className="scroll-mt-[var(--lp-nav-h)] py-20 sm:py-28"
       style={{ background: p.navy, color: p.textOnDark }}
     >
       <div className="mx-auto max-w-7xl px-5 sm:px-6">
@@ -1623,7 +1627,7 @@ function RaidTour({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string })
   return (
     <section
       id="raid"
-      className="scroll-mt-20 overflow-x-hidden py-16 sm:py-20 md:py-28"
+      className="scroll-mt-[var(--lp-nav-h)] overflow-x-hidden py-16 sm:py-20 md:py-28"
       style={{ background: sectionBg }}
     >
       <div className="mx-auto max-w-7xl px-4 sm:px-5 md:px-6">
@@ -1788,7 +1792,7 @@ function SecurityTour({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: strin
   return (
     <section
       id="security"
-      className="scroll-mt-20 overflow-hidden py-20 sm:py-28"
+      className="scroll-mt-[var(--lp-nav-h)] overflow-hidden py-20 sm:py-28"
       style={{ background: sectionBg }}
     >
       <div className="mx-auto max-w-7xl px-5 sm:px-6">
@@ -1884,7 +1888,7 @@ function CapabilityBento({ cfg }: { cfg: LandingConfig }) {
   return (
     <section
       id="capabilities"
-      className="scroll-mt-20 py-20 sm:py-28"
+      className="scroll-mt-[var(--lp-nav-h)] py-20 sm:py-28"
       style={{ background: p.surface }}
     >
       <div className="mx-auto max-w-7xl px-5 sm:px-6">
