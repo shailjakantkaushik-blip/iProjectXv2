@@ -354,7 +354,7 @@ Legacy `NEXT_PUBLIC_*` env names are bridged to `VITE_*` via `scripts/env-bridge
 
 1. ~~Broad org-member write policies~~ → tightened in `20260814180000_security_hardening_rls_rate_acl.sql` (editors/`can_edit_project`)  
 2. ~~UI permissions default-allow~~ → default-deny + `seed_default_page_permissions`  
-3. ~~CSP `script-src 'unsafe-inline'`~~ → external `/boot/*.js` theme scripts (style-src still allows inline for CSS vars)  
+3. CSP: theme/favicon boot scripts are external (`/boot/*.js`). **`script-src 'unsafe-inline'` stays** — TanStack Start SSR emits inline hydration (`self.$_TSR`) and scroll-restoration scripts. Removing it blanks the public landing after hydrate. Per-request nonce CSP is a future item (static `vercel.json` headers cannot carry a nonce).  
 4. ~~MFA fail-open on API errors~~ → fail-closed (sign out)  
 5. Rate limits: in-process + optional durable Postgres (`RATE_LIMIT_DURABLE=1`); still pair with edge/WAF  
 6. BYOD: portfolio + RAID CRUD routed via `resolveOrgDataClient`; other screens continue to migrate  
