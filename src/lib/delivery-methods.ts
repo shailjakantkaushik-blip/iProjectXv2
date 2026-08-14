@@ -112,3 +112,19 @@ export function defaultGatesForMethodCode(code: string): readonly string[] {
   if (code === "agile") return AGILE_GATE_DEFAULTS;
   return WATERFALL_GATE_DEFAULTS;
 }
+
+/** Active gate names for one delivery method (ordered). */
+export async function fetchGateNamesForMethod(orgId: string, methodId: string | null | undefined) {
+  if (!methodId) return [] as string[];
+  const { data, error } = await supabase
+    .from("stage_gate_definitions")
+    .select("gate_name,sort_order")
+    .eq("org_id", orgId)
+    .eq("delivery_method_id", methodId)
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true });
+  if (error) throw error;
+  return (data ?? [])
+    .map((d: { gate_name?: string | null }) => String(d.gate_name || "").trim())
+    .filter(Boolean);
+}

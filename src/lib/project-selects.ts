@@ -34,6 +34,7 @@ export const PROJECT_PORTFOLIO_SELECT = [
   "target_go_live",
   "pm_user_id",
   "delivery_method",
+  "delivery_method_id",
   "current_phase",
   "created_at",
   "updated_at",
