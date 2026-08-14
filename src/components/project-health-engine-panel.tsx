@@ -231,51 +231,122 @@ export function ProjectHealthEnginePanel({
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const createFundingDecision = useMutation({
+  const createFundingRequest = useMutation({
     mutationFn: async () => {
       if (!orgId || !projectId || !health) throw new Error("Missing project");
-      const overrun = Math.max(0, Math.round(health.forecast.overrun));
-      const { error } = await supabase.from("decisions").insert({
+      const overrun = Math.max(0, Math.round(Number(health.forecast.overrun) || 0));
+      const ask =
+        overrun > 0
+          ? overrun
+          : Math.max(
+              0,
+              Math.round(
+                Number(health.forecast.forecastFinalCost) - Number(health.forecast.approvedBudget),
+              ) || 0,
+            );
+      const code = String(project.project_code || "PRJ").trim() || "PRJ";
+      const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      const crNumber = `${code}-FU-${stamp}`;
+      const title = `Request funding uplift — ${code || project.name}`;
+      const rationale = [
+        `Health Engine forecast final cost ${money(health.forecast.forecastFinalCost)} vs approved ${money(health.forecast.approvedBudget)}.`,
+        ask > 0 ? `Funding ask ${money(ask)}.` : "Confirm funding envelope against forecast.",
+        health.forecast.message,
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      // Primary artefact: Budget change request (Release Register) — mirrors Reduce Scope.
+      const { data: cr, error: crErr } = await supabase
+        .from("change_requests")
+        .insert({
+          org_id: orgId,
+          project_id: projectId,
+          cr_number: crNumber,
+          title,
+          description: rationale,
+          change_type: "Budget",
+          impact_scope: ask > 0 ? "High" : "Medium",
+          impact_cost: ask > 0 ? ask : null,
+          status: "Submitted",
+          raised_date: new Date().toISOString().slice(0, 10),
+          raised_by: profile?.full_name || profile?.email || null,
+          owner: profile?.full_name || profile?.email || null,
+          approver: project.sponsor || null,
+          notes:
+            health.earlyWarnings.map((w) => w.message).filter(Boolean).join("\n") ||
+            "Raised from Project Health Engine action layer.",
+        } as never)
+        .select("id")
+        .single();
+      if (crErr) throw crErr;
+
+      // Governance record so Approvals / Decisions also show the funding ask.
+      const { error: decErr } = await supabase.from("decisions").insert({
         org_id: orgId,
         project_id: projectId,
         program: project.program || null,
         sponsor: project.sponsor || null,
         owner: profile?.full_name || profile?.email || null,
-        title: `Request funding uplift — ${project.project_code || project.name}`,
-        rationale: `Health Engine forecast final cost ${money(health.forecast.forecastFinalCost)} vs approved ${money(health.forecast.approvedBudget)}. Overrun ${money(overrun)}.`,
-        impact: overrun > 0 ? `Cost impact ${money(overrun)}` : "Funding confirmation",
+        title,
+        description: rationale,
+        rationale,
+        impact: ask > 0 ? `Funding ask ${money(ask)}` : "Funding confirmation",
+        cost_impact: ask > 0 ? ask : null,
         outcome: "Pending",
         status: "Pending",
         decision_date: new Date().toISOString().slice(0, 10),
-        notes: health.earlyWarnings.map((w) => w.message).join("\n") || null,
+        notes: `Linked change request ${crNumber}${cr?.id ? ` (${cr.id})` : ""}.`,
       } as never);
-      if (error) throw error;
+      if (decErr) throw decErr;
+
+      return { crNumber, ask };
     },
-    onSuccess: () => {
+    onSuccess: ({ crNumber, ask }) => {
       qc.invalidateQueries({ queryKey: ["decisions"] });
+      qc.invalidateQueries({ queryKey: ["change_requests"] });
+      window.dispatchEvent(new CustomEvent("pmo:data-changed", { detail: { table: "change_requests" } }));
       window.dispatchEvent(new CustomEvent("pmo:data-changed", { detail: { table: "decisions" } }));
-      toast.success("Funding decision drafted");
+      toast.success(
+        ask > 0
+          ? `Funding request ${crNumber} submitted (${money(ask)})`
+          : `Funding request ${crNumber} submitted`,
+        {
+          description: "Open Release Register or Decisions to review and approve.",
+          action: {
+            label: "Release Register",
+            onClick: () => {
+              window.location.href = "/app/release-register";
+            },
+          },
+        },
+      );
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(e.message || "Could not create funding request"),
   });
 
   const createScopeCr = useMutation({
     mutationFn: async () => {
       if (!orgId || !projectId || !health) throw new Error("Missing project");
+      const code = String(project.project_code || "PRJ").trim() || "PRJ";
+      const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
       const { error } = await supabase.from("change_requests").insert({
         org_id: orgId,
         project_id: projectId,
+        cr_number: `${code}-SC-${stamp}`,
         title: `Reduce scope to protect delivery — ${project.project_code || project.name}`,
         description: `Raised from Project Health Engine (score ${health.score}, ${health.rag}). ${health.predictive.warning || health.forecast.message}`,
         change_type: "Scope",
-        status: "Raised",
+        status: "Submitted",
         raised_date: new Date().toISOString().slice(0, 10),
         raised_by: profile?.full_name || profile?.email || null,
+        owner: profile?.full_name || profile?.email || null,
         impact_cost: health.forecast.overrun > 0 ? -Math.round(health.forecast.overrun) : null,
         impact_schedule_days: health.earlyWarnings[0]?.potentialDelayWeeks
           ? health.earlyWarnings[0].potentialDelayWeeks * 7
           : null,
-        impact_scope: "Reduce or defer lower-priority deliverables to recover schedule/cost.",
+        impact_scope: "High",
+        notes: "Reduce or defer lower-priority deliverables to recover schedule/cost.",
       } as never);
       if (error) throw error;
     },
@@ -284,7 +355,15 @@ export function ProjectHealthEnginePanel({
       window.dispatchEvent(
         new CustomEvent("pmo:data-changed", { detail: { table: "change_requests" } }),
       );
-      toast.success("Scope change request created");
+      toast.success("Scope change request submitted", {
+        description: "Review it under Release Register.",
+        action: {
+          label: "Open",
+          onClick: () => {
+            window.location.href = "/app/release-register";
+          },
+        },
+      });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -574,8 +653,8 @@ export function ProjectHealthEnginePanel({
             <Button
               size="sm"
               variant="outline"
-              disabled={createFundingDecision.isPending}
-              onClick={() => createFundingDecision.mutate()}
+              disabled={createFundingRequest.isPending}
+              onClick={() => createFundingRequest.mutate()}
             >
               Request Funding
             </Button>
@@ -589,9 +668,16 @@ export function ProjectHealthEnginePanel({
             </Button>
           </div>
           <p className="mt-2 text-[11px] text-muted-foreground">
-            Actions create real change requests / decisions on this project.{" "}
+            <strong className="font-medium text-foreground">Reforecast</strong> writes FAC.{" "}
+            <strong className="font-medium text-foreground">Reduce Scope</strong> /{" "}
+            <strong className="font-medium text-foreground">Request Funding</strong> raise change
+            requests (Release Register); funding also drafts a Pending decision.{" "}
+            <Link to="/app/release-register" className="text-primary hover:underline">
+              Release Register
+            </Link>
+            {" · "}
             <Link to="/app/decisions" className="text-primary hover:underline">
-              Open decisions
+              Decisions
             </Link>
           </p>
         </div>
