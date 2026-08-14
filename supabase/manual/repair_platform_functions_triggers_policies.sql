@@ -8722,6 +8722,27 @@ GRANT EXECUTE ON FUNCTION public.raid_effective_severity(int, int, int) TO authe
 
 
 
+-- Repair partial applies that created a `count` column before the function failed to load
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'rate_limit_buckets' AND column_name = 'count'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'rate_limit_buckets' AND column_name = 'hit_count'
+  ) THEN
+    ALTER TABLE public.rate_limit_buckets RENAME COLUMN "count" TO hit_count;
+  ELSIF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'rate_limit_buckets' AND column_name = 'hit_count'
+  ) THEN
+    ALTER TABLE public.rate_limit_buckets ADD COLUMN hit_count int NOT NULL DEFAULT 0;
+  END IF;
+END $$;
+
+
+
 ALTER TABLE public.rate_limit_buckets ENABLE ROW LEVEL SECURITY;
 
 
@@ -8741,7 +8762,7 @@ SET search_path = public
 AS $$
 DECLARE
   now_ts timestamptz := now();
-  row_count int;
+  row_hits int;
   row_reset timestamptz;
   retry int;
 BEGIN
@@ -8749,28 +8770,28 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'retry_after_sec', _window_seconds);
   END IF;
 
-  SELECT count, reset_at INTO row_count, row_reset
-  FROM public.rate_limit_buckets
-  WHERE bucket_key = _key
+  SELECT b.hit_count, b.reset_at INTO row_hits, row_reset
+  FROM public.rate_limit_buckets b
+  WHERE b.bucket_key = _key
   FOR UPDATE;
 
   IF NOT FOUND OR row_reset <= now_ts THEN
-    INSERT INTO public.rate_limit_buckets (bucket_key, count, reset_at, updated_at)
+    INSERT INTO public.rate_limit_buckets (bucket_key, hit_count, reset_at, updated_at)
     VALUES (_key, 1, now_ts + make_interval(secs => GREATEST(1, _window_seconds)), now_ts)
     ON CONFLICT (bucket_key) DO UPDATE
-      SET count = 1,
+      SET hit_count = 1,
           reset_at = now_ts + make_interval(secs => GREATEST(1, _window_seconds)),
           updated_at = now_ts;
     RETURN jsonb_build_object('ok', true);
   END IF;
 
-  IF row_count >= _limit THEN
-    retry := GREATEST(1, CEIL(EXTRACT(EPOCH FROM (row_reset - now_ts))));
+  IF row_hits >= _limit THEN
+    retry := GREATEST(1, CEIL(EXTRACT(EPOCH FROM (row_reset - now_ts)))::int);
     RETURN jsonb_build_object('ok', false, 'retry_after_sec', retry);
   END IF;
 
   UPDATE public.rate_limit_buckets
-  SET count = count + 1, updated_at = now_ts
+  SET hit_count = hit_count + 1, updated_at = now_ts
   WHERE bucket_key = _key;
 
   RETURN jsonb_build_object('ok', true);
@@ -8786,6 +8807,7 @@ GRANT EXECUTE ON FUNCTION public.check_rate_limit_bucket(text, int, int) TO serv
 -- ========== Tighten write RLS ==========
 -- lessons_learned
 DROP POLICY IF EXISTS "org write lessons_learned" ON public.lessons_learned;
+
 
 DROP POLICY IF EXISTS "editors write lessons_learned" ON public.lessons_learned;
 
@@ -8812,6 +8834,7 @@ CREATE POLICY "editors write lessons_learned" ON public.lessons_learned
 -- documents
 DROP POLICY IF EXISTS "org write documents" ON public.documents;
 
+
 DROP POLICY IF EXISTS "editors write documents" ON public.documents;
 
 
@@ -8836,6 +8859,7 @@ CREATE POLICY "editors write documents" ON public.documents
 
 -- demand_pipeline (org-level): admins / PMs with any edit rights via has_any_admin or role
 DROP POLICY IF EXISTS "org write demand_pipeline" ON public.demand_pipeline;
+
 
 DROP POLICY IF EXISTS "editors write demand_pipeline" ON public.demand_pipeline;
 
@@ -8862,10 +8886,14 @@ CREATE POLICY "editors write demand_pipeline" ON public.demand_pipeline
 
 
 -- governance_channels: writers = admin
+-- Real policy names from 20260720185715_… (not "org insert/update governance_channels")
 DROP POLICY IF EXISTS "org insert governance_channels" ON public.governance_channels;
 
 
 DROP POLICY IF EXISTS "org update governance_channels" ON public.governance_channels;
+
+
+DROP POLICY IF EXISTS "org write governance_channels" ON public.governance_channels;
 
 
 DROP POLICY IF EXISTS "org_members_insert_governance_channels" ON public.governance_channels;
@@ -8874,17 +8902,11 @@ DROP POLICY IF EXISTS "org_members_insert_governance_channels" ON public.governa
 DROP POLICY IF EXISTS "org_members_update_governance_channels" ON public.governance_channels;
 
 
+DROP POLICY IF EXISTS "Org members can insert channels" ON public.governance_channels;
 
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'public' AND tablename = 'governance_channels'
-      AND policyname = 'org write governance_channels'
-  ) THEN
-    EXECUTE 'DROP POLICY "org write governance_channels" ON public.governance_channels';
-  END IF;
-END $$;
+
+DROP POLICY IF EXISTS "Org members can update channels" ON public.governance_channels;
+
 
 DROP POLICY IF EXISTS "admins write governance_channels" ON public.governance_channels;
 
@@ -8937,6 +8959,7 @@ CREATE POLICY "editors write work_item_links" ON public.work_item_links
 -- custom_reports
 DROP POLICY IF EXISTS "org write custom_reports" ON public.custom_reports;
 
+
 DROP POLICY IF EXISTS "admins write custom_reports" ON public.custom_reports;
 
 
@@ -8958,6 +8981,7 @@ DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='governance_links') THEN
     EXECUTE 'DROP POLICY IF EXISTS "org write governance_links" ON public.governance_links';
+    EXECUTE 'DROP POLICY IF EXISTS "editors write governance_links" ON public.governance_links';
     EXECUTE $p$
       CREATE POLICY "editors write governance_links" ON public.governance_links
         FOR ALL TO authenticated
@@ -8980,6 +9004,7 @@ BEGIN
 
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='governance_tasks') THEN
     EXECUTE 'DROP POLICY IF EXISTS "org write governance_tasks" ON public.governance_tasks';
+    EXECUTE 'DROP POLICY IF EXISTS "editors write governance_tasks" ON public.governance_tasks';
     EXECUTE $p$
       CREATE POLICY "editors write governance_tasks" ON public.governance_tasks
         FOR ALL TO authenticated
