@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-14T15:29:50.533Z",
+  "generatedAt": "2026-08-14T15:35:25.686Z",
   "filename": "iprojectx-byod-schema.sql",
   "includedCount": 63,
   "excludedCount": 12,
@@ -82,5 +82,5 @@
     "20260731120000_org_integrations.sql",
     "20260801140000_org_ip_restriction.sql"
   ],
-  "bytes": 358784
+  "bytes": 360362
 }
