@@ -1,13 +1,19 @@
--- Repair: unblock enum→text migration of user_roles.role on a partially
--- applied new Supabase project (error 0A000 / cert_org_admin_select).
--- Run this once in SQL Editor, then re-run the remainder of the full schema
--- OR re-run from migration 20260729193000 onward / the full schema file again
--- (later statements are mostly idempotent).
-
-DROP POLICY IF EXISTS "cert_org_admin_select" ON public.org_license_certificates;
+-- Repair / unblock for fresh or partial schema applies.
+-- Safe when org_license_certificates (or user_roles) does not exist yet.
+--
+-- If this is a brand-new empty project: skip this file and run only
+--   supabase/manual/iprojectx_full_platform_schema.sql
+--
+-- If you already hit the role ALTER / policy error mid-apply: run this, then
+-- re-run the full schema file.
 
 DO $$
 BEGIN
+  -- Only touch the certificate policy when the table exists.
+  IF to_regclass('public.org_license_certificates') IS NOT NULL THEN
+    EXECUTE 'DROP POLICY IF EXISTS "cert_org_admin_select" ON public.org_license_certificates';
+  END IF;
+
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_schema = 'public' AND table_name = 'user_roles'
@@ -25,18 +31,22 @@ BEGIN
     ALTER TABLE public.role_table_permissions
       ALTER COLUMN role TYPE text USING role::text;
   END IF;
-END $$;
 
-DROP POLICY IF EXISTS "cert_org_admin_select" ON public.org_license_certificates;
-CREATE POLICY "cert_org_admin_select"
-  ON public.org_license_certificates FOR SELECT
-  TO authenticated
-  USING (
-    org_id = public.get_user_org(auth.uid())
-    AND EXISTS (
-      SELECT 1 FROM public.user_roles ur
-      WHERE ur.user_id = auth.uid()
-        AND ur.org_id  = public.get_user_org(auth.uid())
-        AND ur.role IN ('admin','org_admin')
-    )
-  );
+  IF to_regclass('public.org_license_certificates') IS NOT NULL THEN
+    EXECUTE 'DROP POLICY IF EXISTS "cert_org_admin_select" ON public.org_license_certificates';
+    EXECUTE $policy$
+      CREATE POLICY "cert_org_admin_select"
+        ON public.org_license_certificates FOR SELECT
+        TO authenticated
+        USING (
+          org_id = public.get_user_org(auth.uid())
+          AND EXISTS (
+            SELECT 1 FROM public.user_roles ur
+            WHERE ur.user_id = auth.uid()
+              AND ur.org_id  = public.get_user_org(auth.uid())
+              AND ur.role IN ('admin','org_admin')
+          )
+        )
+    $policy$;
+  END IF;
+END $$;
