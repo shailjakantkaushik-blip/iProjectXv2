@@ -93,6 +93,7 @@ import {
   fetchLandingConfig,
   logoSizeDims,
   normalizeLogoSize,
+  peekLandingConfigMemory,
   readCachedLandingConfig,
   resolveAppShellLogoUrl,
   type LogoCustomDims,
@@ -349,11 +350,16 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const [cached] = useState(() => readCachedLandingConfig());
   const qc = useQueryClient();
+  // Paint from cache immediately, but mark it stale so we always re-fetch the
+  // live platform App shell logo (logo_url_app). Without this, initialData +
+  // staleTime:60s can leave orgs with no white-label logo stuck on an empty /
+  // outdated brand while another org that has its own logo looks fine.
   const { data: landing } = useQuery({
     queryKey: ["landing-config"],
     queryFn: fetchLandingConfig,
     staleTime: 60_000,
     initialData: cached ?? undefined,
+    initialDataUpdatedAt: 0,
     placeholderData: (prev) => prev ?? cached ?? undefined,
   });
 
@@ -501,9 +507,12 @@ export function AppShell({ children }: { children: ReactNode }) {
     heightPx: 32,
     maxWidthPx: 160,
   }) as LogoCustomDims;
-  const brandForApp = landing?.brand ?? cached?.brand;
-  // Org white-label logo when set; otherwise iProjectX platform App shell logo
-  // (Platform → Landing → App shell logo / logo_url_app).
+  const brandForApp =
+    landing?.brand ?? peekLandingConfigMemory()?.brand ?? cached?.brand;
+  // Per-org white-label logo (Platform → Branding) when set.
+  // Otherwise always the platform Landing App shell logo (logo_url_app) —
+  // so Org B with no logo still shows iProjectX platform branding like Org A
+  // would if it cleared its own mark.
   const orgLogoUrl =
     typeof organization?.logo_url === "string" ? organization.logo_url.trim() : "";
   const shellLogoUrl = resolveAppShellLogoUrl({
@@ -541,6 +550,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     const maxW = compact ? Math.min(120, appLogoDims.maxWidthPx) : appLogoDims.maxWidthPx;
     return (
       <StableBrandLogo
+        // Remount when org or resolved src changes so a prior org's mark cannot stick.
+        key={`${organization?.id ?? "no-org"}:${usingOrgLogo ? "org" : "platform"}:${shellLogoUrl.slice(0, 64)}`}
         src={shellLogoUrl}
         alt={brandName}
         heightPx={h}
