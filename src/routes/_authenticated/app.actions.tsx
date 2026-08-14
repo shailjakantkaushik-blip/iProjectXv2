@@ -124,6 +124,7 @@ function ActionsPage() {
     (a: any) => a.priority === "High" || a.priority === "Critical",
   ).length;
   const closed = actions.filter((a: any) => a.status === "Closed").length;
+  const escalated = actions.filter((a: any) => a.escalated_at).length;
 
   const byPriority = PRIORITIES.map((p) => ({
     name: p,
@@ -170,6 +171,7 @@ function ActionsPage() {
           <KpiCard label="Open" value={open} />
           <KpiCard label="Overdue" value={overdue} />
           <KpiCard label="High / Critical" value={high} />
+          <KpiCard label="Escalated" value={escalated} />
           <KpiCard label="Closed" value={closed} />
         </div>
       </SectionFrame>
@@ -326,13 +328,23 @@ function ActionsPage() {
                     <tr key={a.id}>
                       <td className="font-medium">{p?.project_code || "—"}</td>
                       <td>
-                        <EditableCell
-                          table="actions"
-                          rowId={a.id}
-                          field="title"
-                          value={a.title}
-                          invalidateKeys={["actions"]}
-                        />
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <EditableCell
+                            table="actions"
+                            rowId={a.id}
+                            field="title"
+                            value={a.title}
+                            invalidateKeys={["actions"]}
+                          />
+                          {a.escalated_at ? (
+                            <span
+                              className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-800"
+                              title={a.escalation_reason || "Auto-escalated"}
+                            >
+                              Escalated
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
                       <td>
                         <EditableCell

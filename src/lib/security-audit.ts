@@ -20,6 +20,7 @@ export type SecurityEventType =
   | "project_purge"
   | "invoice_email"
   | "billing_run"
+  | "alerts_digest"
   | "eoi_submit"
   | "admin_action";
 

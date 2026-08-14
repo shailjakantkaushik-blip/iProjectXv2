@@ -140,6 +140,7 @@ function RisksPage() {
   const overdue = risks.filter(
     (r: any) => r.due_date && new Date(r.due_date) < new Date() && r.status !== "Closed",
   ).length;
+  const escalated = risks.filter((r: any) => r.escalated_at).length;
 
   const byStatus = STATUSES.map((s) => ({
     name: s,
@@ -179,6 +180,7 @@ function RisksPage() {
           <KpiCard label="Mitigating" value={mitigating} />
           <KpiCard label="Critical (≥15)" value={critical} />
           <KpiCard label="Overdue" value={overdue} />
+          <KpiCard label="Escalated" value={escalated} />
         </div>
       </SectionFrame>
 
@@ -356,13 +358,23 @@ function RisksPage() {
                     <tr key={r.id}>
                       <td className="font-medium">{p?.project_code || "—"}</td>
                       <td>
-                        <EditableCell
-                          table="risks"
-                          rowId={r.id}
-                          field="title"
-                          value={r.title}
-                          invalidateKeys={["risks"]}
-                        />
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <EditableCell
+                            table="risks"
+                            rowId={r.id}
+                            field="title"
+                            value={r.title}
+                            invalidateKeys={["risks"]}
+                          />
+                          {r.escalated_at ? (
+                            <span
+                              className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-800"
+                              title={r.escalation_reason || "Auto-escalated"}
+                            >
+                              Escalated
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
                       <td>
                         <EditableCell

@@ -108,6 +108,7 @@ import { Route as AuthenticatedAppProjectsIdRouteImport } from './routes/_authen
 import { Route as AuthenticatedAppProjectsNewRouteImport } from './routes/_authenticated/app.projects.new'
 import { Route as AuthenticatedPlatformInvoiceIdRouteImport } from './routes/_authenticated/platform.invoice.$id'
 import { Route as ApiPublicHooksBillingRunRouteImport } from './routes/api/public/hooks/billing-run'
+import { Route as ApiPublicHooksAlertsDigestRouteImport } from './routes/api/public/hooks/alerts-digest'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -677,6 +678,12 @@ const ApiPublicHooksBillingRunRoute =
     path: '/api/public/hooks/billing-run',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksAlertsDigestRoute =
+  ApiPublicHooksAlertsDigestRouteImport.update({
+    id: '/api/public/hooks/alerts-digest',
+    path: '/api/public/hooks/alerts-digest',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -776,6 +783,7 @@ export interface FileRoutesByFullPath {
   '/app/projects/new': typeof AuthenticatedAppProjectsNewRoute
   '/platform/invoice/$id': typeof AuthenticatedPlatformInvoiceIdRoute
   '/api/public/hooks/billing-run': typeof ApiPublicHooksBillingRunRoute
+  '/api/public/hooks/alerts-digest': typeof ApiPublicHooksAlertsDigestRoute
   '/app/projects/': typeof AuthenticatedAppProjectsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -874,6 +882,7 @@ export interface FileRoutesByTo {
   '/app/projects/new': typeof AuthenticatedAppProjectsNewRoute
   '/platform/invoice/$id': typeof AuthenticatedPlatformInvoiceIdRoute
   '/api/public/hooks/billing-run': typeof ApiPublicHooksBillingRunRoute
+  '/api/public/hooks/alerts-digest': typeof ApiPublicHooksAlertsDigestRoute
   '/app/projects': typeof AuthenticatedAppProjectsIndexRoute
 }
 export interface FileRoutesById {
@@ -976,6 +985,7 @@ export interface FileRoutesById {
   '/_authenticated/app/projects/new': typeof AuthenticatedAppProjectsNewRoute
   '/_authenticated/platform/invoice/$id': typeof AuthenticatedPlatformInvoiceIdRoute
   '/api/public/hooks/billing-run': typeof ApiPublicHooksBillingRunRoute
+  '/api/public/hooks/alerts-digest': typeof ApiPublicHooksAlertsDigestRoute
   '/_authenticated/app/projects/': typeof AuthenticatedAppProjectsIndexRoute
 }
 export interface FileRouteTypes {
@@ -1078,6 +1088,7 @@ export interface FileRouteTypes {
     | '/app/projects/new'
     | '/platform/invoice/$id'
     | '/api/public/hooks/billing-run'
+    | '/api/public/hooks/alerts-digest'
     | '/app/projects/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -1176,6 +1187,7 @@ export interface FileRouteTypes {
     | '/app/projects/new'
     | '/platform/invoice/$id'
     | '/api/public/hooks/billing-run'
+    | '/api/public/hooks/alerts-digest'
     | '/app/projects'
   id:
     | '__root__'
@@ -1277,6 +1289,7 @@ export interface FileRouteTypes {
     | '/_authenticated/app/projects/new'
     | '/_authenticated/platform/invoice/$id'
     | '/api/public/hooks/billing-run'
+    | '/api/public/hooks/alerts-digest'
     | '/_authenticated/app/projects/'
   fileRoutesById: FileRoutesById
 }
@@ -1291,6 +1304,7 @@ export interface RootRouteChildren {
   LegalSlugRoute: typeof LegalSlugRoute
   OSlugLoginRoute: typeof OSlugLoginRoute
   ApiPublicHooksBillingRunRoute: typeof ApiPublicHooksBillingRunRoute
+  ApiPublicHooksAlertsDigestRoute: typeof ApiPublicHooksAlertsDigestRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -1988,6 +2002,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksBillingRunRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/alerts-digest': {
+      id: '/api/public/hooks/alerts-digest'
+      path: '/api/public/hooks/alerts-digest'
+      fullPath: '/api/public/hooks/alerts-digest'
+      preLoaderRoute: typeof ApiPublicHooksAlertsDigestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -2231,6 +2252,7 @@ const rootRouteChildren: RootRouteChildren = {
   LegalSlugRoute: LegalSlugRoute,
   OSlugLoginRoute: OSlugLoginRoute,
   ApiPublicHooksBillingRunRoute: ApiPublicHooksBillingRunRoute,
+  ApiPublicHooksAlertsDigestRoute: ApiPublicHooksAlertsDigestRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
