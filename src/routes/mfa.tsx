@@ -123,7 +123,10 @@ function MfaPage() {
   const startEnroll = async () => {
     setBusy(true);
     try {
-      const data = await enrollTotp("Authenticator");
+      const data = await enrollTotp({
+        friendlyName: "Authenticator",
+        issuer: brand.name || "iProjectX",
+      });
       setFactorId(data.id);
       setQr(data.totp.qr_code);
       setSecret(data.totp.secret);

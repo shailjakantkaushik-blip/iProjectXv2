@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Plus, Trash2, Save, RefreshCw, ExternalLink, Upload, Sparkles, UserPlus } from "lucide-react";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
@@ -49,6 +50,7 @@ export const Route = createFileRoute("/_authenticated/platform/landing")({
 
 function LandingConfigPage() {
   const { user } = useAuth();
+  const qc = useQueryClient();
   const logoFileRef = useRef<HTMLInputElement>(null);
   const authLogoFileRef = useRef<HTMLInputElement>(null);
   const appLogoFileRef = useRef<HTMLInputElement>(null);
@@ -67,7 +69,11 @@ function LandingConfigPage() {
     setSaving(true);
     try {
       await saveLandingConfig(cfg, user?.id);
-      toast.success("Landing page updated. Public site refreshed.");
+      // Push into React Query so App Shell / other surfaces refresh immediately
+      // (staleTime otherwise keeps the old logo for up to 60s).
+      qc.setQueryData(["landing-config"], cfg);
+      void qc.invalidateQueries({ queryKey: ["landing-config"] });
+      toast.success("Landing page updated. Public site and app shell refreshed.");
     } catch (e: any) {
       toast.error(e?.message ?? "Failed to save");
     } finally {
@@ -286,7 +292,7 @@ function LandingConfigPage() {
                   {
                     key: "logo_url_app" as const,
                     label: "App shell logo",
-                    hint: "Sidebar when the organisation has no white-label logo",
+                    hint: "Sidebar brand mark. Overridden only when the organisation has its own white-label logo (Platform → Branding).",
                     fileRef: appLogoFileRef,
                     sizeKey: "logo_size_app" as const,
                     customKey: "logo_custom_app" as const,

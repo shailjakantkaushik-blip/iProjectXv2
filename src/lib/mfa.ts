@@ -49,10 +49,27 @@ export async function challengeAndVerifyTotp(factorId: string, code: string) {
   return data;
 }
 
-export async function enrollTotp(friendlyName = "Authenticator app") {
+export async function enrollTotp(
+  friendlyNameOrOpts: string | { friendlyName?: string; issuer?: string } = "Authenticator",
+) {
+  const opts =
+    typeof friendlyNameOrOpts === "string"
+      ? { friendlyName: friendlyNameOrOpts }
+      : friendlyNameOrOpts ?? {};
+  // Issuer appears in authenticator apps as "Issuer:email". Never pass a URL/host
+  // with ports — GoTrue Site URL can produce labels like "localhost:3000:3000:…".
+  const rawIssuer = (opts.issuer || "iProjectX").trim();
+  const issuer =
+    rawIssuer
+      .replace(/^https?:\/\//i, "")
+      .replace(/[:/?#].*$/, "") // drop port/path/query
+      .replace(/[^\w.\- &]/g, "")
+      .trim() || "iProjectX";
+
   const { data, error } = await supabase.auth.mfa.enroll({
     factorType: "totp",
-    friendlyName,
+    friendlyName: opts.friendlyName || "Authenticator",
+    issuer,
   });
   if (error) throw error;
   return data;

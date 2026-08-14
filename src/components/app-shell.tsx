@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChart3,
   LayoutDashboard,
@@ -349,6 +349,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [organization?.id]);
 
   const [cached] = useState(() => readCachedLandingConfig());
+  const qc = useQueryClient();
   const { data: landing } = useQuery({
     queryKey: ["landing-config"],
     queryFn: fetchLandingConfig,
@@ -356,6 +357,18 @@ export function AppShell({ children }: { children: ReactNode }) {
     initialData: cached ?? undefined,
     placeholderData: (prev) => prev ?? cached ?? undefined,
   });
+
+  useEffect(() => {
+    const onLanding = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail;
+      if (detail && typeof detail === "object") {
+        qc.setQueryData(["landing-config"], detail);
+      }
+      void qc.invalidateQueries({ queryKey: ["landing-config"] });
+    };
+    window.addEventListener("pmo:platform-theme-change", onLanding);
+    return () => window.removeEventListener("pmo:platform-theme-change", onLanding);
+  }, [qc]);
 
   const activeStyleId = useMemo(
     () =>
@@ -491,9 +504,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   }) as LogoCustomDims;
   const brandForApp = landing?.brand ?? cached?.brand;
   const platformAppLogo = brandForApp ? resolveBrandLogoUrl(brandForApp, "app") : "";
-  // In-app: org white-label logo when set; otherwise platform app logo.
-  const shellLogoUrl = organization?.logo_url || platformAppLogo || "";
-  const appLogoDims = organization?.logo_url
+  // Org white-label logo wins when set; otherwise platform App shell logo.
+  const orgLogoUrl =
+    typeof organization?.logo_url === "string" ? organization.logo_url.trim() : "";
+  const shellLogoUrl = orgLogoUrl || platformAppLogo || "";
+  const appLogoDims = orgLogoUrl
     ? logoSizeDims(orgLogoSize, orgLogoCustom)
     : logoSizeDims(
         brandForApp?.logo_size_app ?? "md",
