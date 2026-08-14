@@ -1,0 +1,1 @@
+(function(){try{if(location.pathname!=="/")return;var raw=localStorage.getItem("pmo.landingConfig.v2");if(!raw)return;var cfg=JSON.parse(raw);if(!cfg||!cfg.palette)return;var p=cfg.palette;var dark=cfg.theme==="dark";var bg=dark?p.navy:"#ffffff";document.documentElement.style.backgroundColor=bg;document.documentElement.style.color=p.textBody||"#1e3a5f";}catch(e){}})();

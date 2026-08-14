@@ -25,13 +25,29 @@ Imported issues appear in Demand Pipeline as `[KEY] Summary` with status `Idea` 
 
 ## Extending to other systems
 
-Providers already reserved in schema / UI placeholders:
+| Provider | Status |
+|---------|--------|
+| `jira` | **Live** — sync issues → Demand Pipeline / Work Items |
+| `custom_webhook` | **Live** — inbound JSON → Demand Pipeline |
+| `azure_devops` | Placeholder (configure UI; sync TBD) |
+| `servicenow` | Placeholder |
 
-- `azure_devops`
-- `servicenow`
-- `custom_webhook`
+### Custom webhook
 
-Add a server sync path in `src/lib/integration.functions.ts` (same encrypt / test / sync pattern as Jira) and flip `available: true` in `src/lib/integration-types.ts`.
+1. Enable **Custom webhook** on **Integrations**, set a shared secret, Save.
+2. Call:
+
+```http
+POST /api/public/hooks/integration-webhook?org=<org-uuid>
+x-webhook-secret: <secret>
+Content-Type: application/json
+
+{ "title": "New demand", "description": "…", "external_id": "ext-123" }
+```
+
+3. Rows land in **Demand Pipeline** as `[WH] …` with sponsor `Webhook` (idempotent on `external_id`).
+
+Add further sync paths in `src/lib/integration.functions.ts` and flip `available: true` in `src/lib/integration-types.ts`.
 
 ## Security notes
 

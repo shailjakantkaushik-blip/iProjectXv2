@@ -91,22 +91,22 @@ function LandingConfigPage() {
     target: "logo_url_landing" | "logo_url_auth" | "logo_url_app",
   ) {
     if (!cfg) return;
-    if (file.size > MAX_LOGO_BYTES) {
-      toast.error("Logo must be under 5 MB.");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () =>
-      setCfg({
-        ...cfg,
-        brand: {
-          ...cfg.brand,
-          [target]: reader.result as string,
-          // Clear legacy single-logo once surfaces are managed independently.
-          logo_url: "",
-        },
-      });
-    reader.readAsDataURL(file);
+    void (async () => {
+      try {
+        const { readSafeLogoDataUrl } = await import("@/lib/safe-logo-upload");
+        const dataUrl = await readSafeLogoDataUrl(file);
+        setCfg({
+          ...cfg,
+          brand: {
+            ...cfg.brand,
+            [target]: dataUrl,
+            logo_url: "",
+          },
+        });
+      } catch (e: any) {
+        toast.error(e?.message ?? "Could not read logo");
+      }
+    })();
   }
 
   if (!cfg) return <PageLoading label="Loading landing config…" fullScreen={false} />;
@@ -313,7 +313,7 @@ function LandingConfigPage() {
                         <input
                           ref={row.fileRef}
                           type="file"
-                          accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                          accept="image/png,image/jpeg,image/webp"
                           hidden
                           onChange={(e) => {
                             const f = e.target.files?.[0];
@@ -1385,7 +1385,7 @@ function PhotoUrlField({
             <input
               ref={ref}
               type="file"
-              accept="image/png,image/jpeg,image/webp,image/svg+xml"
+              accept="image/png,image/jpeg,image/webp"
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];

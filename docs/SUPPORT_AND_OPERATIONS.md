@@ -16,6 +16,8 @@ A full fresh database can be rebuilt from:
 
 `supabase/manual/COMPLETE_SUPABASE_REPLICATION.sql`
 
+Full walkthrough for a **new empty database**: [`docs/GREENFIELD_DATABASE.md`](../docs/GREENFIELD_DATABASE.md).
+
 (see header comments in that file for apply steps).
 
 ---

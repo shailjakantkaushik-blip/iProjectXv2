@@ -352,11 +352,14 @@ Legacy `NEXT_PUBLIC_*` env names are bridged to `VITE_*` via `scripts/env-bridge
 
 ### Remaining medium items (not blockers for go-live)
 
-1. Broad org-member write policies on some tables  
-2. No malware scanning on uploads  
-3. UI permissions default-allow when unconfigured  
-4. CSP still allows `'unsafe-inline'` (needed for theme boot)  
-5. HttpOnly cookie sessions (future hardening beyond sessionStorage)
+1. ~~Broad org-member write policies~~ → tightened in `20260814180000_security_hardening_rls_rate_acl.sql` (editors/`can_edit_project`)  
+2. ~~UI permissions default-allow~~ → default-deny + `seed_default_page_permissions`  
+3. ~~CSP `script-src 'unsafe-inline'`~~ → external `/boot/*.js` theme scripts (style-src still allows inline for CSS vars)  
+4. ~~MFA fail-open on API errors~~ → fail-closed (sign out)  
+5. Rate limits: in-process + optional durable Postgres (`RATE_LIMIT_DURABLE=1`); still pair with edge/WAF  
+6. BYOD: portfolio + RAID CRUD routed via `resolveOrgDataClient`; other screens continue to migrate  
+7. SVG logos banned (PNG/JPEG/WebP only)  
+8. HttpOnly cookie sessions (future hardening beyond sessionStorage)
 
 ### Enterprise readiness
 

@@ -206,6 +206,23 @@ export function UserAccountMenu({
             <ShieldCheck className="mr-2 h-4 w-4" />
             Reset authenticator
           </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault();
+              void (async () => {
+                try {
+                  const { error } = await supabase.auth.signOut({ scope: "others" });
+                  if (error) throw error;
+                  toast.success("Signed out of other devices / sessions");
+                } catch (err: any) {
+                  toast.error(err?.message ?? "Could not revoke other sessions");
+                }
+              })();
+            }}
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            Sign out other devices
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="text-rose-700 focus:text-rose-800"

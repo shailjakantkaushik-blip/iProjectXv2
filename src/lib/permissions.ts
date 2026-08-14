@@ -145,7 +145,9 @@ export function resolveCanViewPage(
   if (ADMIN_ONLY_PAGES.has(path)) return admin;
   if (admin) return true;
   const relevant = rows.filter((r) => roles.includes(r.role) && r.table_name === pageKey(path));
-  if (relevant.length === 0) return true; // default visible when unconfigured
+  // Default-deny when the matrix has no row for this role+page (fail closed).
+  // Seed page::* rows via Permissions UI or org onboarding for intended access.
+  if (relevant.length === 0) return false;
   return relevant.some((r) => r.can_view);
 }
 

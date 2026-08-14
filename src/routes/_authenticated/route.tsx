@@ -128,9 +128,16 @@ function Gate() {
           return;
         }
         markMfaReady(session.user.id);
-      } catch {
-        // MFA APIs unavailable — fail open (same as historical behaviour).
-        if (!cancelled) markMfaReady(session.user.id);
+      } catch (e) {
+        // Fail closed — same posture as IP allowlist. Never unlock the shell
+        // when MFA status cannot be verified.
+        if (cancelled) return;
+        toast.error(
+          e instanceof Error
+            ? e.message
+            : "Could not verify multi-factor authentication. Please sign in again.",
+        );
+        void signOut();
       }
     })();
 
@@ -177,7 +184,13 @@ function Gate() {
             goMfa("enroll");
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          // Soft recheck failed — require a full MFA check again (fail closed).
+          mfaVerifiedUserRef.current = null;
+          setMfaReady(false);
+          toast.error("Multi-factor authentication could not be re-verified.");
+          void signOut();
+        });
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
