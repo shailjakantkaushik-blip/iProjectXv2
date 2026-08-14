@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { SectionFrame, SectionTitle, PageHeading, KpiCard, RagChip } from "@/components/streamlit";
+import { explainRag } from "@/lib/explain-metric";
 import { PageExport } from "@/components/page-export";
 import { PageLoading } from "@/components/page-loading";
 import { Button } from "@/components/ui/button";
@@ -564,7 +565,7 @@ function ProgramsPage() {
                         </td>
                         <td>{p.sponsor || "—"}</td>
                         <td>{p.status || "—"}</td>
-                        <td>{p.rag ? <RagChip rag={p.rag} /> : "—"}</td>
+                        <td>{p.rag ? <RagChip rag={p.rag} explain={explainRag({ rag: p.rag, source: "register" })} /> : "—"}</td>
                         <td className="text-right tabular-nums">
                           {Math.round(projectApprovedFunding(p)).toLocaleString()}
                         </td>

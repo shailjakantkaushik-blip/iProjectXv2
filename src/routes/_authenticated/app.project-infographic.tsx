@@ -71,8 +71,10 @@ import {
   explainBudget,
   explainForecast,
   explainRemaining,
+  explainRag,
   type MetricExplanation,
 } from "@/lib/explain-metric";
+import { evaluateProjectHealth } from "@/lib/project-health-engine";
 
 export const Route = createFileRoute("/_authenticated/app/project-infographic")({
   validateSearch: (s: Record<string, unknown>) => ({ pid: (s.pid as string) || "" }),
@@ -989,6 +991,18 @@ function InfographicPage() {
   );
   const gateDetailTable = useColumnarTable(gateDetailRows, gateDetailColumns);
 
+  const healthEngine = useMemo(() => {
+    if (!project) return null;
+    return evaluateProjectHealth({
+      project,
+      gates: gates as any[],
+      risks: risks as any[],
+      dependencies: deps as any[],
+      monthly: monthly as any[],
+      allocations: projectAllocations as any[],
+    });
+  }, [project, gates, risks, deps, monthly, projectAllocations]);
+
   if (!projects.length) {
     return (
       <div>
@@ -1022,6 +1036,7 @@ function InfographicPage() {
   );
   const remaining = Math.max(0, budget - incurred);
   const utilPct = budget ? (incurred / budget) * 100 : 0;
+  const finHealthPct = budget ? incurred / budget : 0;
 
   const explains = {
     forecast: explainForecast({
@@ -1057,15 +1072,40 @@ function InfographicPage() {
   const phaseCards = phaseSpendSections.phaseCards;
   const streamGateSections = phaseSpendSections.streamGateSections;
 
-  // Health chips (simple heuristics)
-  const scheduleHealth = phaseCards.some((p) => p.status === "Delayed" || p.status === "Blocked")
-    ? "Amber"
+  // Health chips — Health Engine (same logic as financials Explain)
+  const scheduleHealth = healthEngine
+    ? healthEngine.dimensions.find((d) => d.key === "schedule")?.rag || "Green"
     : "Green";
-  const finHealthPct = budget ? incurred / budget : 0;
-  const financialHealth = finHealthPct > 1 ? "Red" : finHealthPct > 0.9 ? "Amber" : "Green";
-  const overallHealth =
-    (project.rag as string) ||
-    (scheduleHealth === "Green" && financialHealth === "Green" ? "Green" : "Amber");
+  const financialHealth = healthEngine
+    ? healthEngine.dimensions.find((d) => d.key === "financial")?.rag || "Green"
+    : "Green";
+  const overallHealth = healthEngine?.rag || (project.rag as string) || "Amber";
+  const ragExplains = {
+    overall: explainRag({
+      rag: overallHealth,
+      engine: healthEngine,
+      manualRag: project.rag,
+    }),
+    schedule: explainRag({
+      rag: scheduleHealth,
+      engine: healthEngine,
+      dimension: "schedule",
+    }),
+    financial: explainRag({
+      rag: financialHealth,
+      engine: healthEngine,
+      dimension: "financial",
+    }),
+    register: explainRag({
+      rag: project.rag,
+      source: "register",
+      extraBullets: healthEngine
+        ? [
+            `Health Engine calculated RAG is ${healthEngine.rag} (${healthEngine.score}/100). ${healthEngine.rag === project.rag ? "Matches the register field." : "Differs from the register field shown on this chip."}`,
+          ]
+        : [],
+    }),
+  };
 
   // Phase financials chart
   const phaseChart = phaseCards.map((p) => ({
@@ -1231,7 +1271,7 @@ function InfographicPage() {
               </div>
             </div>
             <div className="flex flex-col items-end gap-1">
-              <RagChip rag={project.rag} />
+              <RagChip rag={project.rag} explain={ragExplains.register} />
               <div className="text-xs text-muted-foreground">
                 Sponsor:{" "}
                 <span className="font-medium text-foreground">{project.sponsor || "—"}</span>
@@ -1303,9 +1343,21 @@ function InfographicPage() {
               🔷 Stage Gates &amp; Phase $
             </div>
             <span className="text-xs text-slate-600 ml-2">Health:</span>
-            <HealthChip label={`Schedule · ${scheduleHealth}`} rag={scheduleHealth} />
-            <HealthChip label={`Financial · ${financialHealth}`} rag={financialHealth} />
-            <HealthChip label={`Overall · ${overallHealth}`} rag={overallHealth} />
+            <HealthChip
+              label={`Schedule · ${scheduleHealth}`}
+              rag={scheduleHealth}
+              explain={ragExplains.schedule}
+            />
+            <HealthChip
+              label={`Financial · ${financialHealth}`}
+              rag={financialHealth}
+              explain={ragExplains.financial}
+            />
+            <HealthChip
+              label={`Overall · ${overallHealth}`}
+              rag={overallHealth}
+              explain={ragExplains.overall}
+            />
             <span className="text-xs text-slate-600 ml-2">
               <span className="font-semibold">Budget</span>{" "}
               <code className="bg-slate-100 px-1 rounded">{moneyM(budget)}</code> ·{" "}
@@ -1665,7 +1717,7 @@ function InfographicPage() {
                     <td>{r.probability}</td>
                     <td>{r.impact}</td>
                     <td>
-                      <RagChip rag={r.rag} />
+                      <RagChip rag={r.rag} explain={explainRag({ rag: r.rag, source: "raid" })} />
                     </td>
                     <td>{r.owner || "NA"}</td>
                     <td>{fmtDate(r.due)}</td>
@@ -2110,7 +2162,15 @@ function InfographicPage() {
   );
 }
 
-function HealthChip({ label, rag }: { label: string; rag: string }) {
+function HealthChip({
+  label,
+  rag,
+  explain,
+}: {
+  label: string;
+  rag: string;
+  explain?: MetricExplanation | null;
+}) {
   const bg =
     rag === "Green"
       ? "bg-emerald-500"
@@ -2119,7 +2179,12 @@ function HealthChip({ label, rag }: { label: string; rag: string }) {
         : rag === "Red"
           ? "bg-red-500"
           : "bg-slate-400";
-  return <span className={`text-xs text-white px-2 py-0.5 rounded-full ${bg}`}>{label}</span>;
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className={`text-xs text-white px-2 py-0.5 rounded-full ${bg}`}>{label}</span>
+      {explain ? <ExplainThis explanation={explain} size="xs" /> : null}
+    </span>
+  );
 }
 
 function BriefCard({ title, icon, person }: { title: string; icon: string; person: any }) {

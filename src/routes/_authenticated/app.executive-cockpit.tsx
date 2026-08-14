@@ -34,7 +34,7 @@ import {
 import { getPortfolioKpis, listPortfolioProjects } from "@/lib/portfolio.functions";
 import { MAX_PAGE_SIZE } from "@/lib/portfolio-paging";
 import { FINANCIALS_MONTHLY_SELECT } from "@/lib/query-selects";
-import { explainPortfolioSnapshot } from "@/lib/explain-metric";
+import { explainPortfolioSnapshot, explainRag } from "@/lib/explain-metric";
 import type { MonthlyFinanceRow } from "@/lib/finance-lifecycle";
 
 export const Route = createFileRoute("/_authenticated/app/executive-cockpit")({
@@ -624,26 +624,53 @@ function ExecutiveCockpit() {
                     {num(p.health_score) || "—"}
                   </td>
                   <td className="px-3 py-2">
-                    <RagChip rag={p.schedule_rag} label={p.schedule_rag} />
+                    <RagChip
+                      rag={p.schedule_rag}
+                      label={p.schedule_rag}
+                      explain={explainRag({ rag: p.schedule_rag, engine: p.engine, dimension: "schedule" })}
+                    />
                   </td>
                   <td className="px-3 py-2">
-                    <RagChip rag={p.financial_rag} label={p.financial_rag} />
+                    <RagChip
+                      rag={p.financial_rag}
+                      label={p.financial_rag}
+                      explain={explainRag({ rag: p.financial_rag, engine: p.engine, dimension: "financial" })}
+                    />
                   </td>
                   <td className="px-3 py-2">
-                    <RagChip rag={p.delivery_rag} label={p.delivery_rag} />
+                    <RagChip
+                      rag={p.delivery_rag}
+                      label={p.delivery_rag}
+                      explain={explainRag({ rag: p.delivery_rag, engine: p.engine, dimension: "delivery" })}
+                    />
                   </td>
                   <td className="px-3 py-2">
-                    <RagChip rag={p.benefit_rag} label={p.benefit_rag} />
+                    <RagChip
+                      rag={p.benefit_rag}
+                      label={p.benefit_rag}
+                      explain={explainRag({ rag: p.benefit_rag, engine: p.engine, dimension: "benefits" })}
+                    />
                   </td>
                   <td className="px-3 py-2">
-                    <RagChip rag={p.overall_rag || p.rag} label={p.overall_rag || p.rag} />
+                    <RagChip
+                      rag={p.overall_rag || p.rag}
+                      label={p.overall_rag || p.rag}
+                      explain={explainRag({
+                        rag: p.overall_rag || p.rag,
+                        engine: p.engine,
+                        manualRag: p.rag,
+                      })}
+                    />
                   </td>
                   <td className="px-3 py-2">
                     <span className="mr-1 tabular-nums text-xs">
                       {p.engine?.predictive?.forecastScore30d ?? "—"}
                     </span>
                     {p.engine?.predictive?.likelyRag ? (
-                      <RagChip rag={p.engine.predictive.likelyRag} />
+                      <RagChip
+                        rag={p.engine.predictive.likelyRag}
+                        explain={explainRag({ rag: p.engine.predictive.likelyRag, engine: p.engine })}
+                      />
                     ) : null}
                   </td>
                 </tr>

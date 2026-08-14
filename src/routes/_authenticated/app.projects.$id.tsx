@@ -6,7 +6,7 @@ import { useAuth, isAdmin } from "@/lib/auth-context";
 import { ProjectForm, type ProjectFormValues } from "@/components/project-form";
 import { ProjectDecisionsPanel } from "@/components/project-decisions-panel";
 import { Button } from "@/components/ui/button";
-import { SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
+import { SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,7 @@ import { ProjectStreamsPanel } from "@/components/project-streams-panel";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
+import { explainRag } from "@/lib/explain-metric";
 
 type ProjectTab = "overview" | "decisions" | "work" | "governance" | "finance" | "streams";
 
@@ -170,16 +171,7 @@ function ProjectDetail() {
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span>{project.status || "—"}</span>
             <span>·</span>
-            <span
-              className={cn(
-                "rounded px-1.5 py-0.5 font-semibold",
-                project.rag === "Red" && "bg-rose-100 text-rose-800",
-                project.rag === "Amber" && "bg-amber-100 text-amber-800",
-                project.rag === "Green" && "bg-emerald-100 text-emerald-800",
-              )}
-            >
-              {project.rag || "No RAG"}
-            </span>
+            <RagChip rag={project.rag} explain={explainRag({ rag: project.rag, source: "register" })} />
             {project.program ? (
               <>
                 <span>·</span>

@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { PROJECT_PORTFOLIO_SELECT, STAGE_GATES_SELECT, STAGE_GATE_DEFINITIONS_SELECT } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
+import { explainRag } from "@/lib/explain-metric";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, Legend } from "recharts";
 import { GATE_STATUS_COLORS as STATUS_COLORS, CHART_SERIES } from "@/lib/chart-theme";
 import { ExpandableChart } from "@/components/expandable-chart";
@@ -552,7 +553,7 @@ function StageGatesPage() {
                     <td>{project.program || "—"}</td>
                     <td>{project.sponsor || "—"}</td>
                     <td>
-                      <RagChip rag={rag} />
+                      <RagChip rag={rag} explain={explainRag({ rag, source: "gate" })} />
                     </td>
                     <td className="font-medium">{phase || "—"}</td>
                     <td>{current?.gate_name || "—"}</td>

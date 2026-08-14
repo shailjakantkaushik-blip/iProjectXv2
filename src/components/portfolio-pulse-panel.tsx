@@ -10,6 +10,7 @@ import { useAuth } from "@/lib/auth-context";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/project-selects";
 import { MAX_PAGE_SIZE } from "@/lib/portfolio-paging";
 import { SectionFrame, SectionTitle, RagChip } from "@/components/streamlit";
+import { explainRag } from "@/lib/explain-metric";
 import { PageLoading } from "@/components/page-loading";
 import {
   ExecutivePortfolioFilters,
@@ -311,7 +312,18 @@ export function PortfolioPulsePanel({
             </span>
           </div>
           <div className="mt-2">
-            <RagChip rag={pulse.rag} label={pulse.rag} />
+            <RagChip
+              rag={pulse.rag}
+              label={pulse.rag}
+              explain={explainRag({
+                rag: pulse.rag,
+                source: "pulse",
+                score: pulse.healthPct,
+                extraBullets: pulse.areas.map(
+                  (a) => `${a.label} ${a.score}/100 (${a.status})`,
+                ),
+              })}
+            />
           </div>
           <p className="mt-2 text-center text-[11px] text-muted-foreground">{comparedLabel}</p>
         </div>
@@ -334,7 +346,20 @@ export function PortfolioPulsePanel({
                     <span className="mr-1.5" aria-hidden>
                       {pulseRagEmoji(a.status)}
                     </span>
-                    <RagChip rag={a.status} />
+                    <RagChip
+                      rag={a.status}
+                      explain={explainRag({
+                        rag: a.status,
+                        source: "pulse",
+                        score: a.score,
+                        extraBullets: [
+                          `${a.label} is the average Health Engine ${a.label.toLowerCase()} dimension across in-scope projects.`,
+                          a.delta
+                            ? `Week-on-week change: ${a.delta > 0 ? "+" : ""}${a.delta} points.`
+                            : "No week-on-week change recorded.",
+                        ],
+                      })}
+                    />
                   </td>
                   <td className="px-3 py-2 text-center">
                     <TrendCell trend={a.trend} />

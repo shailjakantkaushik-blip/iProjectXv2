@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/project-selects";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
+import { explainRag } from "@/lib/explain-metric";
 import { PageExport } from "@/components/page-export";
 import { PageLoading } from "@/components/page-loading";
 import { Button } from "@/components/ui/button";
@@ -411,6 +412,11 @@ function ExecutiveIntelligencePage() {
                     <RagChip
                       rag={d.criticality === "High" ? "Red" : d.criticality === "Medium" ? "Amber" : "Green"}
                       label={`Criticality ${d.criticality}`}
+                      explain={explainRag({
+                        rag: d.criticality === "High" ? "Red" : d.criticality === "Medium" ? "Amber" : "Green",
+                        source: "criticality",
+                        extraBullets: [d.message],
+                      })}
                     />
                   </div>
                   <p className="mt-1 text-xs">
@@ -613,7 +619,14 @@ function ExecutiveIntelligencePage() {
                 <div key={b.project.id} className="rounded-md border border-border px-3 py-2 text-sm">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold">{b.project.name}</span>
-                    <RagChip rag={b.rag} />
+                    <RagChip
+                      rag={b.rag}
+                      explain={explainRag({
+                        rag: b.rag,
+                        source: "benefits",
+                        extraBullets: [b.headline, b.detail].filter(Boolean),
+                      })}
+                    />
                   </div>
                   <p className="mt-1 text-xs font-medium">
                     {b.rag === "Amber" ? "🟠 " : b.rag === "Red" ? "🔴 " : "🟢 "}

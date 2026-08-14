@@ -111,12 +111,28 @@ export function KpiCard({
   );
 }
 
-export function RagChip({ rag, label }: { rag?: string | null; label?: ReactNode }) {
+export function RagChip({
+  rag,
+  label,
+  explain,
+}: {
+  rag?: string | null;
+  label?: ReactNode;
+  /** Same Explain control used on financial KPIs — why this colour, with band logic. */
+  explain?: MetricExplanation | null;
+}) {
   const v = (rag || "").toLowerCase();
   const cls =
     v === "green" ? "rag-green" : v === "amber" ? "rag-amber" : v === "red" ? "rag-red" : "";
   if (!cls) return <span className="text-xs text-muted-foreground">—</span>;
-  return <span className={`rag-chip ${cls}`}>{label ?? rag}</span>;
+  const chip = <span className={`rag-chip ${cls}`}>{label ?? rag}</span>;
+  if (!explain) return chip;
+  return (
+    <span className="inline-flex items-center gap-1">
+      {chip}
+      <ExplainThis explanation={explain} size="xs" />
+    </span>
+  );
 }
 
 export function ComingSoon({ page, notes }: { page: string; notes?: string }) {

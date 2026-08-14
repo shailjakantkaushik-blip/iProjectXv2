@@ -13,6 +13,7 @@ import {
 } from "@/lib/project-finance";
 import type { MonthlyFinanceRow } from "@/lib/finance-lifecycle";
 import { monthKey, sumMonthlyForecast, sumMonthlyActual, sumMonthlyPlanned } from "@/lib/finance-lifecycle";
+import type { HealthDimensionKey, HealthEngineResult } from "@/lib/project-health-engine";
 
 const num = (v: unknown) => {
   const n = Number(v);
@@ -518,5 +519,159 @@ export function explainPortfolioSnapshot(opts: {
       target: benefitsTarget,
       realised: benefitsRealised,
     }),
+  };
+}
+
+const RAG_BAND_LOGIC =
+  "Bands: Green ≥ 80, Amber 65–79, Red below 65 on the weighted 0–100 Health Engine score.";
+
+function ragMeaning(rag: string): string {
+  const v = rag.toLowerCase();
+  if (v === "green") return "on track — no material delivery, cost, or risk pressure";
+  if (v === "amber") return "needs attention — one or more schedule, cost, or delivery pressures";
+  if (v === "red") return "off track — requires a recovery decision this period";
+  return "not set";
+}
+
+export type RagExplainSource =
+  | "register"
+  | "raid"
+  | "gate"
+  | "pulse"
+  | "criticality"
+  | "benefits";
+
+/**
+ * Explain a RAG chip the same way financials Explain a $ KPI:
+ * score → band logic, dimension weights, and the drivers that pulled the colour.
+ */
+export function explainRag(opts: {
+  rag?: string | null;
+  engine?: Pick<HealthEngineResult, "score" | "rag" | "dimensions" | "drivers" | "predictive"> | null;
+  dimension?: HealthDimensionKey | "overall";
+  manualRag?: string | null;
+  /** When no Health Engine result is available, describe which RAG this chip is. */
+  source?: RagExplainSource;
+  /** Optional 0–100 score used when the engine object is not passed (e.g. portfolio pulse). */
+  score?: number | null;
+  extraBullets?: string[];
+}): MetricExplanation {
+  const engine = opts.engine ?? null;
+  const dimKey = opts.dimension && opts.dimension !== "overall" ? opts.dimension : null;
+  const dim = dimKey ? engine?.dimensions.find((d) => d.key === dimKey) : null;
+  const extra = (opts.extraBullets || []).filter(Boolean);
+
+  if (engine) {
+    const rag = String(dim?.rag || engine.rag || opts.rag || "").trim() || "unset";
+    const score = dim?.score ?? engine.score;
+    const title = dim ? `${dim.label} RAG` : "RAG status";
+    const bullets: string[] = [];
+
+    if (dim) {
+      bullets.push(
+        `${dim.label} scores ${score}/100, which is ${rag} (${RAG_BAND_LOGIC})`,
+      );
+      bullets.push(`Weight ${Math.round(dim.weight * 100)}% of overall health.`);
+      if (dim.detail) bullets.push(dim.detail);
+      for (const dr of engine.drivers.filter((d) => d.dimension === dim.key).slice(0, 3)) {
+        bullets.push(`${dr.label}: ${dr.message}`);
+      }
+    } else {
+      bullets.push(`Overall score ${score}/100 maps to ${rag}. ${RAG_BAND_LOGIC}`);
+      const ranked = [...engine.dimensions].sort((a, b) => a.score - b.score);
+      for (const d of ranked) {
+        bullets.push(
+          `${d.label} ${d.score}/100 (${d.rag}, ${Math.round(d.weight * 100)}% weight) — ${d.detail}`,
+        );
+      }
+      for (const dr of engine.drivers.slice(0, 3)) {
+        bullets.push(`Driver · ${dr.label}: ${dr.message}`);
+      }
+      if (engine.predictive?.warning) {
+        bullets.push(`30-day outlook: ${engine.predictive.warning}`);
+      }
+      const manual = String(opts.manualRag || "").trim();
+      if (manual && manual.toLowerCase() !== rag.toLowerCase()) {
+        bullets.push(
+          `Register (manual) RAG is ${manual}; this chip is the calculated Health Engine RAG.`,
+        );
+      }
+    }
+
+    bullets.push(...extra);
+
+    return {
+      title,
+      headline: `${title} is ${rag} (score ${score}/100) — ${ragMeaning(rag)}.`,
+      bullets: bullets.slice(0, 8),
+      drivers: bullets.slice(0, 8).map((b) => ({ label: b })),
+      confidence: "high",
+    };
+  }
+
+  const rag = String(opts.rag || "").trim() || "unset";
+  const source = opts.source || "register";
+  const scoreLabel =
+    opts.score != null && Number.isFinite(Number(opts.score))
+      ? ` Score ${Math.round(Number(opts.score))}/100 maps to ${rag}.`
+      : "";
+
+  const bySource: Record<RagExplainSource, { title: string; bullets: string[] }> = {
+    register: {
+      title: "RAG status",
+      bullets: [
+        `${RAG_BAND_LOGIC}${scoreLabel}`,
+        "This chip is the project register field (PM/PMO entered), not the calculated Health Engine score.",
+        "Open the project infographic → Project Health Engine for weighted dimensions (schedule, financial, delivery, risk) and drivers.",
+      ],
+    },
+    raid: {
+      title: "Risk / issue RAG",
+      bullets: [
+        `This item is ${rag} — ${ragMeaning(rag)}.`,
+        "RAID colour comes from severity (probability × impact) or priority: 12+ / Critical = Red, 6–11 / High = Amber, otherwise Green.",
+        "This is the risk/issue rating, not the project Health Engine score.",
+      ],
+    },
+    gate: {
+      title: "Stage-gate RAG",
+      bullets: [
+        `Shown as ${rag} — ${ragMeaning(rag)}.`,
+        "This is the project (or stream) register RAG on the stage-gate view, so PMO can see delivery colour next to the current/next gate.",
+        RAG_BAND_LOGIC,
+      ],
+    },
+    pulse: {
+      title: "Portfolio pulse RAG",
+      bullets: [
+        `Portfolio health is ${rag}${scoreLabel} ${RAG_BAND_LOGIC}`,
+        "Pulse averages Health Engine scores across in-scope projects (financial, delivery, resource, risk, benefits, dependencies).",
+      ],
+    },
+    criticality: {
+      title: "Dependency criticality",
+      bullets: [
+        `Mapped to ${rag} — ${ragMeaning(rag)}.`,
+        "High criticality → Red, Medium → Amber, Low → Green. This is dependency fan-out / downstream impact, not the project register RAG.",
+      ],
+    },
+    benefits: {
+      title: "Benefits RAG",
+      bullets: [
+        `Benefits realisation is ${rag} — ${ragMeaning(rag)}.`,
+        "Colour follows realised vs target (and delivery status): a shortfall or stalled delivery pulls Amber/Red.",
+        RAG_BAND_LOGIC,
+      ],
+    },
+  };
+
+  const copy = bySource[source];
+  const bullets = [...copy.bullets, ...extra];
+  return {
+    title: copy.title,
+    headline: `${copy.title} is ${rag} — ${ragMeaning(rag)}.`,
+    bullets,
+    drivers: bullets.map((b) => ({ label: b })),
+    confidence: source === "pulse" || opts.score != null ? "high" : "medium",
   };
 }

@@ -58,6 +58,7 @@ import {
   explainBudget,
   explainForecast,
   explainGeneric,
+  explainRag,
   explainRemaining,
   type MetricExplanation,
 } from "@/lib/explain-metric";
@@ -1147,7 +1148,7 @@ function ExecutiveDashboard() {
                     <td>{r.sponsor ?? "—"}</td>
                     <td>{money(r.budget)}</td>
                     <td>{money(r.incurred)}</td>
-                    <td><RagChip rag={r.rag} /></td>
+                    <td><RagChip rag={r.rag} explain={explainRag({ rag: r.rag, source: "register" })} /></td>
                     <td>{r.phase ?? "—"}</td>
                   </tr>
                 ))}
