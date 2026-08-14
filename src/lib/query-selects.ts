@@ -178,6 +178,7 @@ export const STAGE_GATES_SELECT = [
 export const STAGE_GATE_DEFINITIONS_SELECT = [
   "id",
   "org_id",
+  "delivery_method_id",
   "gate_name",
   "sort_order",
   "is_active",

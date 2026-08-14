@@ -7,6 +7,7 @@
  */
 
 import { supabase } from "@/integrations/supabase/client";
+import { methodUsesSprints, methodUsesStageGates } from "@/lib/delivery-methods";
 
 export const PROJECT_OPTIONS_SELECT =
   "id,name,project_code,program,sponsor,sponsor_stakeholder_id,rag,status,delivery_method,updated_at" as const;
@@ -17,16 +18,17 @@ export type ProjectOptionLike = {
   delivery_method?: string | null;
 };
 
-/** Waterfall (and blank) use stage gates; Hybrid uses both. */
+/**
+ * Waterfall (and blank) use stage gates; Hybrid uses both.
+ * Prefer {@link methodUsesStageGates} when you have the org delivery_methods row.
+ */
 export function projectUsesStageGates(deliveryMethod?: string | null) {
-  const m = String(deliveryMethod || "").trim().toLowerCase();
-  return !m || m === "waterfall" || m === "hybrid";
+  return methodUsesStageGates(null, deliveryMethod);
 }
 
-/** Agile / Hybrid use sprints for iteration-level work capture. */
+/** Agile / Hybrid use sprints. Prefer {@link methodUsesSprints} with a method row. */
 export function projectUsesSprints(deliveryMethod?: string | null) {
-  const m = String(deliveryMethod || "").trim().toLowerCase();
-  return m === "agile" || m === "hybrid";
+  return methodUsesSprints(null, deliveryMethod);
 }
 
 /** Stable project dropdown order: code (numeric-aware), then name. */

@@ -469,6 +469,59 @@ export type Database = {
           },
         ]
       }
+      delivery_methods: {
+        Row: {
+          code: string
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          is_system: boolean
+          name: string
+          org_id: string
+          sort_order: number
+          updated_at: string
+          uses_sprints: boolean
+          uses_stage_gates: boolean
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_system?: boolean
+          name: string
+          org_id: string
+          sort_order?: number
+          updated_at?: string
+          uses_sprints?: boolean
+          uses_stage_gates?: boolean
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_system?: boolean
+          name?: string
+          org_id?: string
+          sort_order?: number
+          updated_at?: string
+          uses_sprints?: boolean
+          uses_stage_gates?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_methods_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       demand_pipeline: {
         Row: {
           bu_id: string | null
@@ -1599,7 +1652,8 @@ export type Database = {
           capex_incurred: number | null
           created_at: string
           current_phase: string | null
-          delivery_method: Database["public"]["Enums"]["delivery_method"] | null
+          delivery_method: string | null
+          delivery_method_id: string | null
           description: string | null
           end_date: string | null
           forecast_at_completion: number | null
@@ -1643,9 +1697,8 @@ export type Database = {
           capex_incurred?: number | null
           created_at?: string
           current_phase?: string | null
-          delivery_method?:
-            | Database["public"]["Enums"]["delivery_method"]
-            | null
+          delivery_method?: string | null
+          delivery_method_id?: string | null
           description?: string | null
           end_date?: string | null
           forecast_at_completion?: number | null
@@ -1689,9 +1742,8 @@ export type Database = {
           capex_incurred?: number | null
           created_at?: string
           current_phase?: string | null
-          delivery_method?:
-            | Database["public"]["Enums"]["delivery_method"]
-            | null
+          delivery_method?: string | null
+          delivery_method_id?: string | null
           description?: string | null
           end_date?: string | null
           forecast_at_completion?: number | null
@@ -2130,6 +2182,7 @@ export type Database = {
       stage_gate_definitions: {
         Row: {
           created_at: string
+          delivery_method_id: string | null
           gate_name: string
           id: string
           is_active: boolean
@@ -2139,6 +2192,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          delivery_method_id?: string | null
           gate_name: string
           id?: string
           is_active?: boolean
@@ -2148,6 +2202,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          delivery_method_id?: string | null
           gate_name?: string
           id?: string
           is_active?: boolean
@@ -2161,6 +2216,13 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stage_gate_definitions_delivery_method_id_fkey"
+            columns: ["delivery_method_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_methods"
             referencedColumns: ["id"]
           },
         ]
@@ -2478,6 +2540,10 @@ export type Database = {
       can_edit_project: {
         Args: { _project_id: string; _user_id: string }
         Returns: boolean
+      }
+      ensure_org_delivery_methods: {
+        Args: { p_org_id: string }
+        Returns: undefined
       }
       enable_project_streams: {
         Args: { p_project_id: string }

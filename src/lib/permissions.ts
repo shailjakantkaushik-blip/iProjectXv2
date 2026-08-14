@@ -83,7 +83,7 @@ export const PAGES: { path: string; label: string; group: string }[] = [
   { path: "/app/roadmap-governance", label: "Roadmap × Governance", group: "Delivery" },
   { path: "/app/roadmap-analytics", label: "Roadmap Analytics", group: "Delivery" },
   { path: "/app/stage-gates", label: "Stage Gates (Waterfall)", group: "Delivery" },
-  { path: "/app/stage-gate-config", label: "Stage Gate Configuration", group: "Org Admin" },
+  { path: "/app/stage-gate-config", label: "Delivery Methods & Gates", group: "Org Admin" },
   { path: "/app/agile", label: "Agile / Sprints", group: "Delivery" },
   { path: "/app/governance-channels", label: "Governance Channel", group: "Delivery" },
   { path: "/app/dependencies", label: "Dependencies", group: "Delivery" },

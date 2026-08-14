@@ -14,7 +14,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  DELIVERY_OPTS,
   FIELD_HELP,
   PORTFOLIO_OPTS,
   PRIORITY_OPTS,
@@ -22,6 +21,12 @@ import {
   STATUS_OPTS,
   WIZARD_STEPS,
 } from "@/lib/project-wizard";
+import {
+  deliveryMethodsQueryKey,
+  fetchDeliveryMethods,
+  findDeliveryMethod,
+  methodUsesStageGates,
+} from "@/lib/delivery-methods";
 
 const FIELD_LABELS: Record<string, string> = {
   project_code: "Project code",
@@ -202,29 +207,45 @@ export function ProjectCreateWizard() {
     enabled: !!orgId,
   });
 
+  const { data: deliveryMethods = [] } = useQuery({
+    queryKey: deliveryMethodsQueryKey(orgId),
+    queryFn: () => fetchDeliveryMethods(orgId!, { activeOnly: true }),
+    enabled: !!orgId,
+  });
+
+  const selectedMethod = findDeliveryMethod(deliveryMethods, project.delivery_method);
+  const deliveryOpts =
+    deliveryMethods.length > 0
+      ? deliveryMethods.map((m) => m.name)
+      : ["Waterfall", "Agile", "Hybrid"];
+
   const { data: gateDefs = [] } = useQuery({
-    queryKey: ["stage_gate_definitions", orgId, "wizard"],
+    queryKey: ["stage_gate_definitions", orgId, "wizard", selectedMethod?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from("stage_gate_definitions")
-        .select("gate_name,sort_order")
+        .select("gate_name,sort_order,delivery_method_id")
         .eq("org_id", orgId!)
         .eq("is_active", true)
         .order("sort_order");
+      if (selectedMethod?.id) q = q.eq("delivery_method_id", selectedMethod.id);
+      const { data, error } = await q;
       if (error) throw error;
       return data ?? [];
     },
     enabled: !!orgId,
   });
 
-  // Seed gate plans once definitions load
+  // Seed / refresh gate plans when method definitions load or method changes
   useEffect(() => {
-    if (!gateDefs.length) return;
-    setGates((prev) => {
-      if (prev.length) return prev;
-      const start = project.planned_start_date || new Date().toISOString().slice(0, 10);
-      const base = new Date(start);
-      return gateDefs.map((d: any, i: number) => {
+    if (!gateDefs.length) {
+      setGates([]);
+      return;
+    }
+    const start = project.planned_start_date || new Date().toISOString().slice(0, 10);
+    const base = new Date(start);
+    setGates(
+      gateDefs.map((d: any, i: number) => {
         const dt = new Date(base);
         dt.setUTCDate(dt.getUTCDate() + i * 30);
         return {
@@ -232,9 +253,9 @@ export function ProjectCreateWizard() {
           planned_date: dt.toISOString().slice(0, 10),
           include: true,
         };
-      });
-    });
-  }, [gateDefs, project.planned_start_date]);
+      }),
+    );
+  }, [gateDefs, project.planned_start_date, selectedMethod?.id]);
 
   const setP = (key: string, value: string) =>
     setProject((p) => ({ ...p, [key]: value }));
@@ -287,6 +308,7 @@ export function ProjectCreateWizard() {
         status: project.status,
         rag: project.rag,
         delivery_method: project.delivery_method,
+        delivery_method_id: selectedMethod?.id ?? null,
         current_phase: emptyToNull(project.current_phase),
         ...dates,
         budget: numOrNull(project.budget) ?? 0,
@@ -360,9 +382,8 @@ export function ProjectCreateWizard() {
         (streams ?? [])[0]?.id ||
         null;
 
-      // Stage gates
-      const useGates =
-        project.delivery_method === "Waterfall" || project.delivery_method === "Hybrid";
+      // Stage gates — use org delivery-method flags (custom methods supported)
+      const useGates = methodUsesStageGates(selectedMethod, project.delivery_method);
       if (useGates) {
         for (const g of gates.filter((x) => x.include && x.gate_name)) {
           const { error } = await supabase.from("stage_gates").insert({
@@ -575,7 +596,7 @@ export function ProjectCreateWizard() {
                 <HelpHeading
                   as="h3"
                   title="Delivery & status"
-                  help="Controls Agile vs Waterfall surfaces (gates vs sprints) and portfolio RAG."
+                  help="Choose an org delivery method. Configure methods and gate templates under Delivery Methods & Gates."
                 />
                 <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
                   <Field id="delivery_method">
@@ -584,7 +605,7 @@ export function ProjectCreateWizard() {
                       value={project.delivery_method}
                       onChange={(e) => setP("delivery_method", e.target.value)}
                     >
-                      {DELIVERY_OPTS.map((o) => (
+                      {deliveryOpts.map((o) => (
                         <option key={o}>{o}</option>
                       ))}
                     </select>
@@ -756,16 +777,19 @@ export function ProjectCreateWizard() {
 
           {step.id === "gates" && (
             <div className="space-y-3">
-              {project.delivery_method === "Agile" ? (
+              {!methodUsesStageGates(selectedMethod, project.delivery_method) ? (
                 <p className="text-sm text-muted-foreground">
-                  Delivery is Agile — stage gates are optional. You can skip this step and plan
-                  sprints under Agile / Sprints after create.
+                  Delivery method &quot;{project.delivery_method}&quot; does not use stage gates.
+                  You can skip this step
+                  {selectedMethod?.uses_sprints
+                    ? " and plan sprints under Agile / Sprints after create."
+                    : "."}
                 </p>
               ) : null}
               {!gateDefs.length ? (
                 <p className="text-sm text-amber-800">
-                  No active stage gate definitions. Configure them under Stage Gate Config / Data
-                  Editor first, or skip and add gates later.
+                  No active stage gate definitions for this method. Configure them under Delivery
+                  Methods &amp; Gates, or skip and add gates later.
                 </p>
               ) : (
                 <div className="space-y-2">
@@ -1022,9 +1046,9 @@ export function ProjectCreateWizard() {
                 <li>Core stream auto-created; extra streams: {extraStreams.filter((s) => s.name.trim()).length}</li>
                 <li>
                   Stage gates to create:{" "}
-                  {project.delivery_method === "Agile"
-                    ? 0
-                    : gates.filter((g) => g.include).length}
+                  {methodUsesStageGates(selectedMethod, project.delivery_method)
+                    ? gates.filter((g) => g.include).length
+                    : 0}
                 </li>
                 <li>FY rows: {fyRows.filter((r) => r.fy.trim()).length}</li>
                 <li>Work items: {workItems.filter((w) => w.title.trim()).length}</li>

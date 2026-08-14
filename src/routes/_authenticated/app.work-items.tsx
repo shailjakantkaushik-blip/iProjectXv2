@@ -165,11 +165,19 @@ function WorkItemsPage() {
     enabled: !!orgId,
   });
 
-  const orgPhases = useMemo(
-    () =>
-      (gateDefs as { gate_name?: string }[]).map((d) => d.gate_name).filter(Boolean) as string[],
-    [gateDefs],
-  );
+  const orgPhases = useMemo(() => {
+    const best = new Map<string, number>();
+    for (const d of gateDefs as { gate_name?: string; sort_order?: number }[]) {
+      const n = d.gate_name;
+      if (!n) continue;
+      const ord = Number(d.sort_order) || 0;
+      const prev = best.get(n);
+      if (prev == null || ord < prev) best.set(n, ord);
+    }
+    return [...best.entries()]
+      .sort((a, b) => a[1] - b[1])
+      .map(([n]) => n);
+  }, [gateDefs]);
 
   const gatesForWorkItem = useCallback(
     (projectId: string | null | undefined, streamId: string | null | undefined) => {
