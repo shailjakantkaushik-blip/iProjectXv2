@@ -433,6 +433,16 @@ function StageGatesPage() {
         }
       />
 
+      {projects.length === 0 && (
+        <div className="mb-4 rounded-md border border-border bg-surface px-4 py-3 text-sm" role="status">
+          <p className="font-medium text-foreground">Data not available</p>
+          <p className="mt-1 text-muted-foreground">
+            No projects in this organisation yet. Seed sample portfolio data or create a project
+            before stage gates can appear.
+          </p>
+        </div>
+      )}
+
       <SectionFrame>
         <SectionTitle>Gate KPIs</SectionTitle>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">

@@ -72,7 +72,19 @@ export async function fetchDeliveryMethods(orgId: string, opts?: { activeOnly?: 
     .order("sort_order", { ascending: true });
   if (opts?.activeOnly !== false) q = q.eq("is_active", true);
   const { data, error } = await q;
-  if (error) throw error;
+  // Missing table / schema cache: treat as empty so pages call out "no data"
+  // instead of crashing the route with an uncaught query error.
+  if (error) {
+    const msg = String(error.message || error.code || "");
+    if (
+      /does not exist|schema cache|Could not find the table|PGRST/i.test(msg) ||
+      error.code === "42P01" ||
+      error.code === "PGRST205"
+    ) {
+      return [] as DeliveryMethodRow[];
+    }
+    throw error;
+  }
   return (data ?? []) as DeliveryMethodRow[];
 }
 

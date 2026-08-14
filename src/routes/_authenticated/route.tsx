@@ -8,12 +8,14 @@ import { assertClientIpAllowedForHomeOrg } from "@/lib/org-ip-restriction.functi
 import { toast } from "sonner";
 import { PageLoading, SessionPending } from "@/components/page-loading";
 import { AppShell } from "@/components/app-shell";
+import { RouteContentErrorBoundary, RouterErrorComponent } from "@/components/route-error";
 import { unlockDocumentScroll } from "@/lib/document-scroll";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
   pendingComponent: SessionPending,
   component: Gate,
+  errorComponent: RouterErrorComponent,
 });
 
 /**
@@ -214,7 +216,9 @@ function Gate() {
 
   if (bareShell) {
     return profileMatchesSession || !loading ? (
-      <Outlet />
+      <RouteContentErrorBoundary resetKey={pathname} embedded={false}>
+        <Outlet />
+      </RouteContentErrorBoundary>
     ) : (
       <PageLoading label="Loading workspace…" fullScreen />
     );
@@ -223,7 +227,9 @@ function Gate() {
   return (
     <AppShell>
       {profileMatchesSession ? (
-        <Outlet />
+        <RouteContentErrorBoundary resetKey={pathname}>
+          <Outlet />
+        </RouteContentErrorBoundary>
       ) : (
         <PageLoading label="Loading workspace…" />
       )}

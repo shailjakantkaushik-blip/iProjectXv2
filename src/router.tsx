@@ -2,6 +2,7 @@ import { QueryClient, keepPreviousData } from "@tanstack/react-query";
 import { createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 import { RoutePending } from "@/components/page-loading";
+import { RouterErrorComponent } from "@/components/route-error";
 import { queryRetryDelay } from "@/lib/query";
 
 export const getRouter = () => {
@@ -43,6 +44,8 @@ export const getRouter = () => {
     // Avoid flashing a full pending screen on fast navigations.
     defaultPendingMs: 1000,
     defaultPendingComponent: RoutePending,
+    // Keep failures inside the matched route (shell stays) with a recoverable UI.
+    defaultErrorComponent: RouterErrorComponent,
   });
 
   return router;

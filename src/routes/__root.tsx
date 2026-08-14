@@ -3,7 +3,6 @@ import {
   Outlet,
   Link,
   createRootRouteWithContext,
-  useRouter,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
@@ -19,15 +18,8 @@ import { StyleThemeProvider } from "@/components/style-theme-provider";
 import { DEFAULT_FAVICON_HREF } from "@/lib/favicon";
 import { FaviconSync } from "@/components/favicon-sync";
 import { PwaRegister } from "@/components/pwa-register";
-import {
-  alreadyAutoRecoveredThisSession,
-  clearChunkReloadMarker,
-  hardReloadToLatest,
-  installChunkLoadRecovery,
-  isChunkLoadError,
-  recentlyReloadedForChunk,
-  recoverFromChunkLoadError,
-} from "@/lib/chunk-load-recovery";
+import { installChunkLoadRecovery } from "@/lib/chunk-load-recovery";
+import { RouteErrorView } from "@/components/route-error";
 
 function NotFoundComponent() {
   return (
@@ -47,75 +39,7 @@ function NotFoundComponent() {
 
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
-  const router = useRouter();
-  const chunkError = isChunkLoadError(error);
-  const alreadyTried =
-    chunkError && (recentlyReloadedForChunk() || alreadyAutoRecoveredThisSession());
-
-  useEffect(() => {
-    if (!chunkError || alreadyTried) return;
-    // At most one automatic hard reload per tab. Never retry from this effect
-    // after the session flag is set — that was causing refresh loops.
-    recoverFromChunkLoadError(error);
-  }, [chunkError, alreadyTried, error]);
-
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="max-w-md text-center">
-        <h1 className="text-xl font-semibold text-foreground">
-          {chunkError
-            ? alreadyTried
-              ? "Update ready — one more refresh"
-              : "Updating the app"
-            : "Something went wrong"}
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {chunkError
-            ? alreadyTried
-              ? "A newer version was deployed. Tap Reload now once (we stopped auto-refreshing so the page won’t loop)."
-              : "A newer version was just deployed. Reloading to load the latest files…"
-            : error.message}
-        </p>
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              if (chunkError) {
-                hardReloadToLatest(true);
-                return;
-              }
-              router.invalidate();
-              reset();
-            }}
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
-          >
-            {chunkError ? "Reload now" : "Try again"}
-          </button>
-          {chunkError ? (
-            <a
-              href="/"
-              className="inline-flex items-center justify-center rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground"
-              onClick={(e) => {
-                e.preventDefault();
-                clearChunkReloadMarker();
-                // Full document navigation avoids reusing a broken SPA chunk graph.
-                window.location.assign("/");
-              }}
-            >
-              Go home
-            </a>
-          ) : (
-            <Link
-              to="/"
-              className="inline-flex items-center justify-center rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground"
-            >
-              Go home
-            </Link>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+  return <RouteErrorView error={error} reset={reset} embedded={false} />;
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
