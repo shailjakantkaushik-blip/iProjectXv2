@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
@@ -574,8 +574,16 @@ function CtaSecondary({
 
 function Nav({ cfg, signupEnabled }: { cfg: LandingConfig; signupEnabled: boolean }) {
   const p = cfg.palette;
+  const navigate = useNavigate();
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
+
+  const goSection = (href: `#${string}`) => {
+    setOpen(false);
+    const hash = href.slice(1);
+    void navigate({ to: "/", hash, hashScrollIntoView: false });
+    requestAnimationFrame(() => scrollToLandingHash(href));
+  };
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -627,9 +635,7 @@ function Nav({ cfg, signupEnabled }: { cfg: LandingConfig; signupEnabled: boolea
               href={href}
               onClick={(e) => {
                 e.preventDefault();
-                setOpen(false);
-                if (location.hash !== href) history.pushState(null, "", href);
-                scrollToLandingHash(href);
+                goSection(href);
               }}
               className="text-sm font-semibold tracking-tight transition-opacity hover:opacity-70"
               style={{ color: p.textMuted }}
@@ -697,9 +703,7 @@ function Nav({ cfg, signupEnabled }: { cfg: LandingConfig; signupEnabled: boolea
                 href={href}
                 onClick={(e) => {
                   e.preventDefault();
-                  setOpen(false);
-                  if (location.hash !== href) history.pushState(null, "", href);
-                  requestAnimationFrame(() => scrollToLandingHash(href));
+                  goSection(href);
                 }}
                 className="rounded-md px-3 py-3 text-sm font-semibold"
                 style={{ color: p.textHeading }}

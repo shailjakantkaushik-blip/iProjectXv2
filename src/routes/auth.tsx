@@ -47,6 +47,7 @@ import {
 import { ProcessingAnimation, ProcessingOverlay } from "@/components/processing-animation";
 import { clearOrgAuthEntry, rememberOrgAuthEntry } from "@/lib/org-auth-entry";
 import { AlertTriangle } from "lucide-react";
+import { RouteErrorView } from "@/components/route-error";
 
 type OrgAccessAlert = {
   title: string;
@@ -95,7 +96,7 @@ async function loadAuthPublicConfig(orgSlug?: string): Promise<AuthLoaderData> {
       }
     }
     return {
-      platformBrand: toAuthPlatformBrand(cfg.brand),
+      platformBrand: toAuthPlatformBrand(cfg?.brand ?? DEFAULT_LANDING.brand),
       signupEnabled: cfg.signup_enabled === true,
       orgBrand,
       orgRequested: Boolean(slug),
@@ -128,6 +129,15 @@ export const Route = createFileRoute("/auth")({
   staleTime: 60_000,
   pendingMs: 0,
   pendingComponent: AuthPending,
+  errorComponent: function AuthRouteError({
+    error,
+    reset,
+  }: {
+    error: Error;
+    reset: () => void;
+  }) {
+    return <RouteErrorView error={error} reset={reset} embedded={false} />;
+  },
   component: AuthPage,
 });
 

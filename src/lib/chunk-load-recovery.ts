@@ -32,7 +32,12 @@ export function isChunkLoadError(error: unknown): boolean {
     /ChunkLoadError/i.test(message) ||
     // Stale index often serves HTML for a missing .js chunk
     (/Unexpected token\s*['"]?</i.test(message) && /module|import|chunk/i.test(message)) ||
-    (/Failed to fetch/i.test(message) && /chunk|module|assets\//i.test(message))
+    (/Failed to fetch/i.test(message) && /chunk|module|assets\//i.test(message)) ||
+    // After a deploy, TanStack often throws these instead of ChunkLoadError.
+    // They were shown as "Data not available" on /auth (and elsewhere).
+    /Invariant failed/i.test(message) ||
+    /Could not find match for matchId/i.test(message) ||
+    /reading ['"](?:options|component)['"]/i.test(message)
   );
 }
 

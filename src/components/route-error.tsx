@@ -15,8 +15,9 @@ import {
   recoverFromChunkLoadError,
 } from "@/lib/chunk-load-recovery";
 
-/** Router / match failures that look like missing page data rather than app bugs. */
+/** Missing DB objects / expired session — not a stale JS bundle. */
 export function isUnavailablePageError(error: unknown): boolean {
+  if (isChunkLoadError(error)) return false;
   const message =
     error instanceof Error
       ? error.message
@@ -25,13 +26,6 @@ export function isUnavailablePageError(error: unknown): boolean {
         : String((error as { message?: unknown } | null)?.message ?? error ?? "");
 
   return (
-    /reading ['"]component['"]/i.test(message) ||
-    /Cannot read propert(?:y|ies) of undefined \(reading ['"](?:options|component)['"]\)/i.test(
-      message,
-    ) ||
-    /Could not find match for matchId/i.test(message) ||
-    /Invariant failed/i.test(message) ||
-    /Failed to fetch/i.test(message) ||
     /relation .+ does not exist/i.test(message) ||
     /Could not find the table/i.test(message) ||
     /schema cache/i.test(message) ||
@@ -115,6 +109,11 @@ export function RouteErrorView({ error, reset, embedded = false }: RouteErrorVie
   const retry = () => {
     if (chunkError) {
       hardReloadToLatest(true);
+      return;
+    }
+    // Public sign-in must not stay on a dead SPA state — hard-load /auth.
+    if (pathname === "/auth" || pathname.startsWith("/auth?")) {
+      window.location.replace("/auth" + window.location.search);
       return;
     }
     void router.invalidate();
