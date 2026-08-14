@@ -38,7 +38,8 @@ import {
   fetchLandingConfig,
   resolveBrandLogoDims,
   resolveBrandLogoUrl,
-  readCachedLandingConfig,
+  getFreshLandingConfigSnapshot,
+  resolveLandingCfgForPaint,
   readCachedLandingConfigForPaint,
   type LandingConfig,
   type LandingItem,
@@ -60,18 +61,20 @@ type LandingLoaderData = {
 
 export const Route = createFileRoute("/")({
   loader: async (): Promise<LandingLoaderData> => {
-    // Instant paint on repeat visits from cache (logos + palette kept).
+    // Instant paint on repeat visits from memory/localStorage (logos + palette kept).
+    // Prefer in-memory (updated by /auth fetch) over a stale localStorage edge case.
     // Never trust cached signup_enabled (avoids Get started flash).
     // First visit (no cache): await live config so we never flash DEFAULT branding.
+    // staleTime: 0 so auth→home always re-reads this snapshot (no 60s-old logo).
     if (typeof window !== "undefined") {
-      const cached = readCachedLandingConfig();
+      const cached = getFreshLandingConfigSnapshot();
       if (cached) {
         return { cfg: { ...cached, signup_enabled: false }, needsRevalidate: true };
       }
     }
     return { cfg: await fetchLandingConfig(), needsRevalidate: false };
   },
-  staleTime: 60_000,
+  staleTime: 0,
   // Only show pending when the loader is slow (first visit / cold network).
   pendingMs: 120,
   pendingComponent: LandingPending,
@@ -334,14 +337,16 @@ function BrandMark({
 
 function LandingPage() {
   const { cfg: loaderCfg, needsRevalidate } = Route.useLoaderData();
-  const [cfg, setCfg] = useState(loaderCfg);
+  // Prefer memory/localStorage over a stale loader snapshot so returning from
+  // /auth never paints the previous logo for a frame.
+  const [cfg, setCfg] = useState(() => resolveLandingCfgForPaint(loaderCfg));
   const signupEnabled = cfg.signup_enabled === true;
   const [eoiOpen, setEoiOpen] = useState(false);
   // Mount heavier below-fold sections after first paint so Hero can appear sooner.
   const [belowFoldReady, setBelowFoldReady] = useState(false);
 
   useEffect(() => {
-    setCfg(loaderCfg);
+    setCfg(resolveLandingCfgForPaint(loaderCfg));
   }, [loaderCfg]);
 
   useEffect(() => {

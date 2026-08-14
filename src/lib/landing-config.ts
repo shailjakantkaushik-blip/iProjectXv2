@@ -1443,6 +1443,42 @@ export function invalidateLandingConfigMemory() {
   landingConfigInflight = null;
 }
 
+/** In-memory config from a recent fetch (auth/landing), if still within TTL. */
+export function peekLandingConfigMemory(): LandingConfig | null {
+  if (!landingConfigMemory) return null;
+  if (Date.now() - landingConfigMemory.at >= LANDING_CONFIG_MEMORY_TTL_MS) return null;
+  return landingConfigMemory.cfg;
+}
+
+/**
+ * Freshest client snapshot for paint: recent in-memory fetch, then localStorage.
+ * Used so a stale TanStack loader snapshot cannot flash an older logo when
+ * navigating back from /auth (or after Platform Landing saves).
+ */
+export function getFreshLandingConfigSnapshot(): LandingConfig | null {
+  return peekLandingConfigMemory() ?? readCachedLandingConfig();
+}
+
+/**
+ * Prefer the freshest client brand over a possibly stale route-loader cfg.
+ * Keeps the loader's signup_enabled (cache-sourced loaders already force it off).
+ */
+export function resolveLandingCfgForPaint(loaderCfg: LandingConfig): LandingConfig {
+  const mem = peekLandingConfigMemory();
+  const fresh = mem ?? readCachedLandingConfig();
+  if (!fresh) return loaderCfg;
+
+  const freshLogo = resolveBrandLogoUrl(fresh.brand, "landing");
+  const loaderLogo = resolveBrandLogoUrl(loaderCfg.brand, "landing");
+  // No newer memory and logos agree → trust the loader entirely (incl. signup).
+  if (!mem && freshLogo === loaderLogo) return loaderCfg;
+
+  return {
+    ...fresh,
+    signup_enabled: loaderCfg.signup_enabled,
+  };
+}
+
 export async function fetchLandingConfig(): Promise<LandingConfig> {
   const now = Date.now();
   if (landingConfigMemory && now - landingConfigMemory.at < LANDING_CONFIG_MEMORY_TTL_MS) {
