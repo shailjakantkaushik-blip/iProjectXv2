@@ -179,6 +179,12 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
         platformOnly: true,
       },
       {
+        to: "/platform/alert-emails",
+        label: "Outbound alert emails",
+        icon: "Bell",
+        platformOnly: true,
+      },
+      {
         to: "/platform/security",
         label: "Security events",
         icon: "ShieldCheck",

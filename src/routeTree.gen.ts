@@ -74,6 +74,7 @@ import { Route as AuthenticatedAppRoadmapGovernanceRouteImport } from './routes/
 import { Route as AuthenticatedAppScenariosRouteImport } from './routes/_authenticated/app.scenarios'
 import { Route as AuthenticatedAppScheduleCpmRouteImport } from './routes/_authenticated/app.schedule-cpm'
 import { Route as AuthenticatedAppSettingsRouteImport } from './routes/_authenticated/app.settings'
+import { Route as AuthenticatedAppAlertEmailsRouteImport } from './routes/_authenticated/app.alert-emails'
 import { Route as AuthenticatedAppStageGateConfigRouteImport } from './routes/_authenticated/app.stage-gate-config'
 import { Route as AuthenticatedAppStageGatesRouteImport } from './routes/_authenticated/app.stage-gates'
 import { Route as AuthenticatedAppStakeholdersRouteImport } from './routes/_authenticated/app.stakeholders'
@@ -99,6 +100,7 @@ import { Route as AuthenticatedPlatformPoliciesRouteImport } from './routes/_aut
 import { Route as AuthenticatedPlatformProjectPurgeRouteImport } from './routes/_authenticated/platform.project-purge'
 import { Route as AuthenticatedPlatformSecurityRouteImport } from './routes/_authenticated/platform.security'
 import { Route as AuthenticatedPlatformSettingsRouteImport } from './routes/_authenticated/platform.settings'
+import { Route as AuthenticatedPlatformAlertEmailsRouteImport } from './routes/_authenticated/platform.alert-emails'
 import { Route as AuthenticatedPlatformSubscriptionsRouteImport } from './routes/_authenticated/platform.subscriptions'
 import { Route as AuthenticatedPlatformSupportRouteImport } from './routes/_authenticated/platform.support'
 import { Route as OSlugLoginRouteImport } from './routes/o.$slug.login'
@@ -477,6 +479,12 @@ const AuthenticatedAppSettingsRoute =
     path: '/settings',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
+const AuthenticatedAppAlertEmailsRoute =
+  AuthenticatedAppAlertEmailsRouteImport.update({
+    id: '/alert-emails',
+    path: '/alert-emails',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
 const AuthenticatedAppStageGateConfigRoute =
   AuthenticatedAppStageGateConfigRouteImport.update({
     id: '/stage-gate-config',
@@ -625,6 +633,12 @@ const AuthenticatedPlatformSettingsRoute =
     path: '/settings',
     getParentRoute: () => AuthenticatedPlatformRoute,
   } as any)
+const AuthenticatedPlatformAlertEmailsRoute =
+  AuthenticatedPlatformAlertEmailsRouteImport.update({
+    id: '/alert-emails',
+    path: '/alert-emails',
+    getParentRoute: () => AuthenticatedPlatformRoute,
+  } as any)
 const AuthenticatedPlatformSubscriptionsRoute =
   AuthenticatedPlatformSubscriptionsRouteImport.update({
     id: '/subscriptions',
@@ -749,6 +763,7 @@ export interface FileRoutesByFullPath {
   '/app/scenarios': typeof AuthenticatedAppScenariosRoute
   '/app/schedule-cpm': typeof AuthenticatedAppScheduleCpmRoute
   '/app/settings': typeof AuthenticatedAppSettingsRoute
+  '/app/alert-emails': typeof AuthenticatedAppAlertEmailsRoute
   '/app/stage-gate-config': typeof AuthenticatedAppStageGateConfigRoute
   '/app/stage-gates': typeof AuthenticatedAppStageGatesRoute
   '/app/stakeholders': typeof AuthenticatedAppStakeholdersRoute
@@ -774,6 +789,7 @@ export interface FileRoutesByFullPath {
   '/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
   '/platform/security': typeof AuthenticatedPlatformSecurityRoute
   '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
+  '/platform/alert-emails': typeof AuthenticatedPlatformAlertEmailsRoute
   '/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
   '/platform/support': typeof AuthenticatedPlatformSupportRoute
   '/o/$slug/login': typeof OSlugLoginRoute
@@ -848,6 +864,7 @@ export interface FileRoutesByTo {
   '/app/scenarios': typeof AuthenticatedAppScenariosRoute
   '/app/schedule-cpm': typeof AuthenticatedAppScheduleCpmRoute
   '/app/settings': typeof AuthenticatedAppSettingsRoute
+  '/app/alert-emails': typeof AuthenticatedAppAlertEmailsRoute
   '/app/stage-gate-config': typeof AuthenticatedAppStageGateConfigRoute
   '/app/stage-gates': typeof AuthenticatedAppStageGatesRoute
   '/app/stakeholders': typeof AuthenticatedAppStakeholdersRoute
@@ -873,6 +890,7 @@ export interface FileRoutesByTo {
   '/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
   '/platform/security': typeof AuthenticatedPlatformSecurityRoute
   '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
+  '/platform/alert-emails': typeof AuthenticatedPlatformAlertEmailsRoute
   '/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
   '/platform/support': typeof AuthenticatedPlatformSupportRoute
   '/o/$slug/login': typeof OSlugLoginRoute
@@ -951,6 +969,7 @@ export interface FileRoutesById {
   '/_authenticated/app/scenarios': typeof AuthenticatedAppScenariosRoute
   '/_authenticated/app/schedule-cpm': typeof AuthenticatedAppScheduleCpmRoute
   '/_authenticated/app/settings': typeof AuthenticatedAppSettingsRoute
+  '/_authenticated/app/alert-emails': typeof AuthenticatedAppAlertEmailsRoute
   '/_authenticated/app/stage-gate-config': typeof AuthenticatedAppStageGateConfigRoute
   '/_authenticated/app/stage-gates': typeof AuthenticatedAppStageGatesRoute
   '/_authenticated/app/stakeholders': typeof AuthenticatedAppStakeholdersRoute
@@ -976,6 +995,7 @@ export interface FileRoutesById {
   '/_authenticated/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
   '/_authenticated/platform/security': typeof AuthenticatedPlatformSecurityRoute
   '/_authenticated/platform/settings': typeof AuthenticatedPlatformSettingsRoute
+  '/_authenticated/platform/alert-emails': typeof AuthenticatedPlatformAlertEmailsRoute
   '/_authenticated/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
   '/_authenticated/platform/support': typeof AuthenticatedPlatformSupportRoute
   '/o/$slug/login': typeof OSlugLoginRoute
@@ -1054,6 +1074,7 @@ export interface FileRouteTypes {
     | '/app/scenarios'
     | '/app/schedule-cpm'
     | '/app/settings'
+    | '/app/alert-emails'
     | '/app/stage-gate-config'
     | '/app/stage-gates'
     | '/app/stakeholders'
@@ -1079,6 +1100,7 @@ export interface FileRouteTypes {
     | '/platform/project-purge'
     | '/platform/security'
     | '/platform/settings'
+    | '/platform/alert-emails'
     | '/platform/subscriptions'
     | '/platform/support'
     | '/o/$slug/login'
@@ -1153,6 +1175,7 @@ export interface FileRouteTypes {
     | '/app/scenarios'
     | '/app/schedule-cpm'
     | '/app/settings'
+    | '/app/alert-emails'
     | '/app/stage-gate-config'
     | '/app/stage-gates'
     | '/app/stakeholders'
@@ -1178,6 +1201,7 @@ export interface FileRouteTypes {
     | '/platform/project-purge'
     | '/platform/security'
     | '/platform/settings'
+    | '/platform/alert-emails'
     | '/platform/subscriptions'
     | '/platform/support'
     | '/o/$slug/login'
@@ -1255,6 +1279,7 @@ export interface FileRouteTypes {
     | '/_authenticated/app/scenarios'
     | '/_authenticated/app/schedule-cpm'
     | '/_authenticated/app/settings'
+    | '/_authenticated/app/alert-emails'
     | '/_authenticated/app/stage-gate-config'
     | '/_authenticated/app/stage-gates'
     | '/_authenticated/app/stakeholders'
@@ -1280,6 +1305,7 @@ export interface FileRouteTypes {
     | '/_authenticated/platform/project-purge'
     | '/_authenticated/platform/security'
     | '/_authenticated/platform/settings'
+    | '/_authenticated/platform/alert-emails'
     | '/_authenticated/platform/subscriptions'
     | '/_authenticated/platform/support'
     | '/o/$slug/login'
@@ -1764,6 +1790,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppSettingsRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
+    '/_authenticated/app/alert-emails': {
+      id: '/_authenticated/app/alert-emails'
+      path: '/alert-emails'
+      fullPath: '/app/alert-emails'
+      preLoaderRoute: typeof AuthenticatedAppAlertEmailsRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
     '/_authenticated/app/stage-gate-config': {
       id: '/_authenticated/app/stage-gate-config'
       path: '/stage-gate-config'
@@ -1939,6 +1972,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPlatformSettingsRouteImport
       parentRoute: typeof AuthenticatedPlatformRoute
     }
+    '/_authenticated/platform/alert-emails': {
+      id: '/_authenticated/platform/alert-emails'
+      path: '/alert-emails'
+      fullPath: '/platform/alert-emails'
+      preLoaderRoute: typeof AuthenticatedPlatformAlertEmailsRouteImport
+      parentRoute: typeof AuthenticatedPlatformRoute
+    }
     '/_authenticated/platform/subscriptions': {
       id: '/_authenticated/platform/subscriptions'
       path: '/subscriptions'
@@ -2095,6 +2135,7 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppWorkItemsRoute: typeof AuthenticatedAppWorkItemsRoute
   AuthenticatedAppIndexRoute: typeof AuthenticatedAppIndexRoute
   AuthenticatedAppInvoiceIdRoute: typeof AuthenticatedAppInvoiceIdRoute
+  AuthenticatedAppAlertEmailsRoute: typeof AuthenticatedAppAlertEmailsRoute
 }
 
 const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
@@ -2168,6 +2209,7 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppWorkItemsRoute: AuthenticatedAppWorkItemsRoute,
   AuthenticatedAppIndexRoute: AuthenticatedAppIndexRoute,
   AuthenticatedAppInvoiceIdRoute: AuthenticatedAppInvoiceIdRoute,
+  AuthenticatedAppAlertEmailsRoute: AuthenticatedAppAlertEmailsRoute,
 }
 
 const AuthenticatedAppRouteWithChildren =
@@ -2193,6 +2235,7 @@ interface AuthenticatedPlatformRouteChildren {
   AuthenticatedPlatformSubscriptionsRoute: typeof AuthenticatedPlatformSubscriptionsRoute
   AuthenticatedPlatformSupportRoute: typeof AuthenticatedPlatformSupportRoute
   AuthenticatedPlatformInvoiceIdRoute: typeof AuthenticatedPlatformInvoiceIdRoute
+  AuthenticatedPlatformAlertEmailsRoute: typeof AuthenticatedPlatformAlertEmailsRoute
 }
 
 const AuthenticatedPlatformRouteChildren: AuthenticatedPlatformRouteChildren = {
@@ -2219,6 +2262,7 @@ const AuthenticatedPlatformRouteChildren: AuthenticatedPlatformRouteChildren = {
     AuthenticatedPlatformSubscriptionsRoute,
   AuthenticatedPlatformSupportRoute: AuthenticatedPlatformSupportRoute,
   AuthenticatedPlatformInvoiceIdRoute: AuthenticatedPlatformInvoiceIdRoute,
+  AuthenticatedPlatformAlertEmailsRoute: AuthenticatedPlatformAlertEmailsRoute,
 }
 
 const AuthenticatedPlatformRouteWithChildren =

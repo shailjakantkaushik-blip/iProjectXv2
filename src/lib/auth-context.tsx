@@ -80,6 +80,20 @@ export interface Organization {
         project_ids?: string[];
       }>;
     };
+    /** Platform → org outbound alert email config (digests + RAID escalation). */
+    alert_outbound?: {
+      active?: boolean;
+      roles?: Record<
+        string,
+        {
+          enabled?: boolean;
+          approvals?: boolean;
+          overdue_raid?: boolean;
+          pulse?: boolean;
+          raid_escalation?: boolean;
+        }
+      >;
+    };
     /** Per-page Download page (PDF/PPT/PNG) allow/deny — org override of platform defaults. */
     page_download?: {
       pages?: Record<string, boolean>;

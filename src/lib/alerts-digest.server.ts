@@ -1,38 +1,24 @@
 /**
  * Daily outbound alert digests: pending approvals, overdue/escalated RAID, pulse snapshot.
  * Called from /api/public/hooks/alerts-digest (cron). Also runs RAID auto-escalation.
+ *
+ * Respects platform → org → role → user hierarchy via alert-outbound-config.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  readAlertOutboundFromUiConfig,
+  resolveEffectiveAlertEmails,
+  type EffectiveAlertEmailChannels,
+} from "@/lib/alert-outbound-config";
 import {
   escapeHtml,
   sendTransactionalEmail,
 } from "@/lib/transactional-email.server";
 
-export type NotificationPrefs = {
-  /** Master switch for email digests. Default true when unset. */
-  email_digest?: boolean;
-  approvals?: boolean;
-  overdue_raid?: boolean;
-  pulse?: boolean;
-};
-
 const DIGEST_KIND = "daily_pmo";
 /** Skip re-send within this window (ms). */
 const DEDUPE_MS = 20 * 60 * 60 * 1000;
-
-function prefsEnabled(raw: unknown): Required<Omit<NotificationPrefs, never>> & {
-  email_digest: boolean;
-} {
-  const p = (raw && typeof raw === "object" ? raw : {}) as NotificationPrefs;
-  const master = p.email_digest !== false;
-  return {
-    email_digest: master,
-    approvals: master && p.approvals !== false,
-    overdue_raid: master && p.overdue_raid !== false,
-    pulse: master && p.pulse !== false,
-  };
-}
 
 function appBaseUrl() {
   return (
@@ -71,7 +57,7 @@ function buildEmail(args: {
   name: string;
   orgName: string;
   bucket: DigestBucket;
-  prefs: ReturnType<typeof prefsEnabled>;
+  prefs: EffectiveAlertEmailChannels;
 }) {
   const base = appBaseUrl();
   const sections: string[] = [];
@@ -92,12 +78,17 @@ function buildEmail(args: {
     );
     textSections.push(
       "Approvals awaiting you:",
-      ...args.bucket.approvals.slice(0, 12).map((a) => `- ${a.title}${a.project ? ` (${a.project})` : ""}`),
+      ...args.bucket.approvals
+        .slice(0, 12)
+        .map((a) => `- ${a.title}${a.project ? ` (${a.project})` : ""}`),
       "",
     );
   }
 
-  if (args.prefs.overdue_raid && args.bucket.overdueRaid.length) {
+  if (
+    (args.prefs.overdue_raid || args.prefs.raid_escalation) &&
+    args.bucket.overdueRaid.length
+  ) {
     const items = args.bucket.overdueRaid
       .slice(0, 15)
       .map(
@@ -170,9 +161,11 @@ function buildEmail(args: {
   return { html, text };
 }
 
-function hasContent(bucket: DigestBucket, prefs: ReturnType<typeof prefsEnabled>) {
+function hasContent(bucket: DigestBucket, prefs: EffectiveAlertEmailChannels) {
   if (prefs.approvals && bucket.approvals.length) return true;
-  if (prefs.overdue_raid && bucket.overdueRaid.length) return true;
+  if ((prefs.overdue_raid || prefs.raid_escalation) && bucket.overdueRaid.length) {
+    return true;
+  }
   if (prefs.pulse) {
     const p = bucket.pulse;
     return (
@@ -186,18 +179,16 @@ function hasContent(bucket: DigestBucket, prefs: ReturnType<typeof prefsEnabled>
 }
 
 export async function runAlertsDigestJob(admin: SupabaseClient) {
-  // 1) RAID auto-escalation (marks rows + in-app notifications)
   const { data: esc, error: escErr } = await admin.rpc("run_raid_auto_escalation");
   if (escErr) {
     console.error("run_raid_auto_escalation failed", escErr);
   }
 
-  const today = new Date();
-  const todayIso = today.toISOString().slice(0, 10);
+  const todayIso = new Date().toISOString().slice(0, 10);
 
   const { data: orgs, error: orgErr } = await admin
     .from("organizations")
-    .select("id,name,brand_name")
+    .select("id,name,brand_name,ui_config")
     .limit(500);
   if (orgErr) throw orgErr;
 
@@ -208,6 +199,11 @@ export async function runAlertsDigestJob(admin: SupabaseClient) {
   for (const org of orgs ?? []) {
     const orgId = org.id as string;
     const orgName = (org.brand_name || org.name || "Organisation") as string;
+    const orgConfig = readAlertOutboundFromUiConfig(org.ui_config);
+    if (!orgConfig.active) {
+      skipped++;
+      continue;
+    }
 
     const [
       { data: profiles },
@@ -287,17 +283,21 @@ export async function runAlertsDigestJob(admin: SupabaseClient) {
       (risks ?? []).filter((r: any) => r.escalated_at).length +
       (issues ?? []).filter((i: any) => i.escalated_at).length +
       (actions ?? []).filter((a: any) => a.escalated_at).length;
-    const pendingApprovals = (decisions ?? []).length;
 
     const orgPulse = {
       criticalRisks,
       overdueDecisions,
       escalatedOpen,
-      pendingApprovals,
+      pendingApprovals: (decisions ?? []).length,
     };
 
     for (const profile of profiles ?? []) {
-      const prefs = prefsEnabled(profile.notification_prefs);
+      const roleKeys = roleByUser.get(profile.id as string) ?? [];
+      const prefs = resolveEffectiveAlertEmails({
+        orgConfig,
+        roleKeys,
+        userPrefs: profile.notification_prefs,
+      });
       if (!prefs.email_digest) {
         skipped++;
         continue;
@@ -324,9 +324,8 @@ export async function runAlertsDigestJob(admin: SupabaseClient) {
         }
       }
 
-      const rolesFor = roleByUser.get(profile.id) ?? [];
-      const isAdmin = rolesFor.some((x) => x === "admin" || x === "org_admin");
-      const isExec = rolesFor.some((x) => x === "executive" || x === "bu_lead");
+      const isAdminUser = roleKeys.some((x) => x === "admin" || x === "org_admin");
+      const isExec = roleKeys.some((x) => x === "executive" || x === "bu_lead");
       const pmProjectIds = new Set(
         (projects ?? [])
           .filter((p: any) => p.pm_user_id === profile.id)
@@ -337,22 +336,24 @@ export async function runAlertsDigestJob(admin: SupabaseClient) {
       const bucket = emptyBucket();
       bucket.pulse = { ...orgPulse };
 
-      // Approvals assigned to this user
-      for (const d of decisions ?? []) {
-        if (d.approver_user_id !== profile.id) continue;
-        const proj = d.project_id ? projectById.get(d.project_id) : undefined;
-        bucket.approvals.push({
-          title: d.title || "Untitled decision",
-          project: proj ? [proj.code, proj.name].filter(Boolean).join(" — ") : undefined,
-          link: "/app/decisions?awaiting=me",
-        });
+      if (prefs.approvals) {
+        for (const d of decisions ?? []) {
+          if (d.approver_user_id !== profile.id) continue;
+          const proj = d.project_id ? projectById.get(d.project_id) : undefined;
+          bucket.approvals.push({
+            title: d.title || "Untitled decision",
+            project: proj
+              ? [proj.code, proj.name].filter(Boolean).join(" — ")
+              : undefined,
+            link: "/app/decisions?awaiting=me",
+          });
+        }
       }
 
       const relevantProject = (projectId: string | null) => {
-        if (!projectId) return isAdmin || isExec;
-        if (isAdmin || isExec) return true;
-        if (pmProjectIds.has(projectId)) return true;
-        return false;
+        if (!projectId) return isAdminUser || isExec;
+        if (isAdminUser || isExec) return true;
+        return pmProjectIds.has(projectId);
       };
 
       const ownerMatch = (owner: string | null | undefined) => {
@@ -360,57 +361,70 @@ export async function runAlertsDigestJob(admin: SupabaseClient) {
         return String(owner).trim().toLowerCase() === nameKey;
       };
 
-      for (const r of risks ?? []) {
-        const overdue =
-          r.due_date && String(r.due_date).slice(0, 10) < todayIso;
-        const escalated = Boolean(r.escalated_at);
-        const critical = sev(r) >= 15;
-        if (!overdue && !escalated && !critical) continue;
-        if (!relevantProject(r.project_id) && !ownerMatch(r.owner)) continue;
-        bucket.overdueRaid.push({
-          kind: escalated ? "Risk (escalated)" : critical ? "Risk (critical)" : "Risk (overdue)",
-          title: r.title || "Untitled",
-          reason: r.escalation_reason || undefined,
-          link: "/app/risks",
-        });
+      const includeRaidItem = (opts: {
+        overdue: boolean;
+        escalated: boolean;
+        critical?: boolean;
+      }) => {
+        if (opts.escalated && prefs.raid_escalation) return true;
+        if ((opts.overdue || opts.critical) && prefs.overdue_raid) return true;
+        return false;
+      };
+
+      if (prefs.overdue_raid || prefs.raid_escalation) {
+        for (const r of risks ?? []) {
+          const overdue = !!(r.due_date && String(r.due_date).slice(0, 10) < todayIso);
+          const escalated = Boolean(r.escalated_at);
+          const critical = sev(r) >= 15;
+          if (!includeRaidItem({ overdue, escalated, critical })) continue;
+          if (!relevantProject(r.project_id) && !ownerMatch(r.owner)) continue;
+          bucket.overdueRaid.push({
+            kind: escalated
+              ? "Risk (escalated)"
+              : critical
+                ? "Risk (critical)"
+                : "Risk (overdue)",
+            title: r.title || "Untitled",
+            reason: r.escalation_reason || undefined,
+            link: "/app/risks",
+          });
+        }
+
+        for (const i of issues ?? []) {
+          const overdue = !!(
+            i.target_date && String(i.target_date).slice(0, 10) < todayIso
+          );
+          const escalated = Boolean(i.escalated_at);
+          if (!includeRaidItem({ overdue, escalated })) continue;
+          if (!relevantProject(i.project_id) && !ownerMatch(i.owner)) continue;
+          bucket.overdueRaid.push({
+            kind: escalated ? "Issue (escalated)" : "Issue (overdue)",
+            title: i.title || "Untitled",
+            reason: i.escalation_reason || undefined,
+            link: "/app/issues",
+          });
+        }
+
+        for (const a of actions ?? []) {
+          const overdue = !!(a.due_date && String(a.due_date).slice(0, 10) < todayIso);
+          const escalated = Boolean(a.escalated_at);
+          if (!includeRaidItem({ overdue, escalated })) continue;
+          if (!relevantProject(a.project_id) && !ownerMatch(a.owner)) continue;
+          bucket.overdueRaid.push({
+            kind: escalated ? "Action (escalated)" : "Action (overdue)",
+            title: a.title || "Untitled",
+            reason: a.escalation_reason || undefined,
+            link: "/app/actions",
+          });
+        }
       }
 
-      for (const i of issues ?? []) {
-        const overdue =
-          i.target_date && String(i.target_date).slice(0, 10) < todayIso;
-        const escalated = Boolean(i.escalated_at);
-        if (!overdue && !escalated) continue;
-        if (!relevantProject(i.project_id) && !ownerMatch(i.owner)) continue;
-        bucket.overdueRaid.push({
-          kind: escalated ? "Issue (escalated)" : "Issue (overdue)",
-          title: i.title || "Untitled",
-          reason: i.escalation_reason || undefined,
-          link: "/app/issues",
-        });
-      }
-
-      for (const a of actions ?? []) {
-        const overdue = a.due_date && String(a.due_date).slice(0, 10) < todayIso;
-        const escalated = Boolean(a.escalated_at);
-        if (!overdue && !escalated) continue;
-        if (!relevantProject(a.project_id) && !ownerMatch(a.owner)) continue;
-        bucket.overdueRaid.push({
-          kind: escalated ? "Action (escalated)" : "Action (overdue)",
-          title: a.title || "Untitled",
-          reason: a.escalation_reason || undefined,
-          link: "/app/actions",
-        });
-      }
-
-      // Pulse email only for admins / exec / PMs with projects
-      if (!(isAdmin || isExec || pmProjectIds.size > 0)) {
-        // Still allow approvals-only digests
+      if (!(isAdminUser || isExec || pmProjectIds.size > 0)) {
         if (!bucket.approvals.length && !bucket.overdueRaid.length) {
           skipped++;
           continue;
         }
-        // Narrow pulse to empty for non-leaders so we don't spam org-wide stats
-        if (!isAdmin && !isExec) {
+        if (!isAdminUser && !isExec) {
           bucket.pulse = {
             criticalRisks: 0,
             overdueDecisions: 0,
@@ -451,7 +465,6 @@ export async function runAlertsDigestJob(admin: SupabaseClient) {
           },
         });
 
-        // Mirror a compact in-app notification so the bell stays the source of truth
         await admin.from("notifications").insert({
           user_id: profile.id,
           org_id: orgId,
@@ -461,7 +474,7 @@ export async function runAlertsDigestJob(admin: SupabaseClient) {
             prefs.approvals && bucket.approvals.length
               ? `${bucket.approvals.length} approval(s)`
               : null,
-            prefs.overdue_raid && bucket.overdueRaid.length
+            (prefs.overdue_raid || prefs.raid_escalation) && bucket.overdueRaid.length
               ? `${bucket.overdueRaid.length} RAID item(s)`
               : null,
             prefs.pulse ? "pulse snapshot" : null,
