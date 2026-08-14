@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useAuth, isAdmin } from "@/lib/auth-context";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Palette, CalendarClock, ShieldCheck, Mail } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { MONTH_NAMES } from "@/lib/fiscal-year";
 import { toast } from "sonner";
@@ -11,8 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
   normalizeNotificationPrefs,
-  type NotificationPrefs,
-} from "@/lib/notification-prefs";
+  readAlertOutboundFromUiConfig,
+  resolveEffectiveAlertEmails,
+} from "@/lib/alert-outbound-config";
 
 export const Route = createFileRoute("/_authenticated/app/settings")({
   component: SettingsPage,
@@ -30,6 +31,20 @@ function SettingsPage() {
   const [savingPrefs, setSavingPrefs] = useState(false);
   const [prefsLoaded, setPrefsLoaded] = useState(false);
 
+  const orgAlertConfig = useMemo(
+    () => readAlertOutboundFromUiConfig(organization?.ui_config),
+    [organization?.ui_config],
+  );
+  const effective = useMemo(
+    () =>
+      resolveEffectiveAlertEmails({
+        orgConfig: orgAlertConfig,
+        roleKeys: roles,
+        userPrefs: prefs,
+      }),
+    [orgAlertConfig, roles, prefs],
+  );
+
   useEffect(() => {
     if (!profile?.id) return;
     let cancelled = false;
@@ -41,7 +56,6 @@ function SettingsPage() {
         .maybeSingle();
       if (cancelled) return;
       if (error) {
-        // Column may not exist until migration is applied — keep defaults.
         setPrefsLoaded(true);
         return;
       }
@@ -84,13 +98,24 @@ function SettingsPage() {
     await refresh();
   };
 
-  const savePrefs = async (next: Required<NotificationPrefs>) => {
+  const savePrefs = async (next: ReturnType<typeof normalizeNotificationPrefs>) => {
     if (!profile?.id) return;
+    if (!effective.userCanEdit) {
+      toast.error("Your alert email preferences are managed by an organisation admin.");
+      return;
+    }
     setSavingPrefs(true);
     setPrefs(next);
     const { error } = await supabase
       .from("profiles")
-      .update({ notification_prefs: next as never })
+      .update({
+        notification_prefs: {
+          ...next,
+          // Preserve admin overrides set by org admin
+          admin_disabled: prefs.admin_disabled,
+          admin_locked: prefs.admin_locked,
+        } as never,
+      })
       .eq("id", profile.id);
     setSavingPrefs(false);
     if (error) {
@@ -130,13 +155,29 @@ function SettingsPage() {
             <Mail className="h-5 w-5" /> Email alert digests
           </CardTitle>
           <CardDescription>
-            Daily outbound email for approvals awaiting you, overdue / escalated RAID, and a
-            portfolio pulse snapshot. In-app notifications in the bell always remain available.
-            Requires Resend or SendGrid on the server and a scheduled call to{" "}
-            <code className="text-[11px]">/api/public/hooks/alerts-digest</code>.
+            Daily outbound email for approvals, overdue RAID, RAID escalation, and portfolio pulse.
+            Configured by platform (org) and org admins (roles / users). In-app notifications always
+            remain in the bell. Prefer the account menu (top-right initials) for password and
+            authenticator.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
+          {!orgAlertConfig.active ? (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              Outbound alert emails are not active for this organisation. A platform admin must
+              enable them under Platform → Outbound alert emails.
+            </p>
+          ) : prefs.admin_disabled ? (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              An organisation admin has disabled outbound alert emails for your account.
+            </p>
+          ) : !effective.userCanEdit ? (
+            <p className="rounded-lg border px-3 py-2 text-xs text-muted-foreground">
+              {prefs.admin_locked
+                ? "An organisation admin has locked your email alert preferences."
+                : "Your roles are not granted outbound alert emails. Ask an org admin to enable channels for your role."}
+            </p>
+          ) : null}
           {(
             [
               {
@@ -151,8 +192,13 @@ function SettingsPage() {
               },
               {
                 key: "overdue_raid" as const,
-                label: "Overdue & escalated RAID",
-                hint: "Risks, issues, and actions that are overdue or auto-escalated on your projects.",
+                label: "Overdue RAID",
+                hint: "Risks, issues, and actions that are overdue on your projects.",
+              },
+              {
+                key: "raid_escalation" as const,
+                label: "RAID escalation",
+                hint: "Items that were auto-escalated (critical / overdue policy).",
               },
               {
                 key: "pulse" as const,
@@ -170,10 +216,11 @@ function SettingsPage() {
                 <div className="text-xs text-muted-foreground">{row.hint}</div>
               </div>
               <Switch
-                checked={prefs[row.key]}
+                checked={Boolean(prefs[row.key])}
                 disabled={
                   savingPrefs ||
                   !prefsLoaded ||
+                  !effective.userCanEdit ||
                   (row.key !== "email_digest" && !prefs.email_digest)
                 }
                 onCheckedChange={(v) => {
@@ -182,11 +229,13 @@ function SettingsPage() {
                     next.approvals = false;
                     next.overdue_raid = false;
                     next.pulse = false;
+                    next.raid_escalation = false;
                   }
                   if (row.key === "email_digest" && v) {
                     next.approvals = true;
                     next.overdue_raid = true;
                     next.pulse = true;
+                    next.raid_escalation = true;
                   }
                   void savePrefs(next);
                 }}

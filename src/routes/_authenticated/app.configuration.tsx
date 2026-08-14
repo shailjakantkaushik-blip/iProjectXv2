@@ -14,6 +14,7 @@ import {
   Trash2,
   FileDown,
   Link2,
+  Mail,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/app/configuration")({
@@ -90,6 +91,12 @@ const ORG_ADMIN_CARDS = [
     icon: Eye,
     title: "Project data access",
     desc: "Limit each role or user to all projects, selected programs, or specific projects",
+  },
+  {
+    to: "/app/alert-emails",
+    icon: Mail,
+    title: "Outbound alert emails",
+    desc: "Role and user controls for digests and RAID escalation email (when platform-enabled)",
   },
   {
     to: "/app/project-purge",

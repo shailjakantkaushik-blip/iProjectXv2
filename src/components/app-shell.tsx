@@ -40,7 +40,6 @@ import {
   Package,
   Zap,
   ShieldCheck,
-  LogOut,
   Rocket,
   Route as RouteIcon,
   TrendingUp,
@@ -78,6 +77,7 @@ import { useAllowedPages } from "@/lib/permissions";
 import { useOrgSupportAccess } from "@/lib/support-tickets";
 import { Button } from "@/components/ui/button";
 import { useCartoonsEnabled } from "@/lib/use-cartoons";
+import { UserAccountMenu } from "@/components/user-account-menu";
 
 const NotificationsBell = lazy(() =>
   import("@/components/notifications-bell").then((m) => ({ default: m.NotificationsBell })),
@@ -193,13 +193,6 @@ function resolveIcon(name: string): LucideIcon {
   return ICON_MAP[name] || LayoutDashboard;
 }
 
-function initials(name?: string | null, email?: string | null) {
-  const base = (name || email || "?").trim();
-  const parts = base.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return base.slice(0, 2).toUpperCase();
-}
-
 function pageTitleFromPath(pathname: string, groups: NavGroupDef[]) {
   for (const group of groups) {
     for (const item of group.items) {
@@ -251,7 +244,7 @@ function writeOpenNavGroups(headings: string[]) {
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { organization, profile, roles, signOut } = useAuth();
+  const { organization, profile, roles } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const admin = isAdmin(roles);
   const platform = isPlatformAdmin(roles);
@@ -704,13 +697,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const Footer = (
     <div className="shell-footer border-t border-sidebar-border/60 p-3">
-      <div className="mb-2 flex items-center gap-2.5 rounded-lg bg-sidebar-accent/45 px-2.5 py-2">
-        <div
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-primary-foreground"
-          style={{ background: primary || "var(--primary)" }}
-        >
-          {initials(profile?.full_name, profile?.email)}
-        </div>
+      <div className="flex items-center gap-2.5 rounded-lg bg-sidebar-accent/45 px-2.5 py-2">
+        <UserAccountMenu />
         <div className="min-w-0 flex-1">
           <div className="truncate text-[12px] font-medium tracking-[-0.01em] text-sidebar-foreground">
             {profile?.full_name || "User"}
@@ -718,14 +706,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="truncate text-[10.5px] text-muted-foreground/80">{profile?.email}</div>
         </div>
       </div>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-8 w-full justify-start text-[12px] text-muted-foreground hover:text-sidebar-foreground"
-        onClick={signOut}
-      >
-        <LogOut className="mr-2 h-3.5 w-3.5" /> Sign out
-      </Button>
     </div>
   );
 
@@ -882,12 +862,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="hidden rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-[10.5px] font-medium capitalize tracking-wide text-muted-foreground sm:block">
               {(organization?.plan ?? "free").replace(/_/g, " ")}
             </div>
-            <div
-              className="hidden h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold text-primary-foreground ring-2 ring-background sm:flex"
-              style={{ background: primary || "var(--primary)" }}
-              title={profile?.email || undefined}
-            >
-              {initials(profile?.full_name, profile?.email)}
+            <div className="hidden sm:block">
+              <UserAccountMenu />
             </div>
           </div>
         </header>

@@ -21,7 +21,7 @@ export type DirectoryUser = {
 
 export function UserDirectoryTable({
   users,
-  orgId,
+  orgId: _orgId,
   currentUserId,
   busyId,
   roleOptions,
@@ -184,8 +184,8 @@ export function UserDirectoryTable({
         </tbody>
       </table>
       <p className="mt-2 text-[11px] text-muted-foreground">
-        Org id for role ops: {orgId.slice(0, 8)}… · Click a role badge to remove it. You cannot
-        deactivate{onDelete ? " or delete" : ""} your own account.
+        Click a role badge to remove it. You cannot deactivate
+        {onDelete ? " or delete" : ""} your own account.
         {!onDelete ? " Deactivate removes access without deleting the account." : ""}
       </p>
     </div>
