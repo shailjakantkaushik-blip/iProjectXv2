@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { FileText, Plus, RefreshCw, Save, Upload, Trash2 } from "lucide-react";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
@@ -17,6 +18,7 @@ import {
   fetchInvoiceTemplate,
   newInvoiceTemplateField,
   saveInvoiceTemplate,
+  INVOICE_TEMPLATE_QUERY_KEY,
   type InvoiceTemplateConfig,
   type InvoiceTemplateId,
   type InvoiceTemplateSection,
@@ -50,6 +52,7 @@ const SAMPLE_INVOICE = {
 
 function InvoiceTemplatePage() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [cfg, setCfg] = useState<InvoiceTemplateConfig | null>(null);
   const [saving, setSaving] = useState(false);
@@ -66,8 +69,11 @@ function InvoiceTemplatePage() {
     if (!cfg) return;
     setSaving(true);
     try {
-      await saveInvoiceTemplate(cfg, user?.id);
-      toast.success("Invoice template saved. New invoices will use this format.");
+      const saved = await saveInvoiceTemplate(cfg, user?.id);
+      setCfg(saved);
+      queryClient.setQueryData(INVOICE_TEMPLATE_QUERY_KEY, saved);
+      await queryClient.invalidateQueries({ queryKey: INVOICE_TEMPLATE_QUERY_KEY });
+      toast.success("Invoice template saved. Existing and new invoices will use this layout.");
     } catch (e: any) {
       toast.error(e?.message ?? "Failed to save");
     } finally {
@@ -104,7 +110,7 @@ function InvoiceTemplatePage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeading
           title="Invoice Template"
-          subtitle="Configure the standard invoice layout used for preview, PDF download, and billing documents across the platform."
+          subtitle="This layout is used for every invoice preview, PDF, and billing document — including invoices already issued."
         />
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={resetDefaults}>

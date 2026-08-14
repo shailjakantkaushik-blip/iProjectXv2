@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Check, Download, ExternalLink } from "lucide-react";
-import { calcInvoiceGst, fetchInvoiceTemplate } from "@/lib/invoice-template";
+import { calcInvoiceGst, fetchInvoiceTemplate, INVOICE_TEMPLATE_QUERY_KEY } from "@/lib/invoice-template";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
@@ -64,8 +64,10 @@ function Billing() {
   });
 
   const { data: invoiceTemplate } = useQuery({
-    queryKey: ["invoice-template"],
+    queryKey: INVOICE_TEMPLATE_QUERY_KEY,
     queryFn: fetchInvoiceTemplate,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const gstFor = (amountCents: number) =>

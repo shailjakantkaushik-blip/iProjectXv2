@@ -17,7 +17,7 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import { calcInvoiceGst, fetchInvoiceTemplate } from "@/lib/invoice-template";
+import { calcInvoiceGst, fetchInvoiceTemplate, INVOICE_TEMPLATE_QUERY_KEY } from "@/lib/invoice-template";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
@@ -47,8 +47,10 @@ function FinancePage() {
         .data ?? [],
   });
   const { data: invoiceTemplate } = useQuery({
-    queryKey: ["invoice-template"],
+    queryKey: INVOICE_TEMPLATE_QUERY_KEY,
     queryFn: fetchInvoiceTemplate,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const invoiceTotal = (amountCents: number) =>

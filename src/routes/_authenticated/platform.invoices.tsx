@@ -18,7 +18,7 @@ import {
 import { toast } from "sonner";
 import { Plus, Check, Mail, Eye } from "lucide-react";
 import { emailInvoice } from "@/lib/invoices.functions";
-import { calcInvoiceGst, fetchInvoiceTemplate } from "@/lib/invoice-template";
+import { calcInvoiceGst, fetchInvoiceTemplate, INVOICE_TEMPLATE_QUERY_KEY } from "@/lib/invoice-template";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
@@ -57,8 +57,10 @@ function InvoicesPage() {
       [],
   });
   const { data: invoiceTemplate } = useQuery({
-    queryKey: ["invoice-template"],
+    queryKey: INVOICE_TEMPLATE_QUERY_KEY,
     queryFn: fetchInvoiceTemplate,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const emailFn = useServerFn(emailInvoice);
