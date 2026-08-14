@@ -83,10 +83,12 @@ bridge script locally: `node scripts/env-bridge.mjs`).
   (`src/lib/turnstile.functions.ts`) which calls Cloudflare's
   `siteverify` endpoint using `TURNSTILE_SECRET_KEY` before the app
   calls `supabase.auth.signInWithPassword` / `signUp`.
-- **Graceful fallback**: if `TURNSTILE_SECRET_KEY` is missing on the
-  server (or the site key is missing on the client), the widget is
-  hidden and verification is skipped — useful for local dev without a
-  Turnstile account.
+- **Graceful fallback (local/dev only)**: if `TURNSTILE_SECRET_KEY` is
+  missing **and** `NODE_ENV` is not production/preview, the widget may be
+  skipped for local development.
+- **Fail-closed in production**: when the site is production/preview and
+  `TURNSTILE_SECRET_KEY` is missing (or verification fails), sign-in /
+  sign-up is **rejected**. Do not omit the secret on Vercel production.
 
 ## 6. Rotating keys
 

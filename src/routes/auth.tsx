@@ -850,9 +850,9 @@ function AuthPage() {
                 name="password"
                 label="Password"
                 required
-                minLength={6}
+                minLength={8}
                 autoComplete="new-password"
-                placeholder="At least 6 characters"
+                placeholder="At least 8 characters"
               />
               {captchaRequired && (
                 <TurnstileWidget

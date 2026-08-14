@@ -42,9 +42,18 @@ function RisksPage() {
     enabled: !!orgId,
   });
   const { data: risks = [] } = useQuery({
-    queryKey: ["risks", orgId],
-    queryFn: async () =>
-      (await supabase.from("risks").select(RISKS_SELECT as "*").order("severity", { ascending: false })).data ?? [],
+    queryKey: ["risks", orgId, organization?.byod_active ? "byod" : "platform"],
+    queryFn: async () => {
+      if (organization?.byod_active && orgId) {
+        const { listOrgRisks } = await import("@/lib/tenant-raid.functions");
+        const res = await listOrgRisks({ data: { orgId } });
+        return res.rows ?? [];
+      }
+      return (
+        (await supabase.from("risks").select(RISKS_SELECT as "*").order("severity", { ascending: false }))
+          .data ?? []
+      );
+    },
     enabled: !!orgId,
   });
 
@@ -97,8 +106,7 @@ function RisksPage() {
   const create = useMutation({
     mutationFn: async () => {
       if (!orgId || !form.project_id || !form.title) throw new Error("Project and title required");
-      const { error } = await supabase.from("risks").insert({
-        org_id: orgId,
+      const patch = {
         project_id: form.project_id,
         title: form.title,
         category: form.category,
@@ -110,6 +118,15 @@ function RisksPage() {
         mitigation: form.mitigation || null,
         notes: form.notes || null,
         due_date: form.due_date || null,
+      };
+      if (organization?.byod_active) {
+        const { upsertOrgRisk } = await import("@/lib/tenant-raid.functions");
+        await upsertOrgRisk({ data: { orgId, patch } });
+        return;
+      }
+      const { error } = await supabase.from("risks").insert({
+        org_id: orgId,
+        ...patch,
       } as never);
       if (error) throw error;
     },
@@ -123,6 +140,12 @@ function RisksPage() {
 
   const del = useMutation({
     mutationFn: async (id: string) => {
+      if (!orgId) throw new Error("No organisation");
+      if (organization?.byod_active) {
+        const { deleteOrgRisk } = await import("@/lib/tenant-raid.functions");
+        await deleteOrgRisk({ data: { orgId, id } });
+        return;
+      }
       const { error } = await supabase.from("risks").delete().eq("id", id);
       if (error) throw error;
     },

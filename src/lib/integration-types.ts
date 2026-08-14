@@ -53,7 +53,8 @@ export const INTEGRATION_PROVIDERS: Array<{
   {
     id: "azure_devops",
     label: "Azure DevOps",
-    description: "Work item sync (coming soon — configure placeholder).",
+    description:
+      "Work item sync placeholder — configure org + PAT now; sync lands in a follow-up release.",
     available: false,
   },
   {
@@ -65,7 +66,8 @@ export const INTEGRATION_PROVIDERS: Array<{
   {
     id: "custom_webhook",
     label: "Custom webhook",
-    description: "Inbound JSON webhook for custom middleware (coming soon).",
-    available: false,
+    description:
+      "Inbound JSON webhook → Demand Pipeline. POST /api/public/hooks/integration-webhook?org=<id> with x-webhook-secret.",
+    available: true,
   },
 ];

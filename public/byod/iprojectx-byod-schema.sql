@@ -1,5 +1,5 @@
 -- iProjectX BYOD tenant schema pack
--- Generated: 2026-08-04T00:59:53.656Z
+-- Generated: 2026-08-14T15:29:50.533Z
 -- Apply this file to the customer Postgres database (psql / migration runner)
 -- BEFORE activating BYOD for the organisation.
 --
@@ -4790,12 +4790,31 @@ CREATE TRIGGER trg_seed_org_roles
   AFTER INSERT ON public.organizations
   FOR EACH ROW EXECUTE FUNCTION public.tg_seed_org_roles();
 
--- Convert role columns from enum → text so custom roles can be stored
+-- Convert role columns from enum → text so custom roles can be stored.
+-- Postgres forbids ALTER TYPE on a column while RLS policies reference it
+-- (e.g. cert_org_admin_select on org_license_certificates). Drop dependents,
+-- alter, then recreate.
+DROP POLICY IF EXISTS "cert_org_admin_select" ON public.org_license_certificates;
+
 ALTER TABLE public.user_roles
   ALTER COLUMN role TYPE text USING role::text;
 
 ALTER TABLE public.role_table_permissions
   ALTER COLUMN role TYPE text USING role::text;
+
+-- Recreate policy that referenced user_roles.role (now text).
+CREATE POLICY "cert_org_admin_select"
+  ON public.org_license_certificates FOR SELECT
+  TO authenticated
+  USING (
+    org_id = public.get_user_org(auth.uid())
+    AND EXISTS (
+      SELECT 1 FROM public.user_roles ur
+      WHERE ur.user_id = auth.uid()
+        AND ur.org_id  = public.get_user_org(auth.uid())
+        AND ur.role IN ('admin','org_admin')
+    )
+  );
 
 -- has_role / has_any_admin accept text
 CREATE OR REPLACE FUNCTION public.has_role(_user_id uuid, _role text)
@@ -6236,6 +6255,9 @@ GRANT EXECUTE ON FUNCTION public.apply_timesheet_labor_cost(uuid) TO authenticat
 -- user_can_view_project → can_edit_project was the hot path on Executive.
 
 -- Ensure role columns are text (idempotent if already migrated).
+-- Drop policies that block ALTER TYPE of user_roles.role, then recreate.
+DROP POLICY IF EXISTS "cert_org_admin_select" ON public.org_license_certificates;
+
 DO $$
 BEGIN
   IF EXISTS (
@@ -6256,6 +6278,19 @@ BEGIN
       ALTER COLUMN role TYPE text USING role::text;
   END IF;
 END $$;
+
+CREATE POLICY "cert_org_admin_select"
+  ON public.org_license_certificates FOR SELECT
+  TO authenticated
+  USING (
+    org_id = public.get_user_org(auth.uid())
+    AND EXISTS (
+      SELECT 1 FROM public.user_roles ur
+      WHERE ur.user_id = auth.uid()
+        AND ur.org_id  = public.get_user_org(auth.uid())
+        AND ur.role IN ('admin','org_admin')
+    )
+  );
 
 -- Drop enum overload left behind when has_role(uuid, text) was added.
 DROP FUNCTION IF EXISTS public.has_role(uuid, public.app_role);
@@ -7913,13 +7948,13 @@ BEGIN
     SELECT
       COUNT(*)::int AS project_count,
       COUNT(*) FILTER (
-        WHERE COALESCE(status::text, '') NOT ILIKE '%closed%'
-          AND COALESCE(status::text, '') NOT ILIKE '%complete%'
-          AND COALESCE(status::text, '') NOT ILIKE '%cancelled%'
+        WHERE COALESCE(status, '') NOT ILIKE '%closed%'
+          AND COALESCE(status, '') NOT ILIKE '%complete%'
+          AND COALESCE(status, '') NOT ILIKE '%cancelled%'
       )::int AS active_count,
-      COUNT(*) FILTER (WHERE lower(COALESCE(rag::text, '')) IN ('green', 'g'))::int AS rag_green,
-      COUNT(*) FILTER (WHERE lower(COALESCE(rag::text, '')) IN ('amber', 'yellow', 'a'))::int AS rag_amber,
-      COUNT(*) FILTER (WHERE lower(COALESCE(rag::text, '')) IN ('red', 'r'))::int AS rag_red,
+      COUNT(*) FILTER (WHERE lower(COALESCE(rag, '')) IN ('green', 'g'))::int AS rag_green,
+      COUNT(*) FILTER (WHERE lower(COALESCE(rag, '')) IN ('amber', 'yellow', 'a'))::int AS rag_amber,
+      COUNT(*) FILTER (WHERE lower(COALESCE(rag, '')) IN ('red', 'r'))::int AS rag_red,
       COALESCE(SUM(
         CASE
           WHEN COALESCE(budget, 0) > 0 THEN budget
@@ -8194,6 +8229,436 @@ BEGIN
   SELECT
     count(*)::int,
     count(*) FILTER (
+      WHERE coalesce(status, '') ILIKE 'In Progress'
+    )::int,
+    count(*) FILTER (
+      WHERE coalesce(status, '') ILIKE 'Completed'
+         OR coalesce(status, '') ILIKE 'Complete'
+    )::int,
+    coalesce(sum(coalesce(budget, 0)), 0),
+    coalesce(sum(coalesce(capex_incurred, 0)), 0)
+  INTO v_total, v_active, v_completed, v_budget, v_incurred
+  FROM public.projects
+  WHERE org_id = v_org;
+
+  SELECT coalesce(jsonb_object_agg(k, c), '{}'::jsonb) INTO v_by_rag
+  FROM (
+    SELECT coalesce(nullif(trim(rag), ''), 'Unknown') AS k, count(*)::int AS c
+    FROM public.projects WHERE org_id = v_org GROUP BY 1
+  ) s;
+
+  SELECT coalesce(jsonb_object_agg(k, c), '{}'::jsonb) INTO v_by_status
+  FROM (
+    SELECT coalesce(nullif(trim(status), ''), 'Unknown') AS k, count(*)::int AS c
+    FROM public.projects WHERE org_id = v_org GROUP BY 1
+  ) s;
+
+  SELECT coalesce(jsonb_object_agg(k, c), '{}'::jsonb) INTO v_by_program
+  FROM (
+    SELECT coalesce(nullif(trim(program), ''), 'Unassigned') AS k, count(*)::int AS c
+    FROM public.projects WHERE org_id = v_org GROUP BY 1
+  ) s;
+
+  SELECT coalesce(jsonb_object_agg(k, c), '{}'::jsonb) INTO v_by_priority
+  FROM (
+    SELECT coalesce(nullif(trim(priority), ''), 'Unassigned') AS k, count(*)::int AS c
+    FROM public.projects WHERE org_id = v_org GROUP BY 1
+  ) s;
+
+  RETURN jsonb_build_object(
+    'total', v_total,
+    'active', v_active,
+    'completed', v_completed,
+    'budget_total', v_budget,
+    'capex_incurred', v_incurred,
+    'by_rag', v_by_rag,
+    'by_status', v_by_status,
+    'by_program', v_by_program,
+    'by_priority', v_by_priority
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.portfolio_project_stats(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.portfolio_project_stats(uuid) TO authenticated, service_role;
+
+COMMENT ON FUNCTION public.portfolio_project_stats(uuid) IS
+  'Org-scoped project chart aggregates for portfolio pages (avoids loading all rows).';
+
+
+
+-- =============================================================================
+-- 20260807120000_executive_intelligence.sql
+-- =============================================================================
+
+-- Executive intelligence: richer decisions + cause-effect governance links.
+-- Additive / safe to re-run.
+
+-- ---------------------------------------------------------------------------
+-- 1) Decision management fields (options, recommendation, required date)
+-- ---------------------------------------------------------------------------
+ALTER TABLE public.decisions
+  ADD COLUMN IF NOT EXISTS options text NULL,
+  ADD COLUMN IF NOT EXISTS recommendation text NULL,
+  ADD COLUMN IF NOT EXISTS required_date date NULL,
+  ADD COLUMN IF NOT EXISTS schedule_impact_days integer NULL,
+  ADD COLUMN IF NOT EXISTS cost_impact numeric NULL;
+
+COMMENT ON COLUMN public.decisions.options IS
+  'Decision options (free text / bullet list) for executive choice.';
+COMMENT ON COLUMN public.decisions.recommendation IS
+  'Recommended option from PM / analyst.';
+COMMENT ON COLUMN public.decisions.required_date IS
+  'Date by which a decision is required to avoid impact.';
+
+-- ---------------------------------------------------------------------------
+-- 2) Cause-effect links: Risk → Issue → Decision → Action → Outcome
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.governance_links (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  project_id uuid NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  from_entity_type text NOT NULL
+    CHECK (from_entity_type IN ('risk','issue','decision','action','change_request','dependency','outcome')),
+  from_entity_id uuid NOT NULL,
+  to_entity_type text NOT NULL
+    CHECK (to_entity_type IN ('risk','issue','decision','action','change_request','dependency','outcome')),
+  to_entity_id uuid NOT NULL,
+  link_role text NULL DEFAULT 'leads_to',
+  notes text NULL,
+  created_by uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (org_id, from_entity_type, from_entity_id, to_entity_type, to_entity_id)
+);
+
+CREATE INDEX IF NOT EXISTS governance_links_org_idx ON public.governance_links (org_id);
+CREATE INDEX IF NOT EXISTS governance_links_project_idx ON public.governance_links (org_id, project_id);
+CREATE INDEX IF NOT EXISTS governance_links_from_idx
+  ON public.governance_links (org_id, from_entity_type, from_entity_id);
+CREATE INDEX IF NOT EXISTS governance_links_to_idx
+  ON public.governance_links (org_id, to_entity_type, to_entity_id);
+
+ALTER TABLE public.governance_links ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS governance_links_read_org ON public.governance_links;
+CREATE POLICY governance_links_read_org
+  ON public.governance_links FOR SELECT TO authenticated
+  USING (org_id = (SELECT public.get_user_org(auth.uid())));
+
+DROP POLICY IF EXISTS governance_links_write_org ON public.governance_links;
+CREATE POLICY governance_links_write_org
+  ON public.governance_links FOR ALL TO authenticated
+  USING (org_id = (SELECT public.get_user_org(auth.uid())))
+  WITH CHECK (org_id = (SELECT public.get_user_org(auth.uid())));
+
+COMMENT ON TABLE public.governance_links IS
+  'Cause-and-effect chain across risks, issues, decisions, actions, changes.';
+
+-- ---------------------------------------------------------------------------
+-- 3) Governance automation task queue (generated / tracked)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.governance_tasks (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  project_id uuid NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  cadence text NOT NULL
+    CHECK (cadence IN ('weekly','monthly','quarterly','stage_gate','ad_hoc')),
+  task_type text NOT NULL,
+  title text NOT NULL,
+  due_date date NULL,
+  status text NOT NULL DEFAULT 'open'
+    CHECK (status IN ('open','done','skipped','overdue')),
+  source text NOT NULL DEFAULT 'automation',
+  meta jsonb NOT NULL DEFAULT '{}'::jsonb,
+  completed_at timestamptz NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS governance_tasks_org_due_idx
+  ON public.governance_tasks (org_id, due_date, status);
+CREATE INDEX IF NOT EXISTS governance_tasks_project_idx
+  ON public.governance_tasks (org_id, project_id);
+
+ALTER TABLE public.governance_tasks ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS governance_tasks_read_org ON public.governance_tasks;
+CREATE POLICY governance_tasks_read_org
+  ON public.governance_tasks FOR SELECT TO authenticated
+  USING (org_id = (SELECT public.get_user_org(auth.uid())));
+
+DROP POLICY IF EXISTS governance_tasks_write_org ON public.governance_tasks;
+CREATE POLICY governance_tasks_write_org
+  ON public.governance_tasks FOR ALL TO authenticated
+  USING (org_id = (SELECT public.get_user_org(auth.uid())))
+  WITH CHECK (org_id = (SELECT public.get_user_org(auth.uid())));
+
+COMMENT ON TABLE public.governance_tasks IS
+  'Automated / tracked governance cadence tasks (weekly update, monthly health, etc.).';
+
+
+
+-- =============================================================================
+-- 20260807140000_stage_gate_checklist_governance.sql
+-- =============================================================================
+
+-- Align stage-gate checklist templates with org stage_gate_definitions names.
+-- Additive / safe to re-run. Does not remove legacy Initiate/Plan/… templates.
+
+-- Seed governance checklists for the standard 9-gate waterfall (and any org
+-- that already uses these definition names).
+INSERT INTO public.stage_gate_checklist_items (org_id, gate_name, title, required, sort_order)
+SELECT o.id, i.gate_name, i.title, i.required, i.sort_order
+FROM public.organizations o
+CROSS JOIN (VALUES
+  -- Discovery
+  ('Discovery', 'Problem / opportunity statement agreed', true, 10),
+  ('Discovery', 'Stakeholders identified', true, 20),
+  ('Discovery', 'Initial options shortlist documented', false, 30),
+  -- Business Case / Seed Funding
+  ('Business Case / Seed Funding', 'Draft business case attached', true, 10),
+  ('Business Case / Seed Funding', 'Seed funding amount proposed', true, 20),
+  ('Business Case / Seed Funding', 'Sponsor endorsement recorded', true, 30),
+  -- Design
+  ('Design', 'Solution design approved', true, 10),
+  ('Design', 'Architecture / security review complete', true, 20),
+  ('Design', 'Dependencies & integration map updated', true, 30),
+  ('Design', 'Non-functional requirements captured', false, 40),
+  -- Business Case / Full Funding
+  ('Business Case / Full Funding', 'Full business case approved', true, 10),
+  ('Business Case / Full Funding', 'Budget & benefits baseline set', true, 20),
+  ('Business Case / Full Funding', 'Delivery approach confirmed', true, 30),
+  -- Build
+  ('Build', 'Delivery plan current', true, 10),
+  ('Build', 'RAID log reviewed this stage', true, 20),
+  ('Build', 'Build quality checks passed', true, 30),
+  ('Build', 'Benefits tracker live', false, 40),
+  -- Testing
+  ('Testing', 'Test strategy / plan approved', true, 10),
+  ('Testing', 'UAT / acceptance criteria signed off', true, 20),
+  ('Testing', 'Defects at exit criteria', true, 30),
+  ('Testing', 'Security / performance tests complete', false, 40),
+  -- Deployment
+  ('Deployment', 'Go-live readiness checklist complete', true, 10),
+  ('Deployment', 'Rollback plan documented', true, 20),
+  ('Deployment', 'Support / ops handover confirmed', true, 30),
+  -- Handover
+  ('Handover', 'Operational documentation handed over', true, 10),
+  ('Handover', 'Training completed', true, 20),
+  ('Handover', 'Warranty / hypercare plan agreed', false, 30),
+  -- Benefit Realisation
+  ('Benefit Realisation', 'Benefits measures baseline confirmed', true, 10),
+  ('Benefit Realisation', 'Owner for each benefit assigned', true, 20),
+  ('Benefit Realisation', 'First benefits review scheduled', true, 30)
+) AS i(gate_name, title, required, sort_order)
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.stage_gate_checklist_items x
+  WHERE x.org_id = o.id AND x.gate_name = i.gate_name AND x.title = i.title
+);
+
+-- Also seed for any active definition name that still has zero template rows,
+-- using a minimal generic pack (orgs with custom gate names).
+INSERT INTO public.stage_gate_checklist_items (org_id, gate_name, title, required, sort_order)
+SELECT d.org_id, d.gate_name, g.title, g.required, g.sort_order
+FROM public.stage_gate_definitions d
+CROSS JOIN (VALUES
+  ('Entry criteria met / prior gate closed', true, 10),
+  ('Stage review pack attached', true, 20),
+  ('Risks, issues & decisions reviewed', true, 30),
+  ('Sponsor / forum endorsement recorded', true, 40)
+) AS g(title, required, sort_order)
+WHERE COALESCE(d.is_active, true)
+  AND NOT EXISTS (
+    SELECT 1 FROM public.stage_gate_checklist_items x
+    WHERE x.org_id = d.org_id AND x.gate_name = d.gate_name
+  );
+
+COMMENT ON TABLE public.stage_gate_checklist_items IS
+  'Org-level checklist templates keyed by gate_name (matches stage_gate_definitions.gate_name).';
+COMMENT ON TABLE public.stage_gate_checklist_responses IS
+  'Per stage_gate instance completion + evidence against org checklist templates.';
+
+
+
+-- =============================================================================
+-- 20260807150000_fix_kpi_refresh_enum_coalesce.sql
+-- =============================================================================
+
+-- Fix: Reforecast (and any projects UPDATE) failed with
+--   invalid input value for enum project_status: ""
+-- because refresh_org_kpi_summary / portfolio_project_stats used
+-- COALESCE(status, '') / COALESCE(rag, '') on enum columns. Postgres
+-- casts the '' literal to the enum type and rejects it.
+
+CREATE OR REPLACE FUNCTION public.refresh_org_kpi_summary(p_org_id uuid)
+RETURNS public.org_kpi_summaries
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  row public.org_kpi_summaries;
+BEGIN
+  IF p_org_id IS NULL THEN
+    RAISE EXCEPTION 'org_id required';
+  END IF;
+
+  INSERT INTO public.org_kpi_summaries AS s (
+    org_id,
+    project_count,
+    active_count,
+    rag_green,
+    rag_amber,
+    rag_red,
+    approved_funding,
+    incurred,
+    forecast_at_completion,
+    benefits_target,
+    benefits_realised,
+    open_risks,
+    open_issues,
+    open_actions,
+    work_item_total,
+    work_item_done,
+    refreshed_at,
+    meta
+  )
+  SELECT
+    p_org_id,
+    COALESCE(p.project_count, 0),
+    COALESCE(p.active_count, 0),
+    COALESCE(p.rag_green, 0),
+    COALESCE(p.rag_amber, 0),
+    COALESCE(p.rag_red, 0),
+    COALESCE(p.approved_funding, 0),
+    COALESCE(p.incurred, 0),
+    COALESCE(p.forecast_at_completion, 0),
+    COALESCE(p.benefits_target, 0),
+    COALESCE(p.benefits_realised, 0),
+    COALESCE(r.open_risks, 0),
+    COALESCE(i.open_issues, 0),
+    COALESCE(a.open_actions, 0),
+    COALESCE(w.work_item_total, 0),
+    COALESCE(w.work_item_done, 0),
+    now(),
+    jsonb_build_object('source', 'refresh_org_kpi_summary')
+  FROM (SELECT 1) seed
+  LEFT JOIN LATERAL (
+    SELECT
+      COUNT(*)::int AS project_count,
+      COUNT(*) FILTER (
+        WHERE COALESCE(status::text, '') NOT ILIKE '%closed%'
+          AND COALESCE(status::text, '') NOT ILIKE '%complete%'
+          AND COALESCE(status::text, '') NOT ILIKE '%cancelled%'
+      )::int AS active_count,
+      COUNT(*) FILTER (WHERE lower(COALESCE(rag::text, '')) IN ('green', 'g'))::int AS rag_green,
+      COUNT(*) FILTER (WHERE lower(COALESCE(rag::text, '')) IN ('amber', 'yellow', 'a'))::int AS rag_amber,
+      COUNT(*) FILTER (WHERE lower(COALESCE(rag::text, '')) IN ('red', 'r'))::int AS rag_red,
+      COALESCE(SUM(
+        CASE
+          WHEN COALESCE(budget, 0) > 0 THEN budget
+          ELSE COALESCE(capex_approved, 0) + COALESCE(opex_approved, 0)
+        END
+      ), 0) AS approved_funding,
+      COALESCE(SUM(COALESCE(capex_incurred, 0) + COALESCE(opex_incurred, 0)), 0) AS incurred,
+      COALESCE(SUM(
+        CASE
+          WHEN COALESCE(forecast_at_completion, 0) > 0 THEN forecast_at_completion
+          WHEN COALESCE(budget, 0) > 0 THEN budget
+          ELSE COALESCE(capex_approved, 0) + COALESCE(opex_approved, 0)
+        END
+      ), 0) AS forecast_at_completion,
+      COALESCE(SUM(COALESCE(benefits_target, 0)), 0) AS benefits_target,
+      COALESCE(SUM(COALESCE(benefits_realised, 0)), 0) AS benefits_realised
+    FROM public.projects
+    WHERE org_id = p_org_id
+  ) p ON true
+  LEFT JOIN LATERAL (
+    SELECT COUNT(*)::int AS open_risks
+    FROM public.risks
+    WHERE org_id = p_org_id
+      AND COALESCE(status, '') NOT ILIKE '%closed%'
+      AND COALESCE(status, '') NOT ILIKE '%mitigated%'
+  ) r ON true
+  LEFT JOIN LATERAL (
+    SELECT COUNT(*)::int AS open_issues
+    FROM public.issues
+    WHERE org_id = p_org_id
+      AND COALESCE(status, '') NOT ILIKE '%closed%'
+      AND COALESCE(status, '') NOT ILIKE '%resolved%'
+  ) i ON true
+  LEFT JOIN LATERAL (
+    SELECT COUNT(*)::int AS open_actions
+    FROM public.actions
+    WHERE org_id = p_org_id
+      AND COALESCE(status, '') NOT ILIKE '%done%'
+      AND COALESCE(status, '') NOT ILIKE '%closed%'
+      AND COALESCE(status, '') NOT ILIKE '%complete%'
+  ) a ON true
+  LEFT JOIN LATERAL (
+    SELECT
+      COUNT(*)::int AS work_item_total,
+      COUNT(*) FILTER (WHERE status = 'Done')::int AS work_item_done
+    FROM public.work_items
+    WHERE org_id = p_org_id
+      AND COALESCE(status, '') <> 'Cancelled'
+  ) w ON true
+  ON CONFLICT (org_id) DO UPDATE SET
+    project_count = EXCLUDED.project_count,
+    active_count = EXCLUDED.active_count,
+    rag_green = EXCLUDED.rag_green,
+    rag_amber = EXCLUDED.rag_amber,
+    rag_red = EXCLUDED.rag_red,
+    approved_funding = EXCLUDED.approved_funding,
+    incurred = EXCLUDED.incurred,
+    forecast_at_completion = EXCLUDED.forecast_at_completion,
+    benefits_target = EXCLUDED.benefits_target,
+    benefits_realised = EXCLUDED.benefits_realised,
+    open_risks = EXCLUDED.open_risks,
+    open_issues = EXCLUDED.open_issues,
+    open_actions = EXCLUDED.open_actions,
+    work_item_total = EXCLUDED.work_item_total,
+    work_item_done = EXCLUDED.work_item_done,
+    refreshed_at = EXCLUDED.refreshed_at,
+    meta = EXCLUDED.meta
+  RETURNING * INTO row;
+
+  RETURN row;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.portfolio_project_stats(p_org_id uuid DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org uuid := coalesce(p_org_id, public.get_user_org(auth.uid()));
+  v_by_rag jsonb;
+  v_by_status jsonb;
+  v_by_program jsonb;
+  v_by_priority jsonb;
+  v_total int;
+  v_active int;
+  v_completed int;
+  v_budget numeric;
+  v_incurred numeric;
+BEGIN
+  IF v_org IS NULL THEN
+    RETURN '{}'::jsonb;
+  END IF;
+  IF NOT (
+    public.get_user_org(auth.uid()) = v_org
+    OR public.is_platform_admin(auth.uid())
+  ) THEN
+    RAISE EXCEPTION 'not authorized';
+  END IF;
+
+  SELECT
+    count(*)::int,
+    count(*) FILTER (
       WHERE coalesce(status::text, '') ILIKE 'In Progress'
     )::int,
     count(*) FILTER (
@@ -8244,15 +8709,975 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.portfolio_project_stats(uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.portfolio_project_stats(uuid) TO authenticated, service_role;
 
-COMMENT ON FUNCTION public.portfolio_project_stats(uuid) IS
-  'Org-scoped project chart aggregates for portfolio pages (avoids loading all rows).';
+
+-- =============================================================================
+-- 20260814150000_delivery_methods_stage_gates.sql
+-- =============================================================================
+
+-- Delivery methods (org-configurable) + stage gate templates per method.
+-- Enables Waterfall / Agile / Hybrid defaults and custom methods created by org admins.
+-- Safe / additive / mostly idempotent.
+
+-- =============================================================================
+-- 1) delivery_methods
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS public.delivery_methods (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  code text NOT NULL,
+  name text NOT NULL,
+  description text,
+  uses_stage_gates boolean NOT NULL DEFAULT true,
+  uses_sprints boolean NOT NULL DEFAULT false,
+  is_system boolean NOT NULL DEFAULT false,
+  is_active boolean NOT NULL DEFAULT true,
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (org_id, code),
+  UNIQUE (org_id, name),
+  CONSTRAINT delivery_methods_code_format CHECK (code ~ '^[a-z0-9][a-z0-9_-]{0,62}$')
+);
+
+CREATE INDEX IF NOT EXISTS idx_delivery_methods_org
+  ON public.delivery_methods (org_id, sort_order);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.delivery_methods TO authenticated;
+GRANT ALL ON public.delivery_methods TO service_role;
+
+ALTER TABLE public.delivery_methods ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Members view org delivery methods" ON public.delivery_methods;
+CREATE POLICY "Members view org delivery methods"
+  ON public.delivery_methods FOR SELECT TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins manage org delivery methods" ON public.delivery_methods;
+CREATE POLICY "Admins manage org delivery methods"
+  ON public.delivery_methods FOR ALL TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()) AND public.has_any_admin(auth.uid()))
+  WITH CHECK (org_id = public.get_user_org(auth.uid()) AND public.has_any_admin(auth.uid()));
+
+DROP TRIGGER IF EXISTS trg_delivery_methods_updated_at ON public.delivery_methods;
+CREATE TRIGGER trg_delivery_methods_updated_at
+  BEFORE UPDATE ON public.delivery_methods
+  FOR EACH ROW EXECUTE FUNCTION public.tg_set_updated_at();
+
+-- =============================================================================
+-- 2) Link stage_gate_definitions → delivery_methods
+-- =============================================================================
+ALTER TABLE public.stage_gate_definitions
+  ADD COLUMN IF NOT EXISTS delivery_method_id uuid
+    REFERENCES public.delivery_methods(id) ON DELETE CASCADE;
+
+-- Seed built-in methods for every org
+INSERT INTO public.delivery_methods (
+  org_id, code, name, description, uses_stage_gates, uses_sprints, is_system, sort_order
+)
+SELECT o.id, v.code, v.name, v.description, v.uses_stage_gates, v.uses_sprints, true, v.sort_order
+FROM public.organizations o
+CROSS JOIN (VALUES
+  ('waterfall', 'Waterfall', 'Sequential stage-gate delivery', true,  false, 1),
+  ('agile',     'Agile',     'Iterative delivery with sprints', false, true,  2),
+  ('hybrid',    'Hybrid',    'Stage gates plus sprints',        true,  true,  3)
+) AS v(code, name, description, uses_stage_gates, uses_sprints, sort_order)
+ON CONFLICT (org_id, code) DO UPDATE SET
+  name = EXCLUDED.name,
+  description = EXCLUDED.description,
+  uses_stage_gates = EXCLUDED.uses_stage_gates,
+  uses_sprints = EXCLUDED.uses_sprints,
+  is_system = true,
+  is_active = true,
+  sort_order = EXCLUDED.sort_order,
+  updated_at = now();
+
+-- Attach existing org-global gate defs to Waterfall (legacy behaviour)
+UPDATE public.stage_gate_definitions d
+SET delivery_method_id = m.id
+FROM public.delivery_methods m
+WHERE m.org_id = d.org_id
+  AND m.code = 'waterfall'
+  AND d.delivery_method_id IS NULL;
+
+-- Widen uniqueness: same gate name can exist on different methods
+ALTER TABLE public.stage_gate_definitions
+  DROP CONSTRAINT IF EXISTS stage_gate_definitions_org_id_gate_name_key;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'stage_gate_definitions_org_method_gate_key'
+  ) THEN
+    ALTER TABLE public.stage_gate_definitions
+      ADD CONSTRAINT stage_gate_definitions_org_method_gate_key
+      UNIQUE (org_id, delivery_method_id, gate_name);
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_stage_gate_definitions_method
+  ON public.stage_gate_definitions (org_id, delivery_method_id, sort_order);
+
+-- =============================================================================
+-- 3) Default gate templates per built-in method (only when method has zero defs)
+-- =============================================================================
+-- Waterfall: keep whatever already exists; if still empty, seed canonical 9
+INSERT INTO public.stage_gate_definitions (org_id, delivery_method_id, gate_name, sort_order, is_active)
+SELECT m.org_id, m.id, g.name, g.ord, true
+FROM public.delivery_methods m
+CROSS JOIN (VALUES
+  ('Discovery', 1),
+  ('Business Case / Seed Funding', 2),
+  ('Design', 3),
+  ('Business Case / Full Funding', 4),
+  ('Build', 5),
+  ('Testing', 6),
+  ('Deployment', 7),
+  ('Handover', 8),
+  ('Benefit Realisation', 9)
+) AS g(name, ord)
+WHERE m.code = 'waterfall'
+  AND NOT EXISTS (
+    SELECT 1 FROM public.stage_gate_definitions d
+    WHERE d.delivery_method_id = m.id
+  );
+
+-- Agile: lighter release-oriented gates (optional on Agile projects)
+INSERT INTO public.stage_gate_definitions (org_id, delivery_method_id, gate_name, sort_order, is_active)
+SELECT m.org_id, m.id, g.name, g.ord, true
+FROM public.delivery_methods m
+CROSS JOIN (VALUES
+  ('Discovery', 1),
+  ('MVP Definition', 2),
+  ('Build / Iterate', 3),
+  ('Release Readiness', 4),
+  ('Launch', 5),
+  ('Hypercare', 6)
+) AS g(name, ord)
+WHERE m.code = 'agile'
+  AND NOT EXISTS (
+    SELECT 1 FROM public.stage_gate_definitions d
+    WHERE d.delivery_method_id = m.id
+  );
+
+-- Hybrid: same as Waterfall by default (gates + sprints both enabled on method)
+INSERT INTO public.stage_gate_definitions (org_id, delivery_method_id, gate_name, sort_order, is_active)
+SELECT m.org_id, m.id, g.name, g.ord, true
+FROM public.delivery_methods m
+CROSS JOIN (VALUES
+  ('Discovery', 1),
+  ('Business Case / Seed Funding', 2),
+  ('Design', 3),
+  ('Business Case / Full Funding', 4),
+  ('Build', 5),
+  ('Testing', 6),
+  ('Deployment', 7),
+  ('Handover', 8),
+  ('Benefit Realisation', 9)
+) AS g(name, ord)
+WHERE m.code = 'hybrid'
+  AND NOT EXISTS (
+    SELECT 1 FROM public.stage_gate_definitions d
+    WHERE d.delivery_method_id = m.id
+  );
+
+-- =============================================================================
+-- 4) projects.delivery_method: enum → text so custom method names can be stored
+-- =============================================================================
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'projects'
+      AND column_name = 'delivery_method' AND udt_name = 'delivery_method'
+  ) THEN
+    ALTER TABLE public.projects
+      ALTER COLUMN delivery_method DROP DEFAULT;
+    ALTER TABLE public.projects
+      ALTER COLUMN delivery_method TYPE text USING delivery_method::text;
+    ALTER TABLE public.projects
+      ALTER COLUMN delivery_method SET DEFAULT 'Waterfall';
+  END IF;
+END $$;
+
+-- Optional FK-ish helper column (nullable); name remains source of truth for UI
+ALTER TABLE public.projects
+  ADD COLUMN IF NOT EXISTS delivery_method_id uuid
+    REFERENCES public.delivery_methods(id) ON DELETE SET NULL;
+
+UPDATE public.projects p
+SET delivery_method_id = m.id
+FROM public.delivery_methods m
+WHERE m.org_id = p.org_id
+  AND lower(m.name) = lower(coalesce(p.delivery_method, 'Waterfall'))
+  AND p.delivery_method_id IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_projects_delivery_method_id
+  ON public.projects (delivery_method_id);
+
+-- =============================================================================
+-- 5) ensure_org_delivery_methods — call from UI / triggers for new orgs
+-- =============================================================================
+CREATE OR REPLACE FUNCTION public.ensure_org_delivery_methods(p_org_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF p_org_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  INSERT INTO public.delivery_methods (
+    org_id, code, name, description, uses_stage_gates, uses_sprints, is_system, sort_order
+  )
+  VALUES
+    (p_org_id, 'waterfall', 'Waterfall', 'Sequential stage-gate delivery', true,  false, true, 1),
+    (p_org_id, 'agile',     'Agile',     'Iterative delivery with sprints', false, true,  true, 2),
+    (p_org_id, 'hybrid',    'Hybrid',    'Stage gates plus sprints',        true,  true,  true, 3)
+  ON CONFLICT (org_id, code) DO NOTHING;
+
+  -- Waterfall gates
+  INSERT INTO public.stage_gate_definitions (org_id, delivery_method_id, gate_name, sort_order)
+  SELECT p_org_id, m.id, g.name, g.ord
+  FROM public.delivery_methods m
+  CROSS JOIN (VALUES
+    ('Discovery', 1),
+    ('Business Case / Seed Funding', 2),
+    ('Design', 3),
+    ('Business Case / Full Funding', 4),
+    ('Build', 5),
+    ('Testing', 6),
+    ('Deployment', 7),
+    ('Handover', 8),
+    ('Benefit Realisation', 9)
+  ) AS g(name, ord)
+  WHERE m.org_id = p_org_id AND m.code = 'waterfall'
+    AND NOT EXISTS (SELECT 1 FROM public.stage_gate_definitions d WHERE d.delivery_method_id = m.id);
+
+  -- Agile gates
+  INSERT INTO public.stage_gate_definitions (org_id, delivery_method_id, gate_name, sort_order)
+  SELECT p_org_id, m.id, g.name, g.ord
+  FROM public.delivery_methods m
+  CROSS JOIN (VALUES
+    ('Discovery', 1),
+    ('MVP Definition', 2),
+    ('Build / Iterate', 3),
+    ('Release Readiness', 4),
+    ('Launch', 5),
+    ('Hypercare', 6)
+  ) AS g(name, ord)
+  WHERE m.org_id = p_org_id AND m.code = 'agile'
+    AND NOT EXISTS (SELECT 1 FROM public.stage_gate_definitions d WHERE d.delivery_method_id = m.id);
+
+  -- Hybrid gates
+  INSERT INTO public.stage_gate_definitions (org_id, delivery_method_id, gate_name, sort_order)
+  SELECT p_org_id, m.id, g.name, g.ord
+  FROM public.delivery_methods m
+  CROSS JOIN (VALUES
+    ('Discovery', 1),
+    ('Business Case / Seed Funding', 2),
+    ('Design', 3),
+    ('Business Case / Full Funding', 4),
+    ('Build', 5),
+    ('Testing', 6),
+    ('Deployment', 7),
+    ('Handover', 8),
+    ('Benefit Realisation', 9)
+  ) AS g(name, ord)
+  WHERE m.org_id = p_org_id AND m.code = 'hybrid'
+    AND NOT EXISTS (SELECT 1 FROM public.stage_gate_definitions d WHERE d.delivery_method_id = m.id);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.ensure_org_delivery_methods(uuid) TO authenticated;
+
+-- Auto-seed when a new organisation is created
+CREATE OR REPLACE FUNCTION public.tg_org_ensure_delivery_methods()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  PERFORM public.ensure_org_delivery_methods(NEW.id);
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_org_ensure_delivery_methods ON public.organizations;
+CREATE TRIGGER trg_org_ensure_delivery_methods
+  AFTER INSERT ON public.organizations
+  FOR EACH ROW EXECUTE FUNCTION public.tg_org_ensure_delivery_methods();
+
+COMMENT ON TABLE public.delivery_methods IS
+  'Org delivery models (Waterfall/Agile/Hybrid + custom). Controls gates vs sprints and gate templates.';
+COMMENT ON COLUMN public.stage_gate_definitions.delivery_method_id IS
+  'Stage-gate template set for a delivery method. Null only for legacy rows mid-migration.';
 
 
 
 -- =============================================================================
--- End of iProjectX BYOD schema pack (57 migrations)
+-- 20260814170000_raid_escalation_and_alert_digests.sql
+-- =============================================================================
+
+-- RAID auto-escalation + outbound alert digest support.
+-- Escalation rules (aligned with landing "Auto-escalation" + UI critical ≥15):
+--   Risks: open/mitigating, severity ≥15 (or P×I) OR past due_date
+--   Issues: open-ish, Critical/High priority, past target_date
+--   Actions: open-ish, Critical/High priority, past due_date
+-- Notifies project PM + org admins in-app; email digests opt via profiles.notification_prefs.
+
+-- ========== Escalation columns ==========
+ALTER TABLE public.risks
+  ADD COLUMN IF NOT EXISTS escalated_at timestamptz,
+  ADD COLUMN IF NOT EXISTS escalation_level int NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS escalation_reason text;
+
+ALTER TABLE public.issues
+  ADD COLUMN IF NOT EXISTS escalated_at timestamptz,
+  ADD COLUMN IF NOT EXISTS escalation_level int NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS escalation_reason text;
+
+ALTER TABLE public.actions
+  ADD COLUMN IF NOT EXISTS escalated_at timestamptz,
+  ADD COLUMN IF NOT EXISTS escalation_level int NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS escalation_reason text;
+
+CREATE INDEX IF NOT EXISTS idx_risks_escalated
+  ON public.risks (org_id, escalated_at)
+  WHERE escalated_at IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_issues_escalated
+  ON public.issues (org_id, escalated_at)
+  WHERE escalated_at IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_actions_escalated
+  ON public.actions (org_id, escalated_at)
+  WHERE escalated_at IS NOT NULL;
+
+COMMENT ON COLUMN public.risks.escalated_at IS
+  'Set by auto-escalation when severity/due rules fire; cleared when Closed/Accepted.';
+COMMENT ON COLUMN public.issues.escalated_at IS
+  'Set by auto-escalation when high-priority items pass target_date; cleared when Resolved/Closed.';
+COMMENT ON COLUMN public.actions.escalated_at IS
+  'Set by auto-escalation when high-priority items pass due_date; cleared when Closed.';
+
+-- ========== User email digest prefs ==========
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS notification_prefs jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+COMMENT ON COLUMN public.profiles.notification_prefs IS
+  'Outbound alert prefs. Keys: email_digest (bool, default true), approvals, overdue_raid, pulse (bools).';
+
+-- Dedupe outbound digests (same cadence as timesheet reminders ~20h)
+CREATE TABLE IF NOT EXISTS public.alert_digest_sends (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  org_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  digest_kind text NOT NULL,
+  sent_at timestamptz NOT NULL DEFAULT now(),
+  meta jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE INDEX IF NOT EXISTS idx_alert_digest_sends_user_kind_sent
+  ON public.alert_digest_sends (user_id, digest_kind, sent_at DESC);
+
+ALTER TABLE public.alert_digest_sends ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "alert_digest_own_read" ON public.alert_digest_sends;
+CREATE POLICY "alert_digest_own_read" ON public.alert_digest_sends
+  FOR SELECT TO authenticated
+  USING (user_id = auth.uid());
+
+GRANT SELECT ON public.alert_digest_sends TO authenticated;
+GRANT ALL ON public.alert_digest_sends TO service_role;
+
+-- ========== Helpers ==========
+CREATE OR REPLACE FUNCTION public.raid_effective_severity(
+  _severity int,
+  _probability int,
+  _impact int
+) RETURNS int
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT COALESCE(
+    NULLIF(_severity, 0),
+    CASE
+      WHEN _probability IS NOT NULL AND _impact IS NOT NULL
+        THEN _probability * _impact
+      ELSE NULL
+    END,
+    0
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.raid_notify_escalation(
+  _org_id uuid,
+  _project_id uuid,
+  _entity text,
+  _entity_id uuid,
+  _title text,
+  _reason text,
+  _link text
+) RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  pm uuid;
+  recip uuid;
+  body_txt text;
+  title_txt text;
+BEGIN
+  title_txt := initcap(_entity) || ' escalated';
+  body_txt := COALESCE(_title, 'Untitled')
+    || CASE WHEN _reason IS NOT NULL AND length(trim(_reason)) > 0
+         THEN ' — ' || _reason ELSE '' END;
+
+  SELECT p.pm_user_id INTO pm FROM public.projects p WHERE p.id = _project_id;
+
+  -- Project PM
+  IF pm IS NOT NULL THEN
+    INSERT INTO public.notifications (user_id, org_id, kind, title, body, link)
+    VALUES (pm, _org_id, 'raid_escalation', title_txt, body_txt, _link);
+  END IF;
+
+  -- Org admins (home org)
+  FOR recip IN
+    SELECT DISTINCT ur.user_id
+    FROM public.user_roles ur
+    JOIN public.profiles pr ON pr.id = ur.user_id
+    WHERE ur.org_id = _org_id
+      AND ur.role IN ('admin', 'org_admin')
+      AND COALESCE(pr.is_active, true)
+      AND (pm IS NULL OR ur.user_id IS DISTINCT FROM pm)
+  LOOP
+    INSERT INTO public.notifications (user_id, org_id, kind, title, body, link)
+    VALUES (recip, _org_id, 'raid_escalation', title_txt, body_txt, _link);
+  END LOOP;
+END;
+$$;
+
+-- Clear escalation when item is closed / resolved
+CREATE OR REPLACE FUNCTION public.tg_raid_clear_escalation()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF TG_TABLE_NAME = 'risks' THEN
+    IF NEW.status IN ('Closed', 'Accepted') AND OLD.status IS DISTINCT FROM NEW.status THEN
+      NEW.escalated_at := NULL;
+      NEW.escalation_level := 0;
+      NEW.escalation_reason := NULL;
+    END IF;
+  ELSIF TG_TABLE_NAME = 'issues' THEN
+    IF NEW.status IN ('Resolved', 'Closed') AND OLD.status IS DISTINCT FROM NEW.status THEN
+      NEW.escalated_at := NULL;
+      NEW.escalation_level := 0;
+      NEW.escalation_reason := NULL;
+    END IF;
+  ELSIF TG_TABLE_NAME = 'actions' THEN
+    IF NEW.status = 'Closed' AND OLD.status IS DISTINCT FROM NEW.status THEN
+      NEW.escalated_at := NULL;
+      NEW.escalation_level := 0;
+      NEW.escalation_reason := NULL;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_risks_clear_escalation ON public.risks;
+CREATE TRIGGER trg_risks_clear_escalation
+  BEFORE UPDATE OF status ON public.risks
+  FOR EACH ROW EXECUTE FUNCTION public.tg_raid_clear_escalation();
+
+DROP TRIGGER IF EXISTS trg_issues_clear_escalation ON public.issues;
+CREATE TRIGGER trg_issues_clear_escalation
+  BEFORE UPDATE OF status ON public.issues
+  FOR EACH ROW EXECUTE FUNCTION public.tg_raid_clear_escalation();
+
+DROP TRIGGER IF EXISTS trg_actions_clear_escalation ON public.actions;
+CREATE TRIGGER trg_actions_clear_escalation
+  BEFORE UPDATE OF status ON public.actions
+  FOR EACH ROW EXECUTE FUNCTION public.tg_raid_clear_escalation();
+
+-- Immediate escalate on risk save when severity threshold met (time-based overdue still via cron)
+CREATE OR REPLACE FUNCTION public.tg_risks_auto_escalate()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  sev int;
+  reason text;
+  should boolean := false;
+BEGIN
+  IF COALESCE(NEW.status, 'Open') IN ('Closed', 'Accepted') THEN
+    RETURN NEW;
+  END IF;
+
+  sev := public.raid_effective_severity(NEW.severity, NEW.probability, NEW.impact);
+
+  IF sev >= 15 THEN
+    should := true;
+    reason := 'Critical severity ' || sev || ' (≥15)';
+  ELSIF NEW.due_date IS NOT NULL AND NEW.due_date::date < CURRENT_DATE THEN
+    should := true;
+    reason := 'Overdue since ' || NEW.due_date::text;
+  END IF;
+
+  IF NOT should THEN
+    RETURN NEW;
+  END IF;
+
+  -- Already escalated — keep reason if still qualifying; no re-notify
+  IF NEW.escalated_at IS NOT NULL THEN
+    NEW.escalation_reason := COALESCE(NEW.escalation_reason, reason);
+    NEW.escalation_level := GREATEST(COALESCE(NEW.escalation_level, 0), 1);
+    RETURN NEW;
+  END IF;
+
+  NEW.escalated_at := now();
+  NEW.escalation_level := GREATEST(COALESCE(NEW.escalation_level, 0), 1);
+  NEW.escalation_reason := reason;
+
+  PERFORM public.raid_notify_escalation(
+    NEW.org_id,
+    NEW.project_id,
+    'risk',
+    NEW.id,
+    NEW.title,
+    reason,
+    '/app/risks'
+  );
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_risks_auto_escalate ON public.risks;
+CREATE TRIGGER trg_risks_auto_escalate
+  BEFORE INSERT OR UPDATE OF probability, impact, severity, due_date, status
+  ON public.risks
+  FOR EACH ROW EXECUTE FUNCTION public.tg_risks_auto_escalate();
+
+-- Batch job: escalate overdue RAID + return counts (called from alerts-digest cron)
+CREATE OR REPLACE FUNCTION public.run_raid_auto_escalation(_org_id uuid DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  r record;
+  risks_n int := 0;
+  issues_n int := 0;
+  actions_n int := 0;
+  reason text;
+BEGIN
+  -- Risks: critical or overdue, not closed, not yet escalated
+  FOR r IN
+    SELECT id, org_id, project_id, title, due_date, severity, probability, impact
+    FROM public.risks
+    WHERE (_org_id IS NULL OR org_id = _org_id)
+      AND COALESCE(status, 'Open') NOT IN ('Closed', 'Accepted')
+      AND escalated_at IS NULL
+      AND (
+        public.raid_effective_severity(severity, probability, impact) >= 15
+        OR (due_date IS NOT NULL AND due_date::date < CURRENT_DATE)
+      )
+  LOOP
+    reason := CASE
+      WHEN public.raid_effective_severity(r.severity, r.probability, r.impact) >= 15
+        THEN 'Critical severity '
+          || public.raid_effective_severity(r.severity, r.probability, r.impact)::text
+          || ' (≥15)'
+      ELSE 'Overdue since ' || r.due_date::text
+    END;
+    UPDATE public.risks
+    SET escalated_at = now(),
+        escalation_level = GREATEST(COALESCE(escalation_level, 0), 1),
+        escalation_reason = reason,
+        updated_at = now()
+    WHERE id = r.id;
+    -- Trigger may also fire; guard double notify by only notifying here when we set via UPDATE
+    -- Disable re-notify: the BEFORE trigger sees escalated_at already null then sets and notifies.
+    -- Our UPDATE of escalated_at goes through BEFORE trigger which will notify. Avoid double:
+    -- Actually BEFORE trigger runs on UPDATE OF due_date etc — updating escalated_at alone may NOT fire
+    -- trg_risks_auto_escalate (column list). So notify here.
+    PERFORM public.raid_notify_escalation(
+      r.org_id, r.project_id, 'risk', r.id, r.title, reason, '/app/risks'
+    );
+    risks_n := risks_n + 1;
+  END LOOP;
+
+  FOR r IN
+    SELECT id, org_id, project_id, title, target_date, priority
+    FROM public.issues
+    WHERE (_org_id IS NULL OR org_id = _org_id)
+      AND COALESCE(status, 'Open') NOT IN ('Resolved', 'Closed')
+      AND escalated_at IS NULL
+      AND COALESCE(priority, '') IN ('Critical', 'High')
+      AND target_date IS NOT NULL
+      AND target_date::date < CURRENT_DATE
+  LOOP
+    reason := COALESCE(r.priority, 'High') || ' issue overdue since ' || r.target_date::text;
+    UPDATE public.issues
+    SET escalated_at = now(),
+        escalation_level = GREATEST(COALESCE(escalation_level, 0), 1),
+        escalation_reason = reason,
+        updated_at = now()
+    WHERE id = r.id;
+    PERFORM public.raid_notify_escalation(
+      r.org_id, r.project_id, 'issue', r.id, r.title, reason, '/app/issues'
+    );
+    issues_n := issues_n + 1;
+  END LOOP;
+
+  FOR r IN
+    SELECT id, org_id, project_id, title, due_date, priority
+    FROM public.actions
+    WHERE (_org_id IS NULL OR org_id = _org_id)
+      AND COALESCE(status, 'Open') <> 'Closed'
+      AND escalated_at IS NULL
+      AND COALESCE(priority, '') IN ('Critical', 'High')
+      AND due_date IS NOT NULL
+      AND due_date::date < CURRENT_DATE
+  LOOP
+    reason := COALESCE(r.priority, 'High') || ' action overdue since ' || r.due_date::text;
+    UPDATE public.actions
+    SET escalated_at = now(),
+        escalation_level = GREATEST(COALESCE(escalation_level, 0), 1),
+        escalation_reason = reason,
+        updated_at = now()
+    WHERE id = r.id;
+    PERFORM public.raid_notify_escalation(
+      r.org_id, r.project_id, 'action', r.id, r.title, reason, '/app/actions'
+    );
+    actions_n := actions_n + 1;
+  END LOOP;
+
+  RETURN jsonb_build_object(
+    'risks', risks_n,
+    'issues', issues_n,
+    'actions', actions_n
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.run_raid_auto_escalation(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.raid_effective_severity(int, int, int) TO authenticated, service_role;
+
+-- Avoid double-notify when batch UPDATE hits columns that fire BEFORE escalate trigger.
+-- The batch updates escalated_at / escalation_* only — not in OF list — so OK.
+-- But if someone updates severity later, trigger sees escalated_at already set → no re-notify. Good.
+
+
+
+-- =============================================================================
+-- 20260814180000_security_hardening_rls_rate_acl.sql
+-- =============================================================================
+
+-- Harden org-member write policies: require can_edit_project (or admin for org-level).
+-- Also: durable rate_limit_buckets for multi-instance rate limiting.
+-- Also: seed default page ACL for system roles so default-deny page ACL stays usable.
+
+-- ========== Durable rate limits ==========
+CREATE TABLE IF NOT EXISTS public.rate_limit_buckets (
+  bucket_key text PRIMARY KEY,
+  count int NOT NULL DEFAULT 0,
+  reset_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.rate_limit_buckets ENABLE ROW LEVEL SECURITY;
+-- No authenticated policies — service role / SECURITY DEFINER only.
+GRANT ALL ON public.rate_limit_buckets TO service_role;
+
+CREATE OR REPLACE FUNCTION public.check_rate_limit_bucket(
+  _key text,
+  _limit int,
+  _window_seconds int
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  now_ts timestamptz := now();
+  row_count int;
+  row_reset timestamptz;
+  retry int;
+BEGIN
+  IF _key IS NULL OR length(trim(_key)) = 0 THEN
+    RETURN jsonb_build_object('ok', false, 'retry_after_sec', _window_seconds);
+  END IF;
+
+  SELECT count, reset_at INTO row_count, row_reset
+  FROM public.rate_limit_buckets
+  WHERE bucket_key = _key
+  FOR UPDATE;
+
+  IF NOT FOUND OR row_reset <= now_ts THEN
+    INSERT INTO public.rate_limit_buckets (bucket_key, count, reset_at, updated_at)
+    VALUES (_key, 1, now_ts + make_interval(secs => GREATEST(1, _window_seconds)), now_ts)
+    ON CONFLICT (bucket_key) DO UPDATE
+      SET count = 1,
+          reset_at = now_ts + make_interval(secs => GREATEST(1, _window_seconds)),
+          updated_at = now_ts;
+    RETURN jsonb_build_object('ok', true);
+  END IF;
+
+  IF row_count >= _limit THEN
+    retry := GREATEST(1, CEIL(EXTRACT(EPOCH FROM (row_reset - now_ts))));
+    RETURN jsonb_build_object('ok', false, 'retry_after_sec', retry);
+  END IF;
+
+  UPDATE public.rate_limit_buckets
+  SET count = count + 1, updated_at = now_ts
+  WHERE bucket_key = _key;
+
+  RETURN jsonb_build_object('ok', true);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.check_rate_limit_bucket(text, int, int) TO service_role;
+
+-- ========== Tighten write RLS ==========
+-- lessons_learned
+DROP POLICY IF EXISTS "org write lessons_learned" ON public.lessons_learned;
+CREATE POLICY "editors write lessons_learned" ON public.lessons_learned
+  FOR ALL TO authenticated
+  USING (
+    org_id = public.get_user_org(auth.uid())
+    AND (
+      public.has_any_admin(auth.uid())
+      OR (project_id IS NOT NULL AND public.can_edit_project(auth.uid(), project_id))
+    )
+  )
+  WITH CHECK (
+    org_id = public.get_user_org(auth.uid())
+    AND (
+      public.has_any_admin(auth.uid())
+      OR (project_id IS NOT NULL AND public.can_edit_project(auth.uid(), project_id))
+    )
+  );
+
+-- documents
+DROP POLICY IF EXISTS "org write documents" ON public.documents;
+CREATE POLICY "editors write documents" ON public.documents
+  FOR ALL TO authenticated
+  USING (
+    org_id = public.get_user_org(auth.uid())
+    AND (
+      public.has_any_admin(auth.uid())
+      OR (project_id IS NOT NULL AND public.can_edit_project(auth.uid(), project_id))
+    )
+  )
+  WITH CHECK (
+    org_id = public.get_user_org(auth.uid())
+    AND (
+      public.has_any_admin(auth.uid())
+      OR (project_id IS NOT NULL AND public.can_edit_project(auth.uid(), project_id))
+    )
+  );
+
+-- demand_pipeline (org-level): admins / PMs with any edit rights via has_any_admin or role
+DROP POLICY IF EXISTS "org write demand_pipeline" ON public.demand_pipeline;
+CREATE POLICY "editors write demand_pipeline" ON public.demand_pipeline
+  FOR ALL TO authenticated
+  USING (
+    org_id = public.get_user_org(auth.uid())
+    AND (
+      public.has_any_admin(auth.uid())
+      OR public.has_role(auth.uid(), 'pm')
+      OR public.has_role(auth.uid(), 'bu_lead')
+    )
+  )
+  WITH CHECK (
+    org_id = public.get_user_org(auth.uid())
+    AND (
+      public.has_any_admin(auth.uid())
+      OR public.has_role(auth.uid(), 'pm')
+      OR public.has_role(auth.uid(), 'bu_lead')
+    )
+  );
+
+-- governance_channels: writers = admin
+DROP POLICY IF EXISTS "org insert governance_channels" ON public.governance_channels;
+DROP POLICY IF EXISTS "org update governance_channels" ON public.governance_channels;
+DROP POLICY IF EXISTS "org_members_insert_governance_channels" ON public.governance_channels;
+DROP POLICY IF EXISTS "org_members_update_governance_channels" ON public.governance_channels;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'governance_channels'
+      AND policyname = 'org write governance_channels'
+  ) THEN
+    EXECUTE 'DROP POLICY "org write governance_channels" ON public.governance_channels';
+  END IF;
+END $$;
+
+CREATE POLICY "admins write governance_channels" ON public.governance_channels
+  FOR ALL TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()) AND public.has_any_admin(auth.uid()))
+  WITH CHECK (org_id = public.get_user_org(auth.uid()) AND public.has_any_admin(auth.uid()));
+
+-- work_item_links (predecessor/successor graph)
+DROP POLICY IF EXISTS "editors modify work_item_links" ON public.work_item_links;
+DROP POLICY IF EXISTS "org write work_item_links" ON public.work_item_links;
+DROP POLICY IF EXISTS "editors write work_item_links" ON public.work_item_links;
+CREATE POLICY "editors write work_item_links" ON public.work_item_links
+  FOR ALL TO authenticated
+  USING (
+    org_id = public.get_user_org(auth.uid())
+    AND (
+      public.has_any_admin(auth.uid())
+      OR EXISTS (
+        SELECT 1 FROM public.work_items wi
+        WHERE wi.id IN (work_item_links.predecessor_id, work_item_links.successor_id)
+          AND public.can_edit_project(auth.uid(), wi.project_id)
+      )
+    )
+  )
+  WITH CHECK (
+    org_id = public.get_user_org(auth.uid())
+    AND (
+      public.has_any_admin(auth.uid())
+      OR EXISTS (
+        SELECT 1 FROM public.work_items wi
+        WHERE wi.id IN (work_item_links.predecessor_id, work_item_links.successor_id)
+          AND public.can_edit_project(auth.uid(), wi.project_id)
+      )
+    )
+  );
+
+-- custom_reports
+DROP POLICY IF EXISTS "org write custom_reports" ON public.custom_reports;
+CREATE POLICY "admins write custom_reports" ON public.custom_reports
+  FOR ALL TO authenticated
+  USING (
+    org_id = public.get_user_org(auth.uid())
+    AND (public.has_any_admin(auth.uid()) OR public.has_role(auth.uid(), 'executive'))
+  )
+  WITH CHECK (
+    org_id = public.get_user_org(auth.uid())
+    AND (public.has_any_admin(auth.uid()) OR public.has_role(auth.uid(), 'executive'))
+  );
+
+-- governance_links / governance_tasks (if present)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='governance_links') THEN
+    EXECUTE 'DROP POLICY IF EXISTS "org write governance_links" ON public.governance_links';
+    EXECUTE $p$
+      CREATE POLICY "editors write governance_links" ON public.governance_links
+        FOR ALL TO authenticated
+        USING (
+          org_id = public.get_user_org(auth.uid())
+          AND (
+            public.has_any_admin(auth.uid())
+            OR (project_id IS NOT NULL AND public.can_edit_project(auth.uid(), project_id))
+          )
+        )
+        WITH CHECK (
+          org_id = public.get_user_org(auth.uid())
+          AND (
+            public.has_any_admin(auth.uid())
+            OR (project_id IS NOT NULL AND public.can_edit_project(auth.uid(), project_id))
+          )
+        )
+    $p$;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='governance_tasks') THEN
+    EXECUTE 'DROP POLICY IF EXISTS "org write governance_tasks" ON public.governance_tasks';
+    EXECUTE $p$
+      CREATE POLICY "editors write governance_tasks" ON public.governance_tasks
+        FOR ALL TO authenticated
+        USING (
+          org_id = public.get_user_org(auth.uid())
+          AND (
+            public.has_any_admin(auth.uid())
+            OR (project_id IS NOT NULL AND public.can_edit_project(auth.uid(), project_id))
+          )
+        )
+        WITH CHECK (
+          org_id = public.get_user_org(auth.uid())
+          AND (
+            public.has_any_admin(auth.uid())
+            OR (project_id IS NOT NULL AND public.can_edit_project(auth.uid(), project_id))
+          )
+        )
+    $p$;
+  END IF;
+END $$;
+
+-- ========== Default page ACL seed helper ==========
+-- Ensures non-admin roles get an explicit allow list when orgs have empty matrices.
+CREATE OR REPLACE FUNCTION public.seed_default_page_permissions(_org_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  paths text[] := ARRAY[
+    '/app','/app/projects','/app/portfolio-pulse','/app/executive-cockpit',
+    '/app/risks','/app/issues','/app/actions','/app/decisions',
+    '/app/timeline','/app/work-items','/app/work-board','/app/my-work',
+    '/app/resources','/app/stakeholders','/app/status-updates','/app/lessons',
+    '/app/benefits','/app/dependencies','/app/change-requests','/app/stage-gates',
+    '/app/settings','/app/support'
+  ];
+  role_key text;
+  p text;
+BEGIN
+  FOREACH role_key IN ARRAY ARRAY['pm','bu_lead','executive'] LOOP
+    FOREACH p IN ARRAY paths LOOP
+      INSERT INTO public.role_table_permissions (org_id, role, table_name, can_view, can_edit)
+      SELECT _org_id, role_key, 'page::' || p, true, role_key IN ('pm','bu_lead')
+      WHERE NOT EXISTS (
+        SELECT 1 FROM public.role_table_permissions x
+        WHERE x.org_id = _org_id AND x.role = role_key AND x.table_name = 'page::' || p
+      );
+    END LOOP;
+  END LOOP;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.seed_default_page_permissions(uuid) TO authenticated, service_role;
+
+-- Best-effort: seed existing orgs that have zero page::* rows
+DO $$
+DECLARE
+  o record;
+  n int;
+BEGIN
+  FOR o IN SELECT id FROM public.organizations LOOP
+    SELECT count(*) INTO n
+    FROM public.role_table_permissions
+    WHERE org_id = o.id AND table_name LIKE 'page::%';
+    IF n = 0 THEN
+      PERFORM public.seed_default_page_permissions(o.id);
+    END IF;
+  END LOOP;
+END $$;
+
+
+
+-- =============================================================================
+-- End of iProjectX BYOD schema pack (63 migrations)
 -- Skipped control-plane: 20260721003000_invoice_template_config.sql, 20260721004500_fix_landing_invoice_grants.sql, 20260724180000_eoi_and_licenses_policies.sql, 20260724193000_grant_eoi_licenses_policies.sql, 20260724194500_publish_legal_policies.sql, 20260724200000_iprojectx_legal_policy_bodies.sql, 20260724210000_support_tickets.sql, 20260725190000_org_inhouse_ai_model_enabled.sql, 20260725193000_org_sso_config.sql, 20260729120000_org_byod_connections.sql, 20260731120000_org_integrations.sql, 20260801140000_org_ip_restriction.sql
 -- =============================================================================

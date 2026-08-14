@@ -82,13 +82,15 @@ function InvoiceTemplatePage() {
 
   const handleLogoPick = (file: File) => {
     if (!cfg) return;
-    if (file.size > MAX_LOGO_BYTES) {
-      toast.error("Logo must be under 5 MB.");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => setCfg({ ...cfg, logo_url: reader.result as string });
-    reader.readAsDataURL(file);
+    void (async () => {
+      try {
+        const { readSafeLogoDataUrl } = await import("@/lib/safe-logo-upload");
+        const dataUrl = await readSafeLogoDataUrl(file);
+        setCfg({ ...cfg, logo_url: dataUrl });
+      } catch (e: any) {
+        toast.error(e?.message ?? "Could not read logo");
+      }
+    })();
   };
 
   if (!cfg) {
@@ -201,7 +203,7 @@ function InvoiceTemplatePage() {
                   <input
                     ref={fileRef}
                     type="file"
-                    accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                    accept="image/png,image/jpeg,image/webp"
                     hidden
                     onChange={(e) => {
                       const f = e.target.files?.[0];

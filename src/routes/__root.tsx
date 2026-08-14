@@ -15,12 +15,8 @@ import { Toaster } from "@/components/ui/sonner";
 import { applyChartTheme } from "@/lib/chart-theme";
 import { PlatformThemeProvider } from "@/components/platform-theme-provider";
 import { OrgThemeProvider } from "@/components/org-theme-provider";
-import { getPlatformThemeBootScript } from "@/lib/platform-theme";
-import { getOrgThemeBootScript } from "@/lib/org-theme";
-import { getStyleThemeBootScript } from "@/lib/style-theme";
 import { StyleThemeProvider } from "@/components/style-theme-provider";
-import { LANDING_CONFIG_CACHE_KEY } from "@/lib/landing-config";
-import { DEFAULT_FAVICON_HREF, getFaviconBootScript } from "@/lib/favicon";
+import { DEFAULT_FAVICON_HREF } from "@/lib/favicon";
 import { FaviconSync } from "@/components/favicon-sync";
 import { PwaRegister } from "@/components/pwa-register";
 import {
@@ -162,23 +158,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: ReactNode }) {
-  // Blocking boot scripts: apply cached themes before first paint (no colour flash).
-  // Order: platform first, then org (org wins on /app).
-  const themeBoot = getPlatformThemeBootScript();
-  const orgThemeBoot = getOrgThemeBootScript();
-  const styleThemeBoot = getStyleThemeBootScript();
-  const landingBoot = `(function(){try{if(location.pathname!=="/")return;var raw=localStorage.getItem(${JSON.stringify(LANDING_CONFIG_CACHE_KEY)});if(!raw)return;var cfg=JSON.parse(raw);if(!cfg||!cfg.palette)return;var p=cfg.palette;var dark=cfg.theme==="dark";var bg=dark?p.navy:"#ffffff";document.documentElement.style.backgroundColor=bg;document.documentElement.style.color=p.textBody||"#1e3a5f";}catch(e){}})();`;
-  const faviconBoot = getFaviconBootScript();
-
+  // External boot scripts (public/boot/*) — avoids CSP script-src 'unsafe-inline'.
   return (
     <html lang="en">
       <head>
         <HeadContent />
-        <script dangerouslySetInnerHTML={{ __html: faviconBoot }} />
-        <script dangerouslySetInnerHTML={{ __html: themeBoot }} />
-        <script dangerouslySetInnerHTML={{ __html: orgThemeBoot }} />
-        <script dangerouslySetInnerHTML={{ __html: styleThemeBoot }} />
-        <script dangerouslySetInnerHTML={{ __html: landingBoot }} />
+        <script src="/boot/favicon.js" />
+        <script src="/boot/platform-theme.js" />
+        <script src="/boot/org-theme.js" />
+        <script src="/boot/style-theme.js" />
+        <script src="/boot/landing.js" />
       </head>
       <body>
         {children}

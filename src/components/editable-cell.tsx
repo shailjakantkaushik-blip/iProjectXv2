@@ -105,6 +105,30 @@ export function EditableCell({
           })
           .eq("id", rowId);
         if (error) throw error;
+      } else if (
+        organization?.byod_active &&
+        organization.id &&
+        (table === "risks" || table === "issues" || table === "actions")
+      ) {
+        const {
+          upsertOrgRisk,
+          upsertOrgIssue,
+          upsertOrgAction,
+        } = await import("@/lib/tenant-raid.functions");
+        const patch = { [field]: payload };
+        if (table === "risks") {
+          await upsertOrgRisk({
+            data: { orgId: organization.id, id: rowId, patch },
+          });
+        } else if (table === "issues") {
+          await upsertOrgIssue({
+            data: { orgId: organization.id, id: rowId, patch },
+          });
+        } else {
+          await upsertOrgAction({
+            data: { orgId: organization.id, id: rowId, patch },
+          });
+        }
       } else {
         const { error } = await (supabase as any).from(table).update({ [field]: payload }).eq("id", rowId);
         if (error) throw error;

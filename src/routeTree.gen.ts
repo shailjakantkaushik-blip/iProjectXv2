@@ -111,6 +111,7 @@ import { Route as AuthenticatedAppProjectsNewRouteImport } from './routes/_authe
 import { Route as AuthenticatedPlatformInvoiceIdRouteImport } from './routes/_authenticated/platform.invoice.$id'
 import { Route as ApiPublicHooksBillingRunRouteImport } from './routes/api/public/hooks/billing-run'
 import { Route as ApiPublicHooksAlertsDigestRouteImport } from './routes/api/public/hooks/alerts-digest'
+import { Route as ApiPublicHooksIntegrationWebhookRouteImport } from './routes/api/public/hooks/integration-webhook'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -698,6 +699,12 @@ const ApiPublicHooksAlertsDigestRoute =
     path: '/api/public/hooks/alerts-digest',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksIntegrationWebhookRoute =
+  ApiPublicHooksIntegrationWebhookRouteImport.update({
+    id: '/api/public/hooks/integration-webhook',
+    path: '/api/public/hooks/integration-webhook',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -800,6 +807,7 @@ export interface FileRoutesByFullPath {
   '/platform/invoice/$id': typeof AuthenticatedPlatformInvoiceIdRoute
   '/api/public/hooks/billing-run': typeof ApiPublicHooksBillingRunRoute
   '/api/public/hooks/alerts-digest': typeof ApiPublicHooksAlertsDigestRoute
+  '/api/public/hooks/integration-webhook': typeof ApiPublicHooksIntegrationWebhookRoute
   '/app/projects/': typeof AuthenticatedAppProjectsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -901,6 +909,7 @@ export interface FileRoutesByTo {
   '/platform/invoice/$id': typeof AuthenticatedPlatformInvoiceIdRoute
   '/api/public/hooks/billing-run': typeof ApiPublicHooksBillingRunRoute
   '/api/public/hooks/alerts-digest': typeof ApiPublicHooksAlertsDigestRoute
+  '/api/public/hooks/integration-webhook': typeof ApiPublicHooksIntegrationWebhookRoute
   '/app/projects': typeof AuthenticatedAppProjectsIndexRoute
 }
 export interface FileRoutesById {
@@ -1006,6 +1015,7 @@ export interface FileRoutesById {
   '/_authenticated/platform/invoice/$id': typeof AuthenticatedPlatformInvoiceIdRoute
   '/api/public/hooks/billing-run': typeof ApiPublicHooksBillingRunRoute
   '/api/public/hooks/alerts-digest': typeof ApiPublicHooksAlertsDigestRoute
+  '/api/public/hooks/integration-webhook': typeof ApiPublicHooksIntegrationWebhookRoute
   '/_authenticated/app/projects/': typeof AuthenticatedAppProjectsIndexRoute
 }
 export interface FileRouteTypes {
@@ -1111,6 +1121,7 @@ export interface FileRouteTypes {
     | '/platform/invoice/$id'
     | '/api/public/hooks/billing-run'
     | '/api/public/hooks/alerts-digest'
+    | '/api/public/hooks/integration-webhook'
     | '/app/projects/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -1212,6 +1223,7 @@ export interface FileRouteTypes {
     | '/platform/invoice/$id'
     | '/api/public/hooks/billing-run'
     | '/api/public/hooks/alerts-digest'
+    | '/api/public/hooks/integration-webhook'
     | '/app/projects'
   id:
     | '__root__'
@@ -1316,6 +1328,7 @@ export interface FileRouteTypes {
     | '/_authenticated/platform/invoice/$id'
     | '/api/public/hooks/billing-run'
     | '/api/public/hooks/alerts-digest'
+    | '/api/public/hooks/integration-webhook'
     | '/_authenticated/app/projects/'
   fileRoutesById: FileRoutesById
 }
@@ -1331,6 +1344,7 @@ export interface RootRouteChildren {
   OSlugLoginRoute: typeof OSlugLoginRoute
   ApiPublicHooksBillingRunRoute: typeof ApiPublicHooksBillingRunRoute
   ApiPublicHooksAlertsDigestRoute: typeof ApiPublicHooksAlertsDigestRoute
+  ApiPublicHooksIntegrationWebhookRoute: typeof ApiPublicHooksIntegrationWebhookRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -2049,6 +2063,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksAlertsDigestRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/integration-webhook': {
+      id: '/api/public/hooks/integration-webhook'
+      path: '/api/public/hooks/integration-webhook'
+      fullPath: '/api/public/hooks/integration-webhook'
+      preLoaderRoute: typeof ApiPublicHooksIntegrationWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -2297,6 +2318,7 @@ const rootRouteChildren: RootRouteChildren = {
   OSlugLoginRoute: OSlugLoginRoute,
   ApiPublicHooksBillingRunRoute: ApiPublicHooksBillingRunRoute,
   ApiPublicHooksAlertsDigestRoute: ApiPublicHooksAlertsDigestRoute,
+  ApiPublicHooksIntegrationWebhookRoute: ApiPublicHooksIntegrationWebhookRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
