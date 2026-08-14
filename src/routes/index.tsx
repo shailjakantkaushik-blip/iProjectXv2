@@ -200,8 +200,25 @@ const NAV_LINKS = [
   ["#capabilities", "Capabilities"],
 ] as const;
 
-/** Frozen header: 4rem bar + notch. Tab anchors must use this — not a larger scroll-mt. */
+/** Frozen header: 4rem bar + notch. Used for the in-flow spacer only. */
 const LANDING_NAV_H = "calc(4rem + env(safe-area-inset-top, 0px))";
+
+function landingNavOffsetPx(): number {
+  const bar = document.querySelector<HTMLElement>("[data-landing-nav-bar]");
+  if (!bar) return 64;
+  // Bottom of the 64px bar (includes safe-area padding on the parent) — not the
+  // expanded mobile menu, which would overshoot by hundreds of pixels.
+  return Math.round(bar.getBoundingClientRect().bottom);
+}
+
+function scrollToLandingHash(hash: string, behavior: ScrollBehavior = "smooth") {
+  const id = hash.replace(/^#/, "");
+  if (!id) return;
+  const el = document.getElementById(id);
+  if (!el) return;
+  const y = window.scrollY + el.getBoundingClientRect().top - landingNavOffsetPx();
+  window.scrollTo({ top: Math.max(0, y), behavior });
+}
 
 function useCountUp(target: number, duration = 1400) {
   const [val, setVal] = useState(0);
@@ -405,6 +422,16 @@ function LandingPage() {
     return () => window.clearTimeout(t);
   }, []);
 
+  useEffect(() => {
+    if (!belowFoldReady) return;
+    if (location.hash) scrollToLandingHash(location.hash, "auto");
+    const onHash = () => {
+      if (location.hash) scrollToLandingHash(location.hash, "smooth");
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, [belowFoldReady]);
+
   // Warm the auth logo in the browser cache so Sign in paints without a swap.
   useEffect(() => {
     const authLogo = resolveBrandLogoUrl(cfg.brand, "auth");
@@ -437,7 +464,7 @@ function LandingPage() {
 
   return (
     <div
-      className="w-full max-w-[100vw] overflow-x-hidden antialiased"
+      className="w-full max-w-[100vw] overflow-x-clip antialiased"
       data-theme={cfg.theme}
       style={{ ...cssVars, ...BODY, color: p.textBody, background: pageBg }}
     >
@@ -577,6 +604,7 @@ function Nav({ cfg, signupEnabled }: { cfg: LandingConfig; signupEnabled: boolea
 
   return (
     <nav
+      data-landing-nav
       className="fixed inset-x-0 top-0 z-50 w-full border-b pt-[env(safe-area-inset-top)] backdrop-blur-xl transition-[background,box-shadow] duration-300 print:absolute"
       style={{
         borderColor: scrolled ? p.surface : "transparent",
@@ -584,7 +612,10 @@ function Nav({ cfg, signupEnabled }: { cfg: LandingConfig; signupEnabled: boolea
         boxShadow: scrolled ? "0 1px 0 rgba(15,27,61,0.06)" : "none",
       }}
     >
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-6">
+      <div
+        data-landing-nav-bar
+        className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-6"
+      >
         <Link to="/" className="relative z-10" onClick={() => setOpen(false)}>
           <BrandMark cfg={cfg} />
         </Link>
@@ -594,6 +625,12 @@ function Nav({ cfg, signupEnabled }: { cfg: LandingConfig; signupEnabled: boolea
             <a
               key={href}
               href={href}
+              onClick={(e) => {
+                e.preventDefault();
+                setOpen(false);
+                if (location.hash !== href) history.pushState(null, "", href);
+                scrollToLandingHash(href);
+              }}
               className="text-sm font-semibold tracking-tight transition-opacity hover:opacity-70"
               style={{ color: p.textMuted }}
             >
@@ -658,7 +695,12 @@ function Nav({ cfg, signupEnabled }: { cfg: LandingConfig; signupEnabled: boolea
               <a
                 key={href}
                 href={href}
-                onClick={() => setOpen(false)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setOpen(false);
+                  if (location.hash !== href) history.pushState(null, "", href);
+                  requestAnimationFrame(() => scrollToLandingHash(href));
+                }}
                 className="rounded-md px-3 py-3 text-sm font-semibold"
                 style={{ color: p.textHeading }}
               >
@@ -1365,7 +1407,7 @@ function ExecutiveCockpitTour({ cfg, sectionBg }: { cfg: LandingConfig; sectionB
   return (
     <section
       id="cockpit"
-      className="scroll-mt-[var(--lp-nav-h)] overflow-hidden py-20 sm:py-28"
+      className="scroll-mt-0 overflow-hidden py-20 sm:py-28"
       style={{ background: sectionBg }}
     >
       <div className="mx-auto max-w-7xl px-5 sm:px-6">
@@ -1496,7 +1538,7 @@ function PortfolioTimelineTour({ cfg }: { cfg: LandingConfig }) {
   return (
     <section
       id="timeline"
-      className="scroll-mt-[var(--lp-nav-h)] py-20 sm:py-28"
+      className="scroll-mt-0 py-20 sm:py-28"
       style={{ background: p.navy, color: p.textOnDark }}
     >
       <div className="mx-auto max-w-7xl px-5 sm:px-6">
@@ -1627,7 +1669,7 @@ function RaidTour({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string })
   return (
     <section
       id="raid"
-      className="scroll-mt-[var(--lp-nav-h)] overflow-x-hidden py-16 sm:py-20 md:py-28"
+      className="scroll-mt-0 overflow-x-hidden py-16 sm:py-20 md:py-28"
       style={{ background: sectionBg }}
     >
       <div className="mx-auto max-w-7xl px-4 sm:px-5 md:px-6">
@@ -1792,7 +1834,7 @@ function SecurityTour({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: strin
   return (
     <section
       id="security"
-      className="scroll-mt-[var(--lp-nav-h)] overflow-hidden py-20 sm:py-28"
+      className="scroll-mt-0 overflow-hidden py-20 sm:py-28"
       style={{ background: sectionBg }}
     >
       <div className="mx-auto max-w-7xl px-5 sm:px-6">
@@ -1888,7 +1930,7 @@ function CapabilityBento({ cfg }: { cfg: LandingConfig }) {
   return (
     <section
       id="capabilities"
-      className="scroll-mt-[var(--lp-nav-h)] py-20 sm:py-28"
+      className="scroll-mt-0 py-20 sm:py-28"
       style={{ background: p.surface }}
     >
       <div className="mx-auto max-w-7xl px-5 sm:px-6">
