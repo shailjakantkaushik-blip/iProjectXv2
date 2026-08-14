@@ -111,13 +111,13 @@ export function resolveBrandLogoUrl(
 }
 
 /**
- * App shell logo resolution:
- * 1) Organisation white-label logo (Platform → Branding), when set
- * 2) iProjectX platform App shell logo from landing_config (`logo_url_app`,
- *    with legacy `logo_url` fallback inside resolveBrandLogoUrl)
+ * App shell logo resolution (per organisation):
+ * 1) That org's white-label logo from Platform → Branding (`organizations.logo_url`)
+ * 2) Else the iProjectX platform App shell logo from Platform → Landing
+ *    (`landing_config.brand.logo_url_app`, then legacy `logo_url`)
  *
- * Does not substitute a static asset — if the platform has no App shell logo
- * configured, returns "" so the shell can render a neutral mark.
+ * Org A with a logo and Org B without one must not both look "broken" — B must
+ * still show the platform App shell logo from landing config.
  */
 export function resolveAppShellLogoUrl(opts: {
   orgLogoUrl?: string | null;
@@ -132,6 +132,7 @@ export function resolveAppShellLogoUrl(opts: {
       : "";
   if (org) return org;
   if (!opts.brand) return "";
+  // Prefer explicit App shell field; resolveBrandLogoUrl also falls back to legacy logo_url.
   return resolveBrandLogoUrl(opts.brand, "app");
 }
 
