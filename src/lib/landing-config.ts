@@ -110,6 +110,32 @@ export function resolveBrandLogoUrl(
   return "";
 }
 
+/**
+ * Standard iProjectX mark for app shell when neither org white-label nor
+ * platform App logo is configured.
+ */
+export const DEFAULT_IPROJECTX_MARK = "/brand/iprojectx-mark.webp";
+
+/** App shell logo: org white-label → platform app logo → iProjectX mark. */
+export function resolveAppShellLogoUrl(opts: {
+  orgLogoUrl?: string | null;
+  brand?: Pick<
+    LandingConfig["brand"],
+    "logo_url" | "logo_url_landing" | "logo_url_auth" | "logo_url_app"
+  > | null;
+}): string {
+  const org =
+    typeof opts.orgLogoUrl === "string" && opts.orgLogoUrl.trim()
+      ? opts.orgLogoUrl.trim()
+      : "";
+  if (org) return org;
+  if (opts.brand) {
+    const platform = resolveBrandLogoUrl(opts.brand, "app");
+    if (platform) return platform;
+  }
+  return DEFAULT_IPROJECTX_MARK;
+}
+
 export function resolveBrandLogoDims(
   brand: LandingConfig["brand"],
   surface: BrandLogoSurface,

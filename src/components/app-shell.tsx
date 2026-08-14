@@ -95,7 +95,7 @@ import {
   logoSizeDims,
   normalizeLogoSize,
   readCachedLandingConfig,
-  resolveBrandLogoUrl,
+  resolveAppShellLogoUrl,
   type LogoCustomDims,
   type LogoDisplaySize,
 } from "@/lib/landing-config";
@@ -503,12 +503,15 @@ export function AppShell({ children }: { children: ReactNode }) {
     maxWidthPx: 160,
   }) as LogoCustomDims;
   const brandForApp = landing?.brand ?? cached?.brand;
-  const platformAppLogo = brandForApp ? resolveBrandLogoUrl(brandForApp, "app") : "";
-  // Org white-label logo wins when set; otherwise platform App shell logo.
+  // Org white-label logo when set; else platform App logo; else standard iProjectX mark.
   const orgLogoUrl =
     typeof organization?.logo_url === "string" ? organization.logo_url.trim() : "";
-  const shellLogoUrl = orgLogoUrl || platformAppLogo || "";
-  const appLogoDims = orgLogoUrl
+  const shellLogoUrl = resolveAppShellLogoUrl({
+    orgLogoUrl,
+    brand: brandForApp,
+  });
+  const usingOrgLogo = Boolean(orgLogoUrl);
+  const appLogoDims = usingOrgLogo
     ? logoSizeDims(orgLogoSize, orgLogoCustom)
     : logoSizeDims(
         brandForApp?.logo_size_app ?? "md",
@@ -536,24 +539,21 @@ export function AppShell({ children }: { children: ReactNode }) {
   const BrandMarkImg = ({ compact = false }: { compact?: boolean }) => {
     const h = compact ? Math.min(28, appLogoDims.heightPx) : appLogoDims.heightPx;
     const maxW = compact ? Math.min(120, appLogoDims.maxWidthPx) : appLogoDims.maxWidthPx;
-    if (shellLogoUrl) {
-      return <StableBrandLogo src={shellLogoUrl} alt="" heightPx={h} maxWidthPx={maxW} />;
-    }
-    return <BarChart3 className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />;
+    return (
+      <StableBrandLogo
+        src={shellLogoUrl}
+        alt={brandName}
+        heightPx={h}
+        maxWidthPx={maxW}
+      />
+    );
   };
 
   const BrandBlock = (
     <div className="shell-brand flex items-center gap-3 border-b border-sidebar-border/60 px-4 py-3.5">
       <div
-        className={cn(
-          "flex shrink-0 items-center justify-center overflow-hidden rounded-lg ring-1 ring-black/[0.06] transition-transform duration-300 hover:scale-[1.02]",
-          !shellLogoUrl && "h-8 w-8 shadow-sm",
-        )}
-        style={
-          shellLogoUrl
-            ? { background: "transparent" }
-            : { background: primary || "var(--primary)", color: "#fff" }
-        }
+        className="flex shrink-0 items-center justify-center overflow-hidden rounded-lg ring-1 ring-black/[0.06] transition-transform duration-300 hover:scale-[1.02]"
+        style={{ background: "transparent" }}
       >
         <BrandMarkImg />
       </div>
@@ -772,15 +772,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
           <div className="flex min-w-0 flex-1 items-center gap-2.5">
             <div
-              className={cn(
-                "flex shrink-0 items-center justify-center overflow-hidden rounded-md md:hidden",
-                !shellLogoUrl && "h-7 w-7",
-              )}
-              style={
-                shellLogoUrl
-                  ? { background: "transparent" }
-                  : { background: primary || "var(--primary)", color: "#fff" }
-              }
+              className="flex shrink-0 items-center justify-center overflow-hidden rounded-md md:hidden"
+              style={{ background: "transparent" }}
             >
               <BrandMarkImg compact />
             </div>
