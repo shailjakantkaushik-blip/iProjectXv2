@@ -439,11 +439,13 @@ function LandingPage() {
     >
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:shadow"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:shadow"
       >
         Skip to content
       </a>
       <Nav cfg={cfg} signupEnabled={signupEnabled} />
+      {/* Matches frozen nav: 4rem bar + notch inset, so the hero is not tucked under Sign in / logo. */}
+      <div className="h-[calc(4rem+env(safe-area-inset-top,0px))] shrink-0" aria-hidden />
       <main id="main" className="min-w-0">
         <Hero cfg={cfg} onEoiClick={() => setEoiOpen(true)} />
         {cfg.hero.alert && <InsightBar cfg={cfg} />}
@@ -571,7 +573,7 @@ function Nav({ cfg, signupEnabled }: { cfg: LandingConfig; signupEnabled: boolea
 
   return (
     <nav
-      className="sticky top-0 z-50 w-full border-b backdrop-blur-xl transition-[background,box-shadow] duration-300"
+      className="fixed inset-x-0 top-0 z-50 w-full border-b pt-[env(safe-area-inset-top)] backdrop-blur-xl transition-[background,box-shadow] duration-300 print:absolute"
       style={{
         borderColor: scrolled ? p.surface : "transparent",
         background: navBg,
