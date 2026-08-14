@@ -9,6 +9,12 @@
 --
 -- This creates schema/functions/RLS/triggers only (no row data, no auth.users).
 -- After schema: import data separately, then point Vercel env at the new project.
+--
+-- If tables already exist but functions/triggers/policies are missing, do NOT
+-- re-run this whole file (CREATE TABLE/TYPE will fail). Use instead:
+--   supabase/manual/check_platform_ddl.sql
+--   supabase/manual/repair_platform_functions_triggers_policies.sql
+-- Regenerate this file + repair pack: npm run build:full-schema
 
 
 -- =============================================================================
