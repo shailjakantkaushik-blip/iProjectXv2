@@ -1,8 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   fetchLandingConfig,
+  readCachedLandingConfig,
   readCachedLandingConfigForPaint,
   DEFAULT_LANDING,
   resolveBrandLogoUrl,
@@ -14,8 +16,26 @@ import { StableBrandLogo } from "@/components/stable-brand-logo";
 import { ArrowLeft } from "lucide-react";
 import DOMPurify from "dompurify";
 
+type LegalPolicyRow = {
+  slug: string;
+  title: string;
+  category: string;
+  body_markdown: string | null;
+  updated_at: string | null;
+};
+
+type LegalLoaderData = {
+  policy: LegalPolicyRow | null;
+  cfg: LandingConfig;
+  needsRevalidate: boolean;
+};
+
 export const Route = createFileRoute("/legal/$slug")({
-  loader: async ({ params }) => {
+  loader: async ({ params }): Promise<LegalLoaderData> => {
+    // Policy body is required for content; brand cfg prefers browser cache
+    // on repeat visits to avoid re-dehydrating the full landing JSON (FOT).
+    const cachedCfg =
+      typeof window !== "undefined" ? readCachedLandingConfig() : null;
     const [{ data: policy, error }, cfg] = await Promise.all([
       (supabase as any)
         .from("legal_policies")
@@ -23,11 +43,18 @@ export const Route = createFileRoute("/legal/$slug")({
         .eq("slug", params.slug)
         .eq("published", true)
         .maybeSingle(),
-      fetchLandingConfig(),
+      cachedCfg
+        ? Promise.resolve(cachedCfg)
+        : fetchLandingConfig(),
     ]);
     if (error) throw error;
-    return { policy, cfg };
+    return {
+      policy: (policy as LegalPolicyRow | null) ?? null,
+      cfg,
+      needsRevalidate: Boolean(cachedCfg),
+    };
   },
+  staleTime: 60_000,
   pendingMs: 0,
   pendingComponent: LegalPending,
   component: LegalPolicyPage,
@@ -154,11 +181,27 @@ function markdownToHtml(md: string): string {
 }
 
 function LegalPolicyPage() {
-  const { policy, cfg } = Route.useLoaderData();
+  const { policy, cfg: loaderCfg, needsRevalidate } = Route.useLoaderData();
+  const [cfg, setCfg] = useState(loaderCfg);
   const p = cfg.palette;
   const isDark = cfg.theme === "dark";
   const pageBg = isDark ? p.navy : "#fafbfc";
   const panelBg = isDark ? p.navyLight : "#ffffff";
+
+  useEffect(() => {
+    setCfg(loaderCfg);
+  }, [loaderCfg]);
+
+  useEffect(() => {
+    if (!needsRevalidate) return;
+    let cancelled = false;
+    void fetchLandingConfig().then((live) => {
+      if (!cancelled) setCfg(live);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [needsRevalidate]);
 
   const { data: allPolicies = [] } = useQuery({
     queryKey: ["published_policies_nav"],

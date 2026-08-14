@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   fetchLandingConfig,
+  readCachedLandingConfig,
   readCachedLandingConfigForPaint,
   DEFAULT_LANDING,
   resolveBrandLogoUrl,
@@ -13,8 +14,22 @@ import { StableBrandLogo } from "@/components/stable-brand-logo";
 import { EoiForm } from "@/components/eoi-form";
 import { Mail, MapPin, MessageSquare } from "lucide-react";
 
+type ContactLoaderData = {
+  cfg: LandingConfig;
+  needsRevalidate: boolean;
+};
+
 export const Route = createFileRoute("/contact")({
-  loader: async () => ({ cfg: await fetchLandingConfig() }),
+  loader: async (): Promise<ContactLoaderData> => {
+    // Prefer browser cache on repeat visits so SSR/dehydrate does not
+    // re-ship the full landing config on every Contact hit (FOT).
+    if (typeof window !== "undefined") {
+      const cached = readCachedLandingConfig();
+      if (cached) return { cfg: cached, needsRevalidate: true };
+    }
+    return { cfg: await fetchLandingConfig(), needsRevalidate: false };
+  },
+  staleTime: 60_000,
   pendingMs: 0,
   pendingComponent: ContactPending,
   component: ContactPage,
@@ -53,10 +68,26 @@ function BrandMark({ cfg }: { cfg: LandingConfig }) {
 }
 
 function ContactPage() {
-  const { cfg } = Route.useLoaderData();
+  const { cfg: loaderCfg, needsRevalidate } = Route.useLoaderData();
+  const [cfg, setCfg] = useState(loaderCfg);
   const p = cfg.palette;
   const isDark = cfg.theme === "dark";
   const pageBg = isDark ? p.navy : "#fafbfc";
+
+  useEffect(() => {
+    setCfg(loaderCfg);
+  }, [loaderCfg]);
+
+  useEffect(() => {
+    if (!needsRevalidate) return;
+    let cancelled = false;
+    void fetchLandingConfig().then((live) => {
+      if (!cancelled) setCfg(live);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [needsRevalidate]);
 
   useEffect(() => {
     document.documentElement.style.scrollBehavior = "smooth";

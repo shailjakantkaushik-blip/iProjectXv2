@@ -1,0 +1,11 @@
+# Keep heavy / non-runtime files out of the Vercel deployment upload.
+# (Does not change app features — these are never imported by the web app.)
+*.zip
+*.sql
+docs/
+supabase/seed/
+supabase/manual/
+public/byod/
+.git/
+*.md
+!README.md
