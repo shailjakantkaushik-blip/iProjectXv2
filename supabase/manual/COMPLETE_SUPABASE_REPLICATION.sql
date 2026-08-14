@@ -1,6 +1,6 @@
 -- =============================================================================
 -- iProjectX — COMPLETE Supabase replication pack
--- Generated: 2026-08-14T14:23:25.411Z
+-- Generated: 2026-08-14T14:46:04.454Z
 -- =============================================================================
 --
 -- WHAT THIS FILE CONTAINS
@@ -13348,7 +13348,7 @@ END $$;
 --   stage_gate_checklist_responses (templates kept)
 --
 -- SEEDS
---   4 projects with Core + second stream, 9 stage gates per stream,
+--   4 projects with Core + second stream, stage gates only for Waterfall/Hybrid (Agile = sprints only),
 --   milestones, FY + monthly finance, resources/allocations,
 --   benefits, risks, issues, actions, decisions, stakeholders,
 --   status updates, documents, lessons, change requests, sprints,
@@ -13389,6 +13389,9 @@ ALTER TABLE public.fy_allocations
 
 ALTER TABLE public.projects
   ADD COLUMN IF NOT EXISTS forecast_at_completion NUMERIC(14,2) DEFAULT 0;
+
+ALTER TABLE public.projects
+  ADD COLUMN IF NOT EXISTS delivery_method_id uuid REFERENCES public.delivery_methods(id) ON DELETE SET NULL;
 
 ALTER TABLE public.work_items
   ADD COLUMN IF NOT EXISTS stage_gate_id uuid REFERENCES public.stage_gates(id) ON DELETE SET NULL;
@@ -13507,27 +13510,23 @@ $wipe_gates$;
 -- Cascades remaining children for iProjectX only
 DELETE FROM public.projects WHERE org_id = current_setting('iprojectx.seed_org_id')::uuid;
 
--- ---------- C) Ensure stage gate definitions (canonical 9) for iProjectX ----------
-INSERT INTO public.stage_gate_definitions (org_id, gate_name, sort_order, is_active)
-SELECT o.id, g.gate_name, g.sort_order, true
-FROM public.organizations o
-CROSS JOIN (
-  VALUES
-    ('Discovery', 1),
-    ('Business Case / Seed Funding', 2),
-    ('Design', 3),
-    ('Business Case / Full Funding', 4),
-    ('Build', 5),
-    ('Testing', 6),
-    ('Deployment', 7),
-    ('Handover', 8),
-    ('Benefit Realisation', 9)
-) AS g(gate_name, sort_order)
-WHERE o.id = current_setting('iprojectx.seed_org_id')::uuid
-ON CONFLICT (org_id, gate_name) DO UPDATE
-SET sort_order = EXCLUDED.sort_order, is_active = true;
+-- ---------- C) Ensure delivery methods + per-method gate templates ----------
+-- Agile has uses_stage_gates=false (sprints only). Waterfall/Hybrid keep gate templates.
+DO $ensure_methods$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND p.proname = 'ensure_org_delivery_methods'
+  ) THEN
+    PERFORM public.ensure_org_delivery_methods(current_setting('iprojectx.seed_org_id')::uuid);
+  ELSE
+    RAISE NOTICE 'ensure_org_delivery_methods missing — apply delivery_methods_stage_gates.sql first';
+  END IF;
+END
+$ensure_methods$;
 
--- ---------- D) Seed 10 projects + streams + full attribute data ----------
+-- ---------- D) Seed 4 projects + streams + full attribute data ----------
 DO $$
 DECLARE
   r_org RECORD;
@@ -13548,11 +13547,11 @@ DECLARE
     'Data Lakehouse Foundation','Cyber Resilience Uplift'
   ];
   programs text[] := ARRAY['Digital Transformation','Platform Modernisation','Data & Analytics','Risk & Compliance'];
-  phases text[] := ARRAY['Build','Testing','Design','Business Case / Full Funding'];
+  phases text[] := ARRAY['Build','Build / Iterate','Design','Business Case / Full Funding'];
   statuses public.project_status[] := ARRAY['In Progress','In Progress','In Progress','In Progress'];
   rags public.project_rag[] := ARRAY['Green','Amber','Green','Amber'];
   priorities text[] := ARRAY['P1 - Critical','P1 - Critical','P2 - High','P1 - Critical'];
-  methods public.delivery_method[] := ARRAY['Hybrid','Agile','Waterfall','Hybrid'];
+  methods text[] := ARRAY['Hybrid','Agile','Waterfall','Hybrid'];
   budgets numeric[] := ARRAY[3200000,5800000,4100000,2700000];
   capex_a numeric[] := ARRAY[2500000,4800000,3500000,2000000];
   capex_i numeric[] := ARRAY[1100000,3100000,900000,400000];
@@ -13573,6 +13572,9 @@ DECLARE
     'Discovery','Business Case / Seed Funding','Design','Business Case / Full Funding',
     'Build','Testing','Deployment','Handover','Benefit Realisation'
   ];
+  project_gates text[];
+  method_id uuid;
+  uses_gates boolean;
   g_status text;
   g_idx int;
   m date;
@@ -13782,9 +13784,31 @@ BEGIN
         )
       );
 
+      -- Resolve delivery method flags (Agile must not receive Waterfall stage gates)
+      method_id := NULL;
+      uses_gates := NULL;
+      SELECT dm.id, dm.uses_stage_gates
+        INTO method_id, uses_gates
+      FROM public.delivery_methods dm
+      WHERE dm.org_id = r_org.id
+        AND lower(dm.name) = lower(methods[i])
+      LIMIT 1;
+      IF method_id IS NULL THEN
+        -- Fallback if delivery_methods table not migrated yet
+        uses_gates := methods[i] IS DISTINCT FROM 'Agile';
+      END IF;
+      IF uses_gates THEN
+        project_gates := gate_names;
+        g_idx := array_position(project_gates, phases[i]);
+        IF g_idx IS NULL THEN g_idx := 1; END IF;
+      ELSE
+        project_gates := ARRAY[]::text[];
+        g_idx := 0;
+      END IF;
+
       INSERT INTO public.projects (
         org_id, bu_id, project_code, name, portfolio, program, sponsor, priority, status, rag,
-        current_phase, delivery_method, streams_enabled,
+        current_phase, delivery_method, delivery_method_id, streams_enabled,
         planned_start_date, planned_end_date, actual_start_date, actual_end_date,
         start_date, end_date, target_go_live,
         budget, capex_approved, capex_incurred, opex_approved, opex_incurred,
@@ -13796,7 +13820,7 @@ BEGIN
         r_org.id, r_bu, codes[i], names[i],
         (ARRAY['Business Strategic','IT Strategic','CAPEX','Unfunded'])[((i - 1) % 4) + 1],
         programs[i], sponsor_name, priorities[i],
-        statuses[i], rags[i], phases[i], methods[i], true,
+        statuses[i], rags[i], phases[i], methods[i], method_id, true,
         starts[i], ends[i],
         CASE WHEN statuses[i] = 'Not Started' THEN NULL ELSE starts[i] + 14 END,
         CASE WHEN statuses[i] = 'Completed' THEN ends[i] ELSE NULL END,
@@ -13882,9 +13906,6 @@ BEGIN
 
       stream_ids := ARRAY[core_id, alt_id];
 
-      g_idx := array_position(gate_names, phases[i]);
-      IF g_idx IS NULL THEN g_idx := 1; END IF;
-
       -- Per-stream gates, milestones, FY, monthly finance, allocations
       FOREACH sid IN ARRAY stream_ids LOOP
         IF sid = core_id THEN
@@ -13904,36 +13925,39 @@ BEGIN
         s_opex_i := round(opex_i[i] * s_share, 2);
         s_fac := round(facs[i] * s_share, 2);
 
-        FOR j IN 1..array_length(gate_names, 1) LOOP
-          IF j < g_idx THEN g_status := 'Approved';
-          ELSIF j = g_idx THEN g_status := 'In Review';
-          ELSE g_status := 'Pending';
-          END IF;
-          -- Spread 9 gates evenly across the stream schedule window
-          INSERT INTO public.stage_gates (
-            org_id, project_id, stream_id, gate_name, planned_date, actual_date, status, approver, notes
-          ) VALUES (
-            r_org.id, p_id, sid, gate_names[j],
-            (s_start + ((s_end - s_start) * (j - 1) / GREATEST(array_length(gate_names, 1) - 1, 1)))::date
-              + CASE WHEN sid = alt_id THEN 7 ELSE 0 END,
-            CASE WHEN g_status = 'Approved'
-              THEN (s_start + ((s_end - s_start) * (j - 1) / GREATEST(array_length(gate_names, 1) - 1, 1)))::date
-                + CASE WHEN sid = alt_id THEN 10 ELSE 3 END
-              ELSE NULL END,
-            g_status,
-            CASE WHEN sid = core_id THEN primary_person_name ELSE secondary_person_name END,
-            CASE WHEN sid = core_id THEN 'Core stream gate' ELSE alt_names[i] || ' stream gate' END
-          );
-        END LOOP;
+        -- Stage gates only when the delivery method uses them (not Agile)
+        IF uses_gates AND coalesce(array_length(project_gates, 1), 0) > 0 THEN
+          FOR j IN 1..array_length(project_gates, 1) LOOP
+            IF j < g_idx THEN g_status := 'Approved';
+            ELSIF j = g_idx THEN g_status := 'In Review';
+            ELSE g_status := 'Pending';
+            END IF;
+            -- Spread gates evenly across the stream schedule window
+            INSERT INTO public.stage_gates (
+              org_id, project_id, stream_id, gate_name, planned_date, actual_date, status, approver, notes
+            ) VALUES (
+              r_org.id, p_id, sid, project_gates[j],
+              (s_start + ((s_end - s_start) * (j - 1) / GREATEST(array_length(project_gates, 1) - 1, 1)))::date
+                + CASE WHEN sid = alt_id THEN 7 ELSE 0 END,
+              CASE WHEN g_status = 'Approved'
+                THEN (s_start + ((s_end - s_start) * (j - 1) / GREATEST(array_length(project_gates, 1) - 1, 1)))::date
+                  + CASE WHEN sid = alt_id THEN 10 ELSE 3 END
+                ELSE NULL END,
+              g_status,
+              CASE WHEN sid = core_id THEN primary_person_name ELSE secondary_person_name END,
+              CASE WHEN sid = core_id THEN 'Core stream gate' ELSE alt_names[i] || ' stream gate' END
+            );
+          END LOOP;
 
-        -- Auto-synced milestones from gates inherit stream_id (trigger may omit it)
-        UPDATE public.milestones m
-        SET stream_id = g.stream_id
-        FROM public.stage_gates g
-        WHERE m.stage_gate_id = g.id
-          AND g.project_id = p_id
-          AND g.stream_id = sid
-          AND (m.stream_id IS DISTINCT FROM g.stream_id);
+          -- Auto-synced milestones from gates inherit stream_id (trigger may omit it)
+          UPDATE public.milestones m
+          SET stream_id = g.stream_id
+          FROM public.stage_gates g
+          WHERE m.stage_gate_id = g.id
+            AND g.project_id = p_id
+            AND g.stream_id = sid
+            AND (m.stream_id IS DISTINCT FROM g.stream_id);
+        END IF;
 
         INSERT INTO public.milestones (
           org_id, project_id, stream_id, name, planned_date, actual_date, status, owner, notes
@@ -14140,12 +14164,15 @@ BEGIN
           FOR j IN 1..3 LOOP
             m := (date_trunc('month', CURRENT_DATE)::date - ((j - 1) * INTERVAL '1 month'))::date;
             r1 := 1 + ((i + j - 1) % array_length(res_ids, 1));
-            -- Plan against the stream's current-phase gate (fallback: first gate)
-            SELECT g.id INTO prev_p
-            FROM public.stage_gates g
-            WHERE g.stream_id = sid
-              AND g.gate_name = gate_names[GREATEST(g_idx, 1)]
-            LIMIT 1;
+            -- Plan against the stream's current-phase gate (Agile: null stage_gate_id)
+            prev_p := NULL;
+            IF uses_gates AND g_idx >= 1 THEN
+              SELECT g.id INTO prev_p
+              FROM public.stage_gates g
+              WHERE g.stream_id = sid
+                AND g.gate_name = project_gates[g_idx]
+              LIMIT 1;
+            END IF;
             IF prev_p IS NULL THEN
               SELECT g.id INTO prev_p
               FROM public.stage_gates g
@@ -14231,11 +14258,13 @@ BEGIN
          WHERE sg.project_id = p_id AND sg.stream_id = core_id
            AND sg.gate_name = 'Business Case / Full Funding'
          ORDER BY sg.planned_date LIMIT 1),
-        'Hybrid delivery method',
-        'Confirm ' || methods[i]::text || ' approach',
+        'Confirm ' || methods[i] || ' delivery method',
+        'Confirm ' || methods[i] || ' approach for ' || names[i],
         starts[i] + 30, primary_person_name,
         'Aligns cadence with dependencies',
-        'Sprint + stage-gate hybrid where needed',
+        CASE WHEN methods[i] = 'Agile' THEN 'Sprint cadence without stage gates'
+             WHEN methods[i] = 'Hybrid' THEN 'Sprint + stage-gate hybrid where needed'
+             ELSE 'Sequential stage-gate delivery' END,
         'Approved';
 
       INSERT INTO public.stakeholders (
@@ -14252,8 +14281,8 @@ BEGIN
         (r_org.id, p_id, CURRENT_DATE - 7, primary_person_name, rags[i], rags[i],
          'Green'::public.project_rag, 'Green'::public.project_rag,
          names[i] || ' progressing across Core and ' || alt_names[i] || ' streams.',
-         'Gates advanced; monthly actuals posted; allocations confirmed.',
-         'Close open issues; prepare next stage gate pack.',
+         CASE WHEN uses_gates THEN 'Gates advanced; monthly actuals posted; allocations confirmed.' ELSE 'Sprint cadence on track; monthly actuals posted; allocations confirmed.' END,
+         CASE WHEN uses_gates THEN 'Close open issues; prepare next stage gate pack.' ELSE 'Close open issues; plan next sprint goals.' END,
          CASE WHEN rags[i] = 'Red' THEN 'Network vendor delay impacting critical path.' WHEN rags[i] = 'Amber' THEN 'Capacity pressure on specialist roles.' ELSE NULL END),
         (r_org.id, p_id, CURRENT_DATE, secondary_person_name, rags[i],
          rags[i],
