@@ -6,6 +6,8 @@ import tsConfigPaths from "vite-tsconfig-paths";
 import { nitro } from "nitro/vite";
 
 export default defineConfig({
+  // Allow NEXT_PUBLIC_* (Vercel dashboard names) as well as VITE_*.
+  envPrefix: ["VITE_", "NEXT_PUBLIC_"],
   server: {
     host: true,
     port: Number(process.env.PORT) || 3000,
