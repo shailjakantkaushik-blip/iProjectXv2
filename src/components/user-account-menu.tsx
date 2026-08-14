@@ -24,7 +24,7 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp
 import { useAuth } from "@/lib/auth-context";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  enrollTotp,
+  enrollTotpForSetup,
   getMfaStatus,
   unenrollTotp,
   verifyTotpEnrollment,
@@ -106,18 +106,7 @@ export function UserAccountMenu({
       for (const id of status.verifiedFactorIds) {
         await unenrollTotp(id);
       }
-      // Also clear any unverified leftover factors
-      const { data: factors } = await supabase.auth.mfa.listFactors();
-      for (const f of factors?.totp ?? []) {
-        if (f.status !== "verified") {
-          try {
-            await unenrollTotp(f.id);
-          } catch {
-            /* ignore */
-          }
-        }
-      }
-      const data = await enrollTotp({
+      const data = await enrollTotpForSetup({
         friendlyName: "Authenticator",
         issuer: organization?.brand_name || organization?.name || "iProjectX",
       });

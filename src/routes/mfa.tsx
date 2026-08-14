@@ -1,10 +1,10 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useAuth } from "@/lib/auth-context";
 import {
   challengeAndVerifyTotp,
-  enrollTotp,
+  enrollTotpForSetup,
   getMfaStatus,
   verifyTotpEnrollment,
 } from "@/lib/mfa";
@@ -72,7 +72,9 @@ function MfaPage() {
   const [factorId, setFactorId] = useState<string | null>(null);
   const [qr, setQr] = useState<string | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
+  const [enrollError, setEnrollError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
+  const enrollStartedRef = useRef(false);
 
   const nextPath = safeAppNextPath(search.next);
 
@@ -96,20 +98,19 @@ function MfaPage() {
       try {
         const status = await getMfaStatus();
         if (cancelled) return;
-        if (status.needsChallenge) {
+        if (status.hasVerifiedFactor) {
+          if (status.currentLevel === "aal2") {
+            navigate({ to: nextPath, replace: true });
+            return;
+          }
           setMode("challenge");
           setFactorId(status.verifiedFactorIds[0] ?? null);
-        } else if (!status.hasVerifiedFactor) {
-          setMode("enroll");
-        } else if (status.currentLevel === "aal2") {
-          // Already satisfied
-          navigate({ to: nextPath, replace: true });
           return;
-        } else {
-          setMode(search.mode ?? "enroll");
         }
+        setMode("enroll");
       } catch (e: any) {
         toast.error(e?.message ?? "Could not check MFA status");
+        setMode(search.mode === "challenge" ? "challenge" : "enroll");
       } finally {
         if (!cancelled) setBooting(false);
       }
@@ -121,17 +122,33 @@ function MfaPage() {
   }, [session, loading, navigate, nextPath, search.mode]);
 
   const startEnroll = async () => {
+    enrollStartedRef.current = true;
     setBusy(true);
+    setEnrollError(null);
     try {
-      const data = await enrollTotp({
+      const data = await enrollTotpForSetup({
         friendlyName: "Authenticator",
         issuer: brand.name || "iProjectX",
       });
       setFactorId(data.id);
-      setQr(data.totp.qr_code);
-      setSecret(data.totp.secret);
+      setQr(data.totp.qr_code || null);
+      setSecret(data.totp.secret || null);
+      if (!data.totp.qr_code && !data.totp.secret) {
+        enrollStartedRef.current = false;
+        setEnrollError("Authenticator setup did not return a QR code. Try again.");
+      }
     } catch (e: any) {
-      toast.error(e?.message ?? "Could not start MFA enrollment");
+      if (e?.code === "AUTHENTICATOR_ALREADY_VERIFIED" && e.factorId) {
+        setMode("challenge");
+        setFactorId(e.factorId);
+        setQr(null);
+        setSecret(null);
+        return;
+      }
+      enrollStartedRef.current = false;
+      const message = e?.message ?? "Could not start MFA enrollment";
+      setEnrollError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -139,6 +156,7 @@ function MfaPage() {
 
   useEffect(() => {
     if (booting || mode !== "enroll" || factorId || !session) return;
+    if (enrollStartedRef.current) return;
     void startEnroll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [booting, mode, session]);
@@ -192,7 +210,7 @@ function MfaPage() {
 
   return (
     <>
-      <ProcessingOverlay open={busy} label="Verifying…" />
+      <ProcessingOverlay open={busy} label={mode === "enroll" && !factorId ? "Preparing authenticator…" : "Verifying…"} />
       <AuthLayout
         platform={brand}
         title={mode === "enroll" ? "Set up two-factor authentication" : "Enter authentication code"}
@@ -212,14 +230,32 @@ function MfaPage() {
             <div className="space-y-3 rounded-md border p-4 text-sm">
               {qr ? (
                 <img src={qr} alt="MFA QR code" className="mx-auto h-44 w-44" />
+              ) : enrollError ? (
+                <div className="space-y-2 text-center">
+                  <p className="text-destructive">{enrollError}</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => void startEnroll()}
+                  >
+                    Retry QR code
+                  </Button>
+                </div>
               ) : (
                 <p className="text-muted-foreground">Preparing QR code…</p>
               )}
               {secret && (
                 <p className="break-all text-center text-xs text-muted-foreground">
-                  Manual key: <span className="font-mono text-foreground">{secret}</span>
+                  Can&apos;t scan? Enter this key in your authenticator app:{" "}
+                  <span className="font-mono text-foreground">{secret}</span>
                 </p>
               )}
+              <p className="text-center text-xs text-muted-foreground">
+                Codes from an unfinished setup in another browser will not work. Scan this QR
+                (or enter the key) and use the new 6-digit code.
+              </p>
             </div>
           )}
 
@@ -233,7 +269,7 @@ function MfaPage() {
             </InputOTP>
             <Button
               className="h-10 w-full"
-              disabled={busy || code.length < 6}
+              disabled={busy || code.length < 6 || !factorId}
               onClick={() => void (mode === "enroll" ? onVerifyEnroll() : onVerifyChallenge())}
             >
               {mode === "enroll" ? "Verify & enable" : "Verify & continue"}
