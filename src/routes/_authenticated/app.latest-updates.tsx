@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
+import { explainRag } from "@/lib/explain-metric";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -166,7 +167,9 @@ function LatestUpdatesPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium text-sm">{item.project_name || "Unknown project"}</span>
-                  {item.rag && <RagChip rag={item.rag as any} />}
+                  {item.rag && (
+                    <RagChip rag={item.rag as any} explain={explainRag({ rag: item.rag as any, source: "register" })} />
+                  )}
                   {item.status && <span className="text-xs px-2 py-0.5 rounded bg-muted">{item.status}</span>}
                   <span className="text-xs text-muted-foreground ml-auto">{item.date ? new Date(item.date).toLocaleString() : "—"}</span>
                 </div>

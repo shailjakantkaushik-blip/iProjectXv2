@@ -43,6 +43,7 @@ import {
   listPortfolioProjects,
 } from "@/lib/portfolio.functions";
 import { DEFAULT_PAGE_SIZE } from "@/lib/portfolio-paging";
+import { explainRag } from "@/lib/explain-metric";
 
 export const Route = createFileRoute("/_authenticated/app/projects/")({
   component: ProjectsList,
@@ -682,7 +683,9 @@ function ProjectsList() {
                           { label: "Red", value: "Red" },
                         ]}
                         invalidateKeys={["projects"]}
-                        display={(v) => <RagChip rag={v} />}
+                        display={(v) => (
+                          <RagChip rag={v} explain={explainRag({ rag: v, source: "register" })} />
+                        )}
                       />
                     </td>
                     <td>

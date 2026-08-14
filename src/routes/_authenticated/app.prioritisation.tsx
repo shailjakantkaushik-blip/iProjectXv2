@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { SectionFrame, SectionTitle, PageHeading, KpiCard, RagChip } from "@/components/streamlit";
+import { explainRag } from "@/lib/explain-metric";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LabelList, Cell } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
 import {
@@ -267,7 +268,7 @@ function Prioritisation() {
                   <td>{p.program || "—"}</td>
                   <td>{p.priority || "—"}</td>
                   <td>
-                    <RagChip rag={p.rag} />
+                    <RagChip rag={p.rag} explain={explainRag({ rag: p.rag, source: "register" })} />
                   </td>
                   <td className="text-right tabular-nums">{money(p._funding)}</td>
                   <td className="text-right tabular-nums">

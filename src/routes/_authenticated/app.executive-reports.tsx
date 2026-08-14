@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { PROJECT_PORTFOLIO_SELECT, RISKS_SELECT, ACTIONS_SELECT, BENEFITS_SELECT, STAGE_GATES_SELECT, MILESTONES_SELECT } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
+import { explainRag } from "@/lib/explain-metric";
 import { exportProjects } from "@/lib/excel";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -688,7 +689,7 @@ function ExecutiveReportsPage() {
                           <td>{p.status || "—"}</td>
                           <td>{p.priority || "—"}</td>
                           <td>
-                            <RagChip rag={p.rag} />
+                            <RagChip rag={p.rag} explain={explainRag({ rag: p.rag, source: "register" })} />
                           </td>
                           <td>{fmt$(num(p.budget))}</td>
                           <td>{p.sponsor || "—"}</td>
@@ -1005,7 +1006,7 @@ function ExecutiveReportsPage() {
                             <td>{streamName || "—"}</td>
                             <td>{project.program || "—"}</td>
                             <td>
-                              <RagChip rag={rag} />
+                              <RagChip rag={rag} explain={explainRag({ rag, source: "gate" })} />
                             </td>
                             <td>{count}</td>
                             <td>{current?.gate_name || "—"}</td>

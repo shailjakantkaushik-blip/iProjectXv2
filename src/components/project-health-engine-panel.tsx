@@ -25,6 +25,8 @@ import {
   writeStoredHealthScore,
   type HealthEngineResult,
 } from "@/lib/project-health-engine";
+import { explainRag, type MetricExplanation } from "@/lib/explain-metric";
+import { ExplainThis } from "@/components/explain-this";
 
 const money = (n: number) =>
   "$" + new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(n || 0);
@@ -71,12 +73,14 @@ function DimensionBar({
   score,
   rag,
   detail,
+  explain,
 }: {
   label: string;
   weight: number;
   score: number;
   rag: string;
   detail: string;
+  explain?: MetricExplanation | null;
 }) {
   const color =
     rag === "Green" ? "bg-emerald-500" : rag === "Amber" ? "bg-amber-500" : "bg-rose-500";
@@ -89,7 +93,10 @@ function DimensionBar({
           {label}{" "}
           <span className="font-normal text-muted-foreground">({Math.round(weight * 100)}%)</span>
         </span>
-        <span className="tabular-nums font-semibold">{score}</span>
+        <span className="inline-flex items-center gap-1">
+          <span className="tabular-nums font-semibold">{score}</span>
+          {explain ? <ExplainThis explanation={explain} size="xs" /> : null}
+        </span>
       </div>
       <div
         className="h-2 overflow-hidden rounded-full bg-muted/80 ring-1 ring-inset ring-border/60"
@@ -425,10 +432,19 @@ export function ProjectHealthEnginePanel({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <RagChip rag={health.rag} label={`Calculated · ${health.rag}`} />
+          <RagChip
+            rag={health.rag}
+            label={`Calculated · ${health.rag}`}
+            explain={explainRag({
+              rag: health.rag,
+              engine: health,
+              manualRag,
+            })}
+          />
           {manualRag ? (
             <span className="text-[11px] text-muted-foreground">
-              Manual field: <RagChip rag={manualRag} />
+              Manual field:{" "}
+              <RagChip rag={manualRag} explain={explainRag({ rag: manualRag, manualRag })} />
             </span>
           ) : null}
         </div>
@@ -466,6 +482,7 @@ export function ProjectHealthEnginePanel({
                 score={d.score}
                 rag={d.rag}
                 detail={d.detail}
+                explain={explainRag({ rag: d.rag, engine: health, dimension: d.key })}
               />
             ))}
           </div>
@@ -509,7 +526,7 @@ export function ProjectHealthEnginePanel({
                 <div className="text-[10px] uppercase text-muted-foreground">Forecast</div>
                 <div className="text-lg font-bold tabular-nums">
                   {health.predictive.forecastScore30d}{" "}
-                  <RagChip rag={health.predictive.likelyRag} />
+                      <RagChip rag={health.predictive.likelyRag} explain={explainRag({ rag: health.predictive.likelyRag, engine: health })} />
                 </div>
               </div>
               <div>
