@@ -65,14 +65,15 @@ function resolveStage(phase: string | null | undefined, stages: string[]): strin
 
 function RoadmapGovPage() {
   const { organization } = useAuth();
-  const { data: projects = [] } = useQuery({
+  const { data: projects = [], isError: projectsError, refetch: refetchProjects } = useQuery({
     queryKey: ["projects", organization?.id],
     queryFn: async () => {
       const { data, error } = await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*");
       if (error) throw error;
-      return data;
+      return data ?? [];
     },
     enabled: !!organization,
+    retry: 1,
   });
 
   const { data: gateDefs = [] } = useQuery({
@@ -139,6 +140,22 @@ function RoadmapGovPage() {
   return (
     <div>
       <PageHeading icon="🏛️">Governance — Stage Gates & Approvals</PageHeading>
+
+      {(projectsError || projects.length === 0) && (
+        <div className="mb-4 rounded-md border border-border bg-surface px-4 py-3 text-sm" role="status">
+          <p className="font-medium text-foreground">Data not available</p>
+          <p className="mt-1 text-muted-foreground">
+            {projectsError
+              ? "Project data could not be loaded for this page."
+              : "No projects yet — stage-gate governance will populate once projects exist."}
+          </p>
+          {projectsError && (
+            <button type="button" className="st-btn-primary mt-3" onClick={() => void refetchProjects()}>
+              Try again
+            </button>
+          )}
+        </div>
+      )}
 
       <SectionFrame>
         <SectionTitle>Governance KPIs</SectionTitle>

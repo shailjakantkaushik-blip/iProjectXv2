@@ -5,9 +5,11 @@ import { useLiveSync } from "@/lib/use-live-sync";
 import { usePageAccessGuard } from "@/lib/page-access-guard";
 import { PageLoading } from "@/components/page-loading";
 import { AppPageDownload } from "@/components/app-page-download";
+import { RouterErrorComponent } from "@/components/route-error";
 
 export const Route = createFileRoute("/_authenticated/app")({
   component: AppLayout,
+  errorComponent: RouterErrorComponent,
 });
 
 function AppLayout() {

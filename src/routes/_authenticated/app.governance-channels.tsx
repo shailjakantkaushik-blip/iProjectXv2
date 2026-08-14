@@ -40,7 +40,7 @@ function GovernanceChannelsPage() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<Partial<Channel> | null>(null);
 
-  const { data: channels = [], isLoading } = useQuery({
+  const { data: channels = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ["governance_channels", organization?.id],
     queryFn: async () => {
       const { data, error } = await supabase.from("governance_channels").select("*").order("name");
@@ -48,6 +48,7 @@ function GovernanceChannelsPage() {
       return data as Channel[];
     },
     enabled: !!organization,
+    retry: 1,
   });
 
   const save = useMutation({
@@ -106,6 +107,20 @@ function GovernanceChannelsPage() {
   return (
     <div className="space-y-6">
       <PageHeading title="Governance Channels" subtitle="Forums, cadence, and decision rights across the portfolio" />
+
+      {isError && (
+        <div className="rounded-md border border-border bg-surface px-4 py-3 text-sm" role="status">
+          <p className="font-medium text-foreground">Data not available</p>
+          <p className="mt-1 text-muted-foreground">
+            Governance channels could not be loaded
+            {error instanceof Error && error.message ? ` (${error.message})` : ""}. The table may
+            be missing or empty after a database change.
+          </p>
+          <button type="button" className="st-btn-primary mt-3" onClick={() => void refetch()}>
+            Try again
+          </button>
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-4">
         <KpiCard label="Active Forums" value={channels.filter(c => (c.status || "Active") === "Active").length} />
