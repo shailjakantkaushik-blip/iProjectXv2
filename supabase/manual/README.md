@@ -12,6 +12,7 @@
 | `delivery_methods_stage_gates.sql` | Delivery methods + per-method gate templates |
 | `fix_text_app_role_ops.sql` | Fixes `text = app_role` helper functions |
 | `20260814180000_security_hardening_rls_rate_acl.sql` | Pasteable copy of the security hardening migration (RLS + durable rate limits + page ACL seed). Use if the migration failed to load — then re-run via CLI or paste in SQL Editor |
+| `repair_landing_oversized_logos.sql` | Clears multi-MB data-URL brand logos from `landing_config` (fixes white landing after hydrate). Re-upload logos under ~400KB via Platform → Landing |
 
 ## New empty database (do this)
 

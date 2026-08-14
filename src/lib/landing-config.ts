@@ -105,9 +105,30 @@ export function resolveBrandLogoUrl(
       : surface === "auth"
         ? brand.logo_url_auth
         : brand.logo_url_app;
-  if (typeof specific === "string" && specific.trim()) return specific.trim();
-  if (typeof brand.logo_url === "string" && brand.logo_url.trim()) return brand.logo_url.trim();
+  if (typeof specific === "string" && specific.trim()) {
+    return sanitizeEmbeddedAssetUrl(specific.trim());
+  }
+  if (typeof brand.logo_url === "string" && brand.logo_url.trim()) {
+    return sanitizeEmbeddedAssetUrl(brand.logo_url.trim());
+  }
   return "";
+}
+
+/**
+ * Cap embedded data-URL assets so SSR HTML stays small.
+ * A multi-MB base64 logo was duplicated in the landing SSR payload (~14MB),
+ * corrupting TanStack's dehydrated `lastMatchId` and blanking the page after hydrate.
+ * Matches safe-logo-upload (~400KB file → ~550KB data URL).
+ */
+export const MAX_LANDING_DATA_URL_CHARS = 550_000;
+
+export function sanitizeEmbeddedAssetUrl(url: unknown): string {
+  if (typeof url !== "string") return "";
+  const u = url.trim();
+  if (!u) return "";
+  if (u.startsWith("data:image/svg")) return "";
+  if (u.startsWith("data:") && u.length > MAX_LANDING_DATA_URL_CHARS) return "";
+  return u;
 }
 
 /**
@@ -1406,7 +1427,70 @@ export function mergeConfig(partial: any): LandingConfig {
     ),
   };
 
-  return merged as LandingConfig;
+  return sanitizeLandingEmbeddedAssets(merged as LandingConfig);
+}
+
+/** Drop oversized data: URLs so SSR/dehydrate stays valid (see MAX_LANDING_DATA_URL_CHARS). */
+export function sanitizeLandingEmbeddedAssets(cfg: LandingConfig): LandingConfig {
+  const brand = {
+    ...cfg.brand,
+    logo_url: sanitizeEmbeddedAssetUrl(cfg.brand.logo_url),
+    logo_url_landing: sanitizeEmbeddedAssetUrl(cfg.brand.logo_url_landing),
+    logo_url_auth: sanitizeEmbeddedAssetUrl(cfg.brand.logo_url_auth),
+    logo_url_app: sanitizeEmbeddedAssetUrl(cfg.brand.logo_url_app),
+  };
+
+  const trusted = cfg.trusted
+    ? {
+        ...cfg.trusted,
+        logos: Array.isArray(cfg.trusted.logos)
+          ? cfg.trusted.logos.map((l) => ({
+              ...l,
+              logo_url: sanitizeEmbeddedAssetUrl(l?.logo_url),
+            }))
+          : cfg.trusted.logos,
+      }
+    : cfg.trusted;
+
+  const ceo_message = cfg.ceo_message
+    ? {
+        ...cfg.ceo_message,
+        photo_url: sanitizeEmbeddedAssetUrl(cfg.ceo_message.photo_url),
+      }
+    : cfg.ceo_message;
+
+  const testimonials = cfg.testimonials
+    ? {
+        ...cfg.testimonials,
+        items: Array.isArray(cfg.testimonials.items)
+          ? cfg.testimonials.items.map((it) => ({
+              ...it,
+              photo_url: sanitizeEmbeddedAssetUrl((it as { photo_url?: string })?.photo_url),
+            }))
+          : cfg.testimonials.items,
+      }
+    : cfg.testimonials;
+
+  const board_statements = cfg.board_statements
+    ? {
+        ...cfg.board_statements,
+        items: Array.isArray(cfg.board_statements.items)
+          ? cfg.board_statements.items.map((it) => ({
+              ...it,
+              photo_url: sanitizeEmbeddedAssetUrl((it as { photo_url?: string })?.photo_url),
+            }))
+          : cfg.board_statements.items,
+      }
+    : cfg.board_statements;
+
+  return {
+    ...cfg,
+    brand,
+    trusted,
+    ceo_message,
+    testimonials,
+    board_statements,
+  };
 }
 
 export function applyPalettePreset(cfg: LandingConfig, presetId: string): LandingConfig {
@@ -1535,14 +1619,15 @@ export async function fetchLandingConfig(): Promise<LandingConfig> {
 }
 
 export async function saveLandingConfig(config: LandingConfig, userId?: string) {
+  const cleaned = sanitizeLandingEmbeddedAssets(mergeConfig(config));
   const { error } = await supabase
     .from("landing_config" as any)
-    .upsert({ id: "singleton", config: config as any, updated_by: userId ?? null });
+    .upsert({ id: "singleton", config: cleaned as any, updated_by: userId ?? null });
   if (error) throw error;
   invalidateLandingConfigMemory();
-  writeCachedLandingConfig(config);
-  landingConfigMemory = { cfg: config, at: Date.now() };
+  writeCachedLandingConfig(cleaned);
+  landingConfigMemory = { cfg: cleaned, at: Date.now() };
   if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("pmo:platform-theme-change", { detail: config }));
+    window.dispatchEvent(new CustomEvent("pmo:platform-theme-change", { detail: cleaned }));
   }
 }
