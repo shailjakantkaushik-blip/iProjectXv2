@@ -183,6 +183,14 @@ export function NotificationsBell() {
                     <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-sky-700">
                       Decision approval
                     </div>
+                  ) : n.kind === "raid_escalation" ? (
+                    <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-rose-700">
+                      RAID escalation
+                    </div>
+                  ) : n.kind === "alert_digest" ? (
+                    <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-amber-700">
+                      Email digest
+                    </div>
                   ) : null}
                 </button>
               ))

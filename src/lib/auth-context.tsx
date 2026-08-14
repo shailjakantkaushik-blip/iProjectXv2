@@ -32,6 +32,7 @@ export interface Profile {
   org_id: string | null;
   must_change_password?: boolean;
   is_active?: boolean;
+  notification_prefs?: Record<string, unknown> | null;
 }
 
 export interface Organization {

@@ -1,18 +1,16 @@
 /**
  * Portable invoice email sender.
  *
- * Supports two providers, chosen by env vars (works on Vercel + Supabase + any Node runtime):
- *   1. Resend       — set RESEND_API_KEY
- *   2. SendGrid     — set SENDGRID_API_KEY
+ * Supports Resend / SendGrid via shared transactional-email helper.
  *
  * Common env vars:
  *   INVOICE_FROM_EMAIL   e.g. "billing@yourdomain.com"
  *   INVOICE_FROM_NAME    e.g. "iProjectX Billing"        (optional)
  *   INVOICE_REPLY_TO     e.g. "support@yourdomain.com"   (optional)
- *
- * No provider SDKs are used — plain fetch keeps the code portable across
- * git/Vercel/Supabase without extra dependencies.
+ *   RESEND_API_KEY | SENDGRID_API_KEY
  */
+
+import { sendTransactionalEmail } from "@/lib/transactional-email.server";
 
 type InvoiceGstBreakdown = {
   enabled: boolean;
@@ -127,70 +125,20 @@ export async function sendInvoiceEmailRaw(args: {
 }) {
   const { to, orgName, invoice } = args;
   const gst = resolveGst(invoice, args.gst);
-  const from = process.env.INVOICE_FROM_EMAIL;
-  if (!from) throw new Error("INVOICE_FROM_EMAIL is not configured");
+  if (!process.env.INVOICE_FROM_EMAIL && !process.env.ALERTS_FROM_EMAIL) {
+    throw new Error("INVOICE_FROM_EMAIL is not configured");
+  }
 
-  const fromName = process.env.INVOICE_FROM_NAME || "Billing";
-  const replyTo = process.env.INVOICE_REPLY_TO;
   const subject = `Invoice ${invoice.invoice_number} — ${fmtMoney(
     gst.total_cents,
     invoice.currency ?? "USD",
   )} due ${invoice.due_date ?? ""}`.trim();
 
-  const html = buildHtml(orgName, invoice, gst);
-  const text = buildText(orgName, invoice, gst);
-
-  const resendKey = process.env.RESEND_API_KEY;
-  if (resendKey) {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${resendKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: `${fromName} <${from}>`,
-        to: [to],
-        subject,
-        html,
-        text,
-        reply_to: replyTo,
-      }),
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`Resend ${res.status}: ${body}`);
-    }
-    return;
-  }
-
-  const sendgridKey = process.env.SENDGRID_API_KEY;
-  if (sendgridKey) {
-    const res = await fetch("https://api.sendgrid.com/v3/mail/send", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${sendgridKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        personalizations: [{ to: [{ email: to }] }],
-        from: { email: from, name: fromName },
-        reply_to: replyTo ? { email: replyTo } : undefined,
-        subject,
-        content: [
-          { type: "text/plain", value: text },
-          { type: "text/html", value: html },
-        ],
-      }),
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`SendGrid ${res.status}: ${body}`);
-    }
-    return;
-  }
-
-  throw new Error(
-    "No email provider configured. Set RESEND_API_KEY or SENDGRID_API_KEY.",
-  );
+  await sendTransactionalEmail({
+    to,
+    subject,
+    html: buildHtml(orgName, invoice, gst),
+    text: buildText(orgName, invoice, gst),
+    fromName: process.env.INVOICE_FROM_NAME || "Billing",
+  });
 }

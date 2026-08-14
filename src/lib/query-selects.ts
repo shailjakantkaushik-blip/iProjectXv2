@@ -104,6 +104,9 @@ export const RISKS_SELECT = [
   "mitigation",
   "notes",
   "due_date",
+  "escalated_at",
+  "escalation_level",
+  "escalation_reason",
 ].join(",");
 
 export const ISSUES_SELECT = [
@@ -118,6 +121,9 @@ export const ISSUES_SELECT = [
   "target_date",
   "resolved_date",
   "resolution",
+  "escalated_at",
+  "escalation_level",
+  "escalation_reason",
 ].join(",");
 
 export const ACTIONS_SELECT = [
@@ -130,6 +136,9 @@ export const ACTIONS_SELECT = [
   "status",
   "due_date",
   "completed_date",
+  "escalated_at",
+  "escalation_level",
+  "escalation_reason",
 ].join(",");
 
 export const DECISIONS_SELECT = [

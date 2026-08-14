@@ -1,13 +1,18 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useAuth, isAdmin } from "@/lib/auth-context";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Palette, CalendarClock, ShieldCheck } from "lucide-react";
+import { Palette, CalendarClock, ShieldCheck, Mail } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { MONTH_NAMES } from "@/lib/fiscal-year";
 import { toast } from "sonner";
 import { getMfaStatus } from "@/lib/mfa";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import {
+  normalizeNotificationPrefs,
+  type NotificationPrefs,
+} from "@/lib/notification-prefs";
 
 export const Route = createFileRoute("/_authenticated/app/settings")({
   component: SettingsPage,
@@ -19,6 +24,34 @@ function SettingsPage() {
   const [fyMonth, setFyMonth] = useState<number>(organization?.fy_start_month || 4);
   const [saving, setSaving] = useState(false);
   const [mfaEnabled, setMfaEnabled] = useState<boolean | null>(null);
+  const [prefs, setPrefs] = useState(() =>
+    normalizeNotificationPrefs(profile?.notification_prefs),
+  );
+  const [savingPrefs, setSavingPrefs] = useState(false);
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("notification_prefs")
+        .eq("id", profile.id)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error) {
+        // Column may not exist until migration is applied — keep defaults.
+        setPrefsLoaded(true);
+        return;
+      }
+      setPrefs(normalizeNotificationPrefs((data as any)?.notification_prefs));
+      setPrefsLoaded(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -38,10 +71,34 @@ function SettingsPage() {
   const saveFy = async () => {
     if (!organization) return;
     setSaving(true);
-    const { error } = await supabase.from("organizations").update({ fy_start_month: fyMonth }).eq("id", organization.id);
+    const { error } = await supabase
+      .from("organizations")
+      .update({ fy_start_month: fyMonth })
+      .eq("id", organization.id);
     setSaving(false);
-    if (error) { toast.error(error.message); return; }
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
     toast.success(`Financial year now starts in ${MONTH_NAMES[fyMonth - 1]}.`);
+    await refresh();
+  };
+
+  const savePrefs = async (next: Required<NotificationPrefs>) => {
+    if (!profile?.id) return;
+    setSavingPrefs(true);
+    setPrefs(next);
+    const { error } = await supabase
+      .from("profiles")
+      .update({ notification_prefs: next as never })
+      .eq("id", profile.id);
+    setSavingPrefs(false);
+    if (error) {
+      toast.error(error.message);
+      setPrefs(normalizeNotificationPrefs(profile.notification_prefs));
+      return;
+    }
+    toast.success("Email alert preferences saved.");
     await refresh();
   };
 
@@ -50,29 +107,122 @@ function SettingsPage() {
       <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
 
       <Card>
-        <CardHeader><CardTitle>Your account</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle>Your account</CardTitle>
+        </CardHeader>
         <CardContent className="space-y-2 text-sm">
-          <div><span className="text-muted-foreground">Name:</span> {profile?.full_name}</div>
-          <div><span className="text-muted-foreground">Email:</span> {profile?.email}</div>
-          <div><span className="text-muted-foreground">Roles:</span> {roles.join(", ") || "viewer (read-only)"}</div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader><CardTitle>Organization</CardTitle><CardDescription>Details of your tenant.</CardDescription></CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          <div><span className="text-muted-foreground">Name:</span> {organization?.name}</div>
-          <div><span className="text-muted-foreground">Slug:</span> {organization?.slug}</div>
-          <div><span className="text-muted-foreground">Plan:</span> {organization?.plan}</div>
+          <div>
+            <span className="text-muted-foreground">Name:</span> {profile?.full_name}
+          </div>
+          <div>
+            <span className="text-muted-foreground">Email:</span> {profile?.email}
+          </div>
+          <div>
+            <span className="text-muted-foreground">Roles:</span>{" "}
+            {roles.join(", ") || "viewer (read-only)"}
+          </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><CalendarClock className="h-5 w-5" /> Financial Year</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Mail className="h-5 w-5" /> Email alert digests
+          </CardTitle>
           <CardDescription>
-            Choose the month your organization's fiscal year begins. Applied across timelines, FY allocations,
-            and dashboards. Current: <strong>{MONTH_NAMES[(organization?.fy_start_month || 4) - 1]}</strong>.
+            Daily outbound email for approvals awaiting you, overdue / escalated RAID, and a
+            portfolio pulse snapshot. In-app notifications in the bell always remain available.
+            Requires Resend or SendGrid on the server and a scheduled call to{" "}
+            <code className="text-[11px]">/api/public/hooks/alerts-digest</code>.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          {(
+            [
+              {
+                key: "email_digest" as const,
+                label: "Send daily email digests",
+                hint: "Master switch for outbound PMO alert emails.",
+              },
+              {
+                key: "approvals" as const,
+                label: "Pending decision approvals",
+                hint: "Decisions assigned to you that are still Pending / In Review.",
+              },
+              {
+                key: "overdue_raid" as const,
+                label: "Overdue & escalated RAID",
+                hint: "Risks, issues, and actions that are overdue or auto-escalated on your projects.",
+              },
+              {
+                key: "pulse" as const,
+                label: "Portfolio pulse snapshot",
+                hint: "Critical risks, overdue decisions, and escalated RAID counts for your org.",
+              },
+            ] as const
+          ).map((row) => (
+            <label
+              key={row.key}
+              className="flex items-center justify-between gap-4 rounded-lg border px-4 py-3"
+            >
+              <div>
+                <div className="text-sm font-medium">{row.label}</div>
+                <div className="text-xs text-muted-foreground">{row.hint}</div>
+              </div>
+              <Switch
+                checked={prefs[row.key]}
+                disabled={
+                  savingPrefs ||
+                  !prefsLoaded ||
+                  (row.key !== "email_digest" && !prefs.email_digest)
+                }
+                onCheckedChange={(v) => {
+                  const next = { ...prefs, [row.key]: v };
+                  if (row.key === "email_digest" && !v) {
+                    next.approvals = false;
+                    next.overdue_raid = false;
+                    next.pulse = false;
+                  }
+                  if (row.key === "email_digest" && v) {
+                    next.approvals = true;
+                    next.overdue_raid = true;
+                    next.pulse = true;
+                  }
+                  void savePrefs(next);
+                }}
+              />
+            </label>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Organization</CardTitle>
+          <CardDescription>Details of your tenant.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          <div>
+            <span className="text-muted-foreground">Name:</span> {organization?.name}
+          </div>
+          <div>
+            <span className="text-muted-foreground">Slug:</span> {organization?.slug}
+          </div>
+          <div>
+            <span className="text-muted-foreground">Plan:</span> {organization?.plan}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CalendarClock className="h-5 w-5" /> Financial Year
+          </CardTitle>
+          <CardDescription>
+            Choose the month your organization&apos;s fiscal year begins. Applied across
+            timelines, FY allocations, and dashboards. Current:{" "}
+            <strong>{MONTH_NAMES[(organization?.fy_start_month || 4) - 1]}</strong>.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
@@ -84,7 +234,11 @@ function SettingsPage() {
               disabled={!canEdit}
               onChange={(e) => setFyMonth(Number(e.target.value))}
             >
-              {MONTH_NAMES.map((n, i) => <option key={i} value={i + 1}>{n}</option>)}
+              {MONTH_NAMES.map((n, i) => (
+                <option key={i} value={i + 1}>
+                  {n}
+                </option>
+              ))}
             </select>
             <button
               className="rounded-md bg-primary px-3 py-1.5 text-white disabled:opacity-50"
@@ -93,10 +247,15 @@ function SettingsPage() {
             >
               {saving ? "Saving…" : "Save"}
             </button>
-            {!canEdit && <span className="text-[11px] text-muted-foreground">Only org admins can change this.</span>}
+            {!canEdit && (
+              <span className="text-[11px] text-muted-foreground">
+                Only org admins can change this.
+              </span>
+            )}
           </div>
           <div className="text-[11px] text-muted-foreground">
-            Example: April → FY ending in March. FY label uses the ending calendar year (Apr 2026 – Mar 2027 = FY27).
+            Example: April → FY ending in March. FY label uses the ending calendar year (Apr 2026
+            – Mar 2027 = FY27).
           </div>
         </CardContent>
       </Card>
@@ -137,7 +296,9 @@ function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Palette className="h-5 w-5" /> White Label & Branding</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Palette className="h-5 w-5" /> White Label & Branding
+          </CardTitle>
           <CardDescription>
             Brand name, logo, colour palette, SSO, and IP address restriction are managed by the
             platform team under White Label &amp; Branding. Organisation admins cannot edit them
@@ -146,17 +307,34 @@ function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <div className="flex items-center gap-3 rounded-md border p-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-md overflow-hidden shrink-0" style={{ background: organization?.primary_color || "#e5e7eb" }}>
-              {organization?.logo_url
-                ? <img src={organization.logo_url} alt="" className="max-h-full max-w-full object-contain" />
-                : <span className="text-white text-sm font-bold">{(organization?.brand_name || organization?.name || "?").slice(0, 2).toUpperCase()}</span>}
+            <div
+              className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md"
+              style={{ background: organization?.primary_color || "#e5e7eb" }}
+            >
+              {organization?.logo_url ? (
+                <img
+                  src={organization.logo_url}
+                  alt=""
+                  className="max-h-full max-w-full object-contain"
+                />
+              ) : (
+                <span className="text-sm font-bold text-white">
+                  {(organization?.brand_name || organization?.name || "?")
+                    .slice(0, 2)
+                    .toUpperCase()}
+                </span>
+              )}
             </div>
             <div>
-              <div className="font-semibold" style={{ color: organization?.primary_color || undefined }}>
+              <div
+                className="font-semibold"
+                style={{ color: organization?.primary_color || undefined }}
+              >
                 {organization?.brand_name || organization?.name}
               </div>
               <div className="text-[11px] text-muted-foreground">
-                Primary {organization?.primary_color ?? "—"} · Accent {organization?.accent_color ?? "—"}
+                Primary {organization?.primary_color ?? "—"} · Accent{" "}
+                {organization?.accent_color ?? "—"}
               </div>
             </div>
           </div>

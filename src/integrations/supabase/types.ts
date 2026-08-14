@@ -20,6 +20,9 @@ export type Database = {
           created_at: string
           description: string | null
           due_date: string | null
+          escalated_at: string | null
+          escalation_level: number
+          escalation_reason: string | null
           id: string
           notes: string | null
           org_id: string
@@ -35,6 +38,9 @@ export type Database = {
           created_at?: string
           description?: string | null
           due_date?: string | null
+          escalated_at?: string | null
+          escalation_level?: number
+          escalation_reason?: string | null
           id?: string
           notes?: string | null
           org_id: string
@@ -50,6 +56,9 @@ export type Database = {
           created_at?: string
           description?: string | null
           due_date?: string | null
+          escalated_at?: string | null
+          escalation_level?: number
+          escalation_reason?: string | null
           id?: string
           notes?: string | null
           org_id?: string
@@ -1043,6 +1052,9 @@ export type Database = {
         Row: {
           created_at: string
           description: string | null
+          escalated_at: string | null
+          escalation_level: number
+          escalation_reason: string | null
           id: string
           org_id: string
           owner: string | null
@@ -1059,6 +1071,9 @@ export type Database = {
         Insert: {
           created_at?: string
           description?: string | null
+          escalated_at?: string | null
+          escalation_level?: number
+          escalation_reason?: string | null
           id?: string
           org_id: string
           owner?: string | null
@@ -1075,6 +1090,9 @@ export type Database = {
         Update: {
           created_at?: string
           description?: string | null
+          escalated_at?: string | null
+          escalation_level?: number
+          escalation_reason?: string | null
           id?: string
           org_id?: string
           owner?: string | null
@@ -1503,6 +1521,7 @@ export type Database = {
           id: string
           is_active: boolean
           must_change_password: boolean
+          notification_prefs: Record<string, unknown>
           org_id: string | null
           updated_at: string
         }
@@ -1513,6 +1532,7 @@ export type Database = {
           id: string
           is_active?: boolean
           must_change_password?: boolean
+          notification_prefs?: Record<string, unknown>
           org_id?: string | null
           updated_at?: string
         }
@@ -1523,6 +1543,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           must_change_password?: boolean
+          notification_prefs?: Record<string, unknown>
           org_id?: string | null
           updated_at?: string
         }
@@ -1939,6 +1960,9 @@ export type Database = {
           created_at: string
           description: string | null
           due_date: string | null
+          escalated_at: string | null
+          escalation_level: number
+          escalation_reason: string | null
           id: string
           impact: number | null
           mitigation: string | null
@@ -1957,6 +1981,9 @@ export type Database = {
           created_at?: string
           description?: string | null
           due_date?: string | null
+          escalated_at?: string | null
+          escalation_level?: number
+          escalation_reason?: string | null
           id?: string
           impact?: number | null
           mitigation?: string | null
@@ -1975,6 +2002,9 @@ export type Database = {
           created_at?: string
           description?: string | null
           due_date?: string | null
+          escalated_at?: string | null
+          escalation_level?: number
+          escalation_reason?: string | null
           id?: string
           impact?: number | null
           mitigation?: string | null
@@ -2568,6 +2598,10 @@ export type Database = {
           invoice_id: string
           org_id: string
         }[]
+      }
+      run_raid_auto_escalation: {
+        Args: { _org_id?: string | null }
+        Returns: Json
       }
       get_org_limits: {
         Args: { _org_id: string }

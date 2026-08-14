@@ -727,7 +727,7 @@ export const DEFAULT_LANDING: LandingConfig = {
   raid: {
     eyebrow: "Governance & RAID",
     title: "Risks, Actions, Issues, Decisions — one governed spine.",
-    body: "RAID isn't a spreadsheet. In iProjectX, every entry is tied to a project, a stage gate and a status update — with owners, forums, sponsors and approvers — feeding health, pulse, and executive decisions.",
+    body: "RAID isn't a spreadsheet. In iProjectX, every entry is tied to a project, a stage gate and a status update — with owners, forums, sponsors and approvers — feeding health, pulse, and executive decisions. Critical and overdue items auto-escalate to PMs and admins; daily email digests keep approvals and RAID moving.",
     chips: [
       "Auto-escalation",
       "Approver audit trail",
