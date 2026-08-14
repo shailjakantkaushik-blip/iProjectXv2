@@ -270,8 +270,11 @@ BEGIN
       description, current_phase
     ) VALUES (
       v_org_id, v_bu_id, r.project_code, r.name, r.program,
-      v_full_name, r.priority, r.status, r.rag,
-      r.delivery_method, 'Safety Strategic', v_user_id,
+      v_full_name, r.priority,
+      r.status::public.project_status,
+      r.rag::public.project_rag,
+      r.delivery_method::public.delivery_method,
+      'Safety Strategic', v_user_id,
       r.planned_start, r.planned_end, r.planned_start, r.planned_end, r.go_live,
       r.budget, r.capex_a, r.opex_a, r.capex_i, r.opex_i,
       r.fac, r.ben_t, r.ben_r,
