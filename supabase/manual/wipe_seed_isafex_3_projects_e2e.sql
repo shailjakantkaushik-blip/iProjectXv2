@@ -21,7 +21,7 @@
 --   stage_gate_checklist_responses (templates kept)
 --
 -- SEEDS
---   3 projects (SAFE-001…003) with Core + second stream, stage gates only for Waterfall/Hybrid (Agile = sprints only),
+--   3 projects (SAFE-001…003) with Core + second stream, method-specific stage gates when uses_stage_gates (Agile uses Agile template),
 --   milestones, FY + monthly finance, resources/allocations,
 --   benefits, risks, issues, actions, decisions, stakeholders,
 --   status updates, documents, lessons, change requests, sprints,
@@ -185,15 +185,23 @@ $wipe_gates$;
 DELETE FROM public.projects WHERE org_id = current_setting('isafex.seed_org_id')::uuid;
 
 -- ---------- C) Ensure delivery methods + per-method gate templates ----------
--- Agile has uses_stage_gates=false (sprints only). Waterfall/Hybrid keep gate templates.
+-- When a method has uses_stage_gates=true, project gates come from THAT method's
+-- stage_gate_definitions (Agile → Agile template, not Waterfall).
 DO $ensure_methods$
+DECLARE
+  v_org uuid := current_setting('isafex.seed_org_id')::uuid;
 BEGIN
   IF EXISTS (
     SELECT 1 FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'public' AND p.proname = 'ensure_org_delivery_methods'
   ) THEN
-    PERFORM public.ensure_org_delivery_methods(current_setting('isafex.seed_org_id')::uuid);
+    PERFORM public.ensure_org_delivery_methods(v_org);
+    -- Demo: enable stage gates on Agile so the Agile template is exercised
+    -- (Discovery → MVP Definition → Build / Iterate → Release Readiness → Launch → Hypercare).
+    UPDATE public.delivery_methods
+    SET uses_stage_gates = true, updated_at = now()
+    WHERE org_id = v_org AND code = 'agile';
   ELSE
     RAISE NOTICE 'ensure_org_delivery_methods missing — apply delivery_methods_stage_gates.sql first';
   END IF;
@@ -458,9 +466,10 @@ BEGIN
         )
       );
 
-      -- Resolve delivery method flags (Agile must not receive Waterfall stage gates)
+      -- Resolve delivery method + method-specific gate template
       method_id := NULL;
       uses_gates := NULL;
+      project_gates := ARRAY[]::text[];
       SELECT dm.id, dm.uses_stage_gates
         INTO method_id, uses_gates
       FROM public.delivery_methods dm
@@ -471,8 +480,18 @@ BEGIN
         -- Fallback if delivery_methods table not migrated yet
         uses_gates := methods[i] IS DISTINCT FROM 'Agile';
       END IF;
-      IF uses_gates THEN
-        project_gates := gate_names;
+      IF coalesce(uses_gates, false) THEN
+        -- Prefer THIS method's configured gates (Agile ≠ Waterfall template)
+        IF method_id IS NOT NULL THEN
+          SELECT coalesce(array_agg(d.gate_name ORDER BY d.sort_order), ARRAY[]::text[])
+            INTO project_gates
+          FROM public.stage_gate_definitions d
+          WHERE d.delivery_method_id = method_id
+            AND d.is_active = true;
+        END IF;
+        IF coalesce(array_length(project_gates, 1), 0) = 0 THEN
+          project_gates := gate_names; -- legacy Waterfall fallback
+        END IF;
         g_idx := array_position(project_gates, phases[i]);
         IF g_idx IS NULL THEN g_idx := 1; END IF;
       ELSE

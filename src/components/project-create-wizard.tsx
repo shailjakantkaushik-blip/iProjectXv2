@@ -785,14 +785,20 @@ export function ProjectCreateWizard() {
                     ? " and plan sprints under Agile / Sprints after create."
                     : "."}
                 </p>
-              ) : null}
-              {!gateDefs.length ? (
+              ) : !gateDefs.length ? (
                 <p className="text-sm text-amber-800">
                   No active stage gate definitions for this method. Configure them under Delivery
                   Methods &amp; Gates, or skip and add gates later.
                 </p>
               ) : (
                 <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Gates from the{" "}
+                    <span className="font-medium">
+                      {selectedMethod?.name ?? project.delivery_method}
+                    </span>{" "}
+                    template — not shared with other delivery methods.
+                  </p>
                   {gates.map((g, i) => (
                     <div
                       key={g.gate_name}

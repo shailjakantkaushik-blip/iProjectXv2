@@ -22,6 +22,12 @@ import {
   approvalBlockedReason,
   summarizeGateChecklist,
 } from "@/lib/stage-gate-checklist";
+import {
+  fetchDeliveryMethods,
+  findDeliveryMethod,
+  methodUsesStageGates,
+  deliveryMethodsQueryKey,
+} from "@/lib/delivery-methods";
 
 export const Route = createFileRoute("/_authenticated/app/stage-gates")({
   component: StageGatesPage,
@@ -67,6 +73,47 @@ function StageGatesPage() {
     queryFn: () => fetchOrgStreams(organization!.id),
     enabled: !!organization?.id,
   });
+
+  const { data: deliveryMethods = [] } = useQuery({
+    queryKey: deliveryMethodsQueryKey(orgId),
+    queryFn: () => fetchDeliveryMethods(orgId!, { activeOnly: true }),
+    enabled: !!orgId,
+  });
+
+  const phasesByMethodId = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const d of defs as any[]) {
+      const mid = String(d.delivery_method_id || "");
+      if (!mid) continue;
+      const list = m.get(mid) || [];
+      list.push(d.gate_name);
+      m.set(mid, list);
+    }
+    return m;
+  }, [defs]);
+
+  const phasesForProject = useCallback(
+    (p: any): string[] => {
+      const method =
+        (p?.delivery_method_id &&
+          deliveryMethods.find((m) => m.id === p.delivery_method_id)) ||
+        findDeliveryMethod(deliveryMethods, p?.delivery_method);
+      if (!methodUsesStageGates(method, p?.delivery_method)) return [];
+      if (method?.id && phasesByMethodId.has(method.id)) {
+        return phasesByMethodId.get(method.id) || [];
+      }
+      // Fallback: names already on this project's gates
+      return Array.from(
+        new Set(
+          (gates as any[])
+            .filter((g) => g.project_id === p?.id)
+            .map((g) => g.gate_name)
+            .filter(Boolean),
+        ),
+      ) as string[];
+    },
+    [deliveryMethods, phasesByMethodId, gates],
+  );
 
   const { data: checklistItems = [] } = useQuery({
     queryKey: ["stage_gate_checklist_items", orgId],
@@ -159,11 +206,20 @@ function StageGatesPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  // Gate distribution: rows = gate_name from configured definitions, stacked by status.
+  // Gate distribution: names from gates actually on projects (Agile vs Waterfall templates).
   const distribution = useMemo(() => {
-    const names = defs.length
-      ? defs.map((d: any) => d.gate_name)
-      : Array.from(new Set(gates.map((g: any) => g.gate_name).filter(Boolean)));
+    const orderIdx = new Map<string, number>();
+    (defs as any[]).forEach((d, i) => {
+      if (!orderIdx.has(d.gate_name)) orderIdx.set(d.gate_name, d.sort_order ?? i);
+    });
+    const names = Array.from(
+      new Set((gates as any[]).map((g) => g.gate_name).filter(Boolean)),
+    ).sort((a, b) => {
+      const oa = orderIdx.get(a as string);
+      const ob = orderIdx.get(b as string);
+      if (oa !== undefined && ob !== undefined) return oa - ob;
+      return String(a).localeCompare(String(b));
+    }) as string[];
     const statuses = ["Approved", "In Review", "Pending", "On Hold", "Rejected"];
     return names.map((n: string) => {
       const row: any = { gate: n };
@@ -190,17 +246,17 @@ function StageGatesPage() {
       g.status !== "Rejected",
   ).length;
 
-  // Register: for each project, show CURRENT (latest approved / last touched) + NEXT (earliest upcoming un-approved) gate
+  // Register: for each project, show CURRENT + NEXT using THAT method's gate order.
   const gatesByProject = useMemo(() => {
     const m = new Map<string, any[]>();
     gates.forEach((g: any) => {
       if (!m.has(g.project_id)) m.set(g.project_id, []);
       m.get(g.project_id)!.push(g);
     });
-    // Sort each project's gates by definition sort_order (fallback: planned_date)
-    const orderIdx = new Map<string, number>();
-    defs.forEach((d: any, i: number) => orderIdx.set(d.gate_name, d.sort_order ?? i));
-    m.forEach((arr) =>
+    m.forEach((arr, projectId) => {
+      const project = (projects as any[]).find((p) => p.id === projectId);
+      const orderIdx = new Map<string, number>();
+      phasesForProject(project).forEach((name, i) => orderIdx.set(name, i));
       arr.sort((a, b) => {
         const oa = orderIdx.get(a.gate_name);
         const ob = orderIdx.get(b.gate_name);
@@ -208,15 +264,10 @@ function StageGatesPage() {
         const da = a.planned_date ? new Date(a.planned_date).getTime() : Infinity;
         const db = b.planned_date ? new Date(b.planned_date).getTime() : Infinity;
         return da - db;
-      }),
-    );
+      });
+    });
     return m;
-  }, [gates, defs]);
-
-  const orgPhases = useMemo(
-    () => (defs as any[]).map((d) => d.gate_name).filter(Boolean),
-    [defs],
-  );
+  }, [gates, projects, phasesForProject]);
 
   const register = useMemo(() => {
     const streamsByProject = new Map<string, any[]>();
@@ -238,6 +289,11 @@ function StageGatesPage() {
     }[] = [];
 
     for (const p of projects as any[]) {
+      const orgPhases = phasesForProject(p);
+      const projectGateCount = (gatesByProject.get(p.id) || []).length;
+      // Skip methods with gates disabled and no gate rows (e.g. sprint-only Agile).
+      if (!orgPhases.length && !projectGateCount) continue;
+
       const projectStreams = (streamsByProject.get(p.id) || []).sort(
         (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
       );
@@ -246,6 +302,7 @@ function StageGatesPage() {
           const gs = (gates as any[]).filter(
             (g) => g.stream_id === s.id || (!g.stream_id && g.project_id === p.id && s.is_default),
           );
+          if (!gs.length && !orgPhases.length) continue;
           const { current, next } = resolveCurrentAndNextGate(gs, orgPhases);
           const phase = resolveCurrentStage(p, gs, orgPhases);
           rows.push({
@@ -261,6 +318,7 @@ function StageGatesPage() {
         }
       } else {
         const gs = gatesByProject.get(p.id) || [];
+        if (!gs.length && !orgPhases.length) continue;
         const { current, next } = resolveCurrentAndNextGate(gs, orgPhases);
         const phase = resolveCurrentStage(p, gs, orgPhases);
         rows.push({
@@ -276,7 +334,7 @@ function StageGatesPage() {
       }
     }
     return rows;
-  }, [projects, gatesByProject, orgPhases, streams, gates]);
+  }, [projects, gatesByProject, phasesForProject, streams, gates]);
 
   const columns: ColumnarColumn<(typeof register)[number]>[] = useMemo(
     () => [

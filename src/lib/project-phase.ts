@@ -163,17 +163,24 @@ export async function persistCurrentPhaseFromGates(
     .eq("project_id", projectId);
   const { data: project } = await client
     .from("projects")
-    .select("current_phase")
+    .select("current_phase,delivery_method_id,org_id")
     .eq("id", projectId)
     .maybeSingle();
 
   let phases = orgPhases;
   if (!phases.length) {
-    const { data: defs } = await client
+    let defsQuery = client
       .from("stage_gate_definitions")
       .select("gate_name")
       .eq("is_active", true)
       .order("sort_order", { ascending: true });
+    // Prefer this project's delivery-method template (Agile ≠ Waterfall gates).
+    if (project?.delivery_method_id) {
+      defsQuery = defsQuery.eq("delivery_method_id", project.delivery_method_id);
+    } else if (project?.org_id) {
+      defsQuery = defsQuery.eq("org_id", project.org_id);
+    }
+    const { data: defs } = await defsQuery;
     phases = (defs ?? []).map((d: any) => d.gate_name).filter(Boolean);
   }
 
