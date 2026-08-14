@@ -41,7 +41,6 @@ import {
 import { LogoSizeControls } from "@/components/logo-size-controls";
 import { PageLoading } from "@/components/page-loading";
 
-const MAX_LOGO_BYTES = 5 * 1024 * 1024;
 const MAX_PHOTO_BYTES = 1024 * 1024;
 
 export const Route = createFileRoute("/_authenticated/platform/landing")({
@@ -267,7 +266,8 @@ function LandingConfigPage() {
                 </Label>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Upload a distinct logo for the public landing page, sign-in screens, and the
-                  authenticated app. Each surface is independent.
+                  authenticated app. Each surface is independent. Use PNG/JPEG/WebP under ~400KB —
+                  oversized data-URL logos blank the public site after load.
                 </p>
               </div>
 
