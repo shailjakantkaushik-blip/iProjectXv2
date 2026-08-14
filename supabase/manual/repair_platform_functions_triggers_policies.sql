@@ -9,6 +9,8 @@
 --
 -- Safe to re-run: uses CREATE OR REPLACE FUNCTION, DROP POLICY/TRIGGER IF EXISTS,
 -- CREATE INDEX IF NOT EXISTS, and ADD COLUMN IF NOT EXISTS where possible.
+-- Function bodies are de-duplicated to the *latest* migration version so early
+-- has_role(text = app_role) definitions are not replayed.
 --
 -- Does NOT recreate enums/tables from scratch and does NOT insert seed data.
 -- For a brand-new empty database, prefer instead:
@@ -17,12 +19,42 @@
 --   supabase/manual/seed_platform_baseline.sql
 --   (plus org/project seeds as needed)
 --
+-- If you only hit "operator does not exist: text = app_role", you can run just:
+--   supabase/manual/fix_text_app_role_ops.sql
+--
 -- HOW TO APPLY:
 -- 1. Run supabase/manual/check_platform_ddl.sql (optional inventory)
 -- 2. Supabase Dashboard → SQL Editor (postgres / service_role)
 -- 3. Paste/run this file
 -- 4. Re-run check_platform_ddl.sql to confirm functions/triggers/policies
 -- =============================================================================
+
+-- =============================================================================
+-- Bootstrap: user_roles.role / role_table_permissions.role must be text
+-- before installing has_role / RLS helpers (avoids text = app_role errors).
+-- =============================================================================
+DROP POLICY IF EXISTS "cert_org_admin_select" ON public.org_license_certificates;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'user_roles'
+      AND column_name = 'role' AND udt_name = 'app_role'
+  ) THEN
+    ALTER TABLE public.user_roles
+      ALTER COLUMN role TYPE text USING role::text;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'role_table_permissions'
+      AND column_name = 'role' AND udt_name = 'app_role'
+  ) THEN
+    ALTER TABLE public.role_table_permissions
+      ALTER COLUMN role TYPE text USING role::text;
+  END IF;
+END $$;
 
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.organizations TO authenticated;
@@ -75,41 +107,6 @@ ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 CREATE OR REPLACE FUNCTION public.get_user_org(_user_id UUID)
 RETURNS UUID LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT org_id FROM public.profiles WHERE id = _user_id
-$$;
-
-
-
-CREATE OR REPLACE FUNCTION public.has_role(_user_id UUID, _role public.app_role)
-RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = public AS $$
-  SELECT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = _user_id AND role = _role)
-$$;
-
-
-
-CREATE OR REPLACE FUNCTION public.has_any_admin(_user_id UUID)
-RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = public AS $$
-  SELECT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = _user_id AND role IN ('admin','org_admin'))
-$$;
-
-
-
-CREATE OR REPLACE FUNCTION public.can_edit_project(_user_id UUID, _project_id UUID)
-RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = public AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM public.projects p
-    WHERE p.id = _project_id
-      AND p.org_id = public.get_user_org(_user_id)
-      AND (
-        public.has_any_admin(_user_id)
-        OR p.pm_user_id = _user_id
-        OR EXISTS (
-          SELECT 1 FROM public.user_roles ur
-          WHERE ur.user_id = _user_id
-            AND ur.role = 'bu_lead'
-            AND (ur.bu_id IS NULL OR ur.bu_id = p.bu_id)
-        )
-      )
-  )
 $$;
 
 DROP POLICY IF EXISTS "org_read_own" ON public.organizations;
@@ -267,20 +264,6 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
-
-
-
--- Helper RPC: create org + assign current user as admin (used on onboarding)
-CREATE OR REPLACE FUNCTION public.create_org_and_join(_name TEXT, _slug TEXT)
-RETURNS UUID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE new_org UUID;
-BEGIN
-  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'not authenticated'; END IF;
-  INSERT INTO public.organizations (name, slug) VALUES (_name, _slug) RETURNING id INTO new_org;
-  UPDATE public.profiles SET org_id = new_org WHERE id = auth.uid();
-  INSERT INTO public.user_roles (user_id, org_id, role) VALUES (auth.uid(), new_org, 'org_admin');
-  RETURN new_org;
-END $$;
 
 
 
@@ -994,13 +977,6 @@ ALTER TABLE public.change_requests ADD COLUMN IF NOT EXISTS notes text;
 ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'platform_admin';
 
 
-
-CREATE OR REPLACE FUNCTION public.is_platform_admin(_user_id uuid)
-RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
-  SELECT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = _user_id AND role::text = 'platform_admin')
-$$;
-
-
 GRANT SELECT ON public.billing_plans TO anon, authenticated;
 
 
@@ -1288,54 +1264,6 @@ DROP TRIGGER IF EXISTS trg_governance_channels_updated_at ON public.governance_c
 CREATE TRIGGER trg_governance_channels_updated_at
   BEFORE UPDATE ON public.governance_channels
   FOR EACH ROW EXECUTE FUNCTION public.tg_set_updated_at();
-
-
-
-
-
--- =============================================================================
--- 20260720190943_16e46bed-def4-4d08-9101-3bfd417aadf1.sql
--- =============================================================================
-
-
-CREATE OR REPLACE FUNCTION public.tg_milestone_to_status_update()
-RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE
-  proj_name text;
-  msg text;
-  is_new_complete boolean := false;
-BEGIN
-  IF TG_OP = 'INSERT' THEN
-    msg := 'Milestone added: ' || NEW.name;
-  ELSIF TG_OP = 'UPDATE' THEN
-    IF NEW.actual_date IS NOT NULL AND (OLD.actual_date IS NULL OR OLD.actual_date <> NEW.actual_date) THEN
-      msg := 'Milestone completed: ' || NEW.name || ' on ' || NEW.actual_date::text;
-      is_new_complete := true;
-    ELSIF COALESCE(NEW.status,'') <> COALESCE(OLD.status,'') THEN
-      msg := 'Milestone status changed to ' || COALESCE(NEW.status,'—') || ': ' || NEW.name;
-    ELSIF COALESCE(NEW.planned_date::text,'') <> COALESCE(OLD.planned_date::text,'') THEN
-      msg := 'Milestone rescheduled: ' || NEW.name || ' → ' || COALESCE(NEW.planned_date::text,'TBD');
-    ELSE
-      RETURN NEW;
-    END IF;
-  ELSE
-    RETURN NEW;
-  END IF;
-
-  SELECT name INTO proj_name FROM public.projects WHERE id = NEW.project_id;
-
-  INSERT INTO public.status_updates (org_id, project_id, update_date, reporter, overall_rag, progress_summary, achievements)
-  VALUES (
-    NEW.org_id,
-    NEW.project_id,
-    COALESCE(NEW.actual_date, CURRENT_DATE),
-    COALESCE(NEW.owner, 'System'),
-    'Green',
-    msg,
-    CASE WHEN is_new_complete THEN '✅ ' || NEW.name ELSE NULL END
-  );
-  RETURN NEW;
-END $$;
 
 
 
@@ -1695,37 +1623,6 @@ CREATE INDEX IF NOT EXISTS idx_decisions_outcome_approver
 
 
 
--- Stamp approval_requested_at when an approver is assigned for a pending review.
-CREATE OR REPLACE FUNCTION public.tg_decision_approval_stamp()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  IF NEW.approver_user_id IS NOT NULL
-     AND COALESCE(NEW.outcome, 'Pending') IN ('Pending', 'In Review')
-     AND (
-       TG_OP = 'INSERT'
-       OR OLD.approver_user_id IS DISTINCT FROM NEW.approver_user_id
-       OR (OLD.outcome IS DISTINCT FROM NEW.outcome AND NEW.outcome IN ('Pending', 'In Review'))
-     )
-  THEN
-    NEW.approval_requested_at := COALESCE(NEW.approval_requested_at, now());
-  END IF;
-
-  IF NEW.outcome IN ('Approved', 'Rejected')
-     AND (TG_OP = 'INSERT' OR OLD.outcome IS DISTINCT FROM NEW.outcome)
-  THEN
-    NEW.approved_at := COALESCE(NEW.approved_at, now());
-  END IF;
-
-  RETURN NEW;
-END;
-$$;
-
-
-
 DROP TRIGGER IF EXISTS trg_decision_approval_stamp ON public.decisions;
 
 
@@ -1734,74 +1631,6 @@ CREATE TRIGGER trg_decision_approval_stamp
   ON public.decisions
   FOR EACH ROW
   EXECUTE FUNCTION public.tg_decision_approval_stamp();
-
-
-
--- Notify the assigned approver (SECURITY DEFINER bypasses insert RLS).
-CREATE OR REPLACE FUNCTION public.tg_decision_notify_approver()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  proj_code text;
-  proj_name text;
-  title_txt text;
-  body_txt text;
-  should_notify boolean := false;
-BEGIN
-  IF NEW.approver_user_id IS NULL THEN
-    RETURN NEW;
-  END IF;
-
-  IF COALESCE(NEW.outcome, 'Pending') NOT IN ('Pending', 'In Review') THEN
-    RETURN NEW;
-  END IF;
-
-  IF TG_OP = 'INSERT' THEN
-    should_notify := true;
-  ELSIF OLD.approver_user_id IS DISTINCT FROM NEW.approver_user_id THEN
-    should_notify := true;
-  ELSIF OLD.outcome IS DISTINCT FROM NEW.outcome
-        AND NEW.outcome IN ('Pending', 'In Review') THEN
-    should_notify := true;
-  END IF;
-
-  IF NOT should_notify THEN
-    RETURN NEW;
-  END IF;
-
-  SELECT p.project_code, p.name
-    INTO proj_code, proj_name
-  FROM public.projects p
-  WHERE p.id = NEW.project_id;
-
-  title_txt := 'Decision approval requested';
-  body_txt := COALESCE(NEW.title, 'Untitled decision')
-    || CASE
-         WHEN proj_code IS NOT NULL OR proj_name IS NOT NULL
-           THEN ' · ' || COALESCE(proj_code || ' — ', '') || COALESCE(proj_name, '')
-         ELSE ''
-       END
-    || CASE
-         WHEN NEW.outcome IS NOT NULL THEN ' (' || NEW.outcome || ')'
-         ELSE ''
-       END;
-
-  INSERT INTO public.notifications (user_id, org_id, kind, title, body, link)
-  VALUES (
-    NEW.approver_user_id,
-    NEW.org_id,
-    'decision_approval',
-    title_txt,
-    body_txt,
-    '/app/decisions?awaiting=me'
-  );
-
-  RETURN NEW;
-END;
-$$;
 
 
 
@@ -1978,119 +1807,6 @@ ALTER TABLE public.organizations
 
 
 
-CREATE OR REPLACE FUNCTION public.user_can_view_project(p_user_id uuid, p_project_id uuid)
-RETURNS boolean
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_org_id uuid;
-  v_program text;
-  v_rules jsonb;
-  v_user_roles text[];
-  v_matched boolean := false;
-  v_rule jsonb;
-  v_mode text;
-BEGIN
-  IF p_user_id IS NULL OR p_project_id IS NULL THEN
-    RETURN false;
-  END IF;
-
-  SELECT p.org_id, coalesce(p.program, '')
-  INTO v_org_id, v_program
-  FROM public.projects p
-  WHERE p.id = p_project_id;
-
-  IF v_org_id IS NULL THEN
-    RETURN false;
-  END IF;
-
-  -- Platform admins see everything
-  IF EXISTS (
-    SELECT 1 FROM public.user_roles ur
-    WHERE ur.user_id = p_user_id AND ur.role::text = 'platform_admin'
-  ) THEN
-    RETURN true;
-  END IF;
-
-  -- Must belong to the project's organisation
-  IF public.get_user_org(p_user_id) IS DISTINCT FROM v_org_id THEN
-    RETURN false;
-  END IF;
-
-  -- Org / workspace admins always see all
-  IF public.has_any_admin(p_user_id) THEN
-    RETURN true;
-  END IF;
-
-  -- Anyone authorised to edit the project can view it
-  IF public.can_edit_project(p_user_id, p_project_id) THEN
-    RETURN true;
-  END IF;
-
-  SELECT coalesce(o.ui_config->'project_visibility'->'rules', '[]'::jsonb)
-  INTO v_rules
-  FROM public.organizations o
-  WHERE o.id = v_org_id;
-
-  IF v_rules IS NULL OR jsonb_typeof(v_rules) <> 'array' OR jsonb_array_length(v_rules) = 0 THEN
-    RETURN true;
-  END IF;
-
-  SELECT coalesce(array_agg(lower(ur.role::text)), ARRAY[]::text[])
-  INTO v_user_roles
-  FROM public.user_roles ur
-  WHERE ur.user_id = p_user_id
-    AND (ur.org_id = v_org_id OR ur.org_id IS NULL);
-
-  -- Union of access across matching role rules (OR). Unconfigured roles => full access.
-  FOR v_rule IN
-    SELECT r
-    FROM jsonb_array_elements(v_rules) AS r
-    WHERE lower(coalesce(r->>'role', '')) = ANY (v_user_roles)
-  LOOP
-    v_matched := true;
-    v_mode := lower(coalesce(v_rule->>'mode', 'all'));
-
-    IF v_mode = 'all' OR v_mode = '' THEN
-      RETURN true;
-    END IF;
-
-    IF v_mode = 'programs' THEN
-      IF EXISTS (
-        SELECT 1
-        FROM jsonb_array_elements_text(coalesce(v_rule->'programs', '[]'::jsonb)) AS prog(val)
-        WHERE lower(trim(prog.val)) = lower(trim(v_program))
-          AND trim(v_program) <> ''
-      ) THEN
-        RETURN true;
-      END IF;
-    ELSIF v_mode = 'projects' THEN
-      IF EXISTS (
-        SELECT 1
-        FROM jsonb_array_elements_text(coalesce(v_rule->'project_ids', '[]'::jsonb)) AS pid(val)
-        WHERE pid.val = p_project_id::text
-      ) THEN
-        RETURN true;
-      END IF;
-    ELSE
-      RETURN true;
-    END IF;
-  END LOOP;
-
-  -- No custom rule for this user's roles => default full access
-  IF NOT v_matched THEN
-    RETURN true;
-  END IF;
-
-  RETURN false;
-END;
-$$;
-
-
-
 REVOKE ALL ON FUNCTION public.user_can_view_project(uuid, uuid) FROM PUBLIC;
 
 
@@ -2198,151 +1914,6 @@ END $$;
 
 ALTER TABLE public.organizations
   ADD COLUMN IF NOT EXISTS ui_config jsonb NOT NULL DEFAULT '{}'::jsonb;
-
-
-
-CREATE OR REPLACE FUNCTION public.user_can_view_project(p_user_id uuid, p_project_id uuid)
-RETURNS boolean
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_org_id uuid;
-  v_program text;
-  v_cfg jsonb;
-  v_rules jsonb;
-  v_user_rules jsonb;
-  v_user_rule jsonb;
-  v_user_roles text[];
-  v_matched boolean := false;
-  v_rule jsonb;
-  v_mode text;
-BEGIN
-  IF p_user_id IS NULL OR p_project_id IS NULL THEN
-    RETURN false;
-  END IF;
-
-  SELECT p.org_id, coalesce(p.program, '')
-  INTO v_org_id, v_program
-  FROM public.projects p
-  WHERE p.id = p_project_id;
-
-  IF v_org_id IS NULL THEN
-    RETURN false;
-  END IF;
-
-  IF EXISTS (
-    SELECT 1 FROM public.user_roles ur
-    WHERE ur.user_id = p_user_id AND ur.role::text = 'platform_admin'
-  ) THEN
-    RETURN true;
-  END IF;
-
-  IF public.get_user_org(p_user_id) IS DISTINCT FROM v_org_id THEN
-    RETURN false;
-  END IF;
-
-  IF public.has_any_admin(p_user_id) THEN
-    RETURN true;
-  END IF;
-
-  IF public.can_edit_project(p_user_id, p_project_id) THEN
-    RETURN true;
-  END IF;
-
-  SELECT coalesce(o.ui_config->'project_visibility', '{}'::jsonb)
-  INTO v_cfg
-  FROM public.organizations o
-  WHERE o.id = v_org_id;
-
-  v_rules := coalesce(v_cfg->'rules', '[]'::jsonb);
-  v_user_rules := coalesce(v_cfg->'user_rules', '[]'::jsonb);
-
-  -- Per-user override wins over role rules when present
-  SELECT r
-  INTO v_user_rule
-  FROM jsonb_array_elements(
-    CASE WHEN jsonb_typeof(v_user_rules) = 'array' THEN v_user_rules ELSE '[]'::jsonb END
-  ) AS r
-  WHERE r->>'user_id' = p_user_id::text
-  LIMIT 1;
-
-  IF v_user_rule IS NOT NULL THEN
-    v_mode := lower(coalesce(v_user_rule->>'mode', 'all'));
-    IF v_mode = 'all' OR v_mode = '' THEN
-      RETURN true;
-    END IF;
-    IF v_mode = 'programs' THEN
-      RETURN EXISTS (
-        SELECT 1
-        FROM jsonb_array_elements_text(coalesce(v_user_rule->'programs', '[]'::jsonb)) AS prog(val)
-        WHERE lower(trim(prog.val)) = lower(trim(v_program))
-          AND trim(v_program) <> ''
-      );
-    END IF;
-    IF v_mode = 'projects' THEN
-      RETURN EXISTS (
-        SELECT 1
-        FROM jsonb_array_elements_text(coalesce(v_user_rule->'project_ids', '[]'::jsonb)) AS pid(val)
-        WHERE pid.val = p_project_id::text
-      );
-    END IF;
-    RETURN true;
-  END IF;
-
-  IF v_rules IS NULL OR jsonb_typeof(v_rules) <> 'array' OR jsonb_array_length(v_rules) = 0 THEN
-    RETURN true;
-  END IF;
-
-  SELECT coalesce(array_agg(lower(ur.role::text)), ARRAY[]::text[])
-  INTO v_user_roles
-  FROM public.user_roles ur
-  WHERE ur.user_id = p_user_id
-    AND (ur.org_id = v_org_id OR ur.org_id IS NULL);
-
-  FOR v_rule IN
-    SELECT r
-    FROM jsonb_array_elements(v_rules) AS r
-    WHERE lower(coalesce(r->>'role', '')) = ANY (v_user_roles)
-  LOOP
-    v_matched := true;
-    v_mode := lower(coalesce(v_rule->>'mode', 'all'));
-
-    IF v_mode = 'all' OR v_mode = '' THEN
-      RETURN true;
-    END IF;
-
-    IF v_mode = 'programs' THEN
-      IF EXISTS (
-        SELECT 1
-        FROM jsonb_array_elements_text(coalesce(v_rule->'programs', '[]'::jsonb)) AS prog(val)
-        WHERE lower(trim(prog.val)) = lower(trim(v_program))
-          AND trim(v_program) <> ''
-      ) THEN
-        RETURN true;
-      END IF;
-    ELSIF v_mode = 'projects' THEN
-      IF EXISTS (
-        SELECT 1
-        FROM jsonb_array_elements_text(coalesce(v_rule->'project_ids', '[]'::jsonb)) AS pid(val)
-        WHERE pid.val = p_project_id::text
-      ) THEN
-        RETURN true;
-      END IF;
-    ELSE
-      RETURN true;
-    END IF;
-  END LOOP;
-
-  IF NOT v_matched THEN
-    RETURN true;
-  END IF;
-
-  RETURN false;
-END;
-$$;
 
 
 
@@ -3286,135 +2857,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS resource_allocations_stream_uidx
 
 
 
--- ========== Enable streams: create Core + migrate children ==========
-CREATE OR REPLACE FUNCTION public.enable_project_streams(p_project_id uuid)
-RETURNS uuid
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_org uuid;
-  v_stream uuid;
-  v_proj public.projects%ROWTYPE;
-BEGIN
-  SELECT * INTO v_proj FROM public.projects WHERE id = p_project_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Project not found';
-  END IF;
-  v_org := v_proj.org_id;
-  IF v_org IS DISTINCT FROM public.get_user_org(auth.uid())
-     AND NOT public.is_platform_admin(auth.uid()) THEN
-    RAISE EXCEPTION 'Not allowed to enable streams for this project';
-  END IF;
-
-  -- Already enabled: return default stream
-  IF v_proj.streams_enabled THEN
-    SELECT id INTO v_stream
-    FROM public.project_streams
-    WHERE project_id = p_project_id AND is_default
-    LIMIT 1;
-    IF v_stream IS NOT NULL THEN
-      RETURN v_stream;
-    END IF;
-  END IF;
-
-  INSERT INTO public.project_streams (
-    org_id, project_id, name, code, is_default, sort_order, status, rag, owner,
-    planned_start_date, planned_end_date, actual_start_date, actual_end_date,
-    budget, capex_approved, capex_incurred, opex_approved, opex_incurred,
-    forecast_at_completion
-  )
-  VALUES (
-    v_org, p_project_id, 'Core', 'CORE', true, 0,
-    COALESCE(v_proj.status::text, 'In Progress'), v_proj.rag, v_proj.sponsor,
-    COALESCE(v_proj.planned_start_date, v_proj.start_date),
-    COALESCE(v_proj.planned_end_date, v_proj.end_date),
-    v_proj.actual_start_date, v_proj.actual_end_date,
-    COALESCE(v_proj.budget, 0),
-    COALESCE(v_proj.capex_approved, 0), COALESCE(v_proj.capex_incurred, 0),
-    COALESCE(v_proj.opex_approved, 0), COALESCE(v_proj.opex_incurred, 0),
-    v_proj.forecast_at_completion
-  )
-  ON CONFLICT (project_id, name) DO UPDATE
-    SET is_default = true,
-        updated_at = now()
-  RETURNING id INTO v_stream;
-
-  UPDATE public.stage_gates SET stream_id = v_stream
-   WHERE project_id = p_project_id AND stream_id IS NULL;
-  UPDATE public.milestones SET stream_id = v_stream
-   WHERE project_id = p_project_id AND stream_id IS NULL;
-  UPDATE public.financials_monthly SET stream_id = v_stream
-   WHERE project_id = p_project_id AND stream_id IS NULL;
-  UPDATE public.fy_allocations SET stream_id = v_stream
-   WHERE project_id = p_project_id AND stream_id IS NULL;
-  UPDATE public.resource_allocations SET stream_id = v_stream
-   WHERE project_id = p_project_id AND stream_id IS NULL;
-
-  UPDATE public.projects
-     SET streams_enabled = true, updated_at = now()
-   WHERE id = p_project_id;
-
-  RETURN v_stream;
-END;
-$$;
-
-
-
 GRANT EXECUTE ON FUNCTION public.enable_project_streams(uuid) TO authenticated;
-
-
-
--- ========== Roll project schedule + finance from streams ==========
-CREATE OR REPLACE FUNCTION public.rollup_project_from_streams(p_project_id uuid)
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_enabled boolean;
-BEGIN
-  SELECT streams_enabled INTO v_enabled FROM public.projects WHERE id = p_project_id;
-  IF NOT COALESCE(v_enabled, false) THEN
-    RETURN;
-  END IF;
-
-  UPDATE public.projects p SET
-    planned_start_date = s.min_ps,
-    planned_end_date   = s.max_pe,
-    actual_start_date  = s.min_as,
-    actual_end_date    = s.max_ae,
-    start_date = COALESCE(s.min_as, s.min_ps, p.start_date),
-    end_date   = COALESCE(s.max_ae, s.max_pe, p.end_date),
-    budget = COALESCE(s.sum_budget, 0),
-    capex_approved = COALESCE(s.sum_capex_a, 0),
-    capex_incurred = COALESCE(s.sum_capex_i, 0),
-    opex_approved = COALESCE(s.sum_opex_a, 0),
-    opex_incurred = COALESCE(s.sum_opex_i, 0),
-    forecast_at_completion = s.sum_fac,
-    updated_at = now()
-  FROM (
-    SELECT
-      project_id,
-      MIN(planned_start_date) AS min_ps,
-      MAX(planned_end_date)   AS max_pe,
-      MIN(actual_start_date)  AS min_as,
-      MAX(actual_end_date)    AS max_ae,
-      SUM(COALESCE(budget, 0)) AS sum_budget,
-      SUM(COALESCE(capex_approved, 0)) AS sum_capex_a,
-      SUM(COALESCE(capex_incurred, 0)) AS sum_capex_i,
-      SUM(COALESCE(opex_approved, 0)) AS sum_opex_a,
-      SUM(COALESCE(opex_incurred, 0)) AS sum_opex_i,
-      SUM(COALESCE(forecast_at_completion, budget, 0)) AS sum_fac
-    FROM public.project_streams
-    WHERE project_id = p_project_id
-    GROUP BY project_id
-  ) s
-  WHERE p.id = s.project_id;
-END;
-$$;
 
 
 
@@ -3458,76 +2901,6 @@ CREATE TRIGGER trg_project_streams_rollup
 
 ALTER TABLE public.projects
   ALTER COLUMN streams_enabled SET DEFAULT true;
-
-
-
--- Internal ensure: create Core, migrate null-stream children, enable flag.
--- Used by INSERT trigger and backfill (no end-user auth check).
-CREATE OR REPLACE FUNCTION public.ensure_project_core_stream(p_project_id uuid)
-RETURNS uuid
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_org uuid;
-  v_stream uuid;
-  v_proj public.projects%ROWTYPE;
-BEGIN
-  SELECT * INTO v_proj FROM public.projects WHERE id = p_project_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Project not found';
-  END IF;
-  v_org := v_proj.org_id;
-
-  SELECT id INTO v_stream
-  FROM public.project_streams
-  WHERE project_id = p_project_id AND is_default
-  LIMIT 1;
-
-  IF v_stream IS NULL THEN
-    INSERT INTO public.project_streams (
-      org_id, project_id, name, code, is_default, sort_order, status, rag, owner,
-      planned_start_date, planned_end_date, actual_start_date, actual_end_date,
-      budget, capex_approved, capex_incurred, opex_approved, opex_incurred,
-      forecast_at_completion
-    )
-    VALUES (
-      v_org, p_project_id, 'Core', 'CORE', true, 0,
-      COALESCE(v_proj.status::text, 'In Progress'), v_proj.rag, v_proj.sponsor,
-      COALESCE(v_proj.planned_start_date, v_proj.start_date),
-      COALESCE(v_proj.planned_end_date, v_proj.end_date),
-      v_proj.actual_start_date, v_proj.actual_end_date,
-      COALESCE(v_proj.budget, 0),
-      COALESCE(v_proj.capex_approved, 0), COALESCE(v_proj.capex_incurred, 0),
-      COALESCE(v_proj.opex_approved, 0), COALESCE(v_proj.opex_incurred, 0),
-      v_proj.forecast_at_completion
-    )
-    ON CONFLICT (project_id, name) DO UPDATE
-      SET is_default = true,
-          updated_at = now()
-    RETURNING id INTO v_stream;
-  END IF;
-
-  UPDATE public.stage_gates SET stream_id = v_stream
-   WHERE project_id = p_project_id AND stream_id IS NULL;
-  UPDATE public.milestones SET stream_id = v_stream
-   WHERE project_id = p_project_id AND stream_id IS NULL;
-  UPDATE public.financials_monthly SET stream_id = v_stream
-   WHERE project_id = p_project_id AND stream_id IS NULL;
-  UPDATE public.fy_allocations SET stream_id = v_stream
-   WHERE project_id = p_project_id AND stream_id IS NULL;
-  UPDATE public.resource_allocations SET stream_id = v_stream
-   WHERE project_id = p_project_id AND stream_id IS NULL;
-
-  UPDATE public.projects
-     SET streams_enabled = true, updated_at = now()
-   WHERE id = p_project_id
-     AND (NOT streams_enabled OR streams_enabled IS DISTINCT FROM true);
-
-  RETURN v_stream;
-END;
-$$;
 
 
 
@@ -4712,85 +4085,6 @@ CREATE TRIGGER trg_organizations_lock_sso_fields
 
 
 
-
-
--- =============================================================================
--- 20260726093000_scope_admin_roles_to_home_org.sql
--- =============================================================================
-
--- Scope admin/role helpers to the user's home organisation (profiles.org_id).
--- Previously has_any_admin / has_role ignored user_roles.org_id, so a leftover
--- org_admin row for org B could elevate privileges inside org A.
-
-CREATE OR REPLACE FUNCTION public.has_role(_user_id UUID, _role public.app_role)
-RETURNS BOOLEAN
-LANGUAGE SQL
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM public.user_roles ur
-    WHERE ur.user_id = _user_id
-      AND ur.role = _role
-      AND (
-        -- Platform admins are global.
-        _role = 'platform_admin'::public.app_role
-        OR ur.org_id = public.get_user_org(_user_id)
-      )
-  );
-$$;
-
-
-
-CREATE OR REPLACE FUNCTION public.has_any_admin(_user_id UUID)
-RETURNS BOOLEAN
-LANGUAGE SQL
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM public.user_roles ur
-    WHERE ur.user_id = _user_id
-      AND ur.role IN ('admin'::public.app_role, 'org_admin'::public.app_role)
-      AND ur.org_id = public.get_user_org(_user_id)
-  );
-$$;
-
-
-
-CREATE OR REPLACE FUNCTION public.can_edit_project(_user_id UUID, _project_id UUID)
-RETURNS BOOLEAN
-LANGUAGE SQL
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM public.projects p
-    WHERE p.id = _project_id
-      AND p.org_id = public.get_user_org(_user_id)
-      AND (
-        public.has_any_admin(_user_id)
-        OR p.pm_user_id = _user_id
-        OR EXISTS (
-          SELECT 1
-          FROM public.user_roles ur
-          WHERE ur.user_id = _user_id
-            AND ur.role = 'bu_lead'::public.app_role
-            AND ur.org_id = p.org_id
-            AND (ur.bu_id IS NULL OR ur.bu_id = p.bu_id)
-        )
-      )
-  );
-$$;
-
-
-
 COMMENT ON FUNCTION public.has_any_admin(UUID) IS
   'True when user has admin/org_admin for their home org (profiles.org_id).';
 
@@ -4946,25 +4240,6 @@ CREATE INDEX IF NOT EXISTS idx_work_item_assignees_user
 
 CREATE INDEX IF NOT EXISTS idx_work_item_assignees_wi
   ON public.work_item_assignees(work_item_id);
-
-
-
--- Keep assignee row in sync when owner_user_id is set
-CREATE OR REPLACE FUNCTION public.tg_work_item_owner_assignee()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  IF NEW.owner_user_id IS NOT NULL THEN
-    INSERT INTO public.work_item_assignees (org_id, work_item_id, user_id)
-    VALUES (NEW.org_id, NEW.id, NEW.owner_user_id)
-    ON CONFLICT (work_item_id, user_id) DO NOTHING;
-  END IF;
-  RETURN NEW;
-END;
-$$;
 
 
 
@@ -5225,227 +4500,7 @@ CREATE POLICY "system insert timesheet_approvals" ON public.timesheet_approvals
 
 
 
--- ========== SUBMIT: create PM approvals, notify ==========
-CREATE OR REPLACE FUNCTION public.submit_timesheet(_timesheet_id uuid)
-RETURNS public.timesheets
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  t public.timesheets;
-  mgr uuid;
-  rid uuid;
-  proj record;
-  pm uuid;
-  missing_pm text;
-BEGIN
-  SELECT * INTO t FROM public.timesheets WHERE id = _timesheet_id FOR UPDATE;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Timesheet not found';
-  END IF;
-  IF t.user_id <> auth.uid() AND NOT public.has_any_admin(auth.uid()) THEN
-    RAISE EXCEPTION 'Only the timesheet owner can submit';
-  END IF;
-  IF t.status NOT IN ('draft', 'rejected') THEN
-    RAISE EXCEPTION 'Timesheet is not editable (status %)', t.status;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM public.timesheet_entries e WHERE e.timesheet_id = t.id) THEN
-    RAISE EXCEPTION 'Add at least one work-item row before submitting';
-  END IF;
-
-  SELECT r.id, r.manager_user_id INTO rid, mgr
-  FROM public.resources r
-  WHERE r.org_id = t.org_id AND r.user_id = t.user_id
-  LIMIT 1;
-
-  IF mgr IS NULL THEN
-    RAISE EXCEPTION 'Resource Manager is not configured for your resource profile. Ask an admin to set your manager.';
-  END IF;
-
-  -- Clear prior approval rows (resubmit after reject)
-  DELETE FROM public.timesheet_approvals WHERE timesheet_id = t.id;
-
-  missing_pm := NULL;
-  FOR proj IN
-    SELECT DISTINCT e.project_id, p.name AS project_name, p.pm_user_id
-    FROM public.timesheet_entries e
-    JOIN public.projects p ON p.id = e.project_id
-    WHERE e.timesheet_id = t.id
-  LOOP
-    pm := proj.pm_user_id;
-    IF pm IS NULL THEN
-      missing_pm := COALESCE(missing_pm || ', ', '') || COALESCE(proj.project_name, proj.project_id::text);
-      CONTINUE;
-    END IF;
-    INSERT INTO public.timesheet_approvals (org_id, timesheet_id, step, project_id, approver_user_id, status)
-    VALUES (t.org_id, t.id, 'pm', proj.project_id, pm, 'pending');
-
-    INSERT INTO public.notifications (user_id, org_id, kind, title, body, link)
-    VALUES (
-      pm,
-      t.org_id,
-      'timesheet_approval',
-      'Timesheet awaiting PM approval',
-      'A timesheet for week starting ' || t.week_start::text || ' needs your approval as Project Manager.',
-      '/app/timesheets?tab=approvals'
-    );
-  END LOOP;
-
-  IF missing_pm IS NOT NULL THEN
-    RAISE EXCEPTION 'Project Manager is not set on: %', missing_pm;
-  END IF;
-
-  IF NOT EXISTS (SELECT 1 FROM public.timesheet_approvals WHERE timesheet_id = t.id AND step = 'pm') THEN
-    RAISE EXCEPTION 'No project PM approvals could be created';
-  END IF;
-
-  UPDATE public.timesheets
-  SET status = 'pending_pm',
-      manager_user_id = mgr,
-      resource_id = rid,
-      submitted_at = now(),
-      rejected_at = NULL,
-      rejected_by = NULL,
-      rejection_reason = NULL
-  WHERE id = t.id
-  RETURNING * INTO t;
-
-  RETURN t;
-END;
-$$;
-
-
-
 GRANT EXECUTE ON FUNCTION public.submit_timesheet(uuid) TO authenticated;
-
-
-
--- ========== ACT ON APPROVAL (PM then RM in sequence) ==========
-CREATE OR REPLACE FUNCTION public.act_on_timesheet_approval(
-  _approval_id uuid,
-  _decision text,
-  _comment text DEFAULT NULL
-)
-RETURNS public.timesheets
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  a public.timesheet_approvals;
-  t public.timesheets;
-  pending_pm int;
-BEGIN
-  IF _decision NOT IN ('approved', 'rejected') THEN
-    RAISE EXCEPTION 'Decision must be approved or rejected';
-  END IF;
-
-  SELECT * INTO a FROM public.timesheet_approvals WHERE id = _approval_id FOR UPDATE;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Approval not found';
-  END IF;
-  IF a.approver_user_id <> auth.uid() AND NOT public.has_any_admin(auth.uid()) THEN
-    RAISE EXCEPTION 'You are not the nominated approver';
-  END IF;
-  IF a.status <> 'pending' THEN
-    RAISE EXCEPTION 'This approval step is already %', a.status;
-  END IF;
-
-  SELECT * INTO t FROM public.timesheets WHERE id = a.timesheet_id FOR UPDATE;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Timesheet not found';
-  END IF;
-
-  -- Enforce sequence: PM only while pending_pm; RM only while pending_rm
-  IF a.step = 'pm' AND t.status <> 'pending_pm' THEN
-    RAISE EXCEPTION 'PM approval is not active (status %)', t.status;
-  END IF;
-  IF a.step = 'rm' AND t.status <> 'pending_rm' THEN
-    RAISE EXCEPTION 'Resource Manager approval is not active (status %)', t.status;
-  END IF;
-
-  UPDATE public.timesheet_approvals
-  SET status = _decision,
-      comment = _comment,
-      acted_at = now()
-  WHERE id = a.id;
-
-  IF _decision = 'rejected' THEN
-    UPDATE public.timesheets
-    SET status = 'rejected',
-        rejected_at = now(),
-        rejected_by = auth.uid(),
-        rejection_reason = COALESCE(_comment, 'Rejected')
-    WHERE id = t.id
-    RETURNING * INTO t;
-
-    INSERT INTO public.notifications (user_id, org_id, kind, title, body, link)
-    VALUES (
-      t.user_id,
-      t.org_id,
-      'timesheet_rejected',
-      'Timesheet rejected',
-      'Your timesheet for week starting ' || t.week_start::text || ' was rejected.',
-      '/app/timesheets'
-    );
-    RETURN t;
-  END IF;
-
-  -- Approved path
-  IF a.step = 'pm' THEN
-    SELECT COUNT(*) INTO pending_pm
-    FROM public.timesheet_approvals
-    WHERE timesheet_id = t.id AND step = 'pm' AND status = 'pending';
-
-    IF pending_pm = 0 THEN
-      -- All PMs done → open Resource Manager step
-      INSERT INTO public.timesheet_approvals (org_id, timesheet_id, step, project_id, approver_user_id, status)
-      VALUES (t.org_id, t.id, 'rm', NULL, t.manager_user_id, 'pending')
-      ON CONFLICT (timesheet_id, step, project_id) DO UPDATE
-        SET status = 'pending', acted_at = NULL, comment = NULL, approver_user_id = EXCLUDED.approver_user_id;
-
-      UPDATE public.timesheets SET status = 'pending_rm' WHERE id = t.id RETURNING * INTO t;
-
-      INSERT INTO public.notifications (user_id, org_id, kind, title, body, link)
-      VALUES (
-        t.manager_user_id,
-        t.org_id,
-        'timesheet_approval',
-        'Timesheet awaiting Resource Manager approval',
-        'A timesheet for week starting ' || t.week_start::text || ' needs your approval as Resource Manager.',
-        '/app/timesheets?tab=approvals'
-      );
-    END IF;
-  ELSIF a.step = 'rm' THEN
-    UPDATE public.timesheets SET status = 'approved' WHERE id = t.id RETURNING * INTO t;
-
-    -- Roll hours into work_items.actual_hours (additive for this week’s entry totals)
-    UPDATE public.work_items wi
-    SET actual_hours = COALESCE(wi.actual_hours, 0) + sub.total
-    FROM (
-      SELECT e.work_item_id,
-             (e.hours_mon + e.hours_tue + e.hours_wed + e.hours_thu + e.hours_fri + e.hours_sat + e.hours_sun) AS total
-      FROM public.timesheet_entries e
-      WHERE e.timesheet_id = t.id
-    ) sub
-    WHERE wi.id = sub.work_item_id;
-
-    INSERT INTO public.notifications (user_id, org_id, kind, title, body, link)
-    VALUES (
-      t.user_id,
-      t.org_id,
-      'timesheet_approved',
-      'Timesheet approved',
-      'Your timesheet for week starting ' || t.week_start::text || ' was fully approved.',
-      '/app/timesheets'
-    );
-  END IF;
-
-  SELECT * INTO t FROM public.timesheets WHERE id = t.id;
-  RETURN t;
-END;
-$$;
 
 
 
@@ -5469,143 +4524,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_timesheet_approvals_pm
 CREATE UNIQUE INDEX IF NOT EXISTS uq_timesheet_approvals_rm
   ON public.timesheet_approvals (timesheet_id)
   WHERE step = 'rm';
-
-
-
--- Fix ON CONFLICT in act_on_timesheet_approval for RM upsert
-CREATE OR REPLACE FUNCTION public.act_on_timesheet_approval(
-  _approval_id uuid,
-  _decision text,
-  _comment text DEFAULT NULL
-)
-RETURNS public.timesheets
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  a public.timesheet_approvals;
-  t public.timesheets;
-  pending_pm int;
-BEGIN
-  IF _decision NOT IN ('approved', 'rejected') THEN
-    RAISE EXCEPTION 'Decision must be approved or rejected';
-  END IF;
-
-  SELECT * INTO a FROM public.timesheet_approvals WHERE id = _approval_id FOR UPDATE;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Approval not found';
-  END IF;
-  IF a.approver_user_id <> auth.uid() AND NOT public.has_any_admin(auth.uid()) THEN
-    RAISE EXCEPTION 'You are not the nominated approver';
-  END IF;
-  IF a.status <> 'pending' THEN
-    RAISE EXCEPTION 'This approval step is already %', a.status;
-  END IF;
-
-  SELECT * INTO t FROM public.timesheets WHERE id = a.timesheet_id FOR UPDATE;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Timesheet not found';
-  END IF;
-
-  IF a.step = 'pm' AND t.status <> 'pending_pm' THEN
-    RAISE EXCEPTION 'PM approval is not active (status %)', t.status;
-  END IF;
-  IF a.step = 'rm' AND t.status <> 'pending_rm' THEN
-    RAISE EXCEPTION 'Resource Manager approval is not active (status %)', t.status;
-  END IF;
-
-  UPDATE public.timesheet_approvals
-  SET status = _decision,
-      comment = _comment,
-      acted_at = now()
-  WHERE id = a.id;
-
-  IF _decision = 'rejected' THEN
-    UPDATE public.timesheets
-    SET status = 'rejected',
-        rejected_at = now(),
-        rejected_by = auth.uid(),
-        rejection_reason = COALESCE(_comment, 'Rejected')
-    WHERE id = t.id
-    RETURNING * INTO t;
-
-    INSERT INTO public.notifications (user_id, org_id, kind, title, body, link)
-    VALUES (
-      t.user_id,
-      t.org_id,
-      'timesheet_rejected',
-      'Timesheet rejected',
-      'Your timesheet for week starting ' || t.week_start::text || ' was rejected.',
-      '/app/timesheets'
-    );
-    RETURN t;
-  END IF;
-
-  IF a.step = 'pm' THEN
-    SELECT COUNT(*) INTO pending_pm
-    FROM public.timesheet_approvals
-    WHERE timesheet_id = t.id AND step = 'pm' AND status = 'pending';
-
-    IF pending_pm = 0 THEN
-      INSERT INTO public.timesheet_approvals (org_id, timesheet_id, step, project_id, approver_user_id, status)
-      VALUES (t.org_id, t.id, 'rm', NULL, t.manager_user_id, 'pending')
-      ON CONFLICT (timesheet_id) WHERE step = 'rm'
-      DO UPDATE SET
-        status = 'pending',
-        acted_at = NULL,
-        comment = NULL,
-        approver_user_id = EXCLUDED.approver_user_id;
-
-      UPDATE public.timesheets SET status = 'pending_rm' WHERE id = t.id RETURNING * INTO t;
-
-      INSERT INTO public.notifications (user_id, org_id, kind, title, body, link)
-      VALUES (
-        t.manager_user_id,
-        t.org_id,
-        'timesheet_approval',
-        'Timesheet awaiting Resource Manager approval',
-        'A timesheet for week starting ' || t.week_start::text || ' needs your approval as Resource Manager.',
-        '/app/timesheets?tab=approvals'
-      );
-    END IF;
-  ELSIF a.step = 'rm' THEN
-    UPDATE public.timesheets SET status = 'approved' WHERE id = t.id RETURNING * INTO t;
-
-    -- Recompute actual hours from all approved timesheet entries (safe on resubmit).
-    UPDATE public.work_items wi
-    SET actual_hours = COALESCE(agg.total, 0)
-    FROM (
-      SELECT e.work_item_id,
-             SUM(
-               e.hours_mon + e.hours_tue + e.hours_wed + e.hours_thu
-               + e.hours_fri + e.hours_sat + e.hours_sun
-             ) AS total
-      FROM public.timesheet_entries e
-      JOIN public.timesheets ts ON ts.id = e.timesheet_id
-      WHERE ts.status = 'approved'
-        AND e.work_item_id IN (
-          SELECT e2.work_item_id FROM public.timesheet_entries e2 WHERE e2.timesheet_id = t.id
-        )
-      GROUP BY e.work_item_id
-    ) agg
-    WHERE wi.id = agg.work_item_id;
-
-    INSERT INTO public.notifications (user_id, org_id, kind, title, body, link)
-    VALUES (
-      t.user_id,
-      t.org_id,
-      'timesheet_approved',
-      'Timesheet approved',
-      'Your timesheet for week starting ' || t.week_start::text || ' was fully approved.',
-      '/app/timesheets'
-    );
-  END IF;
-
-  SELECT * INTO t FROM public.timesheets WHERE id = COALESCE(t.id, a.timesheet_id);
-  RETURN t;
-END;
-$$;
 
 
 
@@ -5714,47 +4632,6 @@ CREATE POLICY "cert_org_admin_select"
 
 
 
--- has_role / has_any_admin accept text
-CREATE OR REPLACE FUNCTION public.has_role(_user_id uuid, _role text)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM public.user_roles ur
-    WHERE ur.user_id = _user_id
-      AND ur.role = _role
-      AND (
-        _role = 'platform_admin'
-        OR ur.org_id IS NULL
-        OR ur.org_id = public.get_user_org(_user_id)
-      )
-  );
-$$;
-
-
-
-CREATE OR REPLACE FUNCTION public.has_any_admin(_user_id uuid)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM public.user_roles ur
-    WHERE ur.user_id = _user_id
-      AND ur.role IN ('admin', 'org_admin')
-      AND ur.org_id = public.get_user_org(_user_id)
-  );
-$$;
-
-
-
 -- ========== 2) TIMESHEET BILLABLE / NON-BILLABLE + LABOR COST ==========
 ALTER TABLE public.timesheet_entries
   ALTER COLUMN project_id DROP NOT NULL,
@@ -5814,127 +4691,6 @@ ALTER TABLE public.timesheet_entries
 
 COMMENT ON COLUMN public.resources.cost_rate IS
   'Hourly cost rate (org currency). Used to compute timesheet labor cost → stream/project/portfolio.';
-
-
-
--- Apply approved timesheet labor into financials_monthly.opex_actual and project incurred
-CREATE OR REPLACE FUNCTION public.apply_timesheet_labor_cost(_timesheet_id uuid)
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  t public.timesheets;
-  rate numeric(12,2);
-  rec record;
-  period date;
-  hours numeric;
-  cost numeric;
-  sid uuid;
-BEGIN
-  SELECT * INTO t FROM public.timesheets WHERE id = _timesheet_id;
-  IF NOT FOUND OR t.status <> 'approved' THEN
-    RETURN;
-  END IF;
-
-  SELECT COALESCE(r.cost_rate, 0) INTO rate
-  FROM public.resources r
-  WHERE r.id = t.resource_id OR (r.org_id = t.org_id AND r.user_id = t.user_id)
-  ORDER BY CASE WHEN r.id = t.resource_id THEN 0 ELSE 1 END
-  LIMIT 1;
-  rate := COALESCE(rate, 0);
-
-  -- Stamp entry costs (billable only contributes to project financials)
-  UPDATE public.timesheet_entries e
-  SET hourly_rate = rate,
-      labor_cost = ROUND(
-        rate * (e.hours_mon + e.hours_tue + e.hours_wed + e.hours_thu
-                + e.hours_fri + e.hours_sat + e.hours_sun),
-        2
-      ),
-      stream_id = COALESCE(
-        e.stream_id,
-        (SELECT wi.stream_id FROM public.work_items wi WHERE wi.id = e.work_item_id)
-      )
-  WHERE e.timesheet_id = t.id;
-
-  IF rate <= 0 THEN
-    RETURN; -- no rate configured — hours still logged, no $ rollup
-  END IF;
-
-  -- Distribute billable cost into the week_start month (OpEx actual) per project/stream
-  period := date_trunc('month', t.week_start)::date;
-
-  FOR rec IN
-    SELECT e.project_id,
-           COALESCE(e.stream_id, wi.stream_id) AS stream_id,
-           SUM(e.labor_cost) AS cost
-    FROM public.timesheet_entries e
-    LEFT JOIN public.work_items wi ON wi.id = e.work_item_id
-    WHERE e.timesheet_id = t.id
-      AND e.billable = true
-      AND e.project_id IS NOT NULL
-    GROUP BY e.project_id, COALESCE(e.stream_id, wi.stream_id)
-  LOOP
-    sid := rec.stream_id;
-    IF sid IS NULL THEN
-      SELECT id INTO sid FROM public.project_streams
-      WHERE project_id = rec.project_id AND COALESCE(is_default, false) = true
-      LIMIT 1;
-    END IF;
-    IF sid IS NULL THEN
-      SELECT id INTO sid FROM public.project_streams
-      WHERE project_id = rec.project_id
-      ORDER BY sort_order NULLS LAST
-      LIMIT 1;
-    END IF;
-
-    -- Upsert into stream-aware unique indexes
-    IF sid IS NOT NULL THEN
-      UPDATE public.financials_monthly
-      SET opex_actual = COALESCE(opex_actual, 0) + rec.cost
-      WHERE project_id = rec.project_id
-        AND period_month = period
-        AND stream_id = sid;
-      IF NOT FOUND THEN
-        INSERT INTO public.financials_monthly (
-          org_id, project_id, stream_id, period_month, opex_actual
-        ) VALUES (t.org_id, rec.project_id, sid, period, rec.cost);
-      END IF;
-    ELSE
-      UPDATE public.financials_monthly
-      SET opex_actual = COALESCE(opex_actual, 0) + rec.cost
-      WHERE project_id = rec.project_id
-        AND period_month = period
-        AND stream_id IS NULL;
-      IF NOT FOUND THEN
-        INSERT INTO public.financials_monthly (
-          org_id, project_id, stream_id, period_month, opex_actual
-        ) VALUES (t.org_id, rec.project_id, NULL, period, rec.cost);
-      END IF;
-    END IF;
-  END LOOP;
-
-  -- Recompute project incurred from monthly actuals for touched projects
-  FOR rec IN
-    SELECT DISTINCT project_id FROM public.timesheet_entries
-    WHERE timesheet_id = t.id AND billable = true AND project_id IS NOT NULL
-  LOOP
-    UPDATE public.projects p
-    SET
-      opex_incurred = COALESCE((
-        SELECT SUM(COALESCE(fm.opex_actual, 0)) FROM public.financials_monthly fm
-        WHERE fm.project_id = rec.project_id
-      ), 0),
-      capex_incurred = COALESCE((
-        SELECT SUM(COALESCE(fm.capex_actual, 0)) FROM public.financials_monthly fm
-        WHERE fm.project_id = rec.project_id
-      ), 0)
-    WHERE p.id = rec.project_id;
-  END LOOP;
-END;
-$$;
 
 
 
@@ -6754,137 +5510,6 @@ COMMENT ON COLUMN public.financials_monthly.opex_labor_actual IS
 
 
 
--- Re-apply labor rollup: also increments opex_labor_actual
-CREATE OR REPLACE FUNCTION public.apply_timesheet_labor_cost(_timesheet_id uuid)
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  t public.timesheets;
-  rate numeric(12,2);
-  rec record;
-  period date;
-  sid uuid;
-BEGIN
-  SELECT * INTO t FROM public.timesheets WHERE id = _timesheet_id;
-  IF NOT FOUND OR t.status <> 'approved' THEN
-    RETURN;
-  END IF;
-
-  SELECT COALESCE(r.cost_rate, 0) INTO rate
-  FROM public.resources r
-  WHERE r.id = t.resource_id OR (r.org_id = t.org_id AND r.user_id = t.user_id)
-  ORDER BY CASE WHEN r.id = t.resource_id THEN 0 ELSE 1 END
-  LIMIT 1;
-  rate := COALESCE(rate, 0);
-
-  -- Stamp entry costs; billable rows inherit stream from work item when missing
-  UPDATE public.timesheet_entries e
-  SET hourly_rate = rate,
-      labor_cost = ROUND(
-        rate * (e.hours_mon + e.hours_tue + e.hours_wed + e.hours_thu
-                + e.hours_fri + e.hours_sat + e.hours_sun),
-        2
-      ),
-      stream_id = COALESCE(
-        e.stream_id,
-        (SELECT wi.stream_id FROM public.work_items wi WHERE wi.id = e.work_item_id)
-      )
-  WHERE e.timesheet_id = t.id;
-
-  IF rate <= 0 THEN
-    RETURN;
-  END IF;
-
-  period := date_trunc('month', t.week_start)::date;
-
-  FOR rec IN
-    SELECT e.project_id,
-           COALESCE(e.stream_id, wi.stream_id) AS stream_id,
-           SUM(e.labor_cost) AS cost
-    FROM public.timesheet_entries e
-    LEFT JOIN public.work_items wi ON wi.id = e.work_item_id
-    WHERE e.timesheet_id = t.id
-      AND e.billable = true
-      AND e.project_id IS NOT NULL
-      AND e.work_item_id IS NOT NULL
-    GROUP BY e.project_id, COALESCE(e.stream_id, wi.stream_id)
-  LOOP
-    sid := rec.stream_id;
-    IF sid IS NULL THEN
-      SELECT id INTO sid FROM public.project_streams
-      WHERE project_id = rec.project_id AND COALESCE(is_default, false) = true
-      LIMIT 1;
-    END IF;
-    IF sid IS NULL THEN
-      SELECT id INTO sid FROM public.project_streams
-      WHERE project_id = rec.project_id
-      ORDER BY sort_order NULLS LAST
-      LIMIT 1;
-    END IF;
-
-    IF sid IS NOT NULL THEN
-      UPDATE public.financials_monthly
-      SET opex_actual = COALESCE(opex_actual, 0) + rec.cost,
-          opex_labor_actual = COALESCE(opex_labor_actual, 0) + rec.cost
-      WHERE project_id = rec.project_id
-        AND period_month = period
-        AND stream_id = sid;
-      IF NOT FOUND THEN
-        INSERT INTO public.financials_monthly (
-          org_id, project_id, stream_id, period_month, opex_actual, opex_labor_actual
-        ) VALUES (t.org_id, rec.project_id, sid, period, rec.cost, rec.cost);
-      END IF;
-    ELSE
-      UPDATE public.financials_monthly
-      SET opex_actual = COALESCE(opex_actual, 0) + rec.cost,
-          opex_labor_actual = COALESCE(opex_labor_actual, 0) + rec.cost
-      WHERE project_id = rec.project_id
-        AND period_month = period
-        AND stream_id IS NULL;
-      IF NOT FOUND THEN
-        INSERT INTO public.financials_monthly (
-          org_id, project_id, stream_id, period_month, opex_actual, opex_labor_actual
-        ) VALUES (t.org_id, rec.project_id, NULL, period, rec.cost, rec.cost);
-      END IF;
-    END IF;
-  END LOOP;
-
-  -- Recompute project incurred from monthly actuals for touched projects
-  UPDATE public.projects p
-  SET
-    opex_incurred = COALESCE((
-      SELECT SUM(COALESCE(fm.opex_actual, 0)) FROM public.financials_monthly fm
-      WHERE fm.project_id = p.id
-    ), 0),
-    capex_incurred = COALESCE((
-      SELECT SUM(COALESCE(fm.capex_actual, 0)) FROM public.financials_monthly fm
-      WHERE fm.project_id = p.id
-    ), 0),
-    updated_at = now()
-  WHERE p.id IN (
-    SELECT DISTINCT project_id FROM public.timesheet_entries
-    WHERE timesheet_id = t.id AND billable = true AND project_id IS NOT NULL
-  );
-
-  -- Stream/project rollup when helper exists
-  BEGIN
-    FOR rec IN
-      SELECT DISTINCT project_id AS pid
-      FROM public.timesheet_entries
-      WHERE timesheet_id = t.id AND billable = true AND project_id IS NOT NULL
-    LOOP
-      PERFORM public.rollup_project_from_streams(rec.pid);
-    END LOOP;
-  EXCEPTION WHEN undefined_function THEN NULL;
-  END;
-END;
-$$;
-
-
-
 GRANT EXECUTE ON FUNCTION public.apply_timesheet_labor_cost(uuid) TO authenticated;
 
 
@@ -7080,138 +5705,6 @@ CREATE INDEX IF NOT EXISTS idx_timesheet_entries_stage_gate
 
 COMMENT ON COLUMN public.timesheet_entries.stage_gate_id IS
   'Copied from work_items.stage_gate_id when hours are stamped/approved — phase labor attribution.';
-
-
-
--- When stamping labor, also copy stage_gate_id from the work item
-CREATE OR REPLACE FUNCTION public.apply_timesheet_labor_cost(_timesheet_id uuid)
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  t public.timesheets;
-  rate numeric(12,2);
-  rec record;
-  period date;
-  sid uuid;
-BEGIN
-  SELECT * INTO t FROM public.timesheets WHERE id = _timesheet_id;
-  IF NOT FOUND OR t.status <> 'approved' THEN
-    RETURN;
-  END IF;
-
-  SELECT COALESCE(r.cost_rate, 0) INTO rate
-  FROM public.resources r
-  WHERE r.id = t.resource_id OR (r.org_id = t.org_id AND r.user_id = t.user_id)
-  ORDER BY CASE WHEN r.id = t.resource_id THEN 0 ELSE 1 END
-  LIMIT 1;
-  rate := COALESCE(rate, 0);
-
-  UPDATE public.timesheet_entries e
-  SET hourly_rate = rate,
-      labor_cost = ROUND(
-        rate * (e.hours_mon + e.hours_tue + e.hours_wed + e.hours_thu
-                + e.hours_fri + e.hours_sat + e.hours_sun),
-        2
-      ),
-      stream_id = COALESCE(
-        e.stream_id,
-        (SELECT wi.stream_id FROM public.work_items wi WHERE wi.id = e.work_item_id)
-      ),
-      stage_gate_id = COALESCE(
-        e.stage_gate_id,
-        (SELECT wi.stage_gate_id FROM public.work_items wi WHERE wi.id = e.work_item_id)
-      )
-  WHERE e.timesheet_id = t.id;
-
-  IF rate <= 0 THEN
-    RETURN;
-  END IF;
-
-  period := date_trunc('month', t.week_start)::date;
-
-  FOR rec IN
-    SELECT e.project_id,
-           COALESCE(e.stream_id, wi.stream_id) AS stream_id,
-           SUM(e.labor_cost) AS cost
-    FROM public.timesheet_entries e
-    LEFT JOIN public.work_items wi ON wi.id = e.work_item_id
-    WHERE e.timesheet_id = t.id
-      AND e.billable = true
-      AND e.project_id IS NOT NULL
-      AND e.work_item_id IS NOT NULL
-    GROUP BY e.project_id, COALESCE(e.stream_id, wi.stream_id)
-  LOOP
-    sid := rec.stream_id;
-    IF sid IS NULL THEN
-      SELECT id INTO sid FROM public.project_streams
-      WHERE project_id = rec.project_id AND COALESCE(is_default, false) = true
-      LIMIT 1;
-    END IF;
-    IF sid IS NULL THEN
-      SELECT id INTO sid FROM public.project_streams
-      WHERE project_id = rec.project_id
-      ORDER BY sort_order NULLS LAST
-      LIMIT 1;
-    END IF;
-
-    IF sid IS NOT NULL THEN
-      UPDATE public.financials_monthly
-      SET opex_actual = COALESCE(opex_actual, 0) + rec.cost,
-          opex_labor_actual = COALESCE(opex_labor_actual, 0) + rec.cost
-      WHERE project_id = rec.project_id
-        AND period_month = period
-        AND stream_id = sid;
-      IF NOT FOUND THEN
-        INSERT INTO public.financials_monthly (
-          org_id, project_id, stream_id, period_month, opex_actual, opex_labor_actual
-        ) VALUES (t.org_id, rec.project_id, sid, period, rec.cost, rec.cost);
-      END IF;
-    ELSE
-      UPDATE public.financials_monthly
-      SET opex_actual = COALESCE(opex_actual, 0) + rec.cost,
-          opex_labor_actual = COALESCE(opex_labor_actual, 0) + rec.cost
-      WHERE project_id = rec.project_id
-        AND period_month = period
-        AND stream_id IS NULL;
-      IF NOT FOUND THEN
-        INSERT INTO public.financials_monthly (
-          org_id, project_id, stream_id, period_month, opex_actual, opex_labor_actual
-        ) VALUES (t.org_id, rec.project_id, NULL, period, rec.cost, rec.cost);
-      END IF;
-    END IF;
-  END LOOP;
-
-  UPDATE public.projects p
-  SET
-    opex_incurred = COALESCE((
-      SELECT SUM(COALESCE(fm.opex_actual, 0)) FROM public.financials_monthly fm
-      WHERE fm.project_id = p.id
-    ), 0),
-    capex_incurred = COALESCE((
-      SELECT SUM(COALESCE(fm.capex_actual, 0)) FROM public.financials_monthly fm
-      WHERE fm.project_id = p.id
-    ), 0),
-    updated_at = now()
-  WHERE p.id IN (
-    SELECT DISTINCT project_id FROM public.timesheet_entries
-    WHERE timesheet_id = t.id AND billable = true AND project_id IS NOT NULL
-  );
-
-  BEGIN
-    FOR rec IN
-      SELECT DISTINCT project_id AS pid
-      FROM public.timesheet_entries
-      WHERE timesheet_id = t.id AND billable = true AND project_id IS NOT NULL
-    LOOP
-      PERFORM public.rollup_project_from_streams(rec.pid);
-    END LOOP;
-  EXCEPTION WHEN undefined_function THEN NULL;
-  END;
-END;
-$$;
 
 
 
@@ -7689,69 +6182,6 @@ GRANT EXECUTE ON FUNCTION public.user_has_capability(uuid, text) TO authenticate
 
 COMMENT ON FUNCTION public.user_has_capability(uuid, text) IS
   'True when user is admin or has can_edit on the capability row; timesheet_cost_view defaults to org admin + PM when unconfigured.';
-
-
-
--- ========== Timesheets: cost viewers may read approved sheets for visible projects ==========
--- Cross-table checks must be SECURITY DEFINER — policy EXISTS loops between
--- timesheets ↔ timesheet_entries cause "infinite recursion detected in policy".
-CREATE OR REPLACE FUNCTION public.user_can_view_approved_timesheet_for_cost(
-  _user_id uuid,
-  _timesheet_id uuid
-)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM public.timesheets t
-    WHERE t.id = _timesheet_id
-      AND t.status = 'approved'
-      AND public.user_has_capability(_user_id, 'capability::timesheet_cost_view')
-      AND EXISTS (
-        SELECT 1
-        FROM public.timesheet_entries e
-        WHERE e.timesheet_id = t.id
-          AND e.project_id IS NOT NULL
-          AND public.user_can_view_project(_user_id, e.project_id)
-      )
-  );
-$$;
-
-
-
-CREATE OR REPLACE FUNCTION public.user_can_read_timesheet_row(
-  _user_id uuid,
-  _timesheet_id uuid,
-  _entry_project_id uuid DEFAULT NULL
-)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM public.timesheets t
-    WHERE t.id = _timesheet_id
-      AND (
-        t.user_id = _user_id
-        OR public.has_any_admin(_user_id)
-        OR public.is_timesheet_approver(_user_id, t.id)
-        OR t.manager_user_id = _user_id
-        OR (
-          t.status = 'approved'
-          AND public.user_has_capability(_user_id, 'capability::timesheet_cost_view')
-          AND _entry_project_id IS NOT NULL
-          AND public.user_can_view_project(_user_id, _entry_project_id)
-        )
-      )
-  );
-$$;
 
 
 
@@ -9196,147 +7626,6 @@ CREATE POLICY org_kpi_summaries_read_org
 
 
 
--- Service role / SECURITY DEFINER refresh writes; no authenticated INSERT/UPDATE.
-
-CREATE OR REPLACE FUNCTION public.refresh_org_kpi_summary(p_org_id uuid)
-RETURNS public.org_kpi_summaries
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  row public.org_kpi_summaries;
-BEGIN
-  IF p_org_id IS NULL THEN
-    RAISE EXCEPTION 'org_id required';
-  END IF;
-
-  INSERT INTO public.org_kpi_summaries AS s (
-    org_id,
-    project_count,
-    active_count,
-    rag_green,
-    rag_amber,
-    rag_red,
-    approved_funding,
-    incurred,
-    forecast_at_completion,
-    benefits_target,
-    benefits_realised,
-    open_risks,
-    open_issues,
-    open_actions,
-    work_item_total,
-    work_item_done,
-    refreshed_at,
-    meta
-  )
-  SELECT
-    p_org_id,
-    COALESCE(p.project_count, 0),
-    COALESCE(p.active_count, 0),
-    COALESCE(p.rag_green, 0),
-    COALESCE(p.rag_amber, 0),
-    COALESCE(p.rag_red, 0),
-    COALESCE(p.approved_funding, 0),
-    COALESCE(p.incurred, 0),
-    COALESCE(p.forecast_at_completion, 0),
-    COALESCE(p.benefits_target, 0),
-    COALESCE(p.benefits_realised, 0),
-    COALESCE(r.open_risks, 0),
-    COALESCE(i.open_issues, 0),
-    COALESCE(a.open_actions, 0),
-    COALESCE(w.work_item_total, 0),
-    COALESCE(w.work_item_done, 0),
-    now(),
-    jsonb_build_object('source', 'refresh_org_kpi_summary')
-  FROM (SELECT 1) seed
-  LEFT JOIN LATERAL (
-    SELECT
-      COUNT(*)::int AS project_count,
-      COUNT(*) FILTER (
-        WHERE COALESCE(status, '') NOT ILIKE '%closed%'
-          AND COALESCE(status, '') NOT ILIKE '%complete%'
-          AND COALESCE(status, '') NOT ILIKE '%cancelled%'
-      )::int AS active_count,
-      COUNT(*) FILTER (WHERE lower(COALESCE(rag, '')) IN ('green', 'g'))::int AS rag_green,
-      COUNT(*) FILTER (WHERE lower(COALESCE(rag, '')) IN ('amber', 'yellow', 'a'))::int AS rag_amber,
-      COUNT(*) FILTER (WHERE lower(COALESCE(rag, '')) IN ('red', 'r'))::int AS rag_red,
-      COALESCE(SUM(
-        CASE
-          WHEN COALESCE(budget, 0) > 0 THEN budget
-          ELSE COALESCE(capex_approved, 0) + COALESCE(opex_approved, 0)
-        END
-      ), 0) AS approved_funding,
-      COALESCE(SUM(COALESCE(capex_incurred, 0) + COALESCE(opex_incurred, 0)), 0) AS incurred,
-      COALESCE(SUM(
-        CASE
-          WHEN COALESCE(forecast_at_completion, 0) > 0 THEN forecast_at_completion
-          WHEN COALESCE(budget, 0) > 0 THEN budget
-          ELSE COALESCE(capex_approved, 0) + COALESCE(opex_approved, 0)
-        END
-      ), 0) AS forecast_at_completion,
-      COALESCE(SUM(COALESCE(benefits_target, 0)), 0) AS benefits_target,
-      COALESCE(SUM(COALESCE(benefits_realised, 0)), 0) AS benefits_realised
-    FROM public.projects
-    WHERE org_id = p_org_id
-  ) p ON true
-  LEFT JOIN LATERAL (
-    SELECT COUNT(*)::int AS open_risks
-    FROM public.risks
-    WHERE org_id = p_org_id
-      AND COALESCE(status, '') NOT ILIKE '%closed%'
-      AND COALESCE(status, '') NOT ILIKE '%mitigated%'
-  ) r ON true
-  LEFT JOIN LATERAL (
-    SELECT COUNT(*)::int AS open_issues
-    FROM public.issues
-    WHERE org_id = p_org_id
-      AND COALESCE(status, '') NOT ILIKE '%closed%'
-      AND COALESCE(status, '') NOT ILIKE '%resolved%'
-  ) i ON true
-  LEFT JOIN LATERAL (
-    SELECT COUNT(*)::int AS open_actions
-    FROM public.actions
-    WHERE org_id = p_org_id
-      AND COALESCE(status, '') NOT ILIKE '%done%'
-      AND COALESCE(status, '') NOT ILIKE '%closed%'
-      AND COALESCE(status, '') NOT ILIKE '%complete%'
-  ) a ON true
-  LEFT JOIN LATERAL (
-    SELECT
-      COUNT(*)::int AS work_item_total,
-      COUNT(*) FILTER (WHERE status = 'Done')::int AS work_item_done
-    FROM public.work_items
-    WHERE org_id = p_org_id
-      AND COALESCE(status, '') <> 'Cancelled'
-  ) w ON true
-  ON CONFLICT (org_id) DO UPDATE SET
-    project_count = EXCLUDED.project_count,
-    active_count = EXCLUDED.active_count,
-    rag_green = EXCLUDED.rag_green,
-    rag_amber = EXCLUDED.rag_amber,
-    rag_red = EXCLUDED.rag_red,
-    approved_funding = EXCLUDED.approved_funding,
-    incurred = EXCLUDED.incurred,
-    forecast_at_completion = EXCLUDED.forecast_at_completion,
-    benefits_target = EXCLUDED.benefits_target,
-    benefits_realised = EXCLUDED.benefits_realised,
-    open_risks = EXCLUDED.open_risks,
-    open_issues = EXCLUDED.open_issues,
-    open_actions = EXCLUDED.open_actions,
-    work_item_total = EXCLUDED.work_item_total,
-    work_item_done = EXCLUDED.work_item_done,
-    refreshed_at = EXCLUDED.refreshed_at,
-    meta = EXCLUDED.meta
-  RETURNING * INTO row;
-
-  RETURN row;
-END;
-$$;
-
-
-
 REVOKE ALL ON FUNCTION public.refresh_org_kpi_summary(uuid) FROM PUBLIC;
 
 
@@ -9472,94 +7761,6 @@ GRANT EXECUTE ON FUNCTION public.ensure_month_partition(regclass, text) TO servi
 
 COMMENT ON FUNCTION public.ensure_month_partition(regclass, text) IS
   'Create a YYYY-MM range partition under an already-partitioned parent. For extreme-scale cutovers only.';
-
-
-
--- =============================================================================
--- 6) Portfolio chart aggregates (no full-table pull)
--- =============================================================================
-
-CREATE OR REPLACE FUNCTION public.portfolio_project_stats(p_org_id uuid DEFAULT NULL)
-RETURNS jsonb
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_org uuid := coalesce(p_org_id, public.get_user_org(auth.uid()));
-  v_by_rag jsonb;
-  v_by_status jsonb;
-  v_by_program jsonb;
-  v_by_priority jsonb;
-  v_total int;
-  v_active int;
-  v_completed int;
-  v_budget numeric;
-  v_incurred numeric;
-BEGIN
-  IF v_org IS NULL THEN
-    RETURN '{}'::jsonb;
-  END IF;
-  IF NOT (
-    public.get_user_org(auth.uid()) = v_org
-    OR public.is_platform_admin(auth.uid())
-  ) THEN
-    RAISE EXCEPTION 'not authorized';
-  END IF;
-
-  SELECT
-    count(*)::int,
-    count(*) FILTER (
-      WHERE coalesce(status, '') ILIKE 'In Progress'
-    )::int,
-    count(*) FILTER (
-      WHERE coalesce(status, '') ILIKE 'Completed'
-         OR coalesce(status, '') ILIKE 'Complete'
-    )::int,
-    coalesce(sum(coalesce(budget, 0)), 0),
-    coalesce(sum(coalesce(capex_incurred, 0)), 0)
-  INTO v_total, v_active, v_completed, v_budget, v_incurred
-  FROM public.projects
-  WHERE org_id = v_org;
-
-  SELECT coalesce(jsonb_object_agg(k, c), '{}'::jsonb) INTO v_by_rag
-  FROM (
-    SELECT coalesce(nullif(trim(rag), ''), 'Unknown') AS k, count(*)::int AS c
-    FROM public.projects WHERE org_id = v_org GROUP BY 1
-  ) s;
-
-  SELECT coalesce(jsonb_object_agg(k, c), '{}'::jsonb) INTO v_by_status
-  FROM (
-    SELECT coalesce(nullif(trim(status), ''), 'Unknown') AS k, count(*)::int AS c
-    FROM public.projects WHERE org_id = v_org GROUP BY 1
-  ) s;
-
-  SELECT coalesce(jsonb_object_agg(k, c), '{}'::jsonb) INTO v_by_program
-  FROM (
-    SELECT coalesce(nullif(trim(program), ''), 'Unassigned') AS k, count(*)::int AS c
-    FROM public.projects WHERE org_id = v_org GROUP BY 1
-  ) s;
-
-  SELECT coalesce(jsonb_object_agg(k, c), '{}'::jsonb) INTO v_by_priority
-  FROM (
-    SELECT coalesce(nullif(trim(priority), ''), 'Unassigned') AS k, count(*)::int AS c
-    FROM public.projects WHERE org_id = v_org GROUP BY 1
-  ) s;
-
-  RETURN jsonb_build_object(
-    'total', v_total,
-    'active', v_active,
-    'completed', v_completed,
-    'budget_total', v_budget,
-    'capex_incurred', v_incurred,
-    'by_rag', v_by_rag,
-    'by_status', v_by_status,
-    'by_program', v_by_program,
-    'by_priority', v_by_priority
-  );
-END;
-$$;
 
 
 
@@ -9932,6 +8133,137 @@ END;
 $$;
 
 -- =============================================================================
+-- Final text/app_role compatibility (idempotent)
+-- =============================================================================
+-- PASTE INTO SUPABASE SQL EDITOR
+-- Fixes Executive / portfolio reads failing with:
+--   operator does not exist: text = app_role
+-- Cause: user_roles.role is text (custom roles), but can_edit_project /
+-- has_role still compared against app_role enum.
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'user_roles'
+      AND column_name = 'role' AND udt_name = 'app_role'
+  ) THEN
+    ALTER TABLE public.user_roles
+      ALTER COLUMN role TYPE text USING role::text;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'role_table_permissions'
+      AND column_name = 'role' AND udt_name = 'app_role'
+  ) THEN
+    ALTER TABLE public.role_table_permissions
+      ALTER COLUMN role TYPE text USING role::text;
+  END IF;
+END $$;
+
+DROP FUNCTION IF EXISTS public.has_role(uuid, public.app_role);
+
+CREATE OR REPLACE FUNCTION public.has_role(_user_id uuid, _role text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.user_roles ur
+    WHERE ur.user_id = _user_id
+      AND ur.role = _role
+      AND (
+        _role = 'platform_admin'
+        OR ur.org_id IS NULL
+        OR ur.org_id = public.get_user_org(_user_id)
+      )
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.has_role(_user_id uuid, _role public.app_role)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT public.has_role(_user_id, _role::text);
+$$;
+
+CREATE OR REPLACE FUNCTION public.has_any_admin(_user_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.user_roles ur
+    WHERE ur.user_id = _user_id
+      AND ur.role IN ('admin', 'org_admin')
+      AND ur.org_id = public.get_user_org(_user_id)
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.can_edit_project(_user_id uuid, _project_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.projects p
+    WHERE p.id = _project_id
+      AND p.org_id = public.get_user_org(_user_id)
+      AND (
+        public.has_any_admin(_user_id)
+        OR p.pm_user_id = _user_id
+        OR EXISTS (
+          SELECT 1
+          FROM public.user_roles ur
+          WHERE ur.user_id = _user_id
+            AND ur.role = 'bu_lead'
+            AND ur.org_id = p.org_id
+            AND (ur.bu_id IS NULL OR ur.bu_id = p.bu_id)
+        )
+      )
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_platform_admin(_user_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.user_roles ur
+    WHERE ur.user_id = _user_id
+      AND ur.role = 'platform_admin'
+  );
+$$;
+
+GRANT EXECUTE ON FUNCTION public.has_role(uuid, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.has_role(uuid, public.app_role) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.has_any_admin(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.can_edit_project(uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.is_platform_admin(uuid) TO authenticated;
+
+-- Smoke check (should return true/false, not an operator error):
+-- SELECT public.can_edit_project(auth.uid(), (SELECT id FROM public.projects LIMIT 1));
+-- SELECT count(*) FROM public.financials_monthly;
+-- SELECT count(*) FROM public.stage_gates;
+
+-- =============================================================================
 -- Post-repair inventory
 -- =============================================================================
 SELECT 'functions' AS kind, count(*)::text AS n
@@ -9947,3 +8279,6 @@ UNION ALL
 SELECT 'policies', count(*)::text
 FROM pg_policies WHERE schemaname = 'public'
 ORDER BY 1;
+
+-- Smoke: must not raise "operator does not exist: text = app_role"
+SELECT public.has_role('00000000-0000-0000-0000-000000000000'::uuid, 'platform_admin'::text) AS has_role_text_ok;
