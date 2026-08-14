@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   fetchLandingConfig,
-  readCachedLandingConfig,
   readCachedLandingConfigForPaint,
+  resolveLandingCfgForPaint,
+  getFreshLandingConfigSnapshot,
   DEFAULT_LANDING,
   resolveBrandLogoUrl,
   resolveBrandLogoDims,
@@ -35,7 +36,7 @@ export const Route = createFileRoute("/legal/$slug")({
     // Policy body is required for content; brand cfg prefers browser cache
     // on repeat visits to avoid re-dehydrating the full landing JSON (FOT).
     const cachedCfg =
-      typeof window !== "undefined" ? readCachedLandingConfig() : null;
+      typeof window !== "undefined" ? getFreshLandingConfigSnapshot() : null;
     const [{ data: policy, error }, cfg] = await Promise.all([
       (supabase as any)
         .from("legal_policies")
@@ -54,7 +55,7 @@ export const Route = createFileRoute("/legal/$slug")({
       needsRevalidate: Boolean(cachedCfg),
     };
   },
-  staleTime: 60_000,
+  staleTime: 0,
   pendingMs: 0,
   pendingComponent: LegalPending,
   component: LegalPolicyPage,
@@ -182,14 +183,14 @@ function markdownToHtml(md: string): string {
 
 function LegalPolicyPage() {
   const { policy, cfg: loaderCfg, needsRevalidate } = Route.useLoaderData();
-  const [cfg, setCfg] = useState(loaderCfg);
+  const [cfg, setCfg] = useState(() => resolveLandingCfgForPaint(loaderCfg));
   const p = cfg.palette;
   const isDark = cfg.theme === "dark";
   const pageBg = isDark ? p.navy : "#fafbfc";
   const panelBg = isDark ? p.navyLight : "#ffffff";
 
   useEffect(() => {
-    setCfg(loaderCfg);
+    setCfg(resolveLandingCfgForPaint(loaderCfg));
   }, [loaderCfg]);
 
   useEffect(() => {

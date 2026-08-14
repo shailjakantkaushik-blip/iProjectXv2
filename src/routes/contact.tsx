@@ -2,8 +2,9 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   fetchLandingConfig,
-  readCachedLandingConfig,
   readCachedLandingConfigForPaint,
+  resolveLandingCfgForPaint,
+  getFreshLandingConfigSnapshot,
   DEFAULT_LANDING,
   resolveBrandLogoUrl,
   resolveBrandLogoDims,
@@ -24,12 +25,12 @@ export const Route = createFileRoute("/contact")({
     // Prefer browser cache on repeat visits so SSR/dehydrate does not
     // re-ship the full landing config on every Contact hit (FOT).
     if (typeof window !== "undefined") {
-      const cached = readCachedLandingConfig();
+      const cached = getFreshLandingConfigSnapshot();
       if (cached) return { cfg: cached, needsRevalidate: true };
     }
     return { cfg: await fetchLandingConfig(), needsRevalidate: false };
   },
-  staleTime: 60_000,
+  staleTime: 0,
   pendingMs: 0,
   pendingComponent: ContactPending,
   component: ContactPage,
@@ -69,13 +70,13 @@ function BrandMark({ cfg }: { cfg: LandingConfig }) {
 
 function ContactPage() {
   const { cfg: loaderCfg, needsRevalidate } = Route.useLoaderData();
-  const [cfg, setCfg] = useState(loaderCfg);
+  const [cfg, setCfg] = useState(() => resolveLandingCfgForPaint(loaderCfg));
   const p = cfg.palette;
   const isDark = cfg.theme === "dark";
   const pageBg = isDark ? p.navy : "#fafbfc";
 
   useEffect(() => {
-    setCfg(loaderCfg);
+    setCfg(resolveLandingCfgForPaint(loaderCfg));
   }, [loaderCfg]);
 
   useEffect(() => {

@@ -26,6 +26,7 @@ import {
   fetchLandingConfig,
   DEFAULT_LANDING,
   readCachedLandingConfig,
+  getFreshLandingConfigSnapshot,
   resolveBrandLogoUrl,
   type LandingConfig,
 } from "@/lib/landing-config";
@@ -194,6 +195,16 @@ function AuthPage() {
   const orgLabel = orgBrand?.name || targetOrgSlug || "this organisation";
   const sessionEmail =
     session?.user?.email || profile?.email || null;
+
+  // Warm the landing logo so "Back to site" paints the current mark, not a stale swap.
+  useEffect(() => {
+    const snap = getFreshLandingConfigSnapshot();
+    const landingLogo = snap ? resolveBrandLogoUrl(snap.brand, "landing") : "";
+    if (!landingLogo || landingLogo.startsWith("data:")) return;
+    const img = new Image();
+    img.decoding = "async";
+    img.src = landingLogo;
+  }, [platformBrand]);
 
   const showOrgAccessAlert = useCallback((alert: OrgAccessAlert) => {
     setOrgAlert(alert);
