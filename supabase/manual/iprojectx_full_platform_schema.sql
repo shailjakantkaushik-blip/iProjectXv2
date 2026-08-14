@@ -1,5 +1,5 @@
 -- iProjectX FULL platform schema (new Supabase project)
--- Generated: 2026-08-14T11:40:46.712Z
+-- Generated: 2026-08-14T11:44:49.584Z
 -- Source: all files in supabase/migrations/ (72 migrations), in order.
 --
 -- HOW TO APPLY (new empty Supabase project):
@@ -6895,12 +6895,31 @@ CREATE TRIGGER trg_seed_org_roles
   AFTER INSERT ON public.organizations
   FOR EACH ROW EXECUTE FUNCTION public.tg_seed_org_roles();
 
--- Convert role columns from enum → text so custom roles can be stored
+-- Convert role columns from enum → text so custom roles can be stored.
+-- Postgres forbids ALTER TYPE on a column while RLS policies reference it
+-- (e.g. cert_org_admin_select on org_license_certificates). Drop dependents,
+-- alter, then recreate.
+DROP POLICY IF EXISTS "cert_org_admin_select" ON public.org_license_certificates;
+
 ALTER TABLE public.user_roles
   ALTER COLUMN role TYPE text USING role::text;
 
 ALTER TABLE public.role_table_permissions
   ALTER COLUMN role TYPE text USING role::text;
+
+-- Recreate policy that referenced user_roles.role (now text).
+CREATE POLICY "cert_org_admin_select"
+  ON public.org_license_certificates FOR SELECT
+  TO authenticated
+  USING (
+    org_id = public.get_user_org(auth.uid())
+    AND EXISTS (
+      SELECT 1 FROM public.user_roles ur
+      WHERE ur.user_id = auth.uid()
+        AND ur.org_id  = public.get_user_org(auth.uid())
+        AND ur.role IN ('admin','org_admin')
+    )
+  );
 
 -- has_role / has_any_admin accept text
 CREATE OR REPLACE FUNCTION public.has_role(_user_id uuid, _role text)
@@ -8341,6 +8360,9 @@ GRANT EXECUTE ON FUNCTION public.apply_timesheet_labor_cost(uuid) TO authenticat
 -- user_can_view_project → can_edit_project was the hot path on Executive.
 
 -- Ensure role columns are text (idempotent if already migrated).
+-- Drop policies that block ALTER TYPE of user_roles.role, then recreate.
+DROP POLICY IF EXISTS "cert_org_admin_select" ON public.org_license_certificates;
+
 DO $$
 BEGIN
   IF EXISTS (
@@ -8361,6 +8383,19 @@ BEGIN
       ALTER COLUMN role TYPE text USING role::text;
   END IF;
 END $$;
+
+CREATE POLICY "cert_org_admin_select"
+  ON public.org_license_certificates FOR SELECT
+  TO authenticated
+  USING (
+    org_id = public.get_user_org(auth.uid())
+    AND EXISTS (
+      SELECT 1 FROM public.user_roles ur
+      WHERE ur.user_id = auth.uid()
+        AND ur.org_id  = public.get_user_org(auth.uid())
+        AND ur.role IN ('admin','org_admin')
+    )
+  );
 
 -- Drop enum overload left behind when has_role(uuid, text) was added.
 DROP FUNCTION IF EXISTS public.has_role(uuid, public.app_role);

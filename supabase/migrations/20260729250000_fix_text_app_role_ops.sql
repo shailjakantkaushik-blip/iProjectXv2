@@ -6,6 +6,9 @@
 -- user_can_view_project → can_edit_project was the hot path on Executive.
 
 -- Ensure role columns are text (idempotent if already migrated).
+-- Drop policies that block ALTER TYPE of user_roles.role, then recreate.
+DROP POLICY IF EXISTS "cert_org_admin_select" ON public.org_license_certificates;
+
 DO $$
 BEGIN
   IF EXISTS (
@@ -26,6 +29,19 @@ BEGIN
       ALTER COLUMN role TYPE text USING role::text;
   END IF;
 END $$;
+
+CREATE POLICY "cert_org_admin_select"
+  ON public.org_license_certificates FOR SELECT
+  TO authenticated
+  USING (
+    org_id = public.get_user_org(auth.uid())
+    AND EXISTS (
+      SELECT 1 FROM public.user_roles ur
+      WHERE ur.user_id = auth.uid()
+        AND ur.org_id  = public.get_user_org(auth.uid())
+        AND ur.role IN ('admin','org_admin')
+    )
+  );
 
 -- Drop enum overload left behind when has_role(uuid, text) was added.
 DROP FUNCTION IF EXISTS public.has_role(uuid, public.app_role);
