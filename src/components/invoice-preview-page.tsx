@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { InvoiceDocument, downloadInvoicePdf } from "@/components/invoice-document";
-import { fetchInvoiceTemplate } from "@/lib/invoice-template";
+import { fetchInvoiceTemplate, INVOICE_TEMPLATE_QUERY_KEY } from "@/lib/invoice-template";
 
 type Props = {
   invoiceId: string;
@@ -36,8 +36,10 @@ export function InvoicePreviewPage({ invoiceId, backTo, backLabel }: Props) {
   });
 
   const { data: template } = useQuery({
-    queryKey: ["invoice-template"],
+    queryKey: INVOICE_TEMPLATE_QUERY_KEY,
     queryFn: fetchInvoiceTemplate,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const onDownload = async () => {

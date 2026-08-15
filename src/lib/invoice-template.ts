@@ -288,6 +288,8 @@ export function calcInvoiceGst(
   };
 }
 
+export const INVOICE_TEMPLATE_QUERY_KEY = ["invoice-template"] as const;
+
 export async function fetchInvoiceTemplate(): Promise<InvoiceTemplateConfig> {
   const { data } = await supabase
     .from("invoice_template_config" as any)
@@ -297,12 +299,16 @@ export async function fetchInvoiceTemplate(): Promise<InvoiceTemplateConfig> {
   return mergeInvoiceTemplate((data as any)?.config);
 }
 
-export async function saveInvoiceTemplate(config: InvoiceTemplateConfig, userId?: string) {
+export async function saveInvoiceTemplate(
+  config: InvoiceTemplateConfig,
+  userId?: string,
+): Promise<InvoiceTemplateConfig> {
   const normalized = mergeInvoiceTemplate(config);
   const { error } = await supabase
     .from("invoice_template_config" as any)
     .upsert({ id: "singleton", config: normalized as any, updated_by: userId ?? null });
   if (error) throw error;
+  return normalized;
 }
 
 export type InvoiceForRender = {
