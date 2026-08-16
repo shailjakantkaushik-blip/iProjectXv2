@@ -814,7 +814,7 @@ function ExecutiveDashboard() {
               to="/app/executive"
               search={{ tab: t.id }}
               className={cn(
-                "rounded-t-md px-3 py-2 text-xs font-semibold transition-colors",
+                "rounded-t-md px-5 py-3 text-sm font-semibold transition-colors sm:text-base",
                 active
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -833,9 +833,10 @@ function ExecutiveDashboard() {
           totalIncurred={totalIncurred}
           totalForecast={totalForecast}
           remaining={remaining}
-          ragData={ragData}
           monthlySpend={monthlySpend}
           segmentation={segmentation}
+          gates={gates}
+          monthly={monthly}
           loading={showColdLoad}
         />
       )}
@@ -853,7 +854,7 @@ function ExecutiveDashboard() {
             to="/app/executive"
             search={{ tab: t.id }}
             className={cn(
-              "rounded-md px-3 py-1.5 text-xs font-semibold transition-colors",
+              "rounded-md px-4 py-2 text-sm font-semibold transition-colors",
               tab === t.id
                 ? "bg-muted text-foreground ring-1 ring-border"
                 : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",

@@ -1,4 +1,6 @@
+import { useMemo } from "react";
 import { Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import {
   Bar,
   BarChart,
@@ -6,19 +8,25 @@ import {
   Cell,
   Line,
   LineChart,
-  Pie,
-  PieChart,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/lib/auth-context";
 import { SectionFrame, SectionTitle, RagChip, KpiCard } from "@/components/streamlit";
-import { ChartLegendList, legendItemsFromCounts } from "@/components/chart-legend-list";
 import { ExpandableChart } from "@/components/expandable-chart";
-import { RAG_COLORS, CHART_SERIES } from "@/lib/chart-theme";
-import { displayRag } from "@/lib/ops-enhancements";
-import { projectApprovedFunding, projectForecast, projectIncurred } from "@/lib/project-finance";
+import { CHART_SERIES } from "@/lib/chart-theme";
 import { PageLoading } from "@/components/page-loading";
+import { projectApprovedFunding } from "@/lib/project-finance";
+import {
+  buildExecutiveBriefing,
+  type BriefingDecision,
+  type BriefingGate,
+  type BriefingProject,
+  type BriefingRisk,
+} from "@/lib/executive-briefing";
+import type { MonthlyFinanceRow } from "@/lib/finance-lifecycle";
 
 type SpendPoint = { month: string; actual: number; forecast: number };
 type NamedCount = { name: string; value: number };
@@ -35,28 +43,18 @@ function pct(n: number, d: number) {
   return `${Math.round((n / d) * 100)}%`;
 }
 
-function varianceTone(forecast: number, budget: number) {
-  if (!budget)
-    return { label: "No envelope", rag: null as string | null, cls: "text-muted-foreground" };
-  const v = (forecast - budget) / budget;
-  if (v > 0.05)
-    return { label: `${Math.round(v * 100)}% over budget`, rag: "Red", cls: "text-red-600" };
-  if (v > 0.01)
-    return { label: `${Math.round(v * 100)}% over budget`, rag: "Amber", cls: "text-amber-600" };
-  if (v < -0.05)
-    return {
-      label: `${Math.round(Math.abs(v) * 100)}% under budget`,
-      rag: "Green",
-      cls: "text-emerald-700",
-    };
-  return { label: "On envelope", rag: "Green", cls: "text-emerald-700" };
+function ragBanner(rag: string) {
+  if (rag === "Red") return "border-red-300 bg-red-50";
+  if (rag === "Amber") return "border-amber-300 bg-amber-50";
+  return "border-emerald-300 bg-emerald-50";
 }
 
-function ragRank(rag: string) {
-  const v = (rag || "").toLowerCase();
-  if (v === "red") return 0;
-  if (v === "amber") return 1;
-  return 2;
+function kindLabel(kind: string) {
+  if (kind === "decision") return "Decide";
+  if (kind === "money") return "Money";
+  if (kind === "schedule") return "Time";
+  if (kind === "risk") return "Risk";
+  return "Health";
 }
 
 /** IBCS-style bullet: track = budget, fill = incurred, marker = forecast. */
@@ -73,24 +71,15 @@ function EnvelopeBullet({
   const w = (n: number) => `${Math.min(100, (n / max) * 100)}%`;
   return (
     <div className="space-y-2">
-      <div className="relative h-9 overflow-hidden rounded-md bg-slate-100">
+      <div className="relative h-10 overflow-hidden rounded-md bg-slate-100">
+        <div className="absolute inset-y-0 left-0 bg-blue-200/80" style={{ width: w(budget) }} />
         <div
-          className="absolute inset-y-0 left-0 bg-blue-200/80"
-          style={{ width: w(budget) }}
-          title={`Budget ${money(budget)}`}
-        />
-        <div
-          className="absolute top-1.5 bottom-1.5 left-0 rounded-sm bg-emerald-600"
+          className="absolute top-2 bottom-2 left-0 rounded-sm bg-emerald-600"
           style={{ width: w(incurred) }}
-          title={`Incurred ${money(incurred)}`}
         />
-        <div
-          className="absolute top-0 bottom-0 w-0.5 bg-amber-500"
-          style={{ left: w(forecast) }}
-          title={`Forecast ${money(forecast)}`}
-        />
+        <div className="absolute top-0 bottom-0 w-0.5 bg-amber-500" style={{ left: w(forecast) }} />
       </div>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-sm bg-blue-200" /> Budget {money(budget)}
         </span>
@@ -105,79 +94,89 @@ function EnvelopeBullet({
   );
 }
 
-type ExecProject = {
-  id: string;
-  project_code?: string | null;
-  name?: string | null;
-  status?: string | null;
-  end_date?: string | null;
-  rag?: string | null;
-  rag_override?: string | null;
-  budget?: number | null;
-  capex_approved?: number | null;
-  opex_approved?: number | null;
-  capex_incurred?: number | null;
-  opex_incurred?: number | null;
-  forecast_at_completion?: number | null;
-};
-
 export function ExecutiveQuickView({
   filtered,
   approvedFunding,
   totalIncurred,
   totalForecast,
   remaining,
-  ragData,
   monthlySpend,
   segmentation,
+  gates,
+  monthly,
   loading,
 }: {
-  filtered: ExecProject[];
+  filtered: BriefingProject[];
   approvedFunding: number;
   totalIncurred: number;
   totalForecast: number;
   remaining: number;
-  ragData: NamedCount[];
   monthlySpend: SpendPoint[];
   segmentation: NamedCount[];
+  gates: BriefingGate[];
+  monthly: MonthlyFinanceRow[];
   loading?: boolean;
 }) {
-  const green = filtered.filter((p) => displayRag(p) === "Green").length;
-  const amber = filtered.filter((p) => displayRag(p) === "Amber").length;
-  const red = filtered.filter((p) => displayRag(p) === "Red").length;
-  const today = new Date();
-  const overdue = filtered.filter(
-    (p) => p.end_date && new Date(p.end_date) < today && p.status !== "Completed",
+  const { organization } = useAuth();
+  const orgId = organization?.id;
+  const ids = useMemo(() => filtered.map((p) => p.id), [filtered]);
+
+  const risksQ = useQuery({
+    queryKey: ["risks", orgId, "exec-brief"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("risks")
+        .select("id,project_id,title,status,severity,probability,impact,owner")
+        .eq("org_id", orgId!);
+      if (error) throw error;
+      return (data ?? []) as BriefingRisk[];
+    },
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+
+  const decisionsQ = useQuery({
+    queryKey: ["decisions", orgId, "exec-brief"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("decisions")
+        .select("id,project_id,title,outcome,status,required_date,recommendation")
+        .eq("org_id", orgId!);
+      if (error) throw error;
+      return (data ?? []) as BriefingDecision[];
+    },
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+
+  const briefing = useMemo(
+    () =>
+      buildExecutiveBriefing({
+        projects: filtered,
+        gates,
+        monthly: monthly.filter((m) => m.project_id && m.period_month),
+        risks: (risksQ.data ?? []).filter((r) => ids.includes(r.project_id)),
+        decisions: (decisionsQ.data ?? []).filter((d) => ids.includes(d.project_id)),
+      }),
+    [filtered, gates, monthly, risksQ.data, decisionsQ.data, ids],
   );
-  const envelope = varianceTone(totalForecast, approvedFunding);
+
+  const alignmentDollars = useMemo(() => {
+    const m = new Map<string, number>();
+    filtered.forEach((p) => {
+      const k = p.portfolio || "Unassigned";
+      m.set(k, (m.get(k) || 0) + projectApprovedFunding(p));
+    });
+    if (m.size === 0 && segmentation.length) {
+      return segmentation.map((s) => ({ name: s.name, value: s.value }));
+    }
+    return Array.from(m, ([name, value]) => ({ name, value })).filter((r) => r.value > 0);
+  }, [filtered, segmentation]);
+
   const spendOfBudget = pct(totalIncurred, approvedFunding);
-  const ragScore = filtered.length ? Math.round((green / filtered.length) * 100) : 0;
-
-  const watch = [...filtered]
-    .map((p) => {
-      const rag = displayRag(p) || "";
-      const isOverdue = !!(p.end_date && new Date(p.end_date) < today && p.status !== "Completed");
-      const budget = projectApprovedFunding(p);
-      const fac = projectForecast(p);
-      const incurred = projectIncurred(p);
-      return { p, rag, isOverdue, budget, fac, incurred };
-    })
-    .filter((x) => x.rag === "Red" || x.rag === "Amber" || x.isOverdue)
-    .sort((a, b) => {
-      const r = ragRank(a.rag) - ragRank(b.rag);
-      if (r !== 0) return r;
-      return b.fac - b.budget - (a.fac - a.budget);
-    })
-    .slice(0, 8);
-
-  const headline =
-    filtered.length === 0
-      ? "No projects in this filter."
-      : red > 0
-        ? `${red} project${red === 1 ? "" : "s"} are Red — start there. Forecast is ${envelope.label.toLowerCase()}.`
-        : amber > 0
-          ? `${amber} Amber to watch. Portfolio is ${ragScore}% Green. Forecast is ${envelope.label.toLowerCase()}.`
-          : `Portfolio is ${ragScore}% Green. Forecast is ${envelope.label.toLowerCase()}.`;
+  const facVsBudget = approvedFunding
+    ? Math.round(((totalForecast - approvedFunding) / approvedFunding) * 100)
+    : 0;
 
   if (loading) {
     return <PageLoading label="Loading executive snapshot…" fullScreen={false} />;
@@ -185,44 +184,107 @@ export function ExecutiveQuickView({
 
   return (
     <div className="space-y-4">
-      <SectionFrame>
-        <p className="text-base font-medium leading-relaxed text-foreground">{headline}</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {filtered.length} project{filtered.length === 1 ? "" : "s"} in view · {overdue.length}{" "}
-          overdue · spend {spendOfBudget} of budget. Detailed charts, timeline, and project packs
-          stay on Detailed info.
-        </p>
-      </SectionFrame>
+      <div className={`rounded-xl border px-4 py-4 sm:px-5 ${ragBanner(briefing.overallRag)}`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Steering snapshot
+            </div>
+            <p className="text-lg font-semibold leading-snug text-foreground sm:text-xl">
+              {briefing.headline}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {filtered.length} project{filtered.length === 1 ? "" : "s"} · spend {spendOfBudget} of
+              budget · FAC {facVsBudget >= 0 ? "+" : ""}
+              {facVsBudget}% vs envelope.
+            </p>
+          </div>
+          <RagChip rag={briefing.overallRag} label={briefing.overallRag} />
+        </div>
+      </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
-          label="Budget"
-          value={money(approvedFunding)}
-          sub="Approved envelope"
-          accent="#1d4ed8"
+          label="Do you need to decide?"
+          value={String(briefing.decisionsWaiting)}
+          sub={briefing.decisionsWaiting ? "Waiting on steering" : "Nothing in the queue"}
+          accent={briefing.decisionsWaiting ? "#d97706" : "#15803d"}
         />
         <KpiCard
-          label="Incurred"
-          value={money(totalIncurred)}
-          sub={`${spendOfBudget} of budget · ${money(remaining)} left`}
-          accent="#15803d"
-        />
-        <KpiCard
-          label="Forecast (FAC)"
+          label="Is the money still inside the envelope?"
           value={money(totalForecast)}
-          sub={<span className={envelope.cls}>{envelope.label}</span>}
-          accent="#d97706"
+          sub={
+            briefing.moneyAtRisk > 0
+              ? `${money(briefing.moneyAtRisk)} above budget`
+              : `${money(remaining)} still unspent`
+          }
+          accent={briefing.moneyAtRisk > 0 ? "#dc2626" : "#1d4ed8"}
         />
         <KpiCard
-          label="Health"
-          value={`${ragScore}% Green`}
-          sub={`${red} Red · ${amber} Amber · ${green} Green`}
-          accent={red ? "#dc2626" : amber ? "#d97706" : "#15803d"}
+          label="Are we on time?"
+          value={String(briefing.lateGateCount + briefing.overdueCount)}
+          sub={`${briefing.lateGateCount} late gates · ${briefing.overdueCount} overdue`}
+          accent={briefing.lateGateCount || briefing.overdueCount ? "#dc2626" : "#15803d"}
+        />
+        <KpiCard
+          label="What could still hurt us?"
+          value={String(briefing.criticalRisks)}
+          sub={briefing.criticalRisks ? "Open critical risks" : "No critical risks open"}
+          accent={briefing.criticalRisks ? "#dc2626" : "#15803d"}
         />
       </div>
 
       <SectionFrame>
-        <SectionTitle>Where the money sits</SectionTitle>
+        <div className="mb-3 flex items-end justify-between gap-2">
+          <div>
+            <SectionTitle>Ask of this pack</SectionTitle>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Ranked by the health engine, late gates, open risks, and decisions waiting on you.
+            </p>
+          </div>
+          <Link
+            to="/app/executive-intelligence"
+            className="text-sm font-medium text-primary hover:underline"
+          >
+            More intelligence
+          </Link>
+        </div>
+        {briefing.actions.length === 0 ? (
+          <p className="py-4 text-sm text-muted-foreground">
+            Nothing needs a steering decision in this filter.
+          </p>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {briefing.actions.map((a) => (
+              <Link
+                key={a.id}
+                to="/app/projects/$id"
+                params={{ id: a.projectId }}
+                className="rounded-lg border border-border bg-background p-3 transition hover:border-primary/40 hover:shadow-sm"
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {kindLabel(a.kind)}
+                  </span>
+                  <RagChip rag={a.severity} />
+                </div>
+                <div className="text-sm font-semibold leading-snug text-foreground">{a.title}</div>
+                <p className="mt-1 text-xs text-muted-foreground">{a.projectLabel}</p>
+                <p className="mt-2 text-xs leading-relaxed text-foreground">{a.why}</p>
+                <p className="mt-2 text-xs font-medium text-primary">Ask: {a.ask}</p>
+                {a.amount ? (
+                  <p className="mt-1 text-xs tabular-nums text-red-600">
+                    {money(a.amount)} exposure
+                  </p>
+                ) : null}
+              </Link>
+            ))}
+          </div>
+        )}
+      </SectionFrame>
+
+      <SectionFrame>
+        <SectionTitle>Money at a glance</SectionTitle>
         <EnvelopeBullet
           budget={approvedFunding}
           incurred={totalIncurred}
@@ -231,41 +293,6 @@ export function ExecutiveQuickView({
       </SectionFrame>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        {ragData.length === 0 ? (
-          <SectionFrame>
-            <SectionTitle>Portfolio health</SectionTitle>
-            <p className="py-8 text-center text-sm text-muted-foreground">No RAG data</p>
-          </SectionFrame>
-        ) : (
-          <ExpandableChart
-            title="Portfolio health"
-            heightClass="h-52"
-            legend={
-              <ChartLegendList items={legendItemsFromCounts(ragData, RAG_COLORS)} columns={1} />
-            }
-          >
-            <PieChart>
-              <Pie
-                data={ragData}
-                dataKey="value"
-                nameKey="name"
-                cx="50%"
-                cy="50%"
-                innerRadius="52%"
-                outerRadius="78%"
-                paddingAngle={2}
-                stroke="#fff"
-                strokeWidth={2}
-              >
-                {ragData.map((e) => (
-                  <Cell key={e.name} fill={RAG_COLORS[e.name]} />
-                ))}
-              </Pie>
-              <Tooltip formatter={(v: number | string) => [`${v} projects`]} />
-            </PieChart>
-          </ExpandableChart>
-        )}
-
         {monthlySpend.length === 0 ? (
           <SectionFrame>
             <SectionTitle>Spend vs forecast</SectionTitle>
@@ -274,7 +301,7 @@ export function ExecutiveQuickView({
             </p>
           </SectionFrame>
         ) : (
-          <ExpandableChart title="Spend vs forecast (last 12 months)" heightClass="h-52">
+          <ExpandableChart title="Spend vs forecast (last 12 months)" heightClass="h-48">
             <LineChart data={monthlySpend} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
               <XAxis dataKey="month" fontSize={11} />
@@ -305,83 +332,83 @@ export function ExecutiveQuickView({
             </LineChart>
           </ExpandableChart>
         )}
-      </div>
 
-      {segmentation.length === 0 ? (
-        <SectionFrame>
-          <SectionTitle>Why we invest (Strategic Alignment)</SectionTitle>
-          <p className="py-6 text-center text-sm text-muted-foreground">No alignment tags</p>
-        </SectionFrame>
-      ) : (
-        <ExpandableChart title="Why we invest (Strategic Alignment)" heightClass="h-48">
-          <BarChart data={segmentation} margin={{ top: 20, right: 12, left: 0, bottom: 4 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-            <XAxis dataKey="name" fontSize={11} />
-            <YAxis fontSize={10} allowDecimals={false} />
-            <Tooltip />
-            <Bar dataKey="value" radius={[4, 4, 0, 0]} name="Projects">
-              {segmentation.map((_, i) => (
-                <Cell key={i} fill={CHART_SERIES[i % CHART_SERIES.length]} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ExpandableChart>
-      )}
+        {alignmentDollars.length === 0 ? (
+          <SectionFrame>
+            <SectionTitle>Where the envelope sits</SectionTitle>
+            <p className="py-8 text-center text-sm text-muted-foreground">No alignment $ yet</p>
+          </SectionFrame>
+        ) : (
+          <ExpandableChart title="Envelope by Strategic Alignment" heightClass="h-48">
+            <BarChart data={alignmentDollars} margin={{ top: 16, right: 12, left: 0, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+              <XAxis dataKey="name" fontSize={11} />
+              <YAxis fontSize={10} tickFormatter={(v) => money(Number(v))} />
+              <Tooltip formatter={(v: number | string) => money(Number(v))} />
+              <Bar dataKey="value" radius={[4, 4, 0, 0]} name="Budget">
+                {alignmentDollars.map((_, i) => (
+                  <Cell key={i} fill={CHART_SERIES[i % CHART_SERIES.length]} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ExpandableChart>
+        )}
+      </div>
 
       <SectionFrame>
         <div className="mb-2 flex items-end justify-between gap-2">
-          <SectionTitle>Needs attention</SectionTitle>
+          <div>
+            <SectionTitle>Watch list — why it is on the pack</SectionTitle>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Health score is the engine (schedule, money, gates, risk). RAG chip is the register.
+            </p>
+          </div>
           <Link
             to="/app/executive"
             search={{ tab: "overview" }}
-            className="text-xs font-medium text-primary hover:underline"
+            className="text-sm font-medium text-primary hover:underline"
           >
             Open detailed info
           </Link>
         </div>
-        {watch.length === 0 ? (
+        {briefing.watch.length === 0 ? (
           <p className="py-6 text-sm text-muted-foreground">
-            Nothing Red, Amber, or overdue in this filter.
+            Nothing Red, Amber, overdue, or over envelope in this filter.
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="st-table text-xs">
+            <table className="st-table text-sm">
               <thead>
                 <tr>
                   <th className="text-left">Project</th>
                   <th className="text-left">RAG</th>
-                  <th className="text-right">Budget</th>
-                  <th className="text-right">Incurred</th>
-                  <th className="text-right">Forecast</th>
-                  <th className="text-left">Flag</th>
+                  <th className="text-right">Score</th>
+                  <th className="text-right">Forecast vs budget</th>
+                  <th className="text-left">Why it is here</th>
                 </tr>
               </thead>
               <tbody>
-                {watch.map(({ p, rag, isOverdue, budget, fac, incurred }) => (
-                  <tr key={p.id}>
+                {briefing.watch.map((w) => (
+                  <tr key={w.project.id}>
                     <td className="text-left">
                       <Link
                         to="/app/projects/$id"
-                        params={{ id: p.id }}
+                        params={{ id: w.project.id }}
                         className="font-medium text-primary hover:underline"
                       >
-                        {p.project_code} · {p.name}
+                        {w.project.project_code} · {w.project.name}
                       </Link>
                     </td>
                     <td className="text-left">
-                      <RagChip rag={rag} />
+                      <RagChip rag={w.rag} />
                     </td>
-                    <td className="text-right tabular-nums">{money(budget)}</td>
-                    <td className="text-right tabular-nums">{money(incurred)}</td>
-                    <td className="text-right tabular-nums">{money(fac)}</td>
-                    <td className="text-left text-muted-foreground">
-                      {rag === "Red" ? "Off track" : rag === "Amber" ? "Watch" : null}
-                      {isOverdue
-                        ? rag === "Red" || rag === "Amber"
-                          ? " · overdue"
-                          : "Overdue"
-                        : null}
+                    <td className="text-right tabular-nums">{w.engine.score}</td>
+                    <td className="text-right tabular-nums">
+                      <span className={w.overrun > 0 ? "font-semibold text-red-600" : ""}>
+                        {w.overrun > 0 ? `+${money(w.overrun)}` : money(0)}
+                      </span>
                     </td>
+                    <td className="text-left text-muted-foreground">{w.topWhy}</td>
                   </tr>
                 ))}
               </tbody>
