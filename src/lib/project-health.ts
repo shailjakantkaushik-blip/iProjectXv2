@@ -14,6 +14,7 @@ import { projectScheduleEnd, projectScheduleStart } from "@/lib/project-dates";
 import { scheduleCompletionPct } from "@/lib/schedule-progress";
 import {
   evaluateProjectHealth,
+  type HealthEngineInput,
   type HealthEngineResult,
 } from "@/lib/project-health-engine";
 
@@ -143,16 +144,26 @@ function dimRag(engine: HealthEngineResult, key: string, fallback: RagTone): Rag
 /**
  * Compute health for one project via the weighted Health Engine.
  * `overall_rag` is derived from the score (not manual entry).
+ * Pass the same RAID / monthly / allocation rows used on Infographic / Quick view
+ * so 30-day RAG matches those pages.
  */
 export function computeProjectHealth(
   project: ProjectHealthLike,
   gates: StageGateHealthLike[] = [],
-  nowMs: number = Date.now(),
+  extras?: Omit<Partial<HealthEngineInput>, "project" | "gates">,
 ): ProjectHealthComputed {
+  const nowMs = extras?.nowMs ?? Date.now();
   const engine = evaluateProjectHealth({
     project,
     gates,
     nowMs,
+    workItems: extras?.workItems,
+    risks: extras?.risks,
+    dependencies: extras?.dependencies,
+    changeRequests: extras?.changeRequests,
+    allocations: extras?.allocations,
+    monthly: extras?.monthly,
+    previousScore: extras?.previousScore,
   });
 
   const start = projectScheduleStart(project);

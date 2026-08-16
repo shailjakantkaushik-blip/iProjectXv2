@@ -62,6 +62,18 @@ function pct(n: number, d: number) {
 }
 const num = (v: unknown) => Number(v || 0);
 
+function byProjectId<T extends { project_id?: string | null }>(rows: T[]) {
+  const m = new Map<string, T[]>();
+  for (const r of rows) {
+    const id = r.project_id;
+    if (!id) continue;
+    const list = m.get(id) || [];
+    list.push(r);
+    m.set(id, list);
+  }
+  return m;
+}
+
 function ragRank(rag?: string | null) {
   const r = String(rag || "").trim();
   if (r === "Red") return 0;
@@ -275,6 +287,62 @@ function ExecutiveCockpit() {
       (await supabase.from("profiles").select("id,full_name,email")).data ?? [],
     enabled: !!orgId,
   });
+  const { data: risks = [] } = useQuery({
+    queryKey: ["risks", orgId, "cockpit-health"],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("risks")
+          .select("id,project_id,status,severity,probability,impact,priority,rating")
+      ).data ?? [],
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+  const { data: dependencies = [] } = useQuery({
+    queryKey: ["dependencies", orgId, "portfolio-pulse"],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("dependencies")
+          .select("id,project_id,status,rag,due_date,dependency_type")
+      ).data ?? [],
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+  const { data: workItems = [] } = useQuery({
+    queryKey: ["work_items", orgId, "portfolio-pulse"],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("work_items" as never)
+          .select("id,project_id,status,percent_complete,estimate_hours")
+      ).data ?? [],
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+  const { data: allocations = [] } = useQuery({
+    queryKey: ["resource_allocations", orgId, "portfolio-pulse"],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("resource_allocations")
+          .select("id,project_id,allocation_percent,allocated_hours")
+      ).data ?? [],
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+  const { data: changeRequests = [] } = useQuery({
+    queryKey: ["change_requests", orgId, "cockpit-health"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("change_requests" as never)
+        .select("id,project_id,status,change_type,impact_cost,impact_schedule_days");
+      if (error) return [];
+      return data ?? [];
+    },
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
 
   const profileById = useMemo(
     () => new Map((profiles as any[]).map((p) => [p.id, p])),
@@ -297,16 +365,13 @@ function ExecutiveCockpit() {
     [fyAlloc, filtersOn, filteredIds],
   );
 
-  const gatesByProject = useMemo(() => {
-    const m = new Map<string, any[]>();
-    gatesScoped.forEach((g) => {
-      if (!g.project_id) return;
-      const list = m.get(g.project_id) || [];
-      list.push(g);
-      m.set(g.project_id, list);
-    });
-    return m;
-  }, [gatesScoped]);
+  const gatesByProject = useMemo(() => byProjectId(gatesScoped as any[]), [gatesScoped]);
+  const risksByProject = useMemo(() => byProjectId(risks as any[]), [risks]);
+  const depsByProject = useMemo(() => byProjectId(dependencies as any[]), [dependencies]);
+  const workItemsByProject = useMemo(() => byProjectId(workItems as any[]), [workItems]);
+  const allocationsByProject = useMemo(() => byProjectId(allocations as any[]), [allocations]);
+  const crsByProject = useMemo(() => byProjectId(changeRequests as any[]), [changeRequests]);
+  const monthlyByProject = useMemo(() => byProjectId(monthly as any[]), [monthly]);
 
   const {
     totalValue,
@@ -502,7 +567,14 @@ function ExecutiveCockpit() {
           benefits_target: sumBenefitsTarget(benefitsScoped as any[], p, p.id),
           benefits_realised: sumBenefitsRealised(benefitsScoped as any[], p, p.id),
         };
-        const health = computeProjectHealth(withBenefits, gatesByProject.get(p.id) || []);
+        const health = computeProjectHealth(withBenefits, gatesByProject.get(p.id) || [], {
+          monthly: monthlyByProject.get(p.id) || [],
+          risks: risksByProject.get(p.id) || [],
+          dependencies: depsByProject.get(p.id) || [],
+          workItems: workItemsByProject.get(p.id) || [],
+          allocations: allocationsByProject.get(p.id) || [],
+          changeRequests: crsByProject.get(p.id) || [],
+        });
         const pm = p.pm_user_id ? profileById.get(p.pm_user_id) : null;
         const deliveryLead =
           (pm?.full_name || pm?.email || p.delivery_lead || p.pm_name || "").trim() || "—";
@@ -514,7 +586,18 @@ function ExecutiveCockpit() {
         if (rr !== 0) return rr;
         return (num(a.health_score) || 999) - (num(b.health_score) || 999);
       });
-  }, [projects, benefitsScoped, gatesByProject, profileById]);
+  }, [
+    projects,
+    benefitsScoped,
+    gatesByProject,
+    profileById,
+    monthlyByProject,
+    risksByProject,
+    depsByProject,
+    workItemsByProject,
+    allocationsByProject,
+    crsByProject,
+  ]);
 
   const maxSegApproved = Math.max(1, ...segRows.map((r) => r.approved));
   const benefitsPct = benefitsForecastK
@@ -833,7 +916,13 @@ function ExecutiveCockpit() {
                     {p.engine?.predictive?.likelyRag ? (
                       <RagChip
                         rag={p.engine.predictive.likelyRag}
-                        explain={explainRag({ rag: p.engine.predictive.likelyRag, engine: p.engine })}
+                        explain={explainRag({
+                          rag: p.engine.predictive.likelyRag,
+                          engine: p.engine,
+                          extraBullets: [
+                            `30-day outlook: score ${p.engine.predictive.forecastScore30d}/100 → ${p.engine.predictive.likelyRag}.`,
+                          ],
+                        })}
                       />
                     ) : null}
                   </td>
