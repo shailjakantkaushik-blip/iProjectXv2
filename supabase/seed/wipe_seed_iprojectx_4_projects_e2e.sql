@@ -389,6 +389,10 @@ ALTER TABLE public.benefits ADD COLUMN IF NOT EXISTS payback_months numeric;
 ALTER TABLE public.governance_channels ADD COLUMN IF NOT EXISTS parent_channel_id uuid
   REFERENCES public.governance_channels(id) ON DELETE SET NULL;
 ALTER TABLE public.governance_channels ADD COLUMN IF NOT EXISTS last_meeting date;
+ALTER TABLE public.risks ADD COLUMN IF NOT EXISTS raid_code text;
+ALTER TABLE public.issues ADD COLUMN IF NOT EXISTS raid_code text;
+ALTER TABLE public.actions ADD COLUMN IF NOT EXISTS raid_code text;
+ALTER TABLE public.decisions ADD COLUMN IF NOT EXISTS raid_code text;
 
 -- Meeting summaries + forecast header / phases (idempotent; matches latest app)
 CREATE TABLE IF NOT EXISTS public.project_meeting_summaries (
@@ -1393,31 +1397,31 @@ BEGIN
          CASE WHEN ben_r[i] > 0 THEN 'In Progress' ELSE 'Planned' END, NULL, paybacks[i] + 6);
 
       INSERT INTO public.risks (
-        org_id, project_id, title, description, category, probability, impact, severity, status, owner, mitigation, due_date
+        org_id, project_id, raid_code, title, description, category, probability, impact, severity, status, owner, mitigation, due_date
       ) VALUES
-        (r_org.id, p_id, 'Delivery capacity constraint', 'Key skills contention across portfolio', 'Resource', 3, 4, 12, 'Open', primary_person_name, 'Prioritise critical path; surge contractors', CURRENT_DATE + 30),
-        (r_org.id, p_id, 'Dependency slippage', 'Upstream platform dependency may slip', 'Dependency', 4, 3, 12, 'Open', secondary_person_name, 'Weekly dependency forum; contingency design', CURRENT_DATE + 21),
-        (r_org.id, p_id, 'Scope creep on ' || alt_names[i], 'Secondary stream requirements expanding', 'Scope', 2, 3, 6, 'Mitigating', sponsor_name, 'Change board; freeze after Design', CURRENT_DATE + 45);
+        (r_org.id, p_id, 'RSK-001', 'Delivery capacity constraint', 'Key skills contention across portfolio', 'Resource', 3, 4, 12, 'Open', primary_person_name, 'Prioritise critical path; surge contractors', CURRENT_DATE + 30),
+        (r_org.id, p_id, 'RSK-002', 'Dependency slippage', 'Upstream platform dependency may slip', 'Dependency', 4, 3, 12, 'Open', secondary_person_name, 'Weekly dependency forum; contingency design', CURRENT_DATE + 21),
+        (r_org.id, p_id, 'RSK-003', 'Scope creep on ' || alt_names[i], 'Secondary stream requirements expanding', 'Scope', 2, 3, 6, 'Mitigating', sponsor_name, 'Change board; freeze after Design', CURRENT_DATE + 45);
 
       INSERT INTO public.issues (
-        org_id, project_id, title, description, priority, status, owner, raised_date, target_date
+        org_id, project_id, raid_code, title, description, priority, status, owner, raised_date, target_date
       ) VALUES
-        (r_org.id, p_id, 'Environment access delay', 'Non-prod access pending for ' || alt_names[i], 'Medium', 'Open', secondary_person_name, CURRENT_DATE - 7, CURRENT_DATE + 14),
-        (r_org.id, p_id, 'Vendor response lag', 'Third-party awaiting security questionnaire', 'High', 'Open', primary_person_name, CURRENT_DATE - 3, CURRENT_DATE + 10);
+        (r_org.id, p_id, 'ISS-001', 'Environment access delay', 'Non-prod access pending for ' || alt_names[i], 'Medium', 'Open', secondary_person_name, CURRENT_DATE - 7, CURRENT_DATE + 14),
+        (r_org.id, p_id, 'ISS-002', 'Vendor response lag', 'Third-party awaiting security questionnaire', 'High', 'Open', primary_person_name, CURRENT_DATE - 3, CURRENT_DATE + 10);
 
       INSERT INTO public.actions (
-        org_id, project_id, title, description, owner, due_date, status, priority, completed_date
+        org_id, project_id, raid_code, title, description, owner, due_date, status, priority, completed_date
       ) VALUES
-        (r_org.id, p_id, 'Confirm FY funding drawdown', 'Validate drawdown against FY allocations', sponsor_name, CURRENT_DATE + 14, 'Open', 'Medium', NULL),
-        (r_org.id, p_id, 'Complete stream RAID review', 'Joint Core + ' || alt_names[i] || ' RAID workshop', primary_person_name, CURRENT_DATE + 7, 'Open', 'High', NULL),
-        (r_org.id, p_id, 'Publish status pack', 'Monthly status for steering', secondary_person_name, CURRENT_DATE + 3, 'In Progress', 'Medium', NULL),
-        (r_org.id, p_id, 'Close previous steering actions', 'Actions agreed at last steering are complete', primary_person_name, CURRENT_DATE - 2, 'Done', 'Medium', CURRENT_DATE - 3);
+        (r_org.id, p_id, 'ACT-001', 'Confirm FY funding drawdown', 'Validate drawdown against FY allocations', sponsor_name, CURRENT_DATE + 14, 'Open', 'Medium', NULL),
+        (r_org.id, p_id, 'ACT-002', 'Complete stream RAID review', 'Joint Core + ' || alt_names[i] || ' RAID workshop', primary_person_name, CURRENT_DATE + 7, 'Open', 'High', NULL),
+        (r_org.id, p_id, 'ACT-003', 'Publish status pack', 'Monthly status for steering', secondary_person_name, CURRENT_DATE + 3, 'In Progress', 'Medium', NULL),
+        (r_org.id, p_id, 'ACT-004', 'Close previous steering actions', 'Actions agreed at last steering are complete', primary_person_name, CURRENT_DATE - 2, 'Done', 'Medium', CURRENT_DATE - 3);
 
       INSERT INTO public.decisions (
-        org_id, project_id, stage_gate_id, title, description, decision_date, decided_by, rationale, impact, status
+        org_id, project_id, raid_code, stage_gate_id, title, description, decision_date, decided_by, rationale, impact, status
       )
       SELECT
-        r_org.id, p_id,
+        r_org.id, p_id, 'DEC-001',
         (SELECT sg.id FROM public.stage_gates sg
          WHERE sg.project_id = p_id AND sg.stream_id = core_id AND sg.status = 'In Review'
          ORDER BY sg.planned_date LIMIT 1),
@@ -1429,7 +1433,7 @@ BEGIN
         'Approved'
       UNION ALL
       SELECT
-        r_org.id, p_id,
+        r_org.id, p_id, 'DEC-002',
         (SELECT sg.id FROM public.stage_gates sg
          WHERE sg.project_id = p_id AND sg.stream_id = core_id
            AND sg.gate_name = 'Business Case / Full Funding'
