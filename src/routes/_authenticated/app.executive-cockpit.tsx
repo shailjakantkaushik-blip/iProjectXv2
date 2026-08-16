@@ -441,7 +441,7 @@ function ExecutiveCockpit() {
       {/* Financial */}
       <SectionFrame exportName="cockpit-financial">
         <SectionTitle>Financial</SectionTitle>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+        <div className="kpi-align kpi-align-7">
           <KpiCard
             label="Total Portfolio Value"
             value={money(totalValue)}
@@ -475,7 +475,7 @@ function ExecutiveCockpit() {
       {/* Delivery */}
       <SectionFrame exportName="cockpit-delivery">
         <SectionTitle>Delivery</SectionTitle>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <div className="kpi-align kpi-align-6">
           <KpiCard label="On Track (%)" value={pct(onTrackK, totalK)} accent="#22c55e" />
           <KpiCard label="At Risk (%)" value={pct(atRiskK, totalK)} accent="#f59e0b" />
           <KpiCard label="Critical (RAG) (%)" value={pct(delayedK, totalK)} accent="#ef4444" />
@@ -488,7 +488,7 @@ function ExecutiveCockpit() {
       {/* Benefits & Governance */}
       <SectionFrame exportName="cockpit-benefits-governance">
         <SectionTitle>Benefits & Governance</SectionTitle>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        <div className="kpi-align kpi-align-5">
           <KpiCard
             label="Benefits Forecast"
             value={money(benefitsForecastK)}
@@ -727,7 +727,7 @@ function ExecutiveCockpit() {
               </Bar>
             </BarChart>
           </ExpandableChart>
-          <div className="flex flex-col gap-3">
+          <div className="kpi-stack">
             <KpiCard
               label="Projects with FY Allocation"
               value={`${projectsWithFY}/${projects.length}`}
