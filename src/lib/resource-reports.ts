@@ -58,10 +58,7 @@ export function buildResourceUtilisationExport(opts: {
   /** Plan % / hours by resource for the selected period. */
   planByResource: Map<string, { percent: number; hours: number }>;
   /** Actuals by resource from approved timesheets. */
-  actualByResource: Map<
-    string,
-    { hours: number; billable: number; non_billable: number }
-  >;
+  actualByResource: Map<string, { hours: number; billable: number; non_billable: number }>;
 }): ResourceUtilisationExportRow[] {
   return opts.resources
     .map((r) => {
@@ -71,8 +68,7 @@ export function buildResourceUtilisationExport(opts: {
         billable: 0,
         non_billable: 0,
       };
-      const util =
-        plan.hours > 0 ? Math.round((act.hours / plan.hours) * 1000) / 10 : null;
+      const util = plan.hours > 0 ? Math.round((act.hours / plan.hours) * 1000) / 10 : null;
       let status = "Under";
       if (plan.hours <= 0 && act.hours > 0) status = "Unplanned";
       else if ((util ?? plan.percent) > 110 || plan.percent > 100) status = "Over";
@@ -97,8 +93,8 @@ export function buildResourceUtilisationExport(opts: {
 export function pvaRowsToExport(rows: AllocationPvaRow[]): Record<string, string | number>[] {
   return rows.map((r) => ({
     Dimension: r.label,
-    "Alloc plan h": r.planned_hours,
-    "WI demand h": r.demand_hours,
+    "Alloc h": r.planned_hours,
+    "Demand h": r.demand_hours,
     "Demand gap h": r.demand_gap_hours,
     "Actual h": r.actual_hours,
     "Billable h": r.billable_hours,
@@ -106,7 +102,7 @@ export function pvaRowsToExport(rows: AllocationPvaRow[]): Record<string, string
     "Variance h": r.variance_hours,
     "Util %": r.utilization_pct ?? "",
     Status: r.status,
-    "Plan FTE $": r.planned_labor_cost,
+    "Demand FTE $": r.planned_labor_cost,
     "Actual FTE $": r.labor_cost,
   }));
 }
@@ -120,32 +116,32 @@ export async function exportResourceReportsExcel(opts: {
     "Resource",
     "Role",
     "Capacity h/wk",
-    "Plan %",
-    "Plan h",
+    "Alloc %",
+    "Alloc h",
     "Actual h",
     "Billable h",
     "Non-billable / unallocated h",
     "Variance h",
-    "Util vs plan %",
+    "Util vs alloc %",
     "Status",
   ];
   const utilSheet = opts.utilisation.map((r) => ({
     Resource: r.resource,
     Role: r.role,
     "Capacity h/wk": r.capacity_hours_week,
-    "Plan %": r.plan_percent,
-    "Plan h": r.plan_hours,
+    "Alloc %": r.plan_percent,
+    "Alloc h": r.plan_hours,
     "Actual h": r.actual_hours,
     "Billable h": r.billable_hours,
     "Non-billable / unallocated h": r.non_billable_hours,
     "Variance h": r.variance_hours,
-    "Util vs plan %": r.util_vs_plan_pct ?? "",
+    "Util vs alloc %": r.util_vs_plan_pct ?? "",
     Status: r.status,
   }));
   const pvaHeaders = [
     "Dimension",
-    "Alloc plan h",
-    "WI demand h",
+    "Alloc h",
+    "Demand h",
     "Demand gap h",
     "Actual h",
     "Billable h",
@@ -153,13 +149,13 @@ export async function exportResourceReportsExcel(opts: {
     "Variance h",
     "Util %",
     "Status",
-    "Plan FTE $",
+    "Demand FTE $",
     "Actual FTE $",
   ];
   const pvaSheet = pvaRowsToExport(opts.pva);
   await writeObjectSheets(
     [
-      { name: "Utilisation_Plan_vs_Actual", headers: utilHeaders, rows: utilSheet },
+      { name: "Utilisation_Alloc_vs_Actual", headers: utilHeaders, rows: utilSheet },
       {
         name: "Detailed_PVA",
         headers: pvaHeaders,
@@ -178,15 +174,18 @@ export function exportResourceUtilisationCsv(
     Resource: r.resource,
     Role: r.role,
     "Capacity h/wk": r.capacity_hours_week,
-    "Plan %": r.plan_percent,
-    "Plan h": r.plan_hours,
+    "Alloc %": r.plan_percent,
+    "Alloc h": r.plan_hours,
     "Actual h": r.actual_hours,
     "Billable h": r.billable_hours,
     "Non-billable / unallocated h": r.non_billable_hours,
     "Variance h": r.variance_hours,
-    "Util vs plan %": r.util_vs_plan_pct ?? "",
+    "Util vs alloc %": r.util_vs_plan_pct ?? "",
     Status: r.status,
   }));
   const blob = new Blob([toCsv(mapped)], { type: "text/csv;charset=utf-8" });
-  downloadBlob(blob, filename || `Resource_Utilisation_${new Date().toISOString().slice(0, 10)}.csv`);
+  downloadBlob(
+    blob,
+    filename || `Resource_Utilisation_${new Date().toISOString().slice(0, 10)}.csv`,
+  );
 }
