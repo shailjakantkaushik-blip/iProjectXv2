@@ -2,7 +2,15 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { PROJECT_PORTFOLIO_SELECT, RISKS_SELECT, ACTIONS_SELECT, BENEFITS_SELECT, STAGE_GATES_SELECT, MILESTONES_SELECT } from "@/lib/query-selects";
+import {
+  PROJECT_PORTFOLIO_SELECT,
+  RISKS_SELECT,
+  ACTIONS_SELECT,
+  BENEFITS_SELECT,
+  STAGE_GATES_SELECT,
+  MILESTONES_SELECT,
+  selectWithRaidCodeFallback,
+} from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
 import { explainRag } from "@/lib/explain-metric";
@@ -23,7 +31,8 @@ export const Route = createFileRoute("/_authenticated/app/executive-reports")({
 
 const fmtM = (n: number) => `$${(n / 1e6).toFixed(2)}M`;
 const fmt$ = (n: number) =>
-  "$" + new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n || 0);
+  "$" +
+  new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n || 0);
 const num = (v: unknown) => Number(v || 0);
 const today = () => {
   const d = new Date();
@@ -48,7 +57,9 @@ function ExecutiveReportsPage() {
   const projectsQ = useQuery({
     queryKey: ["projects", orgId],
     queryFn: async () => {
-      const { data, error } = await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*");
+      const { data, error } = await supabase
+        .from("projects")
+        .select(PROJECT_PORTFOLIO_SELECT as "*");
       if (error) throw error;
       return data ?? [];
     },
@@ -59,34 +70,59 @@ function ExecutiveReportsPage() {
   const { data: risks = [] } = useQuery({
     queryKey: ["risks", orgId],
     queryFn: async () =>
-      (await supabase.from("risks").select(RISKS_SELECT as "*").order("severity", { ascending: false })).data ?? [],
+      selectWithRaidCodeFallback(
+        (sel) =>
+          supabase
+            .from("risks")
+            .select(sel as "*")
+            .order("severity", { ascending: false }),
+        RISKS_SELECT,
+      ),
     enabled: !!orgId,
   });
 
   const { data: actions = [] } = useQuery({
     queryKey: ["actions", orgId],
     queryFn: async () =>
-      (await supabase.from("actions").select(ACTIONS_SELECT as "*").order("due_date")).data ?? [],
+      selectWithRaidCodeFallback(
+        (sel) =>
+          supabase
+            .from("actions")
+            .select(sel as "*")
+            .order("due_date"),
+        ACTIONS_SELECT,
+      ),
     enabled: !!orgId,
   });
 
   const { data: benefits = [] } = useQuery({
     queryKey: ["benefits", orgId],
-    queryFn: async () => (await supabase.from("benefits").select(BENEFITS_SELECT as "*")).data ?? [],
+    queryFn: async () =>
+      (await supabase.from("benefits").select(BENEFITS_SELECT as "*")).data ?? [],
     enabled: !!orgId,
   });
 
   const { data: gates = [] } = useQuery({
     queryKey: ["stage_gates", orgId],
     queryFn: async () =>
-      (await supabase.from("stage_gates").select(STAGE_GATES_SELECT as "*").order("planned_date")).data ?? [],
+      (
+        await supabase
+          .from("stage_gates")
+          .select(STAGE_GATES_SELECT as "*")
+          .order("planned_date")
+      ).data ?? [],
     enabled: !!orgId,
   });
 
   const { data: milestones = [] } = useQuery({
     queryKey: ["milestones", orgId],
     queryFn: async () =>
-      (await supabase.from("milestones").select(MILESTONES_SELECT as "*").order("planned_date")).data ?? [],
+      (
+        await supabase
+          .from("milestones")
+          .select(MILESTONES_SELECT as "*")
+          .order("planned_date")
+      ).data ?? [],
     enabled: !!orgId,
   });
 
@@ -103,15 +139,9 @@ function ExecutiveReportsPage() {
     enabled: !!orgId,
   });
 
-  const projectById = useMemo(
-    () => new Map(projects.map((p: any) => [p.id, p])),
-    [projects],
-  );
+  const projectById = useMemo(() => new Map(projects.map((p: any) => [p.id, p])), [projects]);
 
-  const streamById = useMemo(
-    () => new Map((streams as any[]).map((s) => [s.id, s])),
-    [streams],
-  );
+  const streamById = useMemo(() => new Map((streams as any[]).map((s) => [s.id, s])), [streams]);
 
   const buNameById = useMemo(
     () => new Map(businessUnits.map((b: any) => [b.id, b.name || b.code || "Unassigned"])),
@@ -163,10 +193,7 @@ function ExecutiveReportsPage() {
     overdue: gates.filter((g: any) => {
       const s = String(g.status || "").toLowerCase();
       return (
-        g.planned_date &&
-        new Date(g.planned_date) < now &&
-        s !== "approved" &&
-        s !== "rejected"
+        g.planned_date && new Date(g.planned_date) < now && s !== "approved" && s !== "rejected"
       );
     }).length,
   };
@@ -359,11 +386,15 @@ function ExecutiveReportsPage() {
         const done = s === "complete" || s === "completed" || s === "done" || !!m.actual_date;
         return !done;
       })
-      .sort((a: any, b: any) => String(a.planned_date || "9999").localeCompare(String(b.planned_date || "9999")))
+      .sort((a: any, b: any) =>
+        String(a.planned_date || "9999").localeCompare(String(b.planned_date || "9999")),
+      )
       .slice(0, 40)
       .map((m: any) => ({
         ...m,
-        streamName: m.stream_id ? streamById.get(m.stream_id)?.name || streamById.get(m.stream_id)?.code || "Stream" : null,
+        streamName: m.stream_id
+          ? streamById.get(m.stream_id)?.name || streamById.get(m.stream_id)?.code || "Stream"
+          : null,
       }));
   }, [milestones, streamById]);
 
@@ -404,6 +435,7 @@ function ExecutiveReportsPage() {
 
   const riskColumns: ColumnarColumn<any>[] = useMemo(
     () => [
+      { key: "raid_code", label: "Risk ID" },
       { key: "title", label: "Risk" },
       {
         key: "project",
@@ -422,6 +454,7 @@ function ExecutiveReportsPage() {
 
   const actionColumns: ColumnarColumn<any>[] = useMemo(
     () => [
+      { key: "raid_code", label: "Action ID" },
       { key: "title", label: "Action" },
       {
         key: "project",
@@ -603,8 +636,8 @@ function ExecutiveReportsPage() {
             <SectionFrame>
               <SectionTitle>Executive Summary</SectionTitle>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                The portfolio comprises <strong className="text-foreground">{total}</strong> projects
-                with a total approved budget of{" "}
+                The portfolio comprises <strong className="text-foreground">{total}</strong>{" "}
+                projects with a total approved budget of{" "}
                 <strong className="text-foreground">{fmtM(budget)}</strong>. To date,{" "}
                 <strong className="text-foreground">{fmtM(incurred)}</strong> (
                 {budget ? ((incurred / budget) * 100).toFixed(1) : "0.0"}%) has been incurred.
@@ -651,7 +684,7 @@ function ExecutiveReportsPage() {
                 shown={ragTable.rows.length}
                 total={ragTable.total}
                 dirty={ragTable.isDirty}
-          onClear={ragTable.clearAll}
+                onClear={ragTable.clearAll}
                 placeholder="Search portfolio…"
               />
               <div className="overflow-x-auto">
@@ -689,7 +722,10 @@ function ExecutiveReportsPage() {
                           <td>{p.status || "—"}</td>
                           <td>{p.priority || "—"}</td>
                           <td>
-                            <RagChip rag={p.rag} explain={explainRag({ rag: p.rag, source: "register" })} />
+                            <RagChip
+                              rag={p.rag}
+                              explain={explainRag({ rag: p.rag, source: "register" })}
+                            />
                           </td>
                           <td>{fmt$(num(p.budget))}</td>
                           <td>{p.sponsor || "—"}</td>
@@ -721,7 +757,7 @@ function ExecutiveReportsPage() {
                 shown={financeTable.rows.length}
                 total={financeTable.total}
                 dirty={financeTable.isDirty}
-          onClear={financeTable.clearAll}
+                onClear={financeTable.clearAll}
                 placeholder="Search financials…"
               />
               <div className="overflow-x-auto">
@@ -782,7 +818,7 @@ function ExecutiveReportsPage() {
                 shown={riskTable.rows.length}
                 total={riskTable.total}
                 dirty={riskTable.isDirty}
-          onClear={riskTable.clearAll}
+                onClear={riskTable.clearAll}
                 placeholder="Search risks…"
               />
               <div className="overflow-x-auto">
@@ -811,6 +847,9 @@ function ExecutiveReportsPage() {
                     ) : (
                       riskTable.rows.map((r: any) => (
                         <tr key={r.id}>
+                          <td className="font-mono text-xs whitespace-nowrap">
+                            {r.raid_code || "—"}
+                          </td>
                           <td className="font-medium">{r.title}</td>
                           <td>{projectById.get(r.project_id)?.name || "—"}</td>
                           <td>{num(r.severity) || "—"}</td>
@@ -830,11 +869,7 @@ function ExecutiveReportsPage() {
               <SectionTitle>Open Actions</SectionTitle>
               <div className="mb-4 grid gap-3 sm:grid-cols-3">
                 <KpiCard label="Open actions" value={openActions.length} />
-                <KpiCard
-                  label="Overdue"
-                  value={overdueActions.length}
-                  accent="var(--st-danger)"
-                />
+                <KpiCard label="Overdue" value={overdueActions.length} accent="var(--st-danger)" />
                 <KpiCard label="Total logged" value={actions.length} />
               </div>
               <ColumnarToolbar
@@ -843,7 +878,7 @@ function ExecutiveReportsPage() {
                 shown={actionTable.rows.length}
                 total={actionTable.total}
                 dirty={actionTable.isDirty}
-          onClear={actionTable.clearAll}
+                onClear={actionTable.clearAll}
                 placeholder="Search actions…"
               />
               <div className="overflow-x-auto">
@@ -874,6 +909,9 @@ function ExecutiveReportsPage() {
                     ) : (
                       actionTable.rows.map((a: any) => (
                         <tr key={a.id}>
+                          <td className="font-mono text-xs whitespace-nowrap">
+                            {a.raid_code || "—"}
+                          </td>
                           <td className="font-medium">{a.title}</td>
                           <td>{projectById.get(a.project_id)?.name || "—"}</td>
                           <td>{a.priority || "—"}</td>
@@ -911,7 +949,7 @@ function ExecutiveReportsPage() {
                 shown={benefitTable.rows.length}
                 total={benefitTable.total}
                 dirty={benefitTable.isDirty}
-          onClear={benefitTable.clearAll}
+                onClear={benefitTable.clearAll}
                 placeholder="Search benefits…"
               />
               <div className="overflow-x-auto">
@@ -975,7 +1013,7 @@ function ExecutiveReportsPage() {
                 shown={gateTable.rows.length}
                 total={gateTable.total}
                 dirty={gateTable.isDirty}
-          onClear={gateTable.clearAll}
+                onClear={gateTable.clearAll}
                 placeholder="Search stage gates…"
               />
               <div className="overflow-x-auto">
@@ -1027,11 +1065,7 @@ function ExecutiveReportsPage() {
               <div className="mb-4 grid gap-3 sm:grid-cols-3">
                 <KpiCard label="Total milestones" value={milestoneStats.total} />
                 <KpiCard label="Complete" value={milestoneStats.complete} />
-                <KpiCard
-                  label="Overdue"
-                  value={milestoneStats.overdue}
-                  accent="var(--st-danger)"
-                />
+                <KpiCard label="Overdue" value={milestoneStats.overdue} accent="var(--st-danger)" />
               </div>
               <ColumnarToolbar
                 globalQ={milestoneTable.globalQ}
@@ -1039,7 +1073,7 @@ function ExecutiveReportsPage() {
                 shown={milestoneTable.rows.length}
                 total={milestoneTable.total}
                 dirty={milestoneTable.isDirty}
-          onClear={milestoneTable.clearAll}
+                onClear={milestoneTable.clearAll}
                 placeholder="Search milestones…"
               />
               <div className="overflow-x-auto">
@@ -1096,7 +1130,7 @@ function ExecutiveReportsPage() {
                 shown={programTable.rows.length}
                 total={programTable.total}
                 dirty={programTable.isDirty}
-          onClear={programTable.clearAll}
+                onClear={programTable.clearAll}
                 placeholder="Search programs…"
               />
               <div className="overflow-x-auto">
@@ -1146,7 +1180,7 @@ function ExecutiveReportsPage() {
                 shown={buTable.rows.length}
                 total={buTable.total}
                 dirty={buTable.isDirty}
-          onClear={buTable.clearAll}
+                onClear={buTable.clearAll}
                 placeholder="Search business units…"
               />
               <div className="overflow-x-auto">

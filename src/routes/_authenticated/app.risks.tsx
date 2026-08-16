@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { RISKS_SELECT } from "@/lib/query-selects";
+import { RISKS_SELECT, selectWithRaidCodeFallback } from "@/lib/query-selects";
 import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
@@ -49,18 +49,19 @@ function RisksPage() {
         const res = await listOrgRisks({ data: { orgId } });
         return res.rows ?? [];
       }
-      return (
-        (await supabase.from("risks").select(RISKS_SELECT as "*").order("severity", { ascending: false }))
-          .data ?? []
+      return selectWithRaidCodeFallback(
+        (sel) =>
+          supabase
+            .from("risks")
+            .select(sel as "*")
+            .order("severity", { ascending: false }),
+        RISKS_SELECT,
       );
     },
     enabled: !!orgId,
   });
 
-  const projectById = useMemo(
-    () => new Map(projects.map((p: any) => [p.id, p])),
-    [projects],
-  );
+  const projectById = useMemo(() => new Map(projects.map((p: any) => [p.id, p])), [projects]);
 
   const [form, setForm] = useState({
     project_id: "",
@@ -82,6 +83,7 @@ function RisksPage() {
         label: "Project",
         getValue: (r) => (projectById.get(r.project_id) as any)?.project_code || "",
       },
+      { key: "raid_code", label: "Risk ID" },
       { key: "title", label: "Title" },
       { key: "category", label: "Category" },
       { key: "owner", label: "Owner" },
@@ -380,6 +382,7 @@ function RisksPage() {
                   return (
                     <tr key={r.id}>
                       <td className="font-medium">{p?.project_code || "—"}</td>
+                      <td className="font-mono text-xs whitespace-nowrap">{r.raid_code || "—"}</td>
                       <td>
                         <div className="flex flex-wrap items-center gap-1.5">
                           <EditableCell

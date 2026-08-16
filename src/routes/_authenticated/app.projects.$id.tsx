@@ -36,12 +36,15 @@ import {
 } from "@/lib/project-forecast";
 import { fetchOrgStreams } from "@/lib/project-streams";
 
-type ProjectTab = "overview" | "summary" | "decisions" | "work" | "governance" | "finance" | "streams";
+type ProjectTab =
+  "overview" | "summary" | "decisions" | "work" | "governance" | "finance" | "streams";
 
 export const Route = createFileRoute("/_authenticated/app/projects/$id")({
   validateSearch: (s: Record<string, unknown>): { tab?: ProjectTab } => {
     const raw = String(s.tab || "");
-    if (["overview", "summary", "decisions", "work", "governance", "finance", "streams"].includes(raw)) {
+    if (
+      ["overview", "summary", "decisions", "work", "governance", "finance", "streams"].includes(raw)
+    ) {
       return { tab: raw as ProjectTab };
     }
     return {};
@@ -95,7 +98,11 @@ function ProjectDetail() {
   const projectQ = useQuery({
     queryKey: ["project", id],
     queryFn: async () => {
-      const { data, error } = await supabase.from("projects").select("*").eq("id", id).maybeSingle();
+      const { data, error } = await supabase
+        .from("projects")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
       if (error) throw error;
       return data as any;
     },
@@ -119,23 +126,46 @@ function ProjectDetail() {
 
   const { data: risks = [] } = useQuery({
     queryKey: ["risks", organization?.id, id],
-    queryFn: async () =>
-      (await supabase.from("risks").select("id,title,status,severity").eq("project_id", id)).data ??
-      [],
+    queryFn: async () => {
+      const wide = await supabase
+        .from("risks")
+        .select("id,raid_code,title,status,severity")
+        .eq("project_id", id);
+      if (wide.error && /raid_code/i.test(wide.error.message)) {
+        return (
+          (await supabase.from("risks").select("id,title,status,severity").eq("project_id", id))
+            .data ?? []
+        );
+      }
+      return wide.data ?? [];
+    },
     enabled: !!organization?.id && tab === "governance",
   });
 
   const { data: issues = [] } = useQuery({
     queryKey: ["issues", organization?.id, id],
-    queryFn: async () =>
-      (await supabase.from("issues").select("id,title,status,priority").eq("project_id", id)).data ??
-      [],
+    queryFn: async () => {
+      const wide = await supabase
+        .from("issues")
+        .select("id,raid_code,title,status,priority")
+        .eq("project_id", id);
+      if (wide.error && /raid_code/i.test(wide.error.message)) {
+        return (
+          (await supabase.from("issues").select("id,title,status,priority").eq("project_id", id))
+            .data ?? []
+        );
+      }
+      return wide.data ?? [];
+    },
     enabled: !!organization?.id && tab === "governance",
   });
 
   const submit = async (values: ProjectFormValues) => {
     setBusy(true);
-    const { error } = await supabase.from("projects").update(values as never).eq("id", id);
+    const { error } = await supabase
+      .from("projects")
+      .update(values as never)
+      .eq("id", id);
     if (error) {
       setBusy(false);
       return void toast.error(error.message);
@@ -272,7 +302,10 @@ function ProjectDetail() {
   }
 
   const money = (n: number) =>
-    "$" + new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n || 0);
+    "$" +
+    new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(
+      n || 0,
+    );
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
@@ -285,7 +318,10 @@ function ProjectDetail() {
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span>{project.status || "—"}</span>
             <span>·</span>
-            <RagChip rag={project.rag} explain={explainRag({ rag: project.rag, source: "register" })} />
+            <RagChip
+              rag={project.rag}
+              explain={explainRag({ rag: project.rag, source: "register" })}
+            />
             {project.program ? (
               <>
                 <span>·</span>
@@ -339,7 +375,10 @@ function ProjectDetail() {
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <KpiCard label="Budget" value={money(Number(project.budget || 0))} />
               <KpiCard label="CAPEX approved" value={money(Number(project.capex_approved || 0))} />
-              <KpiCard label="Benefits target" value={money(Number(project.benefits_target || 0))} />
+              <KpiCard
+                label="Benefits target"
+                value={money(Number(project.benefits_target || 0))}
+              />
               <KpiCard label="ROI %" value={Number(project.roi_percent || 0)} />
             </div>
             <p className="mt-3 text-sm">
@@ -387,7 +426,11 @@ function ProjectDetail() {
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
             Edit the steering-meeting summary here. The Executive Dashboard{" "}
-            <Link to="/app/executive" search={{ tab: "summaries" }} className="font-medium text-primary hover:underline">
+            <Link
+              to="/app/executive"
+              search={{ tab: "summaries" }}
+              className="font-medium text-primary hover:underline"
+            >
               Project summaries
             </Link>{" "}
             tab shows it read-only.{" "}
@@ -439,7 +482,7 @@ function ProjectDetail() {
             shown={workTable.rows.length}
             total={workTable.total}
             dirty={workTable.isDirty}
-          onClear={workTable.clearAll}
+            onClear={workTable.clearAll}
             placeholder="Search work items…"
           />
           {workTable.total === 0 ? (
@@ -501,7 +544,10 @@ function ProjectDetail() {
               <ul className="space-y-2">
                 {risks.slice(0, 8).map((r: any) => (
                   <li key={r.id} className="rounded-md border border-border/70 px-3 py-2 text-sm">
-                    <div className="font-medium">{r.title}</div>
+                    <div className="font-medium">
+                      {r.raid_code ? `${r.raid_code} · ` : ""}
+                      {r.title}
+                    </div>
                     <div className="text-[11px] text-muted-foreground">
                       {r.status} · severity {r.severity ?? "—"}
                     </div>
@@ -523,7 +569,10 @@ function ProjectDetail() {
               <ul className="space-y-2">
                 {issues.slice(0, 8).map((i: any) => (
                   <li key={i.id} className="rounded-md border border-border/70 px-3 py-2 text-sm">
-                    <div className="font-medium">{i.title}</div>
+                    <div className="font-medium">
+                      {i.raid_code ? `${i.raid_code} · ` : ""}
+                      {i.title}
+                    </div>
                     <div className="text-[11px] text-muted-foreground">
                       {i.status} · {i.priority}
                     </div>
@@ -558,14 +607,11 @@ function ProjectDetail() {
               label="Baseline CAPEX"
               value={project.baseline_capex != null ? money(Number(project.baseline_capex)) : "—"}
             />
-            <KpiCard
-              label="Baseline date"
-              value={project.baseline_date || "Not set"}
-            />
+            <KpiCard label="Baseline date" value={project.baseline_date || "Not set"} />
           </div>
           <p className="mt-3 text-[11px] text-muted-foreground">
-            Requires migration columns on <code>projects</code> (
-            <code>baseline_*</code>). Variance reporting can use baseline vs current/incurred.
+            Requires migration columns on <code>projects</code> (<code>baseline_*</code>). Variance
+            reporting can use baseline vs current/incurred.
           </p>
         </SectionFrame>
       )}

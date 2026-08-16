@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { ACTIONS_SELECT } from "@/lib/query-selects";
+import { ACTIONS_SELECT, selectWithRaidCodeFallback } from "@/lib/query-selects";
 import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
@@ -39,13 +39,18 @@ function ActionsPage() {
   });
   const { data: actions = [] } = useQuery({
     queryKey: ["actions", orgId],
-    queryFn: async () => (await supabase.from("actions").select(ACTIONS_SELECT as "*").order("due_date")).data ?? [],
+    queryFn: async () =>
+      selectWithRaidCodeFallback(
+        (sel) =>
+          supabase
+            .from("actions")
+            .select(sel as "*")
+            .order("due_date"),
+        ACTIONS_SELECT,
+      ),
     enabled: !!orgId,
   });
-  const projectById = useMemo(
-    () => new Map(projects.map((p: any) => [p.id, p])),
-    [projects],
-  );
+  const projectById = useMemo(() => new Map(projects.map((p: any) => [p.id, p])), [projects]);
 
   const [form, setForm] = useState({
     project_id: "",
@@ -65,6 +70,7 @@ function ActionsPage() {
         label: "Project",
         getValue: (a) => (projectById.get(a.project_id) as any)?.project_code || "",
       },
+      { key: "raid_code", label: "Action ID" },
       { key: "title", label: "Title" },
       { key: "owner", label: "Owner" },
       { key: "priority", label: "Priority" },
@@ -327,6 +333,7 @@ function ActionsPage() {
                   return (
                     <tr key={a.id}>
                       <td className="font-medium">{p?.project_code || "—"}</td>
+                      <td className="font-mono text-xs whitespace-nowrap">{a.raid_code || "—"}</td>
                       <td>
                         <div className="flex flex-wrap items-center gap-1.5">
                           <EditableCell

@@ -3,7 +3,11 @@ import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Check, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchProjectOptions, projectOptionsQueryKey, compareProjectsByCodeName } from "@/lib/project-options";
+import {
+  fetchProjectOptions,
+  projectOptionsQueryKey,
+  compareProjectsByCodeName,
+} from "@/lib/project-options";
 import { sortGatesByOrgOrder } from "@/lib/project-phase";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
@@ -185,9 +189,7 @@ function DecisionsPage() {
         title: form.title,
         options: form.options || null,
         recommendation: form.recommendation || null,
-        schedule_impact_days: form.schedule_impact_days
-          ? Number(form.schedule_impact_days)
-          : null,
+        schedule_impact_days: form.schedule_impact_days ? Number(form.schedule_impact_days) : null,
         cost_impact: form.cost_impact ? Number(form.cost_impact) : null,
         rationale: form.rationale || null,
         notes: form.notes || null,
@@ -269,9 +271,7 @@ function DecisionsPage() {
 
   const visibleDecisions = useMemo(() => {
     if (!awaitingOnly || !userId) return decisions;
-    return decisions.filter(
-      (d: any) => d.approver_user_id === userId && isDecisionAwaiting(d),
-    );
+    return decisions.filter((d: any) => d.approver_user_id === userId && isDecisionAwaiting(d));
   }, [awaitingOnly, decisions, userId]);
 
   const columns: ColumnarColumn<any>[] = useMemo(
@@ -281,6 +281,7 @@ function DecisionsPage() {
         label: "Project",
         getValue: (d) => (projectById.get(d.project_id) as any)?.project_code || "",
       },
+      { key: "raid_code", label: "Decision ID" },
       { key: "title", label: "Title" },
       { key: "forum", label: "Forum" },
       { key: "sponsor", label: "Sponsor" },
@@ -600,7 +601,7 @@ function DecisionsPage() {
               <tbody>
                 {table.rows.length === 0 ? (
                   <tr>
-                    <td colSpan={15} className="py-6 text-center text-sm text-muted-foreground">
+                    <td colSpan={16} className="py-6 text-center text-sm text-muted-foreground">
                       No decisions match filters.
                     </td>
                   </tr>
@@ -613,6 +614,9 @@ function DecisionsPage() {
                     return (
                       <tr key={d.id}>
                         <td className="font-medium">{proj?.project_code || "—"}</td>
+                        <td className="font-mono text-xs whitespace-nowrap">
+                          {d.raid_code || "—"}
+                        </td>
                         <td>
                           <EditableCell
                             table="decisions"
@@ -661,12 +665,8 @@ function DecisionsPage() {
                                 patch: {
                                   approver_user_id: id,
                                   approvers: m ? memberLabel(m) : null,
-                                  outcome: isDecisionAwaiting(d)
-                                    ? decisionOutcome(d)
-                                    : "In Review",
-                                  status: isDecisionAwaiting(d)
-                                    ? decisionOutcome(d)
-                                    : "In Review",
+                                  outcome: isDecisionAwaiting(d) ? decisionOutcome(d) : "In Review",
+                                  status: isDecisionAwaiting(d) ? decisionOutcome(d) : "In Review",
                                 },
                               });
                             }}

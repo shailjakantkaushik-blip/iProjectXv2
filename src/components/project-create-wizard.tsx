@@ -476,7 +476,7 @@ export function ProjectCreateWizard() {
         if (error) throw error;
       }
 
-      if (stakeholderName.trim()) {
+      if (stakeholderName.trim() && stakeholderName.trim().toLowerCase() !== project.sponsor.trim().toLowerCase()) {
         const { error } = await supabase.from("stakeholders").insert({
           org_id: orgId,
           project_id: projectId,

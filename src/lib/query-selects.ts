@@ -73,10 +73,7 @@ export const RESOURCES_SELECT = [
 ].join(",");
 
 /** Extended resource fields for timesheets (requires timesheets migration). */
-export const RESOURCES_TIMESHEET_SELECT = [
-  RESOURCES_SELECT,
-  "manager_user_id",
-].join(",");
+export const RESOURCES_TIMESHEET_SELECT = [RESOURCES_SELECT, "manager_user_id"].join(",");
 
 export const RESOURCE_ALLOCATIONS_SELECT = [
   "id",
@@ -92,6 +89,7 @@ export const RESOURCE_ALLOCATIONS_SELECT = [
 
 export const RISKS_SELECT = [
   "id",
+  "raid_code",
   "project_id",
   "title",
   "description",
@@ -111,6 +109,7 @@ export const RISKS_SELECT = [
 
 export const ISSUES_SELECT = [
   "id",
+  "raid_code",
   "project_id",
   "title",
   "description",
@@ -128,6 +127,7 @@ export const ISSUES_SELECT = [
 
 export const ACTIONS_SELECT = [
   "id",
+  "raid_code",
   "project_id",
   "title",
   "description",
@@ -143,6 +143,7 @@ export const ACTIONS_SELECT = [
 
 export const DECISIONS_SELECT = [
   "id",
+  "raid_code",
   "project_id",
   "title",
   "description",
@@ -207,8 +208,7 @@ export const MILESTONES_SELECT = [
   "updated_at",
 ].join(",");
 
-export const NOTIFICATIONS_SELECT =
-  "id,kind,title,body,link,read_at,created_at" as const;
+export const NOTIFICATIONS_SELECT = "id,kind,title,body,link,read_at,created_at" as const;
 
 export const WORK_ITEMS_SELECT = [
   "id",
@@ -232,3 +232,28 @@ export const WORK_ITEMS_SELECT = [
   "actual_hours",
   "sort_order",
 ].join(",");
+
+/** Drop raid_code from a select list when the column is not migrated yet. */
+export function selectWithoutRaidCode(select: string) {
+  return select
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s && s !== "raid_code")
+    .join(",");
+}
+
+export function isMissingRaidCodeColumn(error: { message?: string } | null | undefined) {
+  return /raid_code/i.test(String(error?.message || ""));
+}
+
+export async function selectWithRaidCodeFallback(
+  run: (select: string) => PromiseLike<{ data: unknown; error: { message?: string } | null }>,
+  select: string,
+) {
+  const first = await run(select);
+  if (!first.error) return (first.data as unknown[]) ?? [];
+  if (!isMissingRaidCodeColumn(first.error)) throw first.error;
+  const second = await run(selectWithoutRaidCode(select));
+  if (second.error) throw second.error;
+  return (second.data as unknown[]) ?? [];
+}

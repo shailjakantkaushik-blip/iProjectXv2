@@ -126,8 +126,16 @@ export function ExecutiveQuickView({
     queryFn: async () => {
       const { data, error } = await supabase
         .from("risks")
-        .select("id,project_id,title,status,severity,probability,impact,owner")
+        .select("id,project_id,raid_code,title,status,severity,probability,impact,owner")
         .eq("org_id", orgId!);
+      if (error && /raid_code/i.test(error.message)) {
+        const retry = await supabase
+          .from("risks")
+          .select("id,project_id,title,status,severity,probability,impact,owner")
+          .eq("org_id", orgId!);
+        if (retry.error) throw retry.error;
+        return (retry.data ?? []) as BriefingRisk[];
+      }
       if (error) throw error;
       return (data ?? []) as BriefingRisk[];
     },
@@ -140,8 +148,16 @@ export function ExecutiveQuickView({
     queryFn: async () => {
       const { data, error } = await supabase
         .from("decisions")
-        .select("id,project_id,title,outcome,status,required_date,recommendation")
+        .select("id,project_id,raid_code,title,outcome,status,required_date,recommendation")
         .eq("org_id", orgId!);
+      if (error && /raid_code/i.test(error.message)) {
+        const retry = await supabase
+          .from("decisions")
+          .select("id,project_id,title,outcome,status,required_date,recommendation")
+          .eq("org_id", orgId!);
+        if (retry.error) throw retry.error;
+        return (retry.data ?? []) as BriefingDecision[];
+      }
       if (error) throw error;
       return (data ?? []) as BriefingDecision[];
     },

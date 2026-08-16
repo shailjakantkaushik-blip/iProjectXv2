@@ -11,6 +11,7 @@ import {
   RISKS_SELECT,
   ISSUES_SELECT,
   MILESTONES_SELECT,
+  selectWithRaidCodeFallback,
 } from "@/lib/query-selects";
 import { fetchStageGates } from "@/lib/stage-gates";
 import { useAuth } from "@/lib/auth-context";
@@ -523,24 +524,28 @@ function InfographicPage() {
   const { data: risks = [] } = useQuery({
     queryKey: ["risks", project?.id],
     queryFn: async () =>
-      (
-        await supabase
-          .from("risks")
-          .select(RISKS_SELECT as "*")
-          .eq("project_id", project.id)
-          .order("severity", { ascending: false })
-      ).data ?? [],
+      selectWithRaidCodeFallback(
+        (sel) =>
+          supabase
+            .from("risks")
+            .select(sel as "*")
+            .eq("project_id", project.id)
+            .order("severity", { ascending: false }),
+        RISKS_SELECT,
+      ),
     enabled: !!project,
   });
   const { data: issues = [] } = useQuery({
     queryKey: ["issues", project?.id],
     queryFn: async () =>
-      (
-        await supabase
-          .from("issues")
-          .select(ISSUES_SELECT as "*")
-          .eq("project_id", project.id)
-      ).data ?? [],
+      selectWithRaidCodeFallback(
+        (sel) =>
+          supabase
+            .from("issues")
+            .select(sel as "*")
+            .eq("project_id", project.id),
+        ISSUES_SELECT,
+      ),
     enabled: !!project,
   });
   const { data: milestones = [] } = useQuery({
@@ -744,8 +749,8 @@ function InfographicPage() {
   const raidRows = useMemo(() => {
     if (!project) return [] as any[];
     return [
-      ...risks.map((r: any, i: number) => ({
-        raid: "R" + String(i + 1).padStart(3, "0"),
+      ...risks.map((r: any) => ({
+        raid: r.raid_code || "RSK",
         project_code: project.project_code || "",
         type: "Risk",
         desc: r.title,
@@ -758,8 +763,8 @@ function InfographicPage() {
         mitigation: r.mitigation,
         status: r.status,
       })),
-      ...issues.map((r: any, i: number) => ({
-        raid: "I" + String(i + 1).padStart(3, "0"),
+      ...issues.map((r: any) => ({
+        raid: r.raid_code || "ISS",
         project_code: project.project_code || "",
         type: "Issue",
         desc: r.title,
@@ -936,8 +941,9 @@ function InfographicPage() {
     ) => {
       const spend = phaseSpendByStage(pgates, rows, PHASES).get(name);
       const fromEstimate =
-        forecastPlannedByPhase.get(forecastPhaseKey({ stream_id: streamId || null, gate_name: name }))
-          ?.total ?? 0;
+        forecastPlannedByPhase.get(
+          forecastPhaseKey({ stream_id: streamId || null, gate_name: name }),
+        )?.total ?? 0;
       const plan = spend?.planned || fromEstimate;
       const actual = spend?.actual ?? 0;
       return {
@@ -1496,8 +1502,8 @@ function InfographicPage() {
                 </div>
               </div>
               <p className="mt-1 px-1 text-[10px] text-muted-foreground">
-                Planned FTE from Estimation Planning allocations; actual FTE from timesheets (in incurred).
-                Work-item hours are Demand, not Plan.
+                Planned FTE from Estimation Planning allocations; actual FTE from timesheets (in
+                incurred). Work-item hours are Demand, not Plan.
               </p>
             </div>
           </div>
@@ -2517,7 +2523,10 @@ function ProjectBrief({
       const section2 = forecastTotalsLine
         ? {
             ...s2,
-            estimate_commentary: mergeEstimateCommentary(s2.estimate_commentary, forecastTotalsLine),
+            estimate_commentary: mergeEstimateCommentary(
+              s2.estimate_commentary,
+              forecastTotalsLine,
+            ),
           }
         : s2;
       const next = { ...(project.brief || {}), section1: s1, section2 };

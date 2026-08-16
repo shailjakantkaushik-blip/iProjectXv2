@@ -1,13 +1,7 @@
 import type { AssistBundle, AssistTopic } from "@/lib/local-portfolio-assist";
 
 /** Page ACL paths that gate In-house AI topic domains. */
-export type AssistDomain =
-  | "projects"
-  | "risks"
-  | "decisions"
-  | "actions"
-  | "budget"
-  | "benefits";
+export type AssistDomain = "projects" | "risks" | "decisions" | "actions" | "budget" | "benefits";
 
 const DOMAIN_PAGES: Record<AssistDomain, string[]> = {
   projects: [
@@ -74,6 +68,7 @@ export const PROJECT_ASSIST_SELECT = [
 
 export const RISKS_ASSIST_SELECT = [
   "id",
+  "raid_code",
   "project_id",
   "title",
   "description",
@@ -87,6 +82,7 @@ export const RISKS_ASSIST_SELECT = [
 
 export const DECISIONS_ASSIST_SELECT = [
   "id",
+  "raid_code",
   "project_id",
   "title",
   "description",
@@ -100,6 +96,7 @@ export const DECISIONS_ASSIST_SELECT = [
 
 export const ACTIONS_ASSIST_SELECT = [
   "id",
+  "raid_code",
   "project_id",
   "title",
   "description",
@@ -109,10 +106,7 @@ export const ACTIONS_ASSIST_SELECT = [
   "due_date",
 ].join(",");
 
-export function domainAllowed(
-  domain: AssistDomain,
-  canView: (path: string) => boolean,
-): boolean {
+export function domainAllowed(domain: AssistDomain, canView: (path: string) => boolean): boolean {
   return DOMAIN_PAGES[domain].some((path) => canView(path));
 }
 
