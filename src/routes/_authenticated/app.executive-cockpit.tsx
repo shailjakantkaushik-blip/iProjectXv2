@@ -1123,8 +1123,8 @@ function ExecutiveCockpit() {
           }
         >
           <p className="mb-3 text-sm text-muted-foreground">
-            Read-only rollup of each project&apos;s Project Summary tab. Edit notes, meeting dates,
-            and RAG override on the project page.
+            Read-only rollup of each project&apos;s Project Summary tab. Open the project name to
+            edit notes, meeting dates, and RAG override on Project Summary.
           </p>
           {projects.length === 0 ? (
             <p className="text-sm text-muted-foreground">No projects match the current filters.</p>
@@ -1147,17 +1147,25 @@ function ExecutiveCockpit() {
                   >
                     <div className="rounded-lg border border-border">
                       <div className="flex w-full items-center justify-between gap-3 px-3 py-2">
-                        <CollapsibleTrigger
-                          type="button"
-                          className="flex min-w-0 flex-1 items-center gap-2 text-left hover:opacity-90"
-                        >
-                          <ChevronDown
-                            className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? "" : "-rotate-90"}`}
-                          />
-                          <span className="truncate text-xs font-semibold">
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <CollapsibleTrigger
+                            type="button"
+                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                            aria-label={open ? `Hide ${p.name}` : `Show ${p.name}`}
+                          >
+                            <ChevronDown
+                              className={`h-4 w-4 transition-transform ${open ? "" : "-rotate-90"}`}
+                            />
+                          </CollapsibleTrigger>
+                          <Link
+                            to="/app/projects/$id"
+                            params={{ id: p.id }}
+                            search={{ tab: "summary" }}
+                            className="min-w-0 truncate text-xs font-semibold text-primary hover:underline"
+                          >
                             {p.project_code} · {p.name}
-                          </span>
-                        </CollapsibleTrigger>
+                          </Link>
+                        </div>
                         <div className="flex shrink-0 items-center gap-2">
                           <Link
                             to="/app/projects/$id"
@@ -1165,7 +1173,7 @@ function ExecutiveCockpit() {
                             search={{ tab: "summary" }}
                             className="text-[10px] font-medium text-primary hover:underline"
                           >
-                            Open
+                            Project Summary
                           </Link>
                           <RagChip rag={displayRag(p)} manual={isRagOverridden(p)} />
                         </div>
