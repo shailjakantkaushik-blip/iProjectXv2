@@ -19,17 +19,25 @@
 --   status_updates, documents, lessons
 --   governance_links / governance_tasks (if present)
 --   stage_gate_checklist_responses (templates kept)
+--   project_forecasts / forecast phases / meeting summaries (iProjectX only)
 --
 -- SEEDS
 --   4 projects with Core + second stream, method-specific stage gates when uses_stage_gates (Agile uses Agile template),
+--   planned stage gates ON EVERY STREAM (same template, stream-specific dates),
 --   milestones, FY + monthly finance, resources/allocations,
---   benefits, risks, issues, actions, decisions, stakeholders,
+--   benefits (+ payback), risks, issues, actions, decisions, stakeholders,
 --   status updates, documents, lessons, change requests, sprints,
---   work items (+ assignees), dependencies, demand pipeline, scenario,
+--   work items (+ assignees, including one late task), dependencies, demand pipeline, scenario,
 --   timesheets (draft/pending/approved/rejected), opex other costs,
---   sample governance links/tasks, checklist responses
+--   sample governance links/tasks, checklist responses,
+--   Strategic Alignment extras (functional area, payback, manual rank, RAG override),
+--   project meeting summaries,
+--   project forecasts locked as the planned baseline: per-stream phases seeded from
+--   planned gate dates (start/end/duration), phase resources, other costs,
+--   governance cadence hierarchy (daily → annual)
 --
 -- Requires: always-on Core streams + timesheet / work-item migrations.
+-- Forecast tables are created here if missing (safe IF NOT EXISTS).
 -- =========================================================================
 
 BEGIN;
@@ -74,6 +82,183 @@ ALTER TABLE public.timesheet_entries
 
 ALTER TABLE public.financials_monthly
   ADD COLUMN IF NOT EXISTS opex_labor_actual NUMERIC(14,2) DEFAULT 0;
+
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS functional_area text;
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS payback_months numeric;
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS manual_rank integer;
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS rag_override text;
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS rag_override_reason text;
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS rag_override_owner text;
+ALTER TABLE public.benefits ADD COLUMN IF NOT EXISTS payback_months numeric;
+ALTER TABLE public.governance_channels ADD COLUMN IF NOT EXISTS parent_channel_id uuid
+  REFERENCES public.governance_channels(id) ON DELETE SET NULL;
+ALTER TABLE public.governance_channels ADD COLUMN IF NOT EXISTS last_meeting date;
+
+-- Meeting summaries + forecast header / phases (idempotent; matches latest app)
+CREATE TABLE IF NOT EXISTS public.project_meeting_summaries (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  project_id uuid NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  previous_meeting_date date,
+  next_meeting_date date,
+  progress_manual text,
+  action_plan_manual text,
+  updated_by uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (org_id, project_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.project_forecasts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  project_id uuid NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  status text NOT NULL DEFAULT 'draft',
+  override_budget boolean NOT NULL DEFAULT false,
+  total_labor_cost numeric NOT NULL DEFAULT 0,
+  total_other_cost numeric NOT NULL DEFAULT 0,
+  total_cost numeric NOT NULL DEFAULT 0,
+  notes text,
+  locked_at timestamptz,
+  locked_by uuid,
+  unlock_requested_at timestamptz,
+  unlock_requested_by uuid,
+  unlock_approved_at timestamptz,
+  unlock_approved_by uuid,
+  applied_to_plan_at timestamptz,
+  plan_start_date date,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (org_id, project_id)
+);
+
+ALTER TABLE public.project_forecasts
+  ADD COLUMN IF NOT EXISTS applied_to_plan_at timestamptz,
+  ADD COLUMN IF NOT EXISTS plan_start_date date;
+
+CREATE TABLE IF NOT EXISTS public.project_forecast_phase_resources (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  forecast_id uuid NOT NULL REFERENCES public.project_forecasts(id) ON DELETE CASCADE,
+  project_id uuid NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  stream_id uuid REFERENCES public.project_streams(id) ON DELETE CASCADE,
+  resource_id uuid REFERENCES public.resources(id) ON DELETE CASCADE,
+  effort_days numeric NOT NULL DEFAULT 0,
+  daily_rate numeric NOT NULL DEFAULT 0,
+  labor_cost numeric NOT NULL DEFAULT 0,
+  forecast_phase_id uuid,
+  phase_name text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.project_forecast_other_costs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  forecast_id uuid NOT NULL REFERENCES public.project_forecasts(id) ON DELETE CASCADE,
+  project_id uuid NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  heading text NOT NULL DEFAULT 'Other cost',
+  amount numeric NOT NULL DEFAULT 0,
+  sort_order integer NOT NULL DEFAULT 0,
+  category text,
+  forecast_phase_id uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.project_forecast_phases (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  forecast_id uuid NOT NULL REFERENCES public.project_forecasts(id) ON DELETE CASCADE,
+  project_id uuid NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  stream_id uuid REFERENCES public.project_streams(id) ON DELETE CASCADE,
+  gate_name text NOT NULL,
+  sort_order integer NOT NULL DEFAULT 0,
+  duration_days numeric NOT NULL DEFAULT 20,
+  start_date date,
+  end_date date,
+  dates_overridden boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS project_forecast_phases_forecast_stream_gate
+  ON public.project_forecast_phases (forecast_id, COALESCE(stream_id, '00000000-0000-0000-0000-000000000000'), gate_name);
+
+ALTER TABLE public.project_forecast_phase_resources
+  ADD COLUMN IF NOT EXISTS forecast_phase_id uuid REFERENCES public.project_forecast_phases(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS phase_name text;
+
+ALTER TABLE public.project_forecast_other_costs
+  ADD COLUMN IF NOT EXISTS category text,
+  ADD COLUMN IF NOT EXISTS forecast_phase_id uuid REFERENCES public.project_forecast_phases(id) ON DELETE SET NULL;
+
+ALTER TABLE public.project_meeting_summaries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.project_forecasts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.project_forecast_phase_resources ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.project_forecast_other_costs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.project_forecast_phases ENABLE ROW LEVEL SECURITY;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.project_meeting_summaries TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.project_forecasts TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.project_forecast_phase_resources TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.project_forecast_other_costs TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.project_forecast_phases TO authenticated;
+GRANT ALL ON public.project_meeting_summaries TO service_role;
+GRANT ALL ON public.project_forecasts TO service_role;
+GRANT ALL ON public.project_forecast_phase_resources TO service_role;
+GRANT ALL ON public.project_forecast_other_costs TO service_role;
+GRANT ALL ON public.project_forecast_phases TO service_role;
+
+DROP POLICY IF EXISTS "Members view meeting summaries" ON public.project_meeting_summaries;
+CREATE POLICY "Members view meeting summaries"
+  ON public.project_meeting_summaries FOR SELECT TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()));
+DROP POLICY IF EXISTS "Members write meeting summaries" ON public.project_meeting_summaries;
+CREATE POLICY "Members write meeting summaries"
+  ON public.project_meeting_summaries FOR ALL TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()))
+  WITH CHECK (org_id = public.get_user_org(auth.uid()));
+
+DROP POLICY IF EXISTS "Members view forecasts" ON public.project_forecasts;
+CREATE POLICY "Members view forecasts"
+  ON public.project_forecasts FOR SELECT TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()));
+DROP POLICY IF EXISTS "Members write forecasts" ON public.project_forecasts;
+CREATE POLICY "Members write forecasts"
+  ON public.project_forecasts FOR ALL TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()))
+  WITH CHECK (org_id = public.get_user_org(auth.uid()));
+
+DROP POLICY IF EXISTS "Members view forecast resources" ON public.project_forecast_phase_resources;
+CREATE POLICY "Members view forecast resources"
+  ON public.project_forecast_phase_resources FOR SELECT TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()));
+DROP POLICY IF EXISTS "Members write forecast resources" ON public.project_forecast_phase_resources;
+CREATE POLICY "Members write forecast resources"
+  ON public.project_forecast_phase_resources FOR ALL TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()))
+  WITH CHECK (org_id = public.get_user_org(auth.uid()));
+
+DROP POLICY IF EXISTS "Members view forecast other costs" ON public.project_forecast_other_costs;
+CREATE POLICY "Members view forecast other costs"
+  ON public.project_forecast_other_costs FOR SELECT TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()));
+DROP POLICY IF EXISTS "Members write forecast other costs" ON public.project_forecast_other_costs;
+CREATE POLICY "Members write forecast other costs"
+  ON public.project_forecast_other_costs FOR ALL TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()))
+  WITH CHECK (org_id = public.get_user_org(auth.uid()));
+
+DROP POLICY IF EXISTS "Members view forecast phases" ON public.project_forecast_phases;
+CREATE POLICY "Members view forecast phases"
+  ON public.project_forecast_phases FOR SELECT TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()));
+DROP POLICY IF EXISTS "Members write forecast phases" ON public.project_forecast_phases;
+CREATE POLICY "Members write forecast phases"
+  ON public.project_forecast_phases FOR ALL TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()))
+  WITH CHECK (org_id = public.get_user_org(auth.uid()));
 
 -- ---------- B) Wipe iProjectX operational / project data ONLY ----------
 DO $wipe_ts$
@@ -170,6 +355,32 @@ EXCEPTION WHEN undefined_table THEN NULL;
 END
 $wipe5$;
 
+DO $wipe_ops$
+DECLARE v_org uuid := current_setting('iprojectx.seed_org_id')::uuid;
+BEGIN
+  BEGIN
+    DELETE FROM public.project_forecast_phases WHERE org_id = v_org;
+  EXCEPTION WHEN undefined_table THEN NULL;
+  END;
+  BEGIN
+    DELETE FROM public.project_forecast_phase_resources WHERE org_id = v_org;
+    DELETE FROM public.project_forecast_other_costs WHERE org_id = v_org;
+    DELETE FROM public.project_forecasts WHERE org_id = v_org;
+    DELETE FROM public.project_meeting_summaries WHERE org_id = v_org;
+  EXCEPTION WHEN undefined_table THEN NULL;
+  END;
+END
+$wipe_ops$;
+
+DO $wipe_channels$
+DECLARE v_org uuid := current_setting('iprojectx.seed_org_id')::uuid;
+BEGIN
+  UPDATE public.governance_channels SET parent_channel_id = NULL WHERE org_id = v_org;
+  DELETE FROM public.governance_channels WHERE org_id = v_org;
+EXCEPTION WHEN undefined_table THEN NULL;
+END
+$wipe_channels$;
+
 DO $wipe_gates$
 DECLARE v_org uuid := current_setting('iprojectx.seed_org_id')::uuid;
 BEGIN
@@ -249,6 +460,16 @@ DECLARE
   alt_names text[] := ARRAY['Experience','Platform','Data','Security'];
   alt_codes text[] := ARRAY['XP','PLT','DATA','SEC'];
   align text[] := ARRAY['Customer Experience','Digital Transformation','Growth','Risk Reduction'];
+  func_areas text[] := ARRAY['Customer','IT','Operations','Risk & Compliance'];
+  paybacks numeric[] := ARRAY[18, 24, 12, 30];
+  ranks int[] := ARRAY[2, 1, 3, 4];
+  rag_ov text[] := ARRAY[NULL, 'Amber', NULL, 'Red']::text[];
+  rag_ov_why text[] := ARRAY[
+    NULL,
+    'Sponsor override: integration risk is higher than register Green would imply',
+    NULL,
+    'Sponsor override: residual cyber exposure until vendor clearance'
+  ]::text[];
   gate_names text[] := ARRAY[
     'Discovery','Business Case / Seed Funding','Design','Business Case / Full Funding',
     'Build','Testing','Deployment','Handover','Benefit Realisation'
@@ -326,6 +547,8 @@ DECLARE
     'Platform Admin',
     'Platform Admin'
   ];
+  f_id uuid;
+  daily_rate numeric;
   seed_user_ids uuid[] := ARRAY[]::uuid[];
   seed_person_names text[] := ARRAY[]::text[];
   seed_person_emails text[] := ARRAY[]::text[];
@@ -499,7 +722,9 @@ BEGIN
       END IF;
 
       INSERT INTO public.projects (
-        org_id, bu_id, project_code, name, portfolio, program, sponsor, priority, status, rag,
+        org_id, bu_id, project_code, name, portfolio, program, functional_area,
+        payback_months, manual_rank, rag_override, rag_override_reason, rag_override_owner,
+        sponsor, priority, status, rag,
         current_phase, delivery_method, delivery_method_id, streams_enabled,
         planned_start_date, planned_end_date, actual_start_date, actual_end_date,
         start_date, end_date, target_go_live,
@@ -511,7 +736,9 @@ BEGIN
       ) VALUES (
         r_org.id, r_bu, codes[i], names[i],
         (ARRAY['Business Strategic','IT Strategic','CAPEX','Unfunded'])[((i - 1) % 4) + 1],
-        programs[i], sponsor_name, priorities[i],
+        programs[i], func_areas[i], paybacks[i], ranks[i],
+        rag_ov[i], rag_ov_why[i], CASE WHEN rag_ov[i] IS NULL THEN NULL ELSE sponsor_name END,
+        sponsor_name, priorities[i],
         statuses[i], rags[i], phases[i], methods[i], method_id, true,
         starts[i], ends[i],
         CASE WHEN statuses[i] = 'Not Started' THEN NULL ELSE starts[i] + 14 END,
@@ -902,12 +1129,12 @@ BEGIN
       b2 := ben_t[i] - b1;
       INSERT INTO public.benefits (
         org_id, project_id, title, benefit_type, target_value, realised_value,
-        realisation_date, owner, status, notes
+        realisation_date, owner, status, notes, payback_months
       ) VALUES
         (r_org.id, p_id, 'Primary value realisation', 'Financial', b1, round(ben_r[i] * 0.6, 2), lives[i], sponsor_name,
-         CASE WHEN ben_r[i] > 0 THEN 'In Progress' ELSE 'Planned' END, 'Tracked in benefits register'),
+         CASE WHEN ben_r[i] > 0 THEN 'In Progress' ELSE 'Planned' END, 'Tracked in benefits register', paybacks[i]),
         (r_org.id, p_id, 'Secondary / efficiency benefit', 'Efficiency', b2, ben_r[i] - round(ben_r[i] * 0.6, 2), lives[i], sponsor_name,
-         CASE WHEN ben_r[i] > 0 THEN 'In Progress' ELSE 'Planned' END, NULL);
+         CASE WHEN ben_r[i] > 0 THEN 'In Progress' ELSE 'Planned' END, NULL, paybacks[i] + 6);
 
       INSERT INTO public.risks (
         org_id, project_id, title, description, category, probability, impact, severity, status, owner, mitigation, due_date
@@ -923,11 +1150,12 @@ BEGIN
         (r_org.id, p_id, 'Vendor response lag', 'Third-party awaiting security questionnaire', 'High', 'Open', primary_person_name, CURRENT_DATE - 3, CURRENT_DATE + 10);
 
       INSERT INTO public.actions (
-        org_id, project_id, title, description, owner, due_date, status, priority
+        org_id, project_id, title, description, owner, due_date, status, priority, completed_date
       ) VALUES
-        (r_org.id, p_id, 'Confirm FY funding drawdown', 'Validate drawdown against FY allocations', sponsor_name, CURRENT_DATE + 14, 'Open', 'Medium'),
-        (r_org.id, p_id, 'Complete stream RAID review', 'Joint Core + ' || alt_names[i] || ' RAID workshop', primary_person_name, CURRENT_DATE + 7, 'Open', 'High'),
-        (r_org.id, p_id, 'Publish status pack', 'Monthly status for steering', secondary_person_name, CURRENT_DATE + 3, 'In Progress', 'Medium');
+        (r_org.id, p_id, 'Confirm FY funding drawdown', 'Validate drawdown against FY allocations', sponsor_name, CURRENT_DATE + 14, 'Open', 'Medium', NULL),
+        (r_org.id, p_id, 'Complete stream RAID review', 'Joint Core + ' || alt_names[i] || ' RAID workshop', primary_person_name, CURRENT_DATE + 7, 'Open', 'High', NULL),
+        (r_org.id, p_id, 'Publish status pack', 'Monthly status for steering', secondary_person_name, CURRENT_DATE + 3, 'In Progress', 'Medium', NULL),
+        (r_org.id, p_id, 'Close previous steering actions', 'Actions agreed at last steering are complete', primary_person_name, CURRENT_DATE - 2, 'Done', 'Medium', CURRENT_DATE - 3);
 
       INSERT INTO public.decisions (
         org_id, project_id, stage_gate_id, title, description, decision_date, decided_by, rationale, impact, status
@@ -1037,7 +1265,8 @@ BEGIN
       ) VALUES
         (r_org.id, p_id, core_id, '1.0', 'Core discovery pack', 'Discovery artefacts for Core stream', 'Done', 'High', primary_person_name, 100, starts[i], starts[i] + 30, 80, 76, ms_id, 1),
         (r_org.id, p_id, alt_id, '2.0', alt_names[i] || ' build backlog', 'Backlog refinement for secondary stream', 'In Progress', 'High', secondary_person_name, 45, starts[i] + 21, ends[i] - 60, 200, 90, NULL, 2),
-        (r_org.id, p_id, core_id, '3.0', 'UAT preparation', 'Cross-stream UAT scripts and data', 'To Do', 'Medium', sponsor_name, 10, ends[i] - 60, ends[i] - 30, 120, 8, NULL, 3);
+        (r_org.id, p_id, core_id, '3.0', 'UAT preparation', 'Cross-stream UAT scripts and data', 'To Do', 'Medium', sponsor_name, 10, ends[i] - 60, ends[i] - 30, 120, 8, NULL, 3),
+        (r_org.id, p_id, core_id, '4.0', 'Vendor security pack (late)', 'Overdue vendor evidence — highlights as running late', 'In Progress', 'High', secondary_person_name, 35, CURRENT_DATE - 28, CURRENT_DATE - 7, 40, 12, NULL, 4);
 
       -- Link each work item to a stream stage gate (phase) for labor cost attribution
       UPDATE public.work_items wi
@@ -1079,6 +1308,161 @@ BEGIN
       );
 
       PERFORM public.rollup_project_from_streams(p_id);
+
+      INSERT INTO public.project_meeting_summaries (
+        org_id, project_id, previous_meeting_date, next_meeting_date,
+        progress_manual, action_plan_manual
+      ) VALUES (
+        r_org.id, p_id, CURRENT_DATE - 14, CURRENT_DATE + 14,
+        'Manual note: ' || names[i] || ' held steering on schedule. Core stream is on the current phase; secondary ' || alt_names[i] || ' stream needs capacity watch.',
+        'Manual plan: confirm next-gate pack, close late vendor pack, and lock remaining FY drawdown before the next steering.'
+      )
+      ON CONFLICT (org_id, project_id) DO UPDATE SET
+        previous_meeting_date = EXCLUDED.previous_meeting_date,
+        next_meeting_date = EXCLUDED.next_meeting_date,
+        progress_manual = EXCLUDED.progress_manual,
+        action_plan_manual = EXCLUDED.action_plan_manual,
+        updated_at = now();
+
+      daily_rate := 1000;
+      INSERT INTO public.project_forecasts (
+        org_id, project_id, status, override_budget,
+        total_labor_cost, total_other_cost, total_cost,
+        notes, locked_at, plan_start_date, applied_to_plan_at
+      ) VALUES (
+        r_org.id, p_id, 'locked', (i = 2),
+        0, 0, 0,
+        'Seeded planned baseline — phases come from per-stream planned stage gates. Unlock requires sponsor/admin.',
+        now(), starts[i], now()
+      )
+      ON CONFLICT (org_id, project_id) DO UPDATE SET
+        status = EXCLUDED.status,
+        override_budget = EXCLUDED.override_budget,
+        notes = EXCLUDED.notes,
+        plan_start_date = EXCLUDED.plan_start_date,
+        applied_to_plan_at = EXCLUDED.applied_to_plan_at
+      RETURNING id INTO f_id;
+
+      IF f_id IS NOT NULL THEN
+        -- One forecast phase per planned gate per stream (phase end = gate planned_date)
+        INSERT INTO public.project_forecast_phases (
+          org_id, forecast_id, project_id, stream_id, gate_name, sort_order,
+          duration_days, start_date, end_date, dates_overridden
+        )
+        SELECT
+          r_org.id,
+          f_id,
+          p_id,
+          x.stream_id,
+          x.gate_name,
+          x.sort_order,
+          GREATEST(1, (x.end_date - x.start_date) + 1),
+          x.start_date,
+          x.end_date,
+          true
+        FROM (
+          SELECT
+            g.stream_id,
+            g.gate_name,
+            (row_number() OVER (
+              PARTITION BY g.stream_id
+              ORDER BY g.planned_date NULLS LAST, g.gate_name
+            ) - 1)::int AS sort_order,
+            LEAST(
+              g.planned_date,
+              COALESCE(
+                LAG(g.planned_date) OVER (
+                  PARTITION BY g.stream_id
+                  ORDER BY g.planned_date NULLS LAST, g.gate_name
+                ) + 1,
+                s.planned_start_date,
+                starts[i]
+              )
+            ) AS start_date,
+            g.planned_date AS end_date
+          FROM public.stage_gates g
+          JOIN public.project_streams s ON s.id = g.stream_id
+          WHERE g.project_id = p_id
+            AND g.planned_date IS NOT NULL
+        ) x;
+
+        FOREACH sid IN ARRAY stream_ids LOOP
+          INSERT INTO public.project_forecast_phase_resources (
+            org_id, forecast_id, project_id, stream_id, resource_id,
+            effort_days, daily_rate, labor_cost, forecast_phase_id, phase_name
+          )
+          SELECT
+            r_org.id,
+            f_id,
+            p_id,
+            sid,
+            CASE WHEN coalesce(array_length(res_ids, 1), 0) > 0
+              THEN res_ids[1 + ((i + CASE WHEN sid = core_id THEN 0 ELSE 1 END - 1) % array_length(res_ids, 1))]
+              ELSE NULL END,
+            CASE WHEN sid = core_id THEN 40 + (i * 5) ELSE 22 + i END,
+            1000,
+            round((CASE WHEN sid = core_id THEN 40 + (i * 5) ELSE 22 + i END) * 1000, 2),
+            ph.id,
+            ph.gate_name
+          FROM (
+            SELECT fp.id, fp.gate_name
+            FROM public.project_forecast_phases fp
+            WHERE fp.forecast_id = f_id AND fp.stream_id = sid
+            ORDER BY fp.sort_order
+            LIMIT 1
+          ) ph
+          UNION ALL
+          SELECT
+            r_org.id, f_id, p_id, sid,
+            CASE WHEN coalesce(array_length(res_ids, 1), 0) > 0
+              THEN res_ids[1 + ((i + CASE WHEN sid = core_id THEN 0 ELSE 1 END - 1) % array_length(res_ids, 1))]
+              ELSE NULL END,
+            CASE WHEN sid = core_id THEN 40 + (i * 5) ELSE 22 + i END,
+            1000,
+            round((CASE WHEN sid = core_id THEN 40 + (i * 5) ELSE 22 + i END) * 1000, 2),
+            NULL, NULL
+          WHERE NOT EXISTS (
+            SELECT 1 FROM public.project_forecast_phases fp
+            WHERE fp.forecast_id = f_id AND fp.stream_id = sid
+          );
+        END LOOP;
+
+        INSERT INTO public.project_forecast_other_costs (
+          org_id, forecast_id, project_id, heading, category, amount, sort_order
+        ) VALUES
+          (r_org.id, f_id, p_id, 'Vendor / licences', 'Vendor / contractor', round(budgets[i] * 0.04, 2), 0),
+          (r_org.id, f_id, p_id, 'Contingency', 'Contingency', round(budgets[i] * 0.02, 2), 1);
+
+        UPDATE public.project_forecasts f SET
+          total_labor_cost = coalesce((SELECT sum(labor_cost) FROM public.project_forecast_phase_resources r WHERE r.forecast_id = f.id), 0),
+          total_other_cost = coalesce((SELECT sum(amount) FROM public.project_forecast_other_costs c WHERE c.forecast_id = f.id), 0),
+          total_cost = coalesce((SELECT sum(labor_cost) FROM public.project_forecast_phase_resources r WHERE r.forecast_id = f.id), 0)
+            + coalesce((SELECT sum(amount) FROM public.project_forecast_other_costs c WHERE c.forecast_id = f.id), 0),
+          notes = jsonb_build_object(
+            'seeded', true,
+            'daily_rate', 1000,
+            'phases', coalesce((
+              SELECT jsonb_agg(jsonb_build_object(
+                'stream_id', p.stream_id,
+                'gate_name', p.gate_name,
+                'sort_order', p.sort_order,
+                'duration_days', p.duration_days,
+                'start_date', p.start_date,
+                'end_date', p.end_date,
+                'dates_overridden', p.dates_overridden
+              ) ORDER BY p.sort_order)
+              FROM public.project_forecast_phases p
+              WHERE p.forecast_id = f.id
+            ), '[]'::jsonb)
+          )::text
+        WHERE f.id = f_id;
+
+        IF i = 2 THEN
+          UPDATE public.projects p
+          SET forecast_at_completion = (SELECT total_cost FROM public.project_forecasts WHERE id = f_id)
+          WHERE p.id = p_id;
+        END IF;
+      END IF;
     END LOOP;
 
     -- Demand pipeline
@@ -1111,6 +1495,40 @@ BEGIN
       END
     FROM public.projects p
     WHERE p.org_id = r_org.id;
+
+    -- Governance cadence hierarchy (daily through annual) — insert parents first
+    BEGIN
+      INSERT INTO public.governance_channels (org_id, name, cadence, audience, purpose, chair, last_meeting, next_meeting, status, parent_channel_id)
+      VALUES (r_org.id, 'Board Strategy Review', 'Annual', 'Board', 'Annual strategic alignment and investment envelope', seed_person_names[1], CURRENT_DATE - 180, CURRENT_DATE + 185, 'Active', NULL);
+      INSERT INTO public.governance_channels (org_id, name, cadence, audience, purpose, chair, last_meeting, next_meeting, status, parent_channel_id)
+      VALUES (r_org.id, 'Mid-year Portfolio Review', 'Half-yearly', 'Executives', 'Mid-year reforecast and payback check', seed_person_names[1], CURRENT_DATE - 90, CURRENT_DATE + 90, 'Active',
+        (SELECT id FROM public.governance_channels WHERE org_id = r_org.id AND name = 'Board Strategy Review' LIMIT 1));
+      INSERT INTO public.governance_channels (org_id, name, cadence, audience, purpose, chair, last_meeting, next_meeting, status, parent_channel_id)
+      VALUES (r_org.id, 'Investment Committee', 'Quarterly', 'Sponsors & CFO', 'Approve uplifts and RAG overrides', seed_person_names[1], CURRENT_DATE - 40, CURRENT_DATE + 50, 'Active',
+        (SELECT id FROM public.governance_channels WHERE org_id = r_org.id AND name = 'Mid-year Portfolio Review' LIMIT 1));
+      INSERT INTO public.governance_channels (org_id, name, cadence, audience, purpose, chair, last_meeting, next_meeting, status, parent_channel_id)
+      VALUES (r_org.id, 'Portfolio Steering Committee', 'Monthly', 'Executives & Sponsors', 'Approve investments, review portfolio health', seed_person_names[1], CURRENT_DATE - 14, CURRENT_DATE + 16, 'Active',
+        (SELECT id FROM public.governance_channels WHERE org_id = r_org.id AND name = 'Investment Committee' LIMIT 1));
+      INSERT INTO public.governance_channels (org_id, name, cadence, audience, purpose, chair, last_meeting, next_meeting, status, parent_channel_id)
+      VALUES (r_org.id, 'Program Board', 'Fortnightly', 'Program & BU Leads', 'Program RAG, dependencies, escalations', seed_person_names[LEAST(2, n_people)], CURRENT_DATE - 7, CURRENT_DATE + 7, 'Active',
+        (SELECT id FROM public.governance_channels WHERE org_id = r_org.id AND name = 'Portfolio Steering Committee' LIMIT 1));
+      INSERT INTO public.governance_channels (org_id, name, cadence, audience, purpose, chair, last_meeting, next_meeting, status, parent_channel_id)
+      VALUES (r_org.id, 'Project Review Forum', 'Weekly', 'Project Managers', 'Milestones, risks, actions', seed_person_names[1], CURRENT_DATE - 3, CURRENT_DATE + 4, 'Active',
+        (SELECT id FROM public.governance_channels WHERE org_id = r_org.id AND name = 'Program Board' LIMIT 1));
+      INSERT INTO public.governance_channels (org_id, name, cadence, audience, purpose, chair, last_meeting, next_meeting, status, parent_channel_id)
+      VALUES (r_org.id, 'Change Advisory Board', 'Weekly', 'CAB Members', 'Assess and approve change requests', seed_person_names[LEAST(2, n_people)], CURRENT_DATE - 2, CURRENT_DATE + 5, 'Active',
+        (SELECT id FROM public.governance_channels WHERE org_id = r_org.id AND name = 'Program Board' LIMIT 1));
+      INSERT INTO public.governance_channels (org_id, name, cadence, audience, purpose, chair, last_meeting, next_meeting, status, parent_channel_id)
+      VALUES (r_org.id, 'Delivery Stand-up', 'Daily', 'Delivery squads', 'Blockers and late work items', seed_person_names[1], CURRENT_DATE - 1, CURRENT_DATE + 1, 'Active',
+        (SELECT id FROM public.governance_channels WHERE org_id = r_org.id AND name = 'Project Review Forum' LIMIT 1));
+      INSERT INTO public.governance_channels (org_id, name, cadence, audience, purpose, chair, last_meeting, next_meeting, status, parent_channel_id)
+      VALUES (r_org.id, 'Exception Forum', 'Ad-hoc', 'Sponsors', 'Unlock locked forecasts and emergency RAG overrides', seed_person_names[1], CURRENT_DATE - 21, CURRENT_DATE + 28, 'Active',
+        (SELECT id FROM public.governance_channels WHERE org_id = r_org.id AND name = 'Investment Committee' LIMIT 1));
+    EXCEPTION WHEN undefined_table THEN
+      RAISE NOTICE 'governance_channels missing — skip cadence hierarchy';
+    WHEN undefined_column THEN
+      RAISE NOTICE 'governance_channels extras missing — skip cadence hierarchy';
+    END;
   END LOOP;
 END $$;
 
@@ -1566,7 +1984,7 @@ $extra$;
 
 COMMIT;
 
--- Verification — iProjectX only (expect 4 projects, 8 streams, ~72 gates)
+-- Verification — iProjectX only (expect 4 projects, 8 streams, gates + forecast phases per stream)
 SELECT o.name AS org, o.slug,
        (SELECT count(*) FROM public.projects p WHERE p.org_id = o.id) AS projects,
        (SELECT count(*) FROM public.project_streams s
@@ -1576,7 +1994,11 @@ SELECT o.name AS org, o.slug,
        (SELECT count(*) FROM public.risks r WHERE r.org_id = o.id) AS risks,
        (SELECT count(*) FROM public.financials_monthly f WHERE f.org_id = o.id) AS monthly_rows,
        (SELECT count(*) FROM public.resources r WHERE r.org_id = o.id) AS resources,
-       (SELECT count(*) FROM public.timesheets t WHERE t.org_id = o.id) AS timesheets
+       (SELECT count(*) FROM public.timesheets t WHERE t.org_id = o.id) AS timesheets,
+       (SELECT count(*) FROM public.project_forecasts f WHERE f.org_id = o.id) AS forecasts,
+       (SELECT count(*) FROM public.project_forecast_phases ph WHERE ph.org_id = o.id) AS forecast_phases,
+       (SELECT count(*) FROM public.project_meeting_summaries s WHERE s.org_id = o.id) AS meeting_summaries,
+       (SELECT count(*) FROM public.governance_channels c WHERE c.org_id = o.id) AS cadence_forums
 FROM public.organizations o
 WHERE lower(o.slug) IN ('iprojectx', 'isafex') OR lower(o.name) IN ('iprojectx', 'isafex')
 ORDER BY 1;
