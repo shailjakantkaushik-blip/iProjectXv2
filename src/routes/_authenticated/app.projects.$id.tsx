@@ -245,7 +245,7 @@ function ProjectDetail() {
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
             Progress since the last steering meeting and the plan until the next one. The Executive
-            Dashboard reads this section.{" "}
+            Dashboard Project summaries tab shows this section.{" "}
             <Link to="/app/project-forecast" className="font-medium text-primary hover:underline">
               Open project forecast
             </Link>

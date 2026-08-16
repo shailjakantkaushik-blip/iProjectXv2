@@ -23,6 +23,11 @@ import {
 } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { projectApprovedFunding, projectForecast, projectIncurred } from "@/lib/project-finance";
+import {
+  deliveryMethodsQueryKey,
+  fetchDeliveryMethods,
+  findDeliveryMethod,
+} from "@/lib/delivery-methods";
 import { projectScheduleEnd, projectScheduleStart, fyOf } from "@/lib/project-dates";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
@@ -87,6 +92,12 @@ function ProgramsPage() {
     enabled: !!orgId,
     retry: 2,
     staleTime: 15_000,
+  });
+
+  const { data: deliveryMethods = [] } = useQuery({
+    queryKey: deliveryMethodsQueryKey(orgId),
+    queryFn: () => fetchDeliveryMethods(orgId!, { activeOnly: true }),
+    enabled: !!orgId,
   });
 
   const [selectedProgram, setSelectedProgram] = useState<string>("");
@@ -262,10 +273,8 @@ function ProgramsPage() {
   }
 
   const totBudget = programs.reduce((s, p) => s + p.budget, 0);
-  const totForecast = programs.reduce((s, p) => s + p.forecast, 0);
   const totActual = programs.reduce((s, p) => s + p.actual, 0);
   const totBenefits = programs.reduce((s, p) => s + p.benefits, 0);
-  const totRemaining = Math.max(0, totBudget - totActual);
 
   const remainingSorted = [...programs].sort((a, b) => b.remaining - a.remaining);
   const remMax = Math.max(1, ...remainingSorted.map((p) => p.remaining));
@@ -274,12 +283,29 @@ function ProgramsPage() {
     return REM_SCALE[idx];
   };
 
-  const waterfall = [
-    { name: "Program Budget", value: totBudget, fill: "#3b82f6" },
-    { name: "Committed (Forecast)", value: totForecast, fill: "#22c55e" },
-    { name: "Actual Spend", value: totActual, fill: "#f59e0b" },
-    { name: "Remaining", value: totRemaining, fill: "#94a3b8" },
-  ];
+  const methodWaterfall = (() => {
+    const map = new Map<
+      string,
+      { method: string; Budget: number; Committed: number; Actual: number }
+    >();
+    for (const p of projects as any[]) {
+      const method = p.delivery_method_id
+        ? deliveryMethods.find((m) => m.id === p.delivery_method_id)
+        : p.delivery_method
+          ? findDeliveryMethod(deliveryMethods, p.delivery_method)
+          : undefined;
+      const name = method?.name || p.delivery_method || "Unassigned";
+      const cur = map.get(name) || { method: name, Budget: 0, Committed: 0, Actual: 0 };
+      cur.Budget += Number(p.budget || 0);
+      cur.Committed += projectForecast(p);
+      cur.Actual += projectIncurred(p);
+      map.set(name, cur);
+    }
+    return [...map.values()].map((r) => ({
+      ...r,
+      Remaining: Math.max(0, r.Budget - r.Actual),
+    }));
+  })();
 
   return (
     <PageExport name="Programs" title="Programs">
@@ -361,25 +387,30 @@ function ProgramsPage() {
 
       <SectionFrame>
         <ExpandableChart
-          title="Portfolio waterfall — Budget → Committed → Actual → Remaining"
-          heightClass="h-72"
+          title="Budget → Committed → Actual → Remaining by delivery method"
+          heightClass="h-80"
         >
-          <BarChart data={waterfall} margin={{ top: 20, right: 20, left: 10, bottom: 20 }}>
+          <BarChart data={methodWaterfall} margin={{ top: 20, right: 20, left: 10, bottom: 20 }}>
             <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+            <XAxis dataKey="method" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 10 }} tickFormatter={money} />
             <Tooltip formatter={(v: number) => money(v)} />
-            <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-              {waterfall.map((w, i) => (
-                <Cell key={i} fill={w.fill} />
-              ))}
+            <Legend
+              verticalAlign="top"
+              align="right"
+              wrapperStyle={{ fontSize: 11, paddingBottom: 8 }}
+            />
+            <Bar dataKey="Budget" fill="#3b82f6" radius={[4, 4, 0, 0]}>
               <LabelList
-                dataKey="value"
+                dataKey="Budget"
                 position="top"
                 formatter={(v: number) => moneyM(v)}
-                style={{ fontSize: 11, fill: "#0f172a", fontWeight: 600 }}
+                style={{ fontSize: 9, fill: "#0f172a" }}
               />
             </Bar>
+            <Bar dataKey="Committed" fill="#22c55e" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="Actual" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="Remaining" fill="#94a3b8" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ExpandableChart>
       </SectionFrame>
