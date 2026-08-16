@@ -75,13 +75,17 @@ import { fetchStageGates } from "@/lib/stage-gates";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
+import { ExecutiveQuickView } from "@/components/executive-quick-view";
 
-type ExecutiveTab = "overview" | "summaries";
+type ExecutiveTab = "quick" | "overview" | "summaries";
 
 export const Route = createFileRoute("/_authenticated/app/executive")({
-  validateSearch: (s: Record<string, unknown>): { tab?: ExecutiveTab } => ({
-    tab: s.tab === "summaries" ? "summaries" : "overview",
-  }),
+  validateSearch: (s: Record<string, unknown>): { tab?: ExecutiveTab } => {
+    const raw = String(s.tab || "");
+    if (raw === "summaries") return { tab: "summaries" };
+    if (raw === "overview" || raw === "detailed") return { tab: "overview" };
+    return { tab: "quick" };
+  },
   component: ExecutiveDashboard,
 });
 
@@ -798,6 +802,48 @@ function ExecutiveDashboard() {
       <div className="mb-4 flex flex-wrap gap-1 border-b border-border pb-px">
         {(
           [
+            { id: "quick" as const, label: "Quick view" },
+            { id: "overview" as const, label: "Detailed info" },
+          ] as const
+        ).map((t) => {
+          const active =
+            t.id === "quick" ? tab === "quick" : tab === "overview" || tab === "summaries";
+          return (
+            <Link
+              key={t.id}
+              to="/app/executive"
+              search={{ tab: t.id }}
+              className={cn(
+                "rounded-t-md px-3 py-2 text-xs font-semibold transition-colors",
+                active
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              {t.label}
+            </Link>
+          );
+        })}
+      </div>
+
+      {tab === "quick" && (
+        <ExecutiveQuickView
+          filtered={filtered}
+          approvedFunding={approvedFunding}
+          totalIncurred={totalIncurred}
+          totalForecast={totalForecast}
+          remaining={remaining}
+          ragData={ragData}
+          monthlySpend={monthlySpend}
+          segmentation={segmentation}
+          loading={showColdLoad}
+        />
+      )}
+
+      {tab !== "quick" && (
+      <div className="mb-4 flex flex-wrap gap-1">
+        {(
+          [
             { id: "overview" as const, label: "Overview" },
             { id: "summaries" as const, label: "Project summaries" },
           ] as const
@@ -807,16 +853,17 @@ function ExecutiveDashboard() {
             to="/app/executive"
             search={{ tab: t.id }}
             className={cn(
-              "rounded-t-md px-3 py-2 text-xs font-semibold transition-colors",
+              "rounded-md px-3 py-1.5 text-xs font-semibold transition-colors",
               tab === t.id
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                ? "bg-muted text-foreground ring-1 ring-border"
+                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
             )}
           >
             {t.label}
           </Link>
         ))}
       </div>
+      )}
 
       {tab === "overview" && (
       <>
