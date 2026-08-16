@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>iProjectX — Stop Flying Blind</title>
+  <style>
+    :root {
+      --navy: #0f1b3d;
+      --accent: #3b6fa0;
+      --ice: #e8eef6;
+      --bg: #f4f7fb;
+      --ink: #1a2744;
+      --muted: #5a6a80;
+      --green: #2e7d4f;
+      --amber: #b8860b;
+      --red: #b42318;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: "Calibri", "Sora", system-ui, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+    }
+    .top {
+      position: sticky; top: 0; z-index: 20;
+      background: color-mix(in srgb, var(--navy) 94%, transparent);
+      backdrop-filter: blur(12px); color: #fff;
+    }
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+    .top-inner { display: flex; align-items: center; justify-content: space-between; min-height: 54px; gap: 10px; }
+    .brand { font-weight: 800; }
+    .nav { display: flex; flex-wrap: wrap; gap: 6px; }
+    .nav a, .btn {
+      color: #d6dee8; text-decoration: none; border-radius: 8px; padding: 7px 10px;
+      font-size: 12px; font-weight: 700; border: 0; cursor: pointer; background: transparent;
+    }
+    .nav a:hover { background: #ffffff18; color: #fff; }
+    .btn-accent { background: var(--accent); color: #fff; }
+    .btn-ghost { background: #fff; color: var(--navy); }
+    .hero { padding: 28px 0 8px; }
+    h1 { margin: 8px 0 10px; font-size: clamp(32px, 6vw, 52px); letter-spacing: -0.03em; color: var(--navy); }
+    .lede { font-size: 18px; color: var(--muted); max-width: 720px; }
+    .frame {
+      margin: 22px 0 8px; border-radius: 16px; overflow: hidden;
+      box-shadow: 0 16px 40px #0f1b3d18; background: #fff;
+    }
+    .frame img { display: block; width: 100%; height: auto; }
+    .cap {
+      background: var(--navy); color: #fff; padding: 14px 18px; font-size: 17px; font-weight: 700;
+    }
+    .why { padding: 8px 4px 4px; color: var(--muted); font-size: 15px; line-height: 1.5; }
+    h2 { margin: 36px 0 8px; color: var(--navy); letter-spacing: -0.03em; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .card { background: #fff; border: 1px solid #d4dde8; border-radius: 12px; padding: 12px 14px; }
+    .card b { display: block; color: var(--navy); margin-bottom: 4px; }
+    .card span { font-size: 13px; color: var(--muted); }
+    .cta {
+      margin: 36px 0; background: var(--navy); color: #fff; border-radius: 16px; padding: 24px;
+      display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center;
+    }
+    footer { padding: 16px 0 32px; color: var(--muted); font-size: 12px; }
+    @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+    @media print {
+      .top, .no-print { display: none !important; }
+      body { background: #fff; }
+      .frame { break-inside: avoid; box-shadow: none; }
+      .cap, .cta { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap top-inner">
+      <div class="brand">iProjectX</div>
+      <nav class="nav">
+        <a href="#story">Story</a>
+        <a href="#features">All features</a>
+        <a href="#ask">Ask</a>
+      </nav>
+      <div>
+        <button class="btn btn-ghost no-print" type="button" onclick="window.print()">Print / PDF</button>
+        <a class="btn btn-accent" href="https://www.iprojectx.com">iprojectx.com</a>
+      </div>
+    </div>
+  </header>
+
+  <div class="wrap hero">
+    <div style="font-size:12px;font-weight:800;letter-spacing:.16em;color:var(--accent)">ILLUSTRATED SALES STORY</div>
+    <h1>Stop flying blind.</h1>
+    <p class="lede">A layperson can tell this story. Each picture is one beat. The feature list at the end is everything the product actually ships — no invented modules, no list price, no certification badge.</p>
+  </div>
+
+  <main id="story" class="wrap">
+    <figure class="frame">
+      <img src="story-images/01-stop-flying-blind.png" alt="Airplane in fog — Stop Flying Blind" />
+      <figcaption class="cap">Why iProjectX exists: leaders are flying the portfolio without instruments.</figcaption>
+    </figure>
+    <p class="why">Open here. Ask when they last walked into a steering committee without a second spreadsheet.</p>
+
+    <figure class="frame">
+      <img src="story-images/02-five-systems-fog.png" alt="Five disconnected systems" />
+      <figcaption class="cap">Flying blind looks like five systems and one story that never matches.</figcaption>
+    </figure>
+    <p class="why">Spreadsheets, finance ERP, timesheets, email, and the slide deck. None of them share a formula.</p>
+
+    <figure class="frame">
+      <img src="story-images/03-sunday-rebuild.png" alt="Sunday night slide rebuild" />
+      <figcaption class="cap">Someone rebuilds the pack on Sunday. By Monday the numbers have already moved.</figcaption>
+    </figure>
+
+    <figure class="frame">
+      <img src="story-images/04-one-cockpit.png" alt="One operating picture above the clouds" />
+      <figcaption class="cap">The turn: one cockpit — health, money, people, and the calendar on one picture.</figcaption>
+    </figure>
+
+    <figure class="frame">
+      <img src="story-images/05-see-explain-govern-trust.png" alt="See Explain Govern Trust" />
+      <figcaption class="cap">The whole product is four verbs: See. Explain. Govern. Trust.</figcaption>
+    </figure>
+
+    <figure class="frame">
+      <img src="story-images/06-demand-funnel.png" alt="Demand funnel from idea to project" />
+      <figcaption class="cap">The story starts before the project exists — an idea enters Demand.</figcaption>
+    </figure>
+    <p class="why">Idea → Screening → Business Case → Approved / Rejected / On Hold. Then the seven-step project wizard.</p>
+
+    <figure class="frame">
+      <img src="story-images/07-agile-waterfall-spine.png" alt="Agile and Waterfall on one spine" />
+      <figcaption class="cap">Agile sprints and Waterfall gates share one spine. No second system.</figcaption>
+    </figure>
+
+    <figure class="frame">
+      <img src="story-images/08-stage-gates.png" alt="Stage gates that can say no" />
+      <figcaption class="cap">A gate can say no. The checklist must be complete before Approve.</figcaption>
+    </figure>
+
+    <figure class="frame">
+      <img src="story-images/12-people-hours.png" alt="People and hours capacity" />
+      <figcaption class="cap">People are not a side spreadsheet. Hours hit the same picture as money.</figcaption>
+    </figure>
+    <p class="why">Resources (plan vs actual, skills, utilisation) and Timesheets (draft → PM → RM → approved). Healthy utilisation ~70–95%. Over 110% is overload.</p>
+
+    <figure class="frame">
+      <img src="story-images/09-money-line.png" alt="Plan actual forecast invoice" />
+      <figcaption class="cap">Plan, actual, forecast, invoice — one conversation. Not four files.</figcaption>
+    </figure>
+
+    <figure class="frame">
+      <img src="story-images/10-health-formula.png" alt="Eight health dimension weights" />
+      <figcaption class="cap">Health is a formula: eight published weights. Not a colour someone typed.</figcaption>
+    </figure>
+    <p class="why">Schedule 20 · Financial 20 · Delivery 15 · Scope 10 · Resource 10 · Risk 10 · Dependencies 10 · Benefits 5.</p>
+
+    <figure class="frame">
+      <img src="story-images/11-rag-bands.png" alt="RAG bands 80 and 65" />
+      <figcaption class="cap">Green ≥ 80. Amber 65–79. Red &lt; 65. Same bands in every tenant.</figcaption>
+    </figure>
+
+    <figure class="frame">
+      <img src="story-images/13-raid-tower.png" alt="RAID control tower" />
+      <figcaption class="cap">RAID is the control tower: Risks, Issues, Actions, Decisions — plus who owns them.</figcaption>
+    </figure>
+
+    <figure class="frame">
+      <img src="story-images/14-delay-cascade.png" alt="Delay cascade what-if" />
+      <figcaption class="cap">A delay is a row of dominoes. What-if lets you touch the first one on purpose.</figcaption>
+    </figure>
+
+    <figure class="frame">
+      <img src="story-images/15-live-board-pack.png" alt="Live board pack" />
+      <figcaption class="cap">The pack is live. Executive Reports: seven tabs. Print, PDF, or Excel.</figcaption>
+    </figure>
+
+    <figure class="frame">
+      <img src="story-images/20-inhouse-ai.png" alt="In-house AI" />
+      <figcaption class="cap">Ask the portfolio a question. The default answer never leaves the house.</figcaption>
+    </figure>
+
+    <figure class="frame">
+      <img src="story-images/18-excel-onramp.png" alt="Excel on-ramp" />
+      <figcaption class="cap">Bring the register you already have. Excel is the on-ramp, not the prison.</figcaption>
+    </figure>
+
+    <figure class="frame">
+      <img src="story-images/16-feature-atlas.png" alt="Feature atlas" />
+      <figcaption class="cap">One product. Neighbourhoods: Command, Portfolio, Delivery, Money, Govern, Admin.</figcaption>
+    </figure>
+
+    <figure class="frame">
+      <img src="story-images/17-trust-stack.png" alt="Trust stack" />
+      <figcaption class="cap">Trust is built in: MFA for everyone. Isolation. Evidence. Optional SSO and BYOD.</figcaption>
+    </figure>
+    <p class="why">Designed for SOC 2 / ISO 27001 readiness — not a certification claim.</p>
+
+    <figure class="frame">
+      <img src="story-images/19-clear-sky-close.png" alt="Fog to clear sky" />
+      <figcaption class="cap">Put one red project on the wall. Explain it. Invoice it. Pack it. Same tenant.</figcaption>
+    </figure>
+
+    <h2 id="features">Everything the product ships</h2>
+    <p class="why">Use this as the leave-behind so a layperson can point at a picture, then find the page name.</p>
+    <div class="grid">
+      <div class="card"><b>Command</b><span>Home, My Work, Portfolio Pulse (6 areas), Executive Cockpit, Executive Dashboard, Executive Intelligence (delay cascade, capacity gaps, resource optimisation, dependency criticality, change control, investment ranking, funding what-if, decision backlog, benefits narrative, governance cadence), In-house AI, Latest Updates, Support, About, Explain This, Download page, command palette, focus mode, live sync.</span></div>
+      <div class="card"><b>Portfolio</b><span>Demand Pipeline, 7-step New Project Wizard, Project Register, project workspace (Overview / Streams / Decisions / Work / RAID / Finance), Programs, Project Infographic (PDF/PPT), Segmentation, Prioritisation, Movements, Portfolio Scenarios, Business Units.</span></div>
+      <div class="card"><b>Delivery</b><span>Work Items, Work Board, Timeline (FY Gantt + TODAY), Schedule CPM, Dependencies, Agile / Sprints, Stage Gates + checklists, Delivery Methods &amp; Gates, Roadmap × Governance, Roadmap Analytics (Monte Carlo 2,000 runs), Risk Roadmap, Governance Channels, Resources, Timesheets.</span></div>
+      <div class="card"><b>Money</b><span>Financials (plan / actual / forecast), FY Allocation (default April), Phase Financials, EVM (SPI, CPI, EAC), Cost vs Benefit, Benefits Realisation (5% of health), Billing &amp; Invoices with live template.</span></div>
+      <div class="card"><b>Health Engine</b><span>Schedule 20, Financial 20, Delivery 15, Scope 10, Resource 10, Risk 10, Dependencies 10, Benefits 5. Green ≥ 80, Amber 65–79, Red &lt; 65. Early warnings + 30-day outlook.</span></div>
+      <div class="card"><b>Govern</b><span>Risks (P×I, critical ≥ 15), Issues, Actions, Decisions (approval workflow), Stakeholders, Lessons, Release &amp; Change, Executive Reports (7-tab board pack), Report Builder, Audit Log (Excel ≤ 10,000 rows), alert emails.</span></div>
+      <div class="card"><b>On-ramp</b><span>Data Editor (29 tables, Excel in/out). Jira Cloud/DC (shipped). Custom webhook → Demand. Azure DevOps and ServiceNow are listed, not shipped.</span></div>
+      <div class="card"><b>Trust &amp; operate</b><span>Mandatory TOTP MFA. RLS. Roles &amp; page permissions. Project data access. Optional SAML SSO, IP allowlist, BYOD. White-label. In-house AI default; Open AI opt-in. Navigation sequence, page-download policy, chart theme, licenses, purge, legal policies, onboarding.</span></div>
+    </div>
+
+    <div class="cta" id="ask">
+      <div>
+        <div style="font-size:12px;letter-spacing:.14em;font-weight:800;color:#9ec0df">PRIMARY ASK</div>
+        <h2 style="color:#fff;margin:6px 0">Expression of Interest + a scoped pilot</h2>
+        <p style="margin:0;color:#c5d4e8">No list price in the room. Proposal follows EOI.</p>
+      </div>
+      <div>
+        <a class="btn btn-accent" href="https://www.iprojectx.com">www.iprojectx.com</a>
+        <a class="btn btn-ghost" href="https://www.iprojectx.com/contact">Contact</a>
+      </div>
+    </div>
+  </main>
+  <footer>
+    <div class="wrap">iProjectX · Stop Flying Blind · Confidential · Does not claim SOC 2 / ISO certification · Images are story illustrations, not product screenshots</div>
+  </footer>
+</body>
+</html>
