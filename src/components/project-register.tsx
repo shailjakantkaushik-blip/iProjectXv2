@@ -1,18 +1,11 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, canEditProjects, isAdmin } from "@/lib/auth-context";
 import { useCapabilityPermission } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { SectionFrame, SectionTitle, PageHeading, KpiCard, RagChip } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import { EditableCell } from "@/components/editable-cell";
@@ -56,15 +49,12 @@ function money(n: number) {
   );
 }
 
-/** Portfolio inventory with filters, KPIs, and inline editing — shown on Programs. */
+/** Portfolio inventory with KPIs and inline editing — shown on Programs. */
 export function ProjectRegister() {
   const { organization, roles, loading: authLoading } = useAuth();
   const canEdit = canEditProjects(roles);
   const admin = isAdmin(roles);
   const canUploadTemplate = useCapabilityPermission("template_upload").canEdit;
-  const [prog, setProg] = useState("All");
-  const [ragF, setRagF] = useState("All");
-  const [statusF, setStatusF] = useState("All");
   const [offset, setOffset] = useState(0);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -76,10 +66,6 @@ export function ProjectRegister() {
   const orgId = organization?.id;
   const pageSize = DEFAULT_PAGE_SIZE;
 
-  useEffect(() => {
-    setOffset(0);
-  }, [prog, ragF, statusF]);
-
   const {
     data: pageData,
     isLoading,
@@ -88,16 +74,13 @@ export function ProjectRegister() {
     refetch,
     isFetching,
   } = useQuery({
-    queryKey: ["projects", orgId, "page", offset, pageSize, prog, ragF, statusF],
+    queryKey: ["projects", orgId, "page", offset, pageSize],
     queryFn: () =>
       listProjects({
         data: {
           orgId: orgId!,
           offset,
           limit: pageSize,
-          program: prog,
-          rag: ragF,
-          status: statusF,
         },
       }),
     enabled: !!orgId,
@@ -201,18 +184,6 @@ export function ProjectRegister() {
     qc.invalidateQueries({ queryKey: ["stakeholders", orgId] });
     toast.success("Sponsor updated");
   };
-
-  const programs = useMemo(() => {
-    const keys = Object.keys(stats?.by_program ?? {}).filter((k) => k && k !== "Unassigned");
-    const fromPage = projects.map((p: any) => p.program).filter(Boolean) as string[];
-    return Array.from(new Set([...keys, ...fromPage])).sort();
-  }, [stats, projects]);
-
-  const statuses = useMemo(() => {
-    const keys = Object.keys(stats?.by_status ?? {}).filter((k) => k && k !== "Unknown");
-    const fromPage = projects.map((p: any) => p.status).filter(Boolean) as string[];
-    return Array.from(new Set([...keys, ...fromPage])).sort();
-  }, [stats, projects]);
 
   const filtered = projects;
 
@@ -327,7 +298,7 @@ export function ProjectRegister() {
       <PageHeading
         icon="📁"
         title="Project Register"
-        subtitle="Full portfolio inventory with filters, KPIs & analytics. Open a row to the project workspace. Calculated health scores live on Project Infographic / Executive Cockpit."
+        subtitle="Full portfolio inventory with KPIs and analytics. Open a row to the project workspace. Calculated health scores live on Project Infographic / Executive Cockpit."
 
         actions={
           <div className="flex flex-wrap gap-2">
@@ -377,49 +348,6 @@ export function ProjectRegister() {
           </div>
         }
       />
-
-      <SectionFrame>
-        <SectionTitle>Filters</SectionTitle>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <Select value={prog} onValueChange={setProg}>
-            <SelectTrigger>
-              <SelectValue placeholder="Program" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="All">All programs</SelectItem>
-              {programs.map((p) => (
-                <SelectItem key={p} value={p}>
-                  {p}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={ragF} onValueChange={setRagF}>
-            <SelectTrigger>
-              <SelectValue placeholder="RAG" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="All">All RAG</SelectItem>
-              <SelectItem value="Green">Green</SelectItem>
-              <SelectItem value="Amber">Amber</SelectItem>
-              <SelectItem value="Red">Red</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={statusF} onValueChange={setStatusF}>
-            <SelectTrigger>
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="All">All statuses</SelectItem>
-              {statuses.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </SectionFrame>
 
       <SectionFrame>
         <SectionTitle>Register KPIs</SectionTitle>

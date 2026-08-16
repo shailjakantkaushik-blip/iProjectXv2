@@ -288,7 +288,7 @@ function ProgramsPage() {
       <PageHeading
         icon="🎯"
         title="Programs"
-        subtitle="Program-level rollups under Strategic Alignment, plus the full project register (filters, KPIs, import/export)."
+        subtitle="Program-level rollups under Strategic Alignment, plus the full project register (KPIs, import/export)."
       />
 
       <SectionFrame>
