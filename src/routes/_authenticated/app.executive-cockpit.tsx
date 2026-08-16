@@ -1,19 +1,27 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { ChevronDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, RagChip } from "@/components/streamlit";
 import { ExplainThis } from "@/components/explain-this";
 import { EnvelopeBullet } from "@/components/envelope-bullet";
+import { ExpandablePanel } from "@/components/expandable-panel";
+import { ExecutiveQuickView } from "@/components/executive-quick-view";
+import { ProjectMeetingSummary } from "@/components/project-meeting-summary";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LabelList, Legend } from "recharts";
 import { fyLabel } from "@/lib/fiscal-year";
 import { ExpandableChart } from "@/components/expandable-chart";
 import {
   projectApprovedFunding,
+  projectCapexApproved,
+  projectOpexApproved,
   projectForecast,
   projectIncurred,
+  projectRemaining,
   fyAllocBudget,
   fyAllocForecast,
   sumBenefitsRealised,
@@ -42,10 +50,14 @@ import {
 } from "@/components/portfolio-filters";
 
 export const Route = createFileRoute("/_authenticated/app/executive-cockpit")({
+  validateSearch: (s: Record<string, unknown>): { section?: "summaries" } => {
+    if (String(s.section || "") === "summaries") return { section: "summaries" };
+    return {};
+  },
   head: () => ({
     meta: [
       { title: "Executive Cockpit — PMO Enterprise" },
-      { name: "description", content: "Portfolio scoreboard across money, health, and mix." },
+      { name: "description", content: "Steering pack, portfolio scoreboard, and project summaries." },
     ],
   }),
   component: ExecutiveCockpit,
@@ -87,6 +99,20 @@ function healthHeat(score: number) {
   if (score >= 75) return "bg-emerald-50 text-emerald-800";
   if (score >= 50) return "bg-amber-50 text-amber-900";
   return "bg-rose-50 text-rose-800";
+}
+
+function packWhy(p: {
+  engine?: {
+    drivers?: { severity?: string; message?: string }[];
+    earlyWarnings?: { title?: string }[];
+    forecast?: { message?: string };
+  };
+}) {
+  const engine = p.engine;
+  if (!engine) return "—";
+  const topDriver = engine.drivers?.find((d) => d.severity === "Red") || engine.drivers?.[0];
+  const topWarn = engine.earlyWarnings?.[0];
+  return topWarn?.title || topDriver?.message || engine.forecast?.message || "—";
 }
 
 function ScoreStat({
@@ -169,6 +195,7 @@ function MixBar({
 }
 
 function ExecutiveCockpit() {
+  const { section } = Route.useSearch();
   const { organization } = useAuth();
   const orgId = organization?.id;
   const fyStartMonth = organization?.fy_start_month || 4;
@@ -176,11 +203,22 @@ function ExecutiveCockpit() {
   const fetchKpis = useServerFn(getPortfolioKpis);
   const navigate = useNavigate();
   const [filters, setFilters] = useState<ExecutivePortfolioFilterState>(emptyExecutiveFilters);
+  const [summariesCollapsed, setSummariesCollapsed] = useState(section !== "summaries");
+  const [openSummaryIds, setOpenSummaryIds] = useState<Set<string>>(() => new Set());
   const asOf = new Date().toLocaleDateString(undefined, {
     day: "numeric",
     month: "short",
     year: "numeric",
   });
+
+  useEffect(() => {
+    if (section !== "summaries") return;
+    setSummariesCollapsed(false);
+    const t = window.setTimeout(() => {
+      document.getElementById("project-summaries")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, [section]);
 
   const projectsQ = useQuery({
     queryKey: ["projects", orgId, "cockpit"],
@@ -550,6 +588,32 @@ function ExecutiveCockpit() {
     return Array.from(map.values()).sort((a, b) => a.fy.localeCompare(b.fy));
   }, [fyAllocScoped, projects, fyStartMonth]);
 
+  const monthlySpend = useMemo(() => {
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const rows = (monthly as any[]).filter((m) => inScope(m.project_id));
+    const buckets = new Map<string, { actual: number; forecast: number }>();
+    rows.forEach((r: any) => {
+      const d = new Date(r.period_month);
+      if (isNaN(d.getTime())) return;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const cur = buckets.get(key) || { actual: 0, forecast: 0 };
+      cur.actual += Number(r.capex_actual || 0) + Number(r.opex_actual || 0);
+      cur.forecast += Number(r.capex_forecast || 0) + Number(r.opex_forecast || 0);
+      buckets.set(key, cur);
+    });
+    return Array.from(buckets.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-12)
+      .map(([key, v]) => {
+        const [y, m] = key.split("-");
+        return {
+          month: `${monthNames[Number(m) - 1]} '${y.slice(-2)}`,
+          actual: v.actual / 1e6,
+          forecast: v.forecast / 1e6,
+        };
+      });
+  }, [monthly, filtersOn, filteredIds]);
+
   const projectsWithFY =
     new Set(fyAllocScoped.map((a: any) => a.project_id).filter(Boolean)).size ||
     projects.filter((p: any) => p.start_date).length;
@@ -613,15 +677,14 @@ function ExecutiveCockpit() {
       <PageHeading
         icon="📊"
         title="Executive Cockpit"
-        subtitle={`Portfolio scoreboard · as of ${asOf}${filtersOn ? ` · ${projects.length} of ${allProjects.length} projects` : ` · ${projects.length} projects`}`}
+        subtitle={`Steering pack and portfolio pulse · as of ${asOf}${filtersOn ? ` · ${projects.length} of ${allProjects.length} projects` : ` · ${projects.length} projects`}`}
         actions={
           <>
             <Link
               to="/app/executive"
-              search={{ tab: "quick" }}
               className="rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium hover:bg-muted"
             >
-              Open Quick view
+              Open Dashboard
             </Link>
             <Link
               to="/app/portfolio-pulse"
@@ -642,7 +705,20 @@ function ExecutiveCockpit() {
         />
       </SectionFrame>
 
-      <SectionFrame exportName="cockpit-money" exportTitle="Money">
+      <ExecutiveQuickView
+        mode="steering"
+        filtered={projects}
+        approvedFunding={approvedFundingK}
+        totalIncurred={actualSpendK}
+        totalForecast={facK}
+        remaining={remainingK}
+        monthlySpend={monthlySpend}
+        segmentation={segRows.map((r) => ({ name: r.name, value: r.approved }))}
+        gates={gatesScoped}
+        monthly={(monthly as MonthlyFinanceRow[]).filter((m) => inScope((m as any).project_id))}
+      />
+
+      <SectionFrame exportName="cockpit-money" exportTitle="Money" id="pack-money">
         <div className="mb-2 flex items-center gap-2">
           <SectionTitle>Money</SectionTitle>
           {explains.budget ? <ExplainThis explanation={explains.budget} size="xs" /> : null}
@@ -813,128 +889,261 @@ function ExecutiveCockpit() {
         exportTitle="Portfolio Health Snapshot"
         className="section-frame--filters overflow-visible"
       >
-        <SectionTitle>Portfolio health matrix</SectionTitle>
-        <p className="mb-2 text-[11px] text-muted-foreground">
-          All in-scope projects, sorted worst RAG then lowest health score. Click a row for the
-          infographic. Health score stays calculated; RAG uses a manual override when set (M).
-        </p>
-        <p className="mb-2 text-[11px] text-muted-foreground md:hidden">Swipe sideways to see all columns.</p>
-        <div className="st-table-wrap max-h-[min(520px,70dvh)] overflow-auto overscroll-contain">
-          <table className="w-full min-w-[1080px] text-sm">
-            <thead className="sticky top-0 z-[2] bg-muted/90 text-xs uppercase text-muted-foreground backdrop-blur">
-              <tr>
-                <th className="sticky left-0 z-[3] bg-muted/90 px-3 py-2 text-left">Project</th>
-                <th className="px-3 py-2 text-left">Strategic Alignment</th>
-                <th className="px-3 py-2 text-left">Channel</th>
-                <th className="px-3 py-2 text-left">Sponsor</th>
-                <th className="px-3 py-2 text-left">Lead</th>
-                <th className="px-3 py-2 text-right">Progress</th>
-                <th className="px-3 py-2 text-right">Health</th>
-                <th className="px-3 py-2 text-left">Schedule</th>
-                <th className="px-3 py-2 text-left">Financial</th>
-                <th className="px-3 py-2 text-left">Delivery</th>
-                <th className="px-3 py-2 text-left">Benefit</th>
-                <th className="px-3 py-2 text-left">RAG</th>
-                <th className="px-3 py-2 text-left">30d</th>
-              </tr>
-            </thead>
-            <tbody>
-              {healthRows.map((p: any) => (
-                <tr
-                  key={p.id}
-                  className="group cursor-pointer border-t hover:bg-muted/30"
-                  onClick={() =>
-                    navigate({ to: "/app/project-infographic", search: { pid: p.id } as any })
-                  }
-                >
-                  <td className="sticky left-0 z-[1] bg-background px-3 py-2 group-hover:bg-muted/50">
-                    <div className="font-mono text-[11px] text-primary">
-                      {p.project_code || "—"}
-                    </div>
-                    <div className="max-w-[14rem] truncate text-xs">{p.name}</div>
-                  </td>
-                  <td className="px-3 py-2 text-xs">{p.portfolio || "—"}</td>
-                  <td className="px-3 py-2 text-xs">{p.governance_channel || "—"}</td>
-                  <td className="px-3 py-2 text-xs">{p.sponsor || "—"}</td>
-                  <td className="px-3 py-2 text-xs">{p.delivery_lead || "—"}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-xs">
-                    {Math.round(num(p.progress_percent))}%
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <span
-                      className={`inline-block rounded px-1.5 py-0.5 text-xs font-semibold tabular-nums ${healthHeat(num(p.health_score))}`}
-                    >
-                      {num(p.health_score) || "—"}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                    <RagChip
-                      rag={p.schedule_rag}
-                      label={p.schedule_rag}
-                      explain={explainRag({ rag: p.schedule_rag, engine: p.engine, dimension: "schedule" })}
-                    />
-                  </td>
-                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                    <RagChip
-                      rag={p.financial_rag}
-                      label={p.financial_rag}
-                      explain={explainRag({ rag: p.financial_rag, engine: p.engine, dimension: "financial" })}
-                    />
-                  </td>
-                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                    <RagChip
-                      rag={p.delivery_rag}
-                      label={p.delivery_rag}
-                      explain={explainRag({ rag: p.delivery_rag, engine: p.engine, dimension: "delivery" })}
-                    />
-                  </td>
-                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                    <RagChip
-                      rag={p.benefit_rag}
-                      label={p.benefit_rag}
-                      explain={explainRag({ rag: p.benefit_rag, engine: p.engine, dimension: "benefits" })}
-                    />
-                  </td>
-                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                    <RagChip
-                      rag={p.shown_rag || p.overall_rag || displayRag(p)}
-                      label={p.shown_rag || p.overall_rag || displayRag(p)}
-                      manual={isRagOverridden(p)}
-                      explain={explainRag({
-                        rag: p.shown_rag || p.overall_rag || displayRag(p),
-                        engine: isRagOverridden(p) ? null : p.engine,
-                        source: isRagOverridden(p) ? "register" : undefined,
-                        overridden: isRagOverridden(p),
-                        manualRag: p.rag,
-                      })}
-                    />
-                  </td>
-                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                    <span className="mr-1 tabular-nums text-xs">
-                      {p.engine?.predictive?.forecastScore30d ?? "—"}
-                    </span>
-                    {p.engine?.predictive?.likelyRag ? (
-                      <RagChip
-                        rag={p.engine.predictive.likelyRag}
-                        explain={explainRag({
-                          rag: p.engine.predictive.likelyRag,
-                          engine: p.engine,
-                          extraBullets: [
-                            `30-day outlook: score ${p.engine.predictive.forecastScore30d}/100 → ${p.engine.predictive.likelyRag}.`,
-                          ],
-                        })}
-                      />
-                    ) : null}
-                  </td>
+        <ExpandablePanel
+          title="Portfolio health matrix"
+          compactMaxHeightClass="max-h-[min(520px,70dvh)]"
+        >
+          <p className="mb-2 text-[11px] text-muted-foreground">
+            All in-scope projects, sorted worst RAG then lowest health score. Click a row for the
+            infographic. Health score stays calculated; RAG uses a manual override when set (M).
+            Program, Why, and money columns come from the steering pack.
+          </p>
+          <p className="mb-2 text-[11px] text-muted-foreground md:hidden">
+            Swipe sideways to see all columns.
+          </p>
+          <div className="st-table-wrap overflow-auto overscroll-contain">
+            <table className="w-full min-w-[1680px] text-sm">
+              <thead className="sticky top-0 z-[2] bg-muted/90 text-xs uppercase text-muted-foreground backdrop-blur">
+                <tr>
+                  <th className="sticky left-0 z-[3] bg-muted/90 px-3 py-2 text-left">Project</th>
+                  <th className="px-3 py-2 text-left">Strategic Alignment</th>
+                  <th className="px-3 py-2 text-left">Program</th>
+                  <th className="px-3 py-2 text-left">Channel</th>
+                  <th className="px-3 py-2 text-left">Sponsor</th>
+                  <th className="px-3 py-2 text-left">Lead</th>
+                  <th className="px-3 py-2 text-left">Why</th>
+                  <th className="px-3 py-2 text-right">Progress</th>
+                  <th className="px-3 py-2 text-right">Health</th>
+                  <th className="px-3 py-2 text-left">RAG</th>
+                  <th className="px-3 py-2 text-left">30d</th>
+                  <th className="px-3 py-2 text-right">Budget</th>
+                  <th className="px-3 py-2 text-right">CapEx</th>
+                  <th className="px-3 py-2 text-right">OpEx</th>
+                  <th className="px-3 py-2 text-right">Incurred</th>
+                  <th className="px-3 py-2 text-right">Remaining</th>
+                  <th className="px-3 py-2 text-right">Forecast</th>
+                  <th className="px-3 py-2 text-left">Schedule</th>
+                  <th className="px-3 py-2 text-left">Financial</th>
+                  <th className="px-3 py-2 text-left">Delivery</th>
+                  <th className="px-3 py-2 text-left">Benefit</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="mt-2 text-xs text-muted-foreground">
-          Health Score is calculated (Schedule 20% · Financial 20% · Scope 10% · Delivery 15% ·
-          Resource 10% · Risk 10% · Dependencies 10% · Benefits 5%). {healthRows.length} row(s).
-        </div>
+              </thead>
+              <tbody>
+                {healthRows.map((p: any) => {
+                  const fac = projectForecast(p);
+                  const budget = projectApprovedFunding(p);
+                  return (
+                    <tr
+                      key={p.id}
+                      className="group cursor-pointer border-t hover:bg-muted/30"
+                      onClick={() =>
+                        navigate({ to: "/app/project-infographic", search: { pid: p.id } as any })
+                      }
+                    >
+                      <td className="sticky left-0 z-[1] bg-background px-3 py-2 group-hover:bg-muted/50">
+                        <div className="font-mono text-[11px] text-primary">
+                          {p.project_code || "—"}
+                        </div>
+                        <div className="max-w-[14rem] truncate text-xs">{p.name}</div>
+                      </td>
+                      <td className="px-3 py-2 text-xs">{p.portfolio || "—"}</td>
+                      <td className="px-3 py-2 text-xs">{p.program || "—"}</td>
+                      <td className="px-3 py-2 text-xs">{p.governance_channel || "—"}</td>
+                      <td className="px-3 py-2 text-xs">{p.sponsor || "—"}</td>
+                      <td className="px-3 py-2 text-xs">{p.delivery_lead || "—"}</td>
+                      <td className="max-w-[16rem] px-3 py-2 text-xs text-muted-foreground">
+                        {packWhy(p)}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-xs">
+                        {Math.round(num(p.progress_percent))}%
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <span
+                          className={`inline-block rounded px-1.5 py-0.5 text-xs font-semibold tabular-nums ${healthHeat(num(p.health_score))}`}
+                        >
+                          {num(p.health_score) || "—"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                        <RagChip
+                          rag={p.shown_rag || p.overall_rag || displayRag(p)}
+                          label={p.shown_rag || p.overall_rag || displayRag(p)}
+                          manual={isRagOverridden(p)}
+                          explain={explainRag({
+                            rag: p.shown_rag || p.overall_rag || displayRag(p),
+                            engine: isRagOverridden(p) ? null : p.engine,
+                            source: isRagOverridden(p) ? "register" : undefined,
+                            overridden: isRagOverridden(p),
+                            manualRag: p.rag,
+                          })}
+                        />
+                      </td>
+                      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                        <span className="mr-1 tabular-nums text-xs">
+                          {p.engine?.predictive?.forecastScore30d ?? "—"}
+                        </span>
+                        {p.engine?.predictive?.likelyRag ? (
+                          <RagChip
+                            rag={p.engine.predictive.likelyRag}
+                            explain={explainRag({
+                              rag: p.engine.predictive.likelyRag,
+                              engine: p.engine,
+                              extraBullets: [
+                                `30-day outlook: score ${p.engine.predictive.forecastScore30d}/100 → ${p.engine.predictive.likelyRag}.`,
+                              ],
+                            })}
+                          />
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-xs">{money(budget)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-xs">
+                        {money(projectCapexApproved(p))}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-xs">
+                        {money(projectOpexApproved(p))}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-xs">
+                        {money(projectIncurred(p))}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-xs">
+                        {money(projectRemaining(p))}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-xs">
+                        <span className={fac > budget ? "font-semibold text-red-600" : ""}>
+                          {money(fac)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                        <RagChip
+                          rag={p.schedule_rag}
+                          label={p.schedule_rag}
+                          explain={explainRag({ rag: p.schedule_rag, engine: p.engine, dimension: "schedule" })}
+                        />
+                      </td>
+                      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                        <RagChip
+                          rag={p.financial_rag}
+                          label={p.financial_rag}
+                          explain={explainRag({ rag: p.financial_rag, engine: p.engine, dimension: "financial" })}
+                        />
+                      </td>
+                      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                        <RagChip
+                          rag={p.delivery_rag}
+                          label={p.delivery_rag}
+                          explain={explainRag({ rag: p.delivery_rag, engine: p.engine, dimension: "delivery" })}
+                        />
+                      </td>
+                      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                        <RagChip
+                          rag={p.benefit_rag}
+                          label={p.benefit_rag}
+                          explain={explainRag({ rag: p.benefit_rag, engine: p.engine, dimension: "benefits" })}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-2 text-xs text-muted-foreground">
+            Health Score is calculated (Schedule 20% · Financial 20% · Scope 10% · Delivery 15% ·
+            Resource 10% · Risk 10% · Dependencies 10% · Benefits 5%). Forecast over envelope is
+            shown in red. {healthRows.length} row(s).
+          </div>
+        </ExpandablePanel>
+      </SectionFrame>
+
+      <SectionFrame exportName="cockpit-summaries" exportTitle="Project summaries">
+        <ExpandablePanel
+          id="project-summaries"
+          title="Project summaries"
+          collapsible
+          collapsed={summariesCollapsed}
+          onCollapsedChange={setSummariesCollapsed}
+          collapsedSummary={`${projects.length} project${projects.length === 1 ? "" : "s"} · meeting notes since last steering. Click Show or Expand.`}
+          compactMaxHeightClass="max-h-[min(80vh,960px)]"
+          toolbar={
+            <div className="flex flex-wrap items-center gap-2 print:hidden">
+              <button
+                type="button"
+                className="text-[10px] font-medium text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  setSummariesCollapsed(false);
+                  setOpenSummaryIds(new Set(projects.map((p: any) => p.id)));
+                }}
+              >
+                Expand all
+              </button>
+              <button
+                type="button"
+                className="text-[10px] font-medium text-muted-foreground hover:text-foreground"
+                onClick={() => setOpenSummaryIds(new Set())}
+              >
+                Collapse all
+              </button>
+            </div>
+          }
+        >
+          <p className="mb-3 text-sm text-muted-foreground">
+            Read-only rollup of each project&apos;s Project Summary tab. Edit notes, meeting dates,
+            and RAG override on the project page.
+          </p>
+          {projects.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No projects match the current filters.</p>
+          ) : (
+            <div className="space-y-2">
+              {projects.map((p: any) => {
+                const open = openSummaryIds.has(p.id);
+                return (
+                  <Collapsible
+                    key={p.id}
+                    open={open}
+                    onOpenChange={(next) => {
+                      setOpenSummaryIds((prev) => {
+                        const n = new Set(prev);
+                        if (next) n.add(p.id);
+                        else n.delete(p.id);
+                        return n;
+                      });
+                    }}
+                  >
+                    <div className="rounded-lg border border-border">
+                      <div className="flex w-full items-center justify-between gap-3 px-3 py-2">
+                        <CollapsibleTrigger
+                          type="button"
+                          className="flex min-w-0 flex-1 items-center gap-2 text-left hover:opacity-90"
+                        >
+                          <ChevronDown
+                            className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? "" : "-rotate-90"}`}
+                          />
+                          <span className="truncate text-xs font-semibold">
+                            {p.project_code} · {p.name}
+                          </span>
+                        </CollapsibleTrigger>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <Link
+                            to="/app/projects/$id"
+                            params={{ id: p.id }}
+                            search={{ tab: "summary" }}
+                            className="text-[10px] font-medium text-primary hover:underline"
+                          >
+                            Open
+                          </Link>
+                          <RagChip rag={displayRag(p)} manual={isRagOverridden(p)} />
+                        </div>
+                      </div>
+                      <CollapsibleContent>
+                        <ProjectMeetingSummary projectId={p.id} project={p} readOnly />
+                      </CollapsibleContent>
+                    </div>
+                  </Collapsible>
+                );
+              })}
+            </div>
+          )}
+        </ExpandablePanel>
       </SectionFrame>
     </div>
   );

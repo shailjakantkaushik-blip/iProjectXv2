@@ -109,7 +109,8 @@ export function AppFlowGuide({ tab, onTab }: { tab: AboutTab; onTab: (t: AboutTa
           <SectionTitle>A typical week</SectionTitle>
           <div className="space-y-3">
             <Step n="1" title="See the portfolio">
-              Home, Executive Dashboard, and Portfolio Pulse show health across projects.
+              Home, Executive Cockpit, Executive Dashboard, and Portfolio Pulse show health across
+              projects.
             </Step>
             <Step n="2" title="Open one project">
               Projects in the menu opens the project workspace (dropdown to switch). The register of
@@ -198,9 +199,9 @@ export function AppFlowGuide({ tab, onTab }: { tab: AboutTab; onTab: (t: AboutTa
                 labor.
               </Step>
               <Step n="F" title="Executives — steer without editing Plan">
-                Home, Executive Dashboard (Quick view: Briefing and Project summaries; Detailed
-                info), Portfolio Pulse, Financials (Plan vs Actual vs Forecast), How money works for
-                the glossary.
+                Home, Executive Cockpit (steering pack, scoreboard, and project summaries),
+                Executive Dashboard (charts and register), Portfolio Pulse, Financials (Plan vs
+                Actual vs Forecast), How money works for the glossary.
               </Step>
             </div>
           </div>
@@ -365,9 +366,8 @@ export function AppFlowGuide({ tab, onTab }: { tab: AboutTab; onTab: (t: AboutTa
             <SectionTitle>RAID and decisions</SectionTitle>
             <p className="text-sm leading-relaxed text-muted-foreground">
               Risks, Actions, Issues, Decisions — plus stakeholders and lessons. These live on the
-              project (and can be filtered by stream). The Executive Dashboard Quick view → Project
-              summaries tab is the steering pack; you edit the same notes on the project&apos;s
-              Project Summary tab.
+              project (and can be filtered by stream). Executive Cockpit → Project summaries is the
+              steering pack; you edit the same notes on the project&apos;s Project Summary tab.
             </p>
           </SectionFrame>
         </div>

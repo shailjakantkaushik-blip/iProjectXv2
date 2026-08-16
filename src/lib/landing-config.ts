@@ -808,7 +808,7 @@ export const DEFAULT_LANDING: LandingConfig = {
       },
       {
         title: "Executive Cockpit",
-        desc: "Live portfolio KPIs, segmentation, health snapshots, budget & forecast by FY.",
+        desc: "Steering pack, money, health mix, health matrix, and collapsible project summaries.",
       },
       {
         title: "Portfolio Timeline",

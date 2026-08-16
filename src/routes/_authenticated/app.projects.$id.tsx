@@ -398,8 +398,8 @@ function ProjectDetail() {
               </Link>
               <span className="text-muted-foreground">
                 {" "}
-                — meeting notes, next actions, and RAG override (shown on Executive Dashboard Quick
-                view → Project summaries).
+                — meeting notes, next actions, and RAG override (shown on Executive Cockpit →
+                Project summaries).
               </span>
             </p>
             <p className="mt-3 text-xs text-muted-foreground">
@@ -431,15 +431,15 @@ function ProjectDetail() {
       {tab === "summary" && (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            Edit the steering-meeting summary here. The Executive Dashboard{" "}
+            Edit the steering-meeting summary here. The{" "}
             <Link
-              to="/app/executive"
-              search={{ tab: "summaries" }}
+              to="/app/executive-cockpit"
+              search={{ section: "summaries" }}
               className="font-medium text-primary hover:underline"
             >
-              Quick view → Project summaries
+              Executive Cockpit → Project summaries
             </Link>{" "}
-            tab shows it read-only.{" "}
+            section shows it read-only.{" "}
             <Link to="/app/project-forecast" className="font-medium text-primary hover:underline">
               Open estimation planning
             </Link>
