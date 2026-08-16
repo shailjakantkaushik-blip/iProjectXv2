@@ -160,6 +160,8 @@ export function buildExecutiveBriefing(opts: {
   overdueCount: number;
   actions: BriefingAction[];
   watch: ProjectWatchRow[];
+  /** All in-scope projects, worst RAG / lowest health first. */
+  pack: ProjectWatchRow[];
   healthByProject: Map<string, HealthEngineResult>;
   questionExplains: BriefingQuestionExplains;
 } {
@@ -497,6 +499,7 @@ export function buildExecutiveBriefing(opts: {
           w.overrun > 0,
       )
       .slice(0, 6),
+    pack: watch,
     healthByProject,
     questionExplains,
   };

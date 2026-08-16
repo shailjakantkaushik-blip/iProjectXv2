@@ -19,7 +19,12 @@ import { ExpandableChart } from "@/components/expandable-chart";
 import { CategoryTick } from "@/components/chart-category-tick";
 import { CHART_SERIES, RAG_COLORS } from "@/lib/chart-theme";
 import { PageLoading } from "@/components/page-loading";
-import { projectApprovedFunding } from "@/lib/project-finance";
+import {
+  projectApprovedFunding,
+  projectCapexApproved,
+  projectOpexApproved,
+  projectRemaining,
+} from "@/lib/project-finance";
 import { projectPortfolio } from "@/lib/project-health";
 import { explainRag } from "@/lib/explain-metric";
 import { isRagOverridden } from "@/lib/ops-enhancements";
@@ -51,6 +56,13 @@ function money(n: number) {
 function pct(n: number, d: number) {
   if (!d) return "—";
   return `${Math.round((n / d) * 100)}%`;
+}
+
+function healthHeat(score: number) {
+  if (!Number.isFinite(score) || score <= 0) return "bg-muted text-muted-foreground";
+  if (score >= 75) return "bg-emerald-50 text-emerald-800";
+  if (score >= 50) return "bg-amber-50 text-amber-900";
+  return "bg-rose-50 text-rose-800";
 }
 
 function kindLabel(kind: string) {
@@ -482,7 +494,8 @@ export function ExecutiveQuickView({
           <div>
             <SectionTitle>On this pack</SectionTitle>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Why each project is here. RAG uses a manual override when set (M).
+              Current Health Engine score and 30-day outlook per project. RAG uses a manual
+              override when set (M).
             </p>
           </div>
           <Link
@@ -493,50 +506,112 @@ export function ExecutiveQuickView({
             Open detailed info
           </Link>
         </div>
-        {briefing.watch.length === 0 ? (
-          <p className="py-6 text-sm text-muted-foreground">
-            Nothing Red, Amber, overdue, or over envelope in this filter.
-          </p>
+        {briefing.pack.length === 0 ? (
+          <p className="py-6 text-sm text-muted-foreground">No projects match the current filters.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="st-table text-sm">
+          <div className="st-table-wrap overflow-x-auto">
+            <table className="st-table w-full min-w-[1280px] text-xs">
               <thead>
                 <tr>
-                  <th className="text-left">Why it is here</th>
+                  <th className="text-left">Strategic Alignment</th>
+                  <th className="text-left">Program</th>
                   <th className="text-left">Project</th>
-                  <th className="text-left">RAG</th>
-                  <th className="text-right">Health</th>
-                  <th className="text-right">Forecast vs budget</th>
+                  <th className="text-left">Why</th>
+                  <th className="text-left" title="Health Engine score and steering RAG">
+                    Current
+                  </th>
+                  <th
+                    className="text-left"
+                    title="Health Engine 30-day outlook (forecast score and likely RAG)"
+                  >
+                    30d
+                  </th>
+                  <th className="text-right">Budget</th>
+                  <th className="text-right">CapEx</th>
+                  <th className="text-right">OpEx</th>
+                  <th className="text-right">Incurred</th>
+                  <th className="text-right">Remaining</th>
+                  <th className="text-right">Forecast</th>
                 </tr>
               </thead>
               <tbody>
-                {briefing.watch.map((w) => (
-                  <tr key={w.project.id} className="hover:bg-muted/40">
-                    <td className="text-left text-foreground">{w.topWhy}</td>
-                    <td className="text-left">
-                      <Link
-                        to="/app/projects/$id"
-                        params={{ id: w.project.id }}
-                        className="font-medium text-primary hover:underline"
-                      >
-                        {w.project.project_code} · {w.project.name}
-                      </Link>
-                    </td>
-                    <td className="text-left">
-                      <RagChip rag={w.rag} manual={isRagOverridden(w.project)} />
-                    </td>
-                    <td className="text-right tabular-nums text-muted-foreground">{w.engine.score}</td>
-                    <td className="text-right tabular-nums">
-                      <span className={w.overrun > 0 ? "font-semibold text-red-600" : ""}>
-                        {w.overrun > 0 ? `+${money(w.overrun)}` : money(0)}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {briefing.pack.map((w) => {
+                  const pred = w.engine.predictive;
+                  return (
+                    <tr key={w.project.id} className="hover:bg-muted/40">
+                      <td className="text-left">{projectPortfolio(w.project)}</td>
+                      <td className="text-left">{w.project.program || "—"}</td>
+                      <td className="text-left">
+                        <Link
+                          to="/app/projects/$id"
+                          params={{ id: w.project.id }}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {w.project.project_code} · {w.project.name}
+                        </Link>
+                      </td>
+                      <td className="max-w-[16rem] text-left text-muted-foreground">{w.topWhy}</td>
+                      <td className="whitespace-nowrap text-left">
+                        <span className="inline-flex items-center gap-1.5">
+                          <RagChip
+                            rag={w.rag}
+                            manual={isRagOverridden(w.project)}
+                            explain={explainRag({
+                              rag: w.rag,
+                              engine: isRagOverridden(w.project) ? null : w.engine,
+                              source: isRagOverridden(w.project) ? "register" : undefined,
+                              overridden: isRagOverridden(w.project),
+                            })}
+                          />
+                          <span
+                            className={`inline-block rounded px-1.5 py-0.5 font-semibold tabular-nums ${healthHeat(w.engine.score)}`}
+                          >
+                            {w.engine.score}
+                          </span>
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap text-left">
+                        <span className="inline-flex items-center gap-1.5">
+                          <span
+                            className={`inline-block rounded px-1.5 py-0.5 font-semibold tabular-nums ${healthHeat(pred.forecastScore30d)}`}
+                          >
+                            {pred.forecastScore30d}
+                          </span>
+                          <RagChip
+                            rag={pred.likelyRag}
+                            explain={explainRag({ rag: pred.likelyRag, engine: w.engine })}
+                          />
+                        </span>
+                      </td>
+                      <td className="text-right tabular-nums">{money(w.budget)}</td>
+                      <td className="text-right tabular-nums">
+                        {money(projectCapexApproved(w.project))}
+                      </td>
+                      <td className="text-right tabular-nums">
+                        {money(projectOpexApproved(w.project))}
+                      </td>
+                      <td className="text-right tabular-nums">{money(w.incurred)}</td>
+                      <td className="text-right tabular-nums">
+                        {money(projectRemaining(w.project))}
+                      </td>
+                      <td className="text-right tabular-nums">
+                        <span className={w.overrun > 0 ? "font-semibold text-red-600" : ""}>
+                          {money(w.fac)}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
+        {briefing.pack.length > 0 ? (
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Current is today&apos;s Health Engine score and steering RAG. 30d is the 30-day outlook
+            (forecast score and likely RAG). Forecast over envelope is shown in red.
+          </p>
+        ) : null}
       </SectionFrame>
 
       <div className="print:hidden">
