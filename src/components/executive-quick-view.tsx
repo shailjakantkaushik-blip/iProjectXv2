@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -15,6 +16,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { SectionFrame, SectionTitle, RagChip } from "@/components/streamlit";
+import { ExpandablePanel } from "@/components/expandable-panel";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { CategoryTick } from "@/components/chart-category-tick";
 import { CHART_SERIES, RAG_COLORS } from "@/lib/chart-theme";
@@ -131,6 +133,7 @@ export function ExecutiveQuickView({
   monthly,
   loading,
   mode = "full",
+  asksHost = null,
 }: {
   filtered: BriefingProject[];
   approvedFunding: number;
@@ -142,14 +145,16 @@ export function ExecutiveQuickView({
   gates: BriefingGate[];
   monthly: MonthlyFinanceRow[];
   loading?: boolean;
-  /** Steering: headline, questions, and asks. Money envelope, pack table, and alignment chart live on Cockpit. */
+  /** Steering: headline and questions. Asks portal to `asksHost` at the end of Cockpit. */
   mode?: "full" | "steering";
+  asksHost?: HTMLElement | null;
 }) {
   const { organization } = useAuth();
   const orgId = organization?.id;
   const ids = useMemo(() => filtered.map((p) => p.id), [filtered]);
   const [askKind, setAskKind] = useState<QuestionKind | null>(null);
   const [showTrend, setShowTrend] = useState(false);
+  const [asksCollapsed, setAsksCollapsed] = useState(true);
   const asOf = new Date().toLocaleDateString(undefined, {
     day: "numeric",
     month: "short",
@@ -292,9 +297,15 @@ export function ExecutiveQuickView({
 
   const selectQuestion = (kind: QuestionKind) => {
     setAskKind((prev) => (prev === kind ? null : kind));
-    const target = kind === "money" ? "pack-money" : "pack-asks";
+    if (kind === "money") {
+      requestAnimationFrame(() => {
+        document.getElementById("pack-money")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      return;
+    }
+    setAsksCollapsed(false);
     requestAnimationFrame(() => {
-      document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document.getElementById("pack-asks")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   };
 
@@ -303,6 +314,127 @@ export function ExecutiveQuickView({
   }
 
   const coverAccent = RAG_COLORS[briefing.overallRag] || "var(--color-border)";
+
+  const asksBody =
+    shownAsks.length === 0 ? (
+      <p className="py-4 text-sm text-muted-foreground">
+        {askKind
+          ? `Nothing in this filter for ${kindLabel(askKind).toLowerCase()}.`
+          : "Nothing needs a steering decision in this filter."}
+      </p>
+    ) : (
+      <div className="space-y-3">
+        {primaryAsk ? (
+          <article className="rounded-xl border border-border bg-background p-4 sm:p-5">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {kindLabel(primaryAsk.kind)}
+              </span>
+              <RagChip rag={primaryAsk.severity} />
+            </div>
+            <h3 className="text-base font-semibold leading-snug text-foreground sm:text-lg">
+              {primaryAsk.title}
+            </h3>
+            <p className="mt-1 text-sm">
+              <Link
+                to="/app/projects/$id"
+                params={{ id: primaryAsk.projectId }}
+                className="font-medium text-primary hover:underline"
+              >
+                {primaryAsk.projectLabel}
+              </Link>
+            </p>
+            <p className="mt-3 text-sm leading-relaxed text-foreground">{primaryAsk.why}</p>
+            <p className="mt-3 text-sm font-medium text-foreground">Ask: {primaryAsk.ask}</p>
+            {primaryAsk.amount ? (
+              <p className="mt-1 text-sm tabular-nums text-red-600">
+                {money(primaryAsk.amount)} exposure
+              </p>
+            ) : null}
+          </article>
+        ) : null}
+        {restAsks.length > 0 ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            {restAsks.map((a) => (
+              <article key={a.id} className="rounded-lg border border-border bg-background p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {kindLabel(a.kind)}
+                  </span>
+                  <RagChip rag={a.severity} />
+                </div>
+                <div className="text-sm font-semibold leading-snug text-foreground">{a.title}</div>
+                <p className="mt-1 text-xs">
+                  <Link
+                    to="/app/projects/$id"
+                    params={{ id: a.projectId }}
+                    className="text-primary hover:underline"
+                  >
+                    {a.projectLabel}
+                  </Link>
+                </p>
+                <p className="mt-2 text-xs leading-relaxed text-foreground">{a.why}</p>
+                <p className="mt-2 text-xs font-medium text-foreground">Ask: {a.ask}</p>
+                {a.amount ? (
+                  <p className="mt-1 text-xs tabular-nums text-red-600">
+                    {money(a.amount)} exposure
+                  </p>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
+
+  const asksToolbar = (
+    <div className="flex flex-wrap items-center gap-3 print:hidden">
+      {askKind ? (
+        <button
+          type="button"
+          className="text-xs font-medium text-muted-foreground hover:text-foreground"
+          onClick={() => setAskKind(null)}
+        >
+          Show all asks
+        </button>
+      ) : null}
+    </div>
+  );
+
+  const asksHint = askKind
+    ? `Showing ${kindLabel(askKind).toLowerCase()} items. Click the question again to show all.`
+    : "Ranked by health, late gates, open risks, and decisions waiting on you.";
+
+  const asksSection = (
+    <SectionFrame exportName="cockpit-asks" exportTitle="Ask of this pack">
+      {mode === "steering" ? (
+        <ExpandablePanel
+          id="pack-asks"
+          title="Ask of this pack"
+          collapsible
+          collapsed={asksCollapsed}
+          onCollapsedChange={setAsksCollapsed}
+          collapsedSummary={`${briefing.actions.length} ranked ask${briefing.actions.length === 1 ? "" : "s"} · click Show or a question tile`}
+          compactMaxHeightClass="max-h-[min(80vh,960px)]"
+          toolbar={asksToolbar}
+        >
+          <p className="mb-3 text-xs text-muted-foreground">{asksHint}</p>
+          {asksBody}
+        </ExpandablePanel>
+      ) : (
+        <>
+          <div id="pack-asks" className="mb-3 flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <SectionTitle>Ask of this pack</SectionTitle>
+              <p className="mt-0.5 text-xs text-muted-foreground">{asksHint}</p>
+            </div>
+            {asksToolbar}
+          </div>
+          {asksBody}
+        </>
+      )}
+    </SectionFrame>
+  );
 
   return (
     <div className="space-y-5">
@@ -393,106 +525,11 @@ export function ExecutiveQuickView({
         </div>
       ) : null}
 
-      <SectionFrame>
-        <div id="pack-asks" className="mb-3 flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <SectionTitle>Ask of this pack</SectionTitle>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {askKind
-                ? `Showing ${kindLabel(askKind).toLowerCase()} items. Click the question again to show all.`
-                : "Ranked by health, late gates, open risks, and decisions waiting on you."}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3 print:hidden">
-            {askKind ? (
-              <button
-                type="button"
-                className="text-xs font-medium text-muted-foreground hover:text-foreground"
-                onClick={() => setAskKind(null)}
-              >
-                Show all asks
-              </button>
-            ) : null}
-            <Link
-              to="/app/executive-cockpit"
-              search={{ section: "summaries" }}
-              className="text-xs font-medium text-primary hover:underline"
-            >
-              Project summaries
-            </Link>
-          </div>
-        </div>
-        {shownAsks.length === 0 ? (
-          <p className="py-4 text-sm text-muted-foreground">
-            {askKind
-              ? `Nothing in this filter for ${kindLabel(askKind).toLowerCase()}.`
-              : "Nothing needs a steering decision in this filter."}
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {primaryAsk ? (
-              <article className="rounded-xl border border-border bg-background p-4 sm:p-5">
-                <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    {kindLabel(primaryAsk.kind)}
-                  </span>
-                  <RagChip rag={primaryAsk.severity} />
-                </div>
-                <h3 className="text-base font-semibold leading-snug text-foreground sm:text-lg">
-                  {primaryAsk.title}
-                </h3>
-                <p className="mt-1 text-sm">
-                  <Link
-                    to="/app/projects/$id"
-                    params={{ id: primaryAsk.projectId }}
-                    className="font-medium text-primary hover:underline"
-                  >
-                    {primaryAsk.projectLabel}
-                  </Link>
-                </p>
-                <p className="mt-3 text-sm leading-relaxed text-foreground">{primaryAsk.why}</p>
-                <p className="mt-3 text-sm font-medium text-foreground">Ask: {primaryAsk.ask}</p>
-                {primaryAsk.amount ? (
-                  <p className="mt-1 text-sm tabular-nums text-red-600">
-                    {money(primaryAsk.amount)} exposure
-                  </p>
-                ) : null}
-              </article>
-            ) : null}
-            {restAsks.length > 0 ? (
-              <div className="grid gap-3 md:grid-cols-2">
-                {restAsks.map((a) => (
-                  <article key={a.id} className="rounded-lg border border-border bg-background p-3">
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        {kindLabel(a.kind)}
-                      </span>
-                      <RagChip rag={a.severity} />
-                    </div>
-                    <div className="text-sm font-semibold leading-snug text-foreground">{a.title}</div>
-                    <p className="mt-1 text-xs">
-                      <Link
-                        to="/app/projects/$id"
-                        params={{ id: a.projectId }}
-                        className="text-primary hover:underline"
-                      >
-                        {a.projectLabel}
-                      </Link>
-                    </p>
-                    <p className="mt-2 text-xs leading-relaxed text-foreground">{a.why}</p>
-                    <p className="mt-2 text-xs font-medium text-foreground">Ask: {a.ask}</p>
-                    {a.amount ? (
-                      <p className="mt-1 text-xs tabular-nums text-red-600">
-                        {money(a.amount)} exposure
-                      </p>
-                    ) : null}
-                  </article>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        )}
-      </SectionFrame>
+      {mode === "steering"
+        ? asksHost
+          ? createPortal(asksSection, asksHost)
+          : null
+        : asksSection}
 
       {mode === "full" ? (
       <SectionFrame>
