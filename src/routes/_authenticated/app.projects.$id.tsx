@@ -392,8 +392,8 @@ function ProjectDetail() {
               </Link>
               <span className="text-muted-foreground">
                 {" "}
-                — meeting notes, next actions, and RAG override (shown on the Executive Dashboard
-                Project summaries tab).
+                — meeting notes, next actions, and RAG override (shown on Executive Dashboard Quick
+                view → Project summaries).
               </span>
             </p>
             <p className="mt-3 text-xs text-muted-foreground">
@@ -431,7 +431,7 @@ function ProjectDetail() {
               search={{ tab: "summaries" }}
               className="font-medium text-primary hover:underline"
             >
-              Project summaries
+              Quick view → Project summaries
             </Link>{" "}
             tab shows it read-only.{" "}
             <Link to="/app/project-forecast" className="font-medium text-primary hover:underline">
