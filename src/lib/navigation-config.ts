@@ -80,6 +80,7 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
     heading: "Financials",
     items: [
       { to: "/app/financials", label: "Financials", icon: "DollarSign" },
+      { to: "/app/how-money-works", label: "How money works", icon: "BookOpen" },
       { to: "/app/fy-allocation", label: "FY Allocation", icon: "Wallet" },
       { to: "/app/phase-financials", label: "Phase Financials", icon: "Clock" },
       { to: "/app/evm", label: "Earned Value (EVM)", icon: "Activity" },
