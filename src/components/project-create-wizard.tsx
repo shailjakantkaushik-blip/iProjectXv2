@@ -1061,8 +1061,10 @@ export function ProjectCreateWizard() {
                 <li>Risk: {riskTitle.trim() ? "yes" : "no"} · Stakeholder: {stakeholderName.trim() ? "yes" : "no"}</li>
               </ul>
               <p className="text-xs text-muted-foreground">
-                After finish you land on the project detail page. Extend anything via Data Editor
-                or the Delivery / Financials / Governance registers.
+                After finish you land on the project detail page. Next, open{" "}
+                <strong>Project Forecast Estimation</strong> to allocate phase effort on each
+                stream — that becomes the planned timeline. When Actual Start is recorded, the
+                forecast stays as the plan and actuals show beside it.
               </p>
             </div>
           )}

@@ -17,6 +17,12 @@ import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
 import { explainRag } from "@/lib/explain-metric";
 import { ProjectMeetingSummary } from "@/components/project-meeting-summary";
+import {
+  applyForecastToProjectPlan,
+  loadForecastPhases,
+  parseForecastPhaseNotes,
+} from "@/lib/project-forecast";
+import { fetchOrgStreams } from "@/lib/project-streams";
 
 type ProjectTab = "overview" | "summary" | "decisions" | "work" | "governance" | "finance" | "streams";
 
@@ -95,11 +101,43 @@ function ProjectDetail() {
   const submit = async (values: ProjectFormValues) => {
     setBusy(true);
     const { error } = await supabase.from("projects").update(values as never).eq("id", id);
+    if (error) {
+      setBusy(false);
+      return void toast.error(error.message);
+    }
+    const start = String(values.planned_start_date || "").slice(0, 10);
+    if (start && organization?.id) {
+      try {
+        const { data: fc } = await supabase
+          .from("project_forecasts" as any)
+          .select("id,notes")
+          .eq("project_id", id)
+          .maybeSingle();
+        if (fc?.id) {
+          let phases = await loadForecastPhases(fc.id);
+          if (!phases.length) phases = parseForecastPhaseNotes(fc.notes);
+          if (phases.length) {
+            const allStreams = await fetchOrgStreams(organization.id);
+            await applyForecastToProjectPlan({
+              orgId: organization.id,
+              projectId: id,
+              startDate: start,
+              phases,
+              streams: allStreams.filter((s) => s.project_id === id),
+              onlyFillEmpty: true,
+            });
+          }
+        }
+      } catch {
+        /* forecast tables may not be migrated yet */
+      }
+    }
     setBusy(false);
-    if (error) return void toast.error(error.message);
     toast.success("Saved");
     qc.invalidateQueries({ queryKey: ["project", id] });
     qc.invalidateQueries({ queryKey: ["projects"] });
+    qc.invalidateQueries({ queryKey: ["stage_gates"] });
+    qc.invalidateQueries({ queryKey: ["project_streams"] });
   };
 
   const remove = async () => {
@@ -229,7 +267,11 @@ function ProjectDetail() {
               >
                 Streams
               </Link>{" "}
-              (at least Core). Prefer editing dates, gates, and budgets on streams.
+              (at least Core). Estimate phase effort on{" "}
+              <Link to="/app/project-forecast" className="font-medium text-primary hover:underline">
+                Project Forecast Estimation
+              </Link>
+              ; setting Planned Start fills empty timeline dates from that forecast.
             </p>
           </SectionFrame>
           <ProjectForm
