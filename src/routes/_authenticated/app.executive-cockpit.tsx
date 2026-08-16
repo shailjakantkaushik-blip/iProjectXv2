@@ -691,6 +691,37 @@ function ExecutiveCockpit() {
   const benefitsPct = benefitsForecastK
     ? Math.min(100, Math.round((benefitsRealisedK / benefitsForecastK) * 100))
     : 0;
+  const benefitsGap = benefitsForecastK - benefitsRealisedK;
+
+  const benefitRows = useMemo(() => {
+    return projects
+      .map((p: any) => {
+        const target = sumBenefitsTarget(benefitsScoped as any[], p, p.id);
+        const realised = sumBenefitsRealised(benefitsScoped as any[], p, p.id);
+        return {
+          id: p.id,
+          code: p.project_code || "",
+          name: p.name || "Project",
+          label: p.project_code || String(p.name || "Project").slice(0, 16),
+          target,
+          realised,
+          gap: target - realised,
+          rate: target > 0 ? Math.round((realised / target) * 100) : 0,
+        };
+      })
+      .filter((r) => r.target > 0 || r.realised > 0)
+      .sort((a, b) => b.target - a.target);
+  }, [projects, benefitsScoped]);
+
+  const benefitChart = useMemo(
+    () =>
+      benefitRows.slice(0, 10).map((r) => ({
+        name: r.label,
+        Target: r.target,
+        Realised: r.realised,
+      })),
+    [benefitRows],
+  );
 
   if (isColdLoading(projectsQ)) {
     return <PageLoading label="Loading portfolio scoreboard…" fullScreen={false} />;
@@ -1030,43 +1061,137 @@ function ExecutiveCockpit() {
       </SectionFrame>
 
       <SectionFrame exportName="cockpit-governance" exportTitle="Governance">
-          <SectionTitle>Governance</SectionTitle>
-          <div className="mb-3">
-            <div className="mb-1 flex items-baseline justify-between gap-2 text-xs">
-              <span className="font-semibold uppercase tracking-wide text-muted-foreground">
-                Benefits realised
-              </span>
-              <span className="tabular-nums text-muted-foreground">
-                {money(benefitsRealisedK)} of {money(benefitsForecastK)} · {benefitsPct}%
-              </span>
+        <SectionTitle>Governance</SectionTitle>
+        <div className="mb-4 grid grid-cols-3 gap-2">
+          <ScoreStat
+            label="Decisions"
+            value={decisionsPending}
+            hint="Awaiting outcome"
+            to="/app/decisions"
+            accent={decisionsPending ? "#2563eb" : undefined}
+          />
+          <ScoreStat
+            label="Overdue actions"
+            value={overdueActions}
+            to="/app/actions"
+            accent={overdueActions ? "#dc2626" : undefined}
+          />
+          <ScoreStat
+            label="Gates (30d)"
+            value={upcomingGates}
+            hint="Planned in 30 days"
+            to="/app/stage-gates"
+            accent={upcomingGates ? "#7c3aed" : undefined}
+          />
+        </div>
+        <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+          <SectionTitle>Benefits</SectionTitle>
+          <Link
+            to="/app/benefits"
+            className="text-xs font-medium text-primary hover:underline"
+          >
+            Open benefits register
+          </Link>
+        </div>
+        <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <ScoreStat
+            label="Target"
+            value={money(benefitsForecastK)}
+            explain={explains.benefits}
+          />
+          <ScoreStat
+            label="Realised"
+            value={money(benefitsRealisedK)}
+            hint={`${benefitsPct}% of target`}
+          />
+          <ScoreStat
+            label="Gap"
+            value={money(Math.abs(benefitsGap))}
+            hint={benefitsGap > 0 ? "still to realise" : benefitsGap < 0 ? "ahead of target" : "on target"}
+            accent={benefitsGap > 0 ? "#d97706" : benefitsGap < 0 ? "#15803d" : undefined}
+          />
+          <ScoreStat
+            label="Realisation"
+            value={`${benefitsPct}%`}
+            hint={`${benefitRows.length} project${benefitRows.length === 1 ? "" : "s"} with benefits`}
+          />
+        </div>
+        {benefitChart.length === 0 ? (
+          <p className="py-6 text-sm text-muted-foreground">No benefit target or realised value in this filter.</p>
+        ) : (
+          <div className="space-y-3">
+            <ExpandableChart title="Benefits — Target vs Realised" heightClass="h-56">
+              <BarChart data={benefitChart} margin={{ top: 24, right: 12, left: 4, bottom: 40 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" interval={0} minTickGap={0} tick={<CategoryTick />} height={44} />
+                <YAxis fontSize={10} tickFormatter={(v: number) => money(v)} />
+                <Tooltip formatter={(v: number, n: string) => [money(v), n]} />
+                <Legend verticalAlign="top" />
+                <Bar dataKey="Target" name="Target" fill="#1d4ed8" radius={[4, 4, 0, 0]}>
+                  <LabelList
+                    dataKey="Target"
+                    position="top"
+                    style={{ fontSize: 10 }}
+                    formatter={(v: number) => money(v)}
+                  />
+                </Bar>
+                <Bar dataKey="Realised" name="Realised" fill="#10b981" radius={[4, 4, 0, 0]}>
+                  <LabelList
+                    dataKey="Realised"
+                    position="top"
+                    style={{ fontSize: 10 }}
+                    formatter={(v: number) => money(v)}
+                  />
+                </Bar>
+              </BarChart>
+            </ExpandableChart>
+            <div className="st-table-wrap overflow-x-auto">
+              <table className="w-full min-w-[640px] text-sm">
+                <thead className="text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-2 py-1.5 text-left">Project</th>
+                    <th className="px-2 py-1.5 text-right">Target</th>
+                    <th className="px-2 py-1.5 text-right">Realised</th>
+                    <th className="px-2 py-1.5 text-right">Gap</th>
+                    <th className="px-2 py-1.5 text-right">Rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {benefitRows.map((r) => (
+                    <tr key={r.id} className="border-t border-border">
+                      <td className="px-2 py-2">
+                        <Link
+                          to="/app/projects/$id"
+                          params={{ id: r.id }}
+                          search={{ tab: "summary" }}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {r.code ? `${r.code} · ${r.name}` : r.name}
+                        </Link>
+                      </td>
+                      <td className="px-2 py-2 text-right tabular-nums">{money(r.target)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{money(r.realised)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">
+                        <span className={r.gap > 0 ? "text-amber-700" : r.gap < 0 ? "text-emerald-700" : ""}>
+                          {money(Math.abs(r.gap))}
+                          {r.gap < 0 ? " ahead" : ""}
+                        </span>
+                      </td>
+                      <td className="px-2 py-2 text-right tabular-nums">{r.rate}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-muted">
-              <div className="h-full rounded-full bg-emerald-500" style={{ width: `${benefitsPct}%` }} />
-            </div>
+            {benefitRows.length > 10 ? (
+              <p className="text-[11px] text-muted-foreground">
+                Chart shows the top 10 by target. Table lists all {benefitRows.length} projects with
+                benefits.
+              </p>
+            ) : null}
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            <ScoreStat
-              label="Decisions"
-              value={decisionsPending}
-              hint="Awaiting outcome"
-              to="/app/decisions"
-              accent={decisionsPending ? "#2563eb" : undefined}
-            />
-            <ScoreStat
-              label="Overdue actions"
-              value={overdueActions}
-              to="/app/actions"
-              accent={overdueActions ? "#dc2626" : undefined}
-            />
-            <ScoreStat
-              label="Gates (30d)"
-              value={upcomingGates}
-              hint="Planned in 30 days"
-              to="/app/stage-gates"
-              accent={upcomingGates ? "#7c3aed" : undefined}
-            />
-          </div>
-        </SectionFrame>
+        )}
+      </SectionFrame>
 
       <SectionFrame exportName="cockpit-segmentation" exportTitle="Mix by Strategic Alignment">
         <SectionTitle>Mix by Strategic Alignment</SectionTitle>
