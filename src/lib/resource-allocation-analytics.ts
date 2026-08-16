@@ -1,7 +1,7 @@
 /**
  * Resource allocation planned vs actual + timesheet labor cost rollups.
  * Allocated plan hours: resource_allocations (project / stream / stage_gate / month)
- * Work-item demand hours + planned FTE $: from work_items.estimate_hours × rates
+ * Work-item demand hours + demand FTE $: from work_items.estimate_hours × rates
  * Actual hours / Actual FTE $: approved timesheet_entries
  */
 

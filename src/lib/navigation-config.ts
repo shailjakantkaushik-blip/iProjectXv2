@@ -47,7 +47,7 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
     heading: "Strategic Alignment",
     items: [
       { to: "/app/projects", label: "Projects", icon: "FolderKanban" },
-      { to: "/app/project-forecast", label: "Project Forecast Estimation", icon: "GanttChart" },
+      { to: "/app/project-forecast", label: "Project Estimation Planning", icon: "GanttChart" },
       { to: "/app/programs", label: "Programs", icon: "Layers" },
       { to: "/app/project-infographic", label: "Project Infographic", icon: "Image" },
       { to: "/app/portfolio-segmentation", label: "Segmentation", icon: "PieChart" },

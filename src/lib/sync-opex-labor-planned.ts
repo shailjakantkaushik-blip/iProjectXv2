@@ -1,5 +1,8 @@
 /**
- * Sync work-item planned FTE $ into financials_monthly.opex_labor_planned.
+ * @deprecated Demand must not write Plan. Kept for older orgs; Financials no longer calls this.
+ * Work-item demand hours belong on Work Items, not opex_labor_planned.
+ *
+ * Sync work-item demand FTE $ into financials_monthly.opex_labor_planned.
  * Requires column from supabase/manual/opex_labor_planned_from_work_items.sql
  */
 

@@ -129,7 +129,7 @@ export const TABLES: TableDef[] = [
     orderBy: "sort_order",
     description:
       "Optional delivery lanes under a project. When streams are enabled, each stream owns planned/actual dates, " +
-      "gates, finance, and allocations; the project row is the rollup.",
+      "gates, Budget, and allocations; the project row is the rollup. Stream Budget is the approved envelope.",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
       { key: "name", label: "Stream Name", type: "text", required: true },
@@ -328,7 +328,9 @@ export const TABLES: TableDef[] = [
     matchOn: ["project_code", "stream_code", "period_month"],
     orderBy: "period_month",
     description:
-      "Execution cashflow. Planned/forecast are cascaded from FY Allocation; enter Actual after kickoff. " +
+      "Execution cashflow. CapEx Plan and monthly Forecast cascade from FY Allocation. " +
+      "OpEx Plan and Planned FTE cascade from Project Estimation Planning (Apply). " +
+      "Enter Actual after kickoff. Demand lives on Work Items — do not put demand hours in Plan columns. " +
       "Use Financials → Sync incurred from actuals to roll CapEx/OpEx actuals up to the project register.",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
@@ -395,7 +397,9 @@ export const TABLES: TableDef[] = [
     orderBy: "fy",
     description:
       "Split each project's Budget and Forecast across financial years. " +
-      "`budget` / `forecast` drive portfolio charts; CapEx/OpEx/Benefits are the detail split of budget.",
+      "`budget` is the year split of the approved envelope; `forecast` is the in-flight outlook (register FAC). " +
+      "CapEx/OpEx/Benefits are the detail split of budget. Saving writes CapEx plan + monthly forecast; " +
+      "OpEx plan is left to Estimation Planning after it has been applied.",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
       { key: "stream_id", label: "Stream", type: "text", fk: "stream" },
@@ -533,8 +537,9 @@ export const TABLES: TableDef[] = [
     matchOn: ["project_code", "stream_code", "resource_name", "period_month"],
     orderBy: "period_month",
     description:
-      "Allocate people to a project (optional stream + stage gate). allocation_percent is % of FTE for the month; allocated_hours is planned hours. " +
-      "These hours drive Work Items → Lane allocated (planning ceiling). They do not overwrite work-item Planned h (demand).",
+      "Planned FTE from Project Estimation Planning (optional stream + stage gate). " +
+      "allocation_percent is % of FTE for the month; allocated_hours is planned hours. " +
+      "These hours are the planning ceiling on Work Items. Work-item hours are Demand, not Plan.",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
       { key: "stream_id", label: "Stream", type: "text", fk: "stream" },
@@ -602,7 +607,8 @@ export const TABLES: TableDef[] = [
     orderBy: "sort_order",
     description:
       "WBS / tasks. Set stream_code when the project has streams — blanks autopopulate to the Core stream when streams are enabled. " +
-      "stage_gate_id links Waterfall/Hybrid tasks to a phase; sprint_id links Agile/Hybrid tasks to a sprint.",
+      "stage_gate_id links Waterfall/Hybrid tasks to a phase; sprint_id links Agile/Hybrid tasks to a sprint. " +
+      "estimate_hours is Demand (assigned work), not Planned FTE. Planned FTE comes from Resource Allocations.",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
       { key: "stream_id", label: "Stream", type: "text", fk: "stream" },

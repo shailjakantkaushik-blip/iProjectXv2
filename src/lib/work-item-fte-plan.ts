@@ -1,9 +1,9 @@
 /**
- * Work-item → demand hours + planned FTE cost.
+ * Work-item → demand hours + demand FTE cost.
  *
- * Planned hours: work_items.estimate_hours (split across assignees).
- * Planned FTE $: share_hours × resources.cost_rate.
- * Does NOT overwrite resource_allocations — use as demand rollup vs allocated plan.
+ * Demand hours: work_items.estimate_hours (split across assignees).
+ * Demand FTE $: share_hours × resources.cost_rate.
+ * Does NOT overwrite resource_allocations or opex_labor_planned — those are Plan.
  *
  * Month attribution: spread evenly across months from planned_start → planned_end
  * (inclusive). Missing dates → current calendar month so monthly finance can store it.

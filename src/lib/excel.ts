@@ -175,7 +175,7 @@ export async function exportOrganizationWorkbook(orgId: string, orgName: string)
     ["Work items", "stage_gate_name = Waterfall/Hybrid phase. sprint_name = Agile/Hybrid sprint (#N · name, or just #N / name)."],
     ["", ""],
     ["Finance model (canonical)", ""],
-    ["1. Projects", "budget = approved funding; capex/opex approved & incurred; forecast_at_completion (FAC); benefits_* are rollups. With streams on, project figures roll up from Project Streams. portfolio = Business Strategic | IT Strategic | CAPEX | Unfunded (used by Executive Cockpit health & segmentation)."],
+    ["1. Projects", "budget = approved envelope (rollup from Project Streams when streams are on); capex/opex approved & incurred; forecast_at_completion (FAC) = FY Allocation forecast $; benefits_* are rollups. portfolio = Business Strategic | IT Strategic | CAPEX | Unfunded (used by Executive Cockpit health & segmentation)."],
     ["2. Project Streams", "Delivery lanes under a project. Each stream owns planned/actual dates, gates, finance, and allocations."],
     ["3. Benefits sheet", "Benefit lines are the detail source. Keep project benefits_target / benefits_realised in sync with the sum of lines."],
     ["4. FY Allocations", "Forward PLAN: budget + forecast $ per FY. Optional stream_code when streams are enabled."],

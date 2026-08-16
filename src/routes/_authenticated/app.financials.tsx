@@ -53,7 +53,6 @@ import {
   syncOrgIncurredFromMonthly,
   type MonthlyFinanceRow,
 } from "@/lib/finance-lifecycle";
-import { syncOpexLaborPlannedFromWorkItems } from "@/lib/sync-opex-labor-planned";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
@@ -91,7 +90,6 @@ function FinancialsPage() {
   const qc = useQueryClient();
   const [filters, setFilters] = useState<PortfolioFilterState>(emptyFilters);
   const [syncing, setSyncing] = useState(false);
-  const [syncingFtePlan, setSyncingFtePlan] = useState(false);
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
@@ -333,27 +331,6 @@ function FinancialsPage() {
     }
   };
 
-  const syncFtePlan = async () => {
-    if (!organization?.id) return;
-    setSyncingFtePlan(true);
-    try {
-      const r = await syncOpexLaborPlannedFromWorkItems(organization.id);
-      toast.success(
-        `Synced planned FTE $${r.plannedTotal.toLocaleString()} across ${r.monthsUpserted} month rows from work items.`,
-      );
-      void qc.invalidateQueries({ queryKey: ["financials_monthly"] });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Sync failed";
-      toast.error(
-        /opex_labor_planned|column/i.test(msg)
-          ? "Paste supabase/manual/opex_labor_planned_from_work_items.sql in Supabase, Reload schema, then retry."
-          : msg,
-      );
-    } finally {
-      setSyncingFtePlan(false);
-    }
-  };
-
   const fteLaborPlanned = mFiltered.reduce((s, m) => s + Number(m.opex_labor_planned || 0), 0);
   const fteLaborActual = mFiltered.reduce((s, m) => s + Number(m.opex_labor_actual || 0), 0);
 
@@ -555,11 +532,12 @@ function FinancialsPage() {
       <PageHeading icon="💰">Financial Intelligence — Plan vs Actual</PageHeading>
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <p className="max-w-3xl text-sm text-muted-foreground">
-          <strong>Plan</strong> comes from FY Allocation (cascaded to monthly planned).{" "}
-          <strong>Actual</strong> is captured each month after kickoff.{" "}
-          <strong>Forecast</strong> is the live outlook.{" "}
-          <strong>Planned FTE $</strong> comes from work-item planned hours × rates;{" "}
-          <strong>Actual FTE $</strong> from approved timesheets (feeds OpEx incurred).
+          <strong>Budget</strong> is the stream envelope. <strong>Plan</strong> is CapEx from FY
+          Allocation plus OpEx/FTE from Estimation Planning. <strong>Forecast</strong> is the FY
+          Allocation outlook (phase forecast starts equal to plan). <strong>Actual</strong> is
+          monthly spend after kickoff. <strong>Planned FTE $</strong> is Estimation Planning
+          allocations; <strong>Demand</strong> is work-item hours on Work Items;{" "}
+          <strong>Actual FTE $</strong> is approved timesheets.
           {phaseScoped ? (
             <>
               {" "}
@@ -569,14 +547,6 @@ function FinancialsPage() {
           ) : null}
         </p>
         <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={syncingFtePlan || !organization}
-            onClick={syncFtePlan}
-          >
-            {syncingFtePlan ? "Syncing…" : "Sync planned FTE from work items"}
-          </Button>
           <Button variant="outline" size="sm" disabled={syncing || !organization} onClick={syncIncurred}>
             {syncing ? "Syncing…" : "Sync incurred from actuals"}
           </Button>
@@ -593,16 +563,16 @@ function FinancialsPage() {
       <SectionFrame>
         <SectionTitle>Plan vs Actual vs Forecast (monthly cashflow)</SectionTitle>
         <p className="mb-3 text-xs text-muted-foreground">
-          The Σ totals below sum <em>every</em> month in the filter — so for one project,{" "}
-          <strong>Σ Planned ≈ Total Budget</strong> (e.g. PRJ-013 $3.4M), not the spend in a single
-          month. Per-month planned is shown in the chart and table (typically a few hundred thousand
-          for PRJ-013). Avg / this month KPIs are the true monthly cashflow view.
+          The Σ totals below sum <em>every</em> month in the filter.{" "}
+          <strong>Σ Planned</strong> is CapEx plan (FY budget) plus OpEx plan (Estimation
+          Planning). <strong>Σ Forecast</strong> is the FY outlook (should ≈ Register FAC).
+          Per-month values are in the chart and table.
         </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8">
           <KpiCard
             label="Σ Planned (all months)"
             value={money(monthlyPlanned)}
-            sub="Should ≈ Total Budget"
+            sub="CapEx plan + OpEx plan"
             accent="#93c5fd"
             explain={explainCtx.budget}
           />
@@ -619,7 +589,7 @@ function FinancialsPage() {
             sub={
               !phaseScoped
                 ? Math.abs(monthlyForecast - registerFac) >= 1000
-                  ? `≠ Register FAC ${money(registerFac)} — monthly plan sum`
+                  ? `≠ Register FAC ${money(registerFac)} — monthly forecast sum`
                   : "Matches Register FAC"
                 : undefined
             }
@@ -718,8 +688,8 @@ function FinancialsPage() {
           <p className="mt-2 text-xs text-muted-foreground">
             Incurred OpEx includes <strong>Actual FTE</strong> from approved timesheets (
             <code>opex_labor_actual</code>) plus other OpEx. <strong>Planned FTE</strong> (
-            <code>opex_labor_planned</code>) is synced from work-item planned hours × rates and does
-            not overwrite FY OpEx budget.
+            <code>opex_labor_planned</code>) comes from Estimation Planning resource allocations.
+            Work-item hours are Demand and are not written into Plan.
           </p>
         ) : null}
       </SectionFrame>
@@ -1004,7 +974,7 @@ function FinancialsPage() {
           },
           {
             name: "FTE plan",
-            description: "Planned labor $ for the month (from work-item planned hours × rates when synced).",
+            description: "Planned labor $ for the month from Estimation Planning (opex_labor_planned).",
           },
           {
             name: "FTE actual",

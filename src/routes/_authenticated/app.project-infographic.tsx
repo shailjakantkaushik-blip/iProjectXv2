@@ -67,7 +67,12 @@ import {
 import { exportElementPDF } from "@/components/page-export";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { isDoneGateStatus, resolveCurrentStage, sortGatesByOrgOrder } from "@/lib/project-phase";
-import { phaseSpendByStage, type MonthlyFinanceRow } from "@/lib/finance-lifecycle";
+import {
+  isGateScheduleDelayed,
+  livePhaseForecast,
+  phaseSpendByStage,
+  type MonthlyFinanceRow,
+} from "@/lib/finance-lifecycle";
 import {
   expandProjectsToTimelineLanes,
   fetchProjectStreams,
@@ -927,15 +932,23 @@ function InfographicPage() {
       rows: MonthlyFinanceRow[],
       name: string,
       streamId?: string | null,
+      gate?: { planned_date?: string | null; actual_date?: string | null; status?: string | null },
     ) => {
       const spend = phaseSpendByStage(pgates, rows, PHASES).get(name);
-      const fromForecast =
+      const fromEstimate =
         forecastPlannedByPhase.get(forecastPhaseKey({ stream_id: streamId || null, gate_name: name }))
           ?.total ?? 0;
+      const plan = spend?.planned || fromEstimate;
+      const actual = spend?.actual ?? 0;
       return {
-        budget: spend?.planned || fromForecast,
-        forecast: fromForecast,
-        actualSpend: spend?.actual ?? 0,
+        budget: plan,
+        forecast: livePhaseForecast({
+          plan,
+          storedForecast: spend?.forecast,
+          actual,
+          delayed: isGateScheduleDelayed(gate || {}),
+        }),
+        actualSpend: actual,
       };
     };
 
@@ -950,7 +963,7 @@ function InfographicPage() {
             streamGates.forEach((g) => byName.set((g.gate_name || "").trim(), g));
             const cards = PHASES.map((name) => {
               const g = byName.get(name);
-              const $ = spendFor(streamGates, rows, name, stream.id);
+              const $ = spendFor(streamGates, rows, name, stream.id, g);
               return {
                 name,
                 status: g?.status || "Not Started",
@@ -985,7 +998,7 @@ function InfographicPage() {
         }
       } else {
         const rows = monthlyByLane.get(project.id) || (monthly as MonthlyFinanceRow[]);
-        const $ = spendFor(gates as any[], rows, name, null);
+        const $ = spendFor(gates as any[], rows, name, null, g);
         budget = $.budget;
         forecast = $.forecast;
         actualSpend = $.actualSpend;
@@ -1433,7 +1446,7 @@ function InfographicPage() {
               legend={
                 hasPhaseFinancials ? undefined : (
                   <div className="text-[11px] text-slate-500 text-center">
-                    No Project Forecast estimate or phase actuals yet.
+                    No estimation plan or phase actuals yet.
                   </div>
                 )
               }
@@ -1483,7 +1496,8 @@ function InfographicPage() {
                 </div>
               </div>
               <p className="mt-1 px-1 text-[10px] text-muted-foreground">
-                Planned FTE from work-item hours × rates; actual FTE from timesheets (in incurred).
+                Planned FTE from Estimation Planning allocations; actual FTE from timesheets (in incurred).
+                Work-item hours are Demand, not Plan.
               </p>
             </div>
           </div>
@@ -1905,9 +1919,9 @@ function InfographicPage() {
         <SectionFrame>
           <SectionTitle>Stage Gate Detail{hasStreams ? " by Stream" : ""}</SectionTitle>
           <p className="mb-2 text-xs text-muted-foreground">
-            Forecast is the current Project Forecast estimate for that stream phase. Planned is the
-            applied baseline (monthly plan after Apply planned baseline). Actual is incurred in the
-            gate window. Timeline uses the same forecast dates as planned.
+            Plan is the applied Estimation Planning baseline (monthly plan in the gate window).
+            Forecast is the FY / monthly outlook and starts equal to Plan; it rises if the gate is
+            late or actuals already exceed plan. Actual is incurred in the gate window.
           </p>
           <ColumnarToolbar
             globalQ={gateDetailTable.globalQ}
@@ -1978,8 +1992,7 @@ function InfographicPage() {
           <SectionTitle>Resources & allocations (by project)</SectionTitle>
           <p className="mb-3 text-xs text-muted-foreground">
             Planned allocation vs approved timesheet actuals for this project (streams rolled up).
-            Planned % comes from resource allocations generated when you apply the Project Forecast
-            baseline.
+            Planned % comes from resource allocations generated when you apply Estimation Planning.
             Actual % converts timesheet hours to % of monthly FTE capacity. Statuses:{" "}
             <strong>Plan</strong> from allocation %, <strong>Actual</strong> from timesheet %,{" "}
             <strong>Plan vs actual</strong> from actual÷plan (Over &gt;110%, Optimal ≥60%, else
@@ -2788,8 +2801,8 @@ function ProjectBrief({
               />
               <p className="mt-1 text-[11px] text-slate-500">
                 {forecastTotalsLine
-                  ? "The first line stays in sync with Project Forecast Estimation totals."
-                  : "Open Project Forecast Estimation to populate planned labor / other / total here."}
+                  ? "The first line stays in sync with Project Estimation Planning totals."
+                  : "Open Project Estimation Planning to populate planned labor / other / total here."}
               </p>
             </div>
             <BriefTextarea
@@ -2838,15 +2851,15 @@ function ProjectBrief({
             <p className="text-xs text-slate-500">
               Tabular summary from{" "}
               <a href="/app/project-forecast" className="font-medium text-blue-700 hover:underline">
-                Project Forecast Estimation
+                Project Estimation Planning
               </a>
               . Rows are grouped by stream, then phase. Labor and other costs are the planned
               baseline for each stream phase.
             </p>
             {forecastRows.length === 0 ? (
               <div className="rounded border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-slate-700">
-                No forecast estimate yet for this project. Create one on Project Forecast
-                Estimation, then return here.
+                No estimate yet for this project. Create one on Project Estimation Planning, then
+                return here.
               </div>
             ) : (
               <>
@@ -2869,7 +2882,7 @@ function ProjectBrief({
                   </div>
                   <div className="rounded border border-slate-200 bg-white px-3 py-2">
                     <div className="text-[10px] uppercase tracking-wide text-slate-500">
-                      Planned forecast
+                      Planned total
                     </div>
                     <div className="text-sm font-semibold tabular-nums">
                       {moneyBrief(forecastTotals.total)}

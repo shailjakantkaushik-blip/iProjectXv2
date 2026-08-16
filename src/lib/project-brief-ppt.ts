@@ -423,7 +423,7 @@ export async function downloadProjectBriefPPT(input: ProjectBriefInput) {
     const slide3 = pres.addSlide();
     slide3.background = { color: "F5F5F5" };
     bandTitle(slide3, `PROJECT BRIEF — ${project.name || "<Initiative Name>"}`, 0.2);
-    slide3.addText("Section 3: Project Forecast Estimate", {
+    slide3.addText("Section 3: Project Estimation Plan", {
       x: 10.05,
       y: 0.22,
       w: 2.9,
@@ -436,7 +436,7 @@ export async function downloadProjectBriefPPT(input: ProjectBriefInput) {
     const labor = forecastRows.reduce((s, r) => s + r.labor, 0);
     const other = forecastRows.reduce((s, r) => s + r.other, 0);
     const total = forecastRows.reduce((s, r) => s + r.total, 0);
-    sectionHeader(slide3, 0.85, "Planned forecast totals", 12.7);
+    sectionHeader(slide3, 0.85, "Planned totals", 12.7);
     slide3.addText(
       `Labor ${fmt(labor)}    Other ${fmt(other)}    Planned total ${fmt(total)}`,
       { x: 0.4, y: 1.22, w: 12.5, h: 0.32, fontSize: 12, bold: true, color: "111111" },

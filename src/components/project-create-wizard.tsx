@@ -1089,9 +1089,10 @@ export function ProjectCreateWizard() {
               </ul>
               <p className="text-xs text-muted-foreground">
                 After finish you land on the project detail page. Next, open{" "}
-                <strong>Project Forecast Estimation</strong> to allocate phase effort on each
-                stream — that becomes the planned timeline. When Actual Start is recorded, the
-                forecast stays as the plan and actuals show beside it.
+                <strong>Project Estimation Planning</strong> to allocate phase effort on each
+                stream — that becomes the planned timeline and planned FTE. Forecast starts equal
+                to that plan (FY Allocation). When Actual Start is recorded, actuals show beside
+                the plan.
               </p>
             </div>
           )}

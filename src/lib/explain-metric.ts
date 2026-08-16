@@ -134,8 +134,9 @@ function collectSlips(items: (MilestoneLike | StageGateLike)[], kind: "milestone
 
 /**
  * Explain a forecast / FAC figure.
+ * Forecast is the FY Allocation outlook (monthly *_forecast / register FAC).
+ * It is not the Estimation Planning total (that is Plan).
  * Primary drivers are financial (approved funding, monthly cashflow, FTE, vendor).
- * Schedule slips are context only — they do not invent a $ change.
  */
 export function explainForecast(opts: {
   label?: string;
@@ -199,7 +200,7 @@ export function explainForecast(opts: {
   // 2) Register FAC vs monthly cashflow forecast (common source of $1.1M vs $1.05M confusion).
   // Always compare the two sources — not currentForecast to itself when explaining Σ Forecast.
   if (monthlyFc > 0 && registerFac > 0 && Math.abs(monthlyFc - registerFac) >= 1_000) {
-    const text = `Monthly plan Σ forecast is ${moneyShort(monthlyFc)}; Register FAC is ${moneyShort(registerFac)} — these are different measures`;
+    const text = `Monthly Σ forecast is ${moneyShort(monthlyFc)}; Register FAC is ${moneyShort(registerFac)} — these are different measures`;
     bullets.push(text);
     drivers.push({ label: text, impact: monthlyFc - registerFac });
     dollarDrivers++;
