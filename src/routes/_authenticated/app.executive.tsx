@@ -16,6 +16,7 @@ import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
 import { exportElementPDF } from "@/components/page-export";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { CategoryTick } from "@/components/chart-category-tick";
 import { ExpandablePanel } from "@/components/expandable-panel";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { RAG_COLORS, PRIORITY_COLORS, CHART_SERIES } from "@/lib/chart-theme";
@@ -29,6 +30,7 @@ import {
   resolveCurrentStage as resolveStageShared,
 } from "@/lib/project-phase";
 import { fyOf, projectScheduleEnd, projectScheduleStart } from "@/lib/project-dates";
+import { portfolioSegmentLabels, projectPortfolio } from "@/lib/project-health";
 import {
   projectApprovedFunding,
   projectForecast,
@@ -506,14 +508,17 @@ function ExecutiveDashboard() {
     .sort((a, b) => b.roi - a.roi)
     .slice(0, 10), [filtered]);
 
-  // Portfolio Segmentation
+  // Portfolio Segmentation — canonical Strategic Alignment labels, all ticks shown
   const segmentation = useMemo(() => {
+    const labels = portfolioSegmentLabels(filtered);
     const m = new Map<string, number>();
     filtered.forEach((p: any) => {
-      const k = p.portfolio || "Unassigned";
+      const k = projectPortfolio(p);
       m.set(k, (m.get(k) || 0) + 1);
     });
-    return Array.from(m, ([name, value]) => ({ name, value }));
+    return labels
+      .map((name) => ({ name, value: m.get(name) || 0 }))
+      .filter((r) => r.value > 0);
   }, [filtered]);
 
   // Governance Channel
@@ -1011,10 +1016,10 @@ function ExecutiveDashboard() {
             </ChartBox>
 
             {/* Portfolio Segmentation */}
-            <ChartBox title="Segmentation — Projects by Strategic Alignment">
-              <BarChart data={segmentation} margin={{ top: 25, right: 15, left: 5, bottom: 5 }}>
+            <ChartBox title="Segmentation — Projects by Strategic Alignment" heightClass="h-72">
+              <BarChart data={segmentation} margin={{ top: 25, right: 12, left: 16, bottom: 40 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-                <XAxis dataKey="name" fontSize={11} />
+                <XAxis dataKey="name" interval={0} minTickGap={0} tick={<CategoryTick />} height={44} />
                 <YAxis fontSize={10} allowDecimals={false} />
                 <Tooltip />
                 <Bar dataKey="value" radius={[4, 4, 0, 0]}>
@@ -1025,10 +1030,10 @@ function ExecutiveDashboard() {
             </ChartBox>
 
             {/* Projects by Governance Channel */}
-            <ChartBox title="Projects by Governance Channel">
-              <BarChart data={governanceChannel} margin={{ top: 25, right: 15, left: 5, bottom: 5 }}>
+            <ChartBox title="Projects by Governance Channel" heightClass="h-72">
+              <BarChart data={governanceChannel} margin={{ top: 25, right: 12, left: 16, bottom: 40 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-                <XAxis dataKey="name" fontSize={11} />
+                <XAxis dataKey="name" interval={0} minTickGap={0} tick={<CategoryTick />} height={44} />
                 <YAxis fontSize={10} allowDecimals={false} />
                 <Tooltip />
                 <Bar dataKey="value" radius={[4, 4, 0, 0]}>
@@ -1286,12 +1291,18 @@ function ChartBox({
   title,
   children,
   legend,
+  heightClass,
 }: {
   title: string;
   children: React.ReactElement;
   legend?: React.ReactNode;
+  heightClass?: string;
 }) {
-  return <ExpandableChart title={title} legend={legend}>{children}</ExpandableChart>;
+  return (
+    <ExpandableChart title={title} legend={legend} heightClass={heightClass}>
+      {children}
+    </ExpandableChart>
+  );
 }
 
 function Empty({ msg = "No data" }: { msg?: string }) {
