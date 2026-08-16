@@ -897,9 +897,11 @@ function ExecutiveCockpit() {
           </p>
           <div className="st-table-wrap overflow-auto overscroll-contain">
             <table className="w-full min-w-[1080px] text-sm">
-              <thead className="sticky top-0 z-[2] bg-muted/90 text-xs uppercase text-muted-foreground backdrop-blur">
+              <thead className="sticky top-0 z-[2] bg-muted text-xs uppercase text-muted-foreground">
                 <tr>
-                  <th className="sticky left-0 z-[3] bg-muted/90 px-3 py-2 text-left">Project</th>
+                  <th className="sticky left-0 z-[3] bg-muted px-3 py-2 text-left shadow-[4px_0_8px_-2px_rgba(15,23,42,0.18)]">
+                    Project
+                  </th>
                   <th className="px-3 py-2 text-left">Strategic Alignment</th>
                   <th className="px-3 py-2 text-left">Program</th>
                   <th className="px-3 py-2 text-left">Channel</th>
@@ -931,7 +933,7 @@ function ExecutiveCockpit() {
                         navigate({ to: "/app/project-infographic", search: { pid: p.id } as any })
                       }
                     >
-                      <td className="sticky left-0 z-[1] bg-background px-3 py-2 group-hover:bg-muted/50">
+                      <td className="sticky left-0 z-[1] bg-surface px-3 py-2 shadow-[4px_0_8px_-2px_rgba(15,23,42,0.18)] group-hover:bg-muted">
                         <div className="font-mono text-[11px] text-primary">
                           {p.project_code || "—"}
                         </div>
