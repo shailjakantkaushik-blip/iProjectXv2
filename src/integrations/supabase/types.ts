@@ -880,10 +880,16 @@ export type Database = {
           chair: string | null
           created_at: string
           id: string
+          last_meeting: string | null
           name: string
           next_meeting: string | null
           org_id: string
+          parent_channel_id: string | null
+          portfolio: string | null
+          program: string | null
+          project_id: string | null
           purpose: string | null
+          scope_level: string
           status: string | null
           updated_at: string
         }
@@ -893,10 +899,16 @@ export type Database = {
           chair?: string | null
           created_at?: string
           id?: string
+          last_meeting?: string | null
           name: string
           next_meeting?: string | null
           org_id: string
+          parent_channel_id?: string | null
+          portfolio?: string | null
+          program?: string | null
+          project_id?: string | null
           purpose?: string | null
+          scope_level?: string
           status?: string | null
           updated_at?: string
         }
@@ -906,16 +918,138 @@ export type Database = {
           chair?: string | null
           created_at?: string
           id?: string
+          last_meeting?: string | null
           name?: string
           next_meeting?: string | null
           org_id?: string
+          parent_channel_id?: string | null
+          portfolio?: string | null
+          program?: string | null
+          project_id?: string | null
           purpose?: string | null
+          scope_level?: string
           status?: string | null
           updated_at?: string
         }
         Relationships: [
           {
             foreignKeyName: "governance_channels_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "governance_channels_parent_channel_id_fkey"
+            columns: ["parent_channel_id"]
+            isOneToOne: false
+            referencedRelation: "governance_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "governance_channels_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      governance_forum_members: {
+        Row: {
+          channel_id: string
+          created_at: string
+          id: string
+          org_id: string
+          resource_id: string
+          role: string
+        }
+        Insert: {
+          channel_id: string
+          created_at?: string
+          id?: string
+          org_id: string
+          resource_id: string
+          role?: string
+        }
+        Update: {
+          channel_id?: string
+          created_at?: string
+          id?: string
+          org_id?: string
+          resource_id?: string
+          role?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "governance_forum_members_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "governance_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "governance_forum_members_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "governance_forum_members_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "resources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      governance_forum_templates: {
+        Row: {
+          audience: string | null
+          cadence: string | null
+          created_at: string
+          default_chair: string | null
+          id: string
+          is_active: boolean
+          name: string
+          org_id: string
+          purpose: string | null
+          scope_level: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          audience?: string | null
+          cadence?: string | null
+          created_at?: string
+          default_chair?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          org_id: string
+          purpose?: string | null
+          scope_level?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          audience?: string | null
+          cadence?: string | null
+          created_at?: string
+          default_chair?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          org_id?: string
+          purpose?: string | null
+          scope_level?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "governance_forum_templates_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -2582,6 +2716,14 @@ export type Database = {
       can_edit_project: {
         Args: { _project_id: string; _user_id: string }
         Returns: boolean
+      }
+      can_manage_governance_channel: {
+        Args: { _channel_id: string; _user_id: string }
+        Returns: boolean
+      }
+      ensure_project_governance_forums: {
+        Args: { p_project_id: string }
+        Returns: undefined
       }
       ensure_org_delivery_methods: {
         Args: { p_org_id: string }

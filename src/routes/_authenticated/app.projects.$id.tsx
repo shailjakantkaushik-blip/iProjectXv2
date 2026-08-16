@@ -34,7 +34,7 @@ import {
   loadForecastPhases,
   parseForecastPhaseNotes,
 } from "@/lib/project-forecast";
-import { fetchOrgStreams } from "@/lib/project-streams";
+import { ProjectGovernanceForums } from "@/components/governance-hierarchy";
 
 type ProjectTab =
   "overview" | "summary" | "decisions" | "work" | "governance" | "finance" | "streams";
@@ -530,57 +530,72 @@ function ProjectDetail() {
       )}
 
       {tab === "governance" && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <SectionFrame>
-            <div className="mb-2 flex items-center justify-between">
-              <SectionTitle>Risks</SectionTitle>
-              <Link to="/app/risks" className="text-xs font-medium text-primary hover:underline">
-                Register
-              </Link>
-            </div>
-            {risks.length === 0 ? (
-              <div className="py-6 text-center text-xs text-muted-foreground">No risks</div>
-            ) : (
-              <ul className="space-y-2">
-                {risks.slice(0, 8).map((r: any) => (
-                  <li key={r.id} className="rounded-md border border-border/70 px-3 py-2 text-sm">
-                    <div className="font-medium">
-                      {r.raid_code ? `${r.raid_code} · ` : ""}
-                      {r.title}
-                    </div>
-                    <div className="text-[11px] text-muted-foreground">
-                      {r.status} · severity {r.severity ?? "—"}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </SectionFrame>
-          <SectionFrame>
-            <div className="mb-2 flex items-center justify-between">
-              <SectionTitle>Issues</SectionTitle>
-              <Link to="/app/issues" className="text-xs font-medium text-primary hover:underline">
-                Register
-              </Link>
-            </div>
-            {issues.length === 0 ? (
-              <div className="py-6 text-center text-xs text-muted-foreground">No issues</div>
-            ) : (
-              <ul className="space-y-2">
-                {issues.slice(0, 8).map((i: any) => (
-                  <li key={i.id} className="rounded-md border border-border/70 px-3 py-2 text-sm">
-                    <div className="font-medium">
-                      {i.raid_code ? `${i.raid_code} · ` : ""}
-                      {i.title}
-                    </div>
-                    <div className="text-[11px] text-muted-foreground">
-                      {i.status} · {i.priority}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </SectionFrame>
+        <div className="space-y-4">
+          {project && orgId && (
+            <ProjectGovernanceForums
+              orgId={orgId}
+              project={{
+                id: project.id,
+                name: project.name,
+                project_code: project.project_code,
+                program: project.program,
+                portfolio: project.portfolio,
+                pm_user_id: project.pm_user_id,
+              }}
+            />
+          )}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <SectionFrame>
+              <div className="mb-2 flex items-center justify-between">
+                <SectionTitle>Risks</SectionTitle>
+                <Link to="/app/risks" className="text-xs font-medium text-primary hover:underline">
+                  Register
+                </Link>
+              </div>
+              {risks.length === 0 ? (
+                <div className="py-6 text-center text-xs text-muted-foreground">No risks</div>
+              ) : (
+                <ul className="space-y-2">
+                  {risks.slice(0, 8).map((r: any) => (
+                    <li key={r.id} className="rounded-md border border-border/70 px-3 py-2 text-sm">
+                      <div className="font-medium">
+                        {r.raid_code ? `${r.raid_code} · ` : ""}
+                        {r.title}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {r.status} · severity {r.severity ?? "—"}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </SectionFrame>
+            <SectionFrame>
+              <div className="mb-2 flex items-center justify-between">
+                <SectionTitle>Issues</SectionTitle>
+                <Link to="/app/issues" className="text-xs font-medium text-primary hover:underline">
+                  Register
+                </Link>
+              </div>
+              {issues.length === 0 ? (
+                <div className="py-6 text-center text-xs text-muted-foreground">No issues</div>
+              ) : (
+                <ul className="space-y-2">
+                  {issues.slice(0, 8).map((i: any) => (
+                    <li key={i.id} className="rounded-md border border-border/70 px-3 py-2 text-sm">
+                      <div className="font-medium">
+                        {i.raid_code ? `${i.raid_code} · ` : ""}
+                        {i.title}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {i.status} · {i.priority}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </SectionFrame>
+          </div>
         </div>
       )}
 

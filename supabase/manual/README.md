@@ -12,6 +12,8 @@
 | `delivery_methods_stage_gates.sql` | Delivery methods + per-method gate templates |
 | `fix_text_app_role_ops.sql` | Fixes `text = app_role` helper functions |
 | `20260814180000_security_hardening_rls_rate_acl.sql` | Pasteable copy of the security hardening migration (RLS + durable rate limits + page ACL seed). Use if the migration failed to load — then re-run via CLI or paste in SQL Editor |
+| `governance_scoped_forums.sql` | Scoped governance forums (project / program / Strategic Alignment), templates, members, auto-create on new projects. Paste if the migration is not applied yet |
+| `raid_codes_seed_4_projects.sql` | RAID `raid_code` schema + replacement RAID (with uuid + RSK/ISS/ACT/DEC IDs) for PRJ-001…PRJ-004 |
 | `repair_landing_oversized_logos.sql` | Clears multi-MB data-URL brand logos from `landing_config` (fixes white landing after hydrate). Re-upload logos under ~400KB via Platform → Landing |
 
 ## New empty database (do this)
