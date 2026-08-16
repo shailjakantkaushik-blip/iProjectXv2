@@ -31,7 +31,9 @@ import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-tabl
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
 import { GOVERNANCE_CADENCES } from "@/lib/ops-enhancements";
+import { GovernanceBucketTree } from "@/components/governance-hierarchy";
 import {
+  type ForumMemberView,
   type GovernanceChannel,
   type GovernanceProject,
   type GovernanceScopeLevel,
@@ -39,11 +41,16 @@ import {
   GOVERNANCE_CHANNELS_SELECT_MIN,
   GOVERNANCE_SCOPE_LABEL,
   GOVERNANCE_SCOPE_LEVELS,
+  buildGovernanceHierarchy,
   canManageGovernanceChannel,
+  channelsForProjects,
   filterGovernanceChannels,
+  forumPeopleLine,
   isMissingGovernanceScopeColumn,
   normalizeChannel,
+  orgWideForums,
   projectOptionsLabel,
+  resolveMyProjectIds,
   scopeLabel,
 } from "@/lib/governance-forums";
 
@@ -73,19 +80,26 @@ type ForumTemplate = {
   is_active: boolean;
 };
 
-type ResourceOpt = { id: string; name: string; role: string | null; status: string | null };
+type ResourceOpt = {
+  id: string;
+  name: string;
+  role: string | null;
+  status: string | null;
+  user_id?: string | null;
+};
 
 const CADENCES = [...GOVERNANCE_CADENCES];
 const STATUSES = ["Active", "Paused", "Retired"];
 
 function GovernanceChannelsPage() {
-  const { organization, user, roles } = useAuth();
+  const { organization, user, profile, roles } = useAuth();
   const admin = isAdmin(roles);
   const qc = useQueryClient();
   const [editing, setEditing] = useState<Partial<Channel> | null>(null);
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [chairResourceId, setChairResourceId] = useState<string>("");
   const [editingTemplate, setEditingTemplate] = useState<Partial<ForumTemplate> | null>(null);
+  const [myProjectsOnly, setMyProjectsOnly] = useState(true);
   const [filterProject, setFilterProject] = useState("all");
   const [filterProgram, setFilterProgram] = useState("all");
   const [filterPortfolio, setFilterPortfolio] = useState("all");
@@ -161,12 +175,56 @@ function GovernanceChannelsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("resources")
-        .select("id,name,role,status")
+        .select("id,name,role,status,user_id")
         .order("name");
       if (error) throw error;
       return (data || []) as ResourceOpt[];
     },
     enabled: !!organization,
+  });
+
+  const myResourceIds = useMemo(
+    () => resources.filter((r) => r.user_id && r.user_id === user?.id).map((r) => r.id),
+    [resources, user?.id],
+  );
+
+  const { data: allocationProjectIds = [] } = useQuery({
+    queryKey: ["governance_my_allocations", organization?.id, myResourceIds.join(",")],
+    queryFn: async () => {
+      if (!myResourceIds.length) return [] as string[];
+      const { data, error } = await supabase
+        .from("resource_allocations")
+        .select("project_id,resource_id")
+        .in("resource_id", myResourceIds);
+      if (error) throw error;
+      return [...new Set((data || []).map((r) => r.project_id).filter(Boolean))];
+    },
+    enabled: !!organization && myResourceIds.length > 0,
+  });
+
+  const { data: stakeholderProjectIds = [] } = useQuery({
+    queryKey: ["governance_my_stakeholders", organization?.id, profile?.email],
+    queryFn: async () => {
+      const email = (profile?.email || "").trim();
+      if (!email) return [] as string[];
+      const { data, error } = await supabase.from("stakeholders").select("project_id,email");
+      if (error) throw error;
+      const needle = email.toLowerCase();
+      return [
+        ...new Set(
+          (data || [])
+            .filter(
+              (s) =>
+                String(s.email || "")
+                  .trim()
+                  .toLowerCase() === needle,
+            )
+            .map((s) => s.project_id)
+            .filter(Boolean),
+        ),
+      ];
+    },
+    enabled: !!organization && !!profile?.email,
   });
 
   const { data: members = [] } = useQuery({
@@ -204,45 +262,97 @@ function GovernanceChannelsPage() {
     enabled: !!organization && scoped && admin,
   });
 
-  const programs = useMemo(
-    () => [...new Set(projects.map((p) => p.program).filter(Boolean) as string[])].sort(),
-    [projects],
+  const myProjectIds = useMemo(
+    () =>
+      resolveMyProjectIds({
+        userId: user?.id,
+        projects,
+        myResourceIds,
+        allocationProjectIds,
+        stakeholderProjectIds,
+      }),
+    [user?.id, projects, myResourceIds, allocationProjectIds, stakeholderProjectIds],
   );
+
+  const baseProjects = useMemo(() => {
+    if (!myProjectsOnly) return projects;
+    if (!myProjectIds.length) return [];
+    const mine = new Set(myProjectIds);
+    return projects.filter((p) => mine.has(p.id));
+  }, [projects, myProjectsOnly, myProjectIds]);
+
   const portfolios = useMemo(
-    () => [...new Set(projects.map((p) => p.portfolio).filter(Boolean) as string[])].sort(),
-    [projects],
+    () => [...new Set(baseProjects.map((p) => p.portfolio).filter(Boolean) as string[])].sort(),
+    [baseProjects],
   );
+  const programs = useMemo(() => {
+    const src =
+      filterPortfolio === "all"
+        ? baseProjects
+        : baseProjects.filter((p) => p.portfolio === filterPortfolio);
+    return [...new Set(src.map((p) => p.program).filter(Boolean) as string[])].sort();
+  }, [baseProjects, filterPortfolio]);
+  const projectChoices = useMemo(() => {
+    return baseProjects.filter((p) => {
+      if (filterPortfolio !== "all" && p.portfolio !== filterPortfolio) return false;
+      if (filterProgram !== "all" && p.program !== filterProgram) return false;
+      return true;
+    });
+  }, [baseProjects, filterPortfolio, filterProgram]);
   const streamNames = useMemo(
     () => [...new Set(streams.map((s) => s.name).filter(Boolean))].sort(),
     [streams],
   );
 
+  const focusProjects = useMemo(() => {
+    return baseProjects.filter((p) => {
+      if (filterPortfolio !== "all" && p.portfolio !== filterPortfolio) return false;
+      if (filterProgram !== "all" && p.program !== filterProgram) return false;
+      if (filterProject !== "all" && p.id !== filterProject) return false;
+      if (filterStream !== "all") {
+        const has = streams.some((s) => s.project_id === p.id && s.name === filterStream);
+        if (!has) return false;
+      }
+      return true;
+    });
+  }, [baseProjects, filterPortfolio, filterProgram, filterProject, filterStream, streams]);
+
+  const bucketChannels = useMemo(
+    () => channelsForProjects(channels, focusProjects),
+    [channels, focusProjects],
+  );
+
   const visible = useMemo(
     () =>
       filterGovernanceChannels(
-        channels,
+        bucketChannels,
         {
-          projectId: filterProject === "all" ? undefined : filterProject,
-          program: filterProgram === "all" ? undefined : filterProgram,
-          portfolio: filterPortfolio === "all" ? undefined : filterPortfolio,
-          streamName: filterStream === "all" ? undefined : filterStream,
           cadence: filterCadence === "all" ? undefined : filterCadence,
           scope: filterScope === "all" ? undefined : filterScope,
         },
-        projects,
+        focusProjects,
         streams,
       ),
-    [
-      channels,
-      filterProject,
-      filterProgram,
-      filterPortfolio,
-      filterStream,
-      filterCadence,
-      filterScope,
-      projects,
-      streams,
-    ],
+    [bucketChannels, filterCadence, filterScope, focusProjects, streams],
+  );
+
+  const memberViews: ForumMemberView[] = useMemo(() => {
+    const byId = new Map(resources.map((r) => [r.id, r.name]));
+    return members.map((m) => ({
+      channel_id: m.channel_id,
+      resource_id: m.resource_id,
+      role: m.role,
+      name: byId.get(m.resource_id) || "Unknown",
+    }));
+  }, [members, resources]);
+
+  const hierarchy = useMemo(
+    () => buildGovernanceHierarchy(focusProjects, visible, memberViews),
+    [focusProjects, visible, memberViews],
+  );
+  const leftoverOrgWide = useMemo(
+    () => (myProjectsOnly ? [] : orgWideForums(channels, memberViews)),
+    [myProjectsOnly, channels, memberViews],
   );
 
   const manageOpts = { isAdmin: admin, userId: user?.id, projects };
@@ -347,7 +457,7 @@ function GovernanceChannelsPage() {
         if (error) throw error;
         channelId = data.id;
       }
-      if (scoped && channelId && (scope === "project" || admin)) {
+      if (scoped && channelId) {
         await saveMembers(channelId, organization!.id, payload.chair ?? null);
       }
     },
@@ -434,10 +544,19 @@ function GovernanceChannelsPage() {
       { key: "cadence", label: "Cadence" },
       { key: "parent_channel_id", label: "Escalates to" },
       { key: "chair", label: "Chair" },
+      {
+        key: "members",
+        label: "Members",
+        getValue: (c) =>
+          forumPeopleLine({
+            channel: c,
+            members: memberViews.filter((m) => m.channel_id === c.id),
+          }),
+      },
       { key: "next_meeting", label: "Next Meeting" },
       { key: "status", label: "Status", getValue: (c) => c.status || "Active" },
     ],
-    [projects],
+    [projects, memberViews],
   );
   const table = useColumnarTable(visible, columns);
 
@@ -455,7 +574,7 @@ function GovernanceChannelsPage() {
     <div className="space-y-6">
       <PageHeading
         title="Governance Channels"
-        subtitle="Project, program, and Strategic Alignment forums — calendar first, with escalation to the parent cadence"
+        subtitle="Same buckets as the rest of the app: Strategic Alignment → Program → Project. Starts from the projects you are on, with the forum hierarchy and members."
       />
 
       {isError && (
@@ -498,27 +617,59 @@ function GovernanceChannelsPage() {
       <SectionFrame>
         <SectionTitle>Filters</SectionTitle>
         <p className="mb-3 text-xs text-muted-foreground">
-          Choose a project to see its forums plus inherited program and Strategic Alignment forums.
-          Stream filters to projects that contain that stream — it is not a fourth forum layer.
+          Pick a Strategic Alignment, then a program, then a project — the same buckets used on
+          Executive Dashboard. Forums at each level (and their members) follow that tree. Stream
+          only narrows which projects are included; it is not a fourth forum layer.
         </p>
+        <label className="mb-3 flex items-center gap-2 text-sm">
+          <Checkbox
+            checked={myProjectsOnly}
+            onCheckedChange={(on) => setMyProjectsOnly(Boolean(on))}
+          />
+          <span>
+            Only projects I am on
+            {myProjectIds.length ? ` (${myProjectIds.length})` : ""}
+            <span className="text-muted-foreground"> — PM, allocated resource, or stakeholder</span>
+          </span>
+        </label>
+        {myProjectsOnly && myProjectIds.length === 0 && (
+          <p className="mb-3 text-xs text-muted-foreground">
+            You are not listed as PM, allocated resource, or stakeholder on any project yet. Switch
+            off the checkbox to see every project you can view.
+          </p>
+        )}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <FilterSelect
-            label="Project"
-            value={filterProject}
-            onChange={setFilterProject}
-            items={projects.map((p) => ({ value: p.id, label: projectOptionsLabel(p) }))}
+            label="Strategic Alignment"
+            value={filterPortfolio}
+            onChange={(v) => {
+              setFilterPortfolio(v);
+              setFilterProgram("all");
+              setFilterProject("all");
+            }}
+            items={portfolios.map((p) => ({ value: p, label: p }))}
           />
           <FilterSelect
             label="Program"
             value={filterProgram}
-            onChange={setFilterProgram}
+            onChange={(v) => {
+              setFilterProgram(v);
+              setFilterProject("all");
+            }}
             items={programs.map((p) => ({ value: p, label: p }))}
           />
           <FilterSelect
-            label="Strategic Alignment"
-            value={filterPortfolio}
-            onChange={setFilterPortfolio}
-            items={portfolios.map((p) => ({ value: p, label: p }))}
+            label="Project"
+            value={filterProject}
+            onChange={(v) => {
+              setFilterProject(v);
+              if (v !== "all") {
+                const p = projects.find((x) => x.id === v);
+                if (p?.portfolio) setFilterPortfolio(p.portfolio);
+                if (p?.program) setFilterProgram(p.program);
+              }
+            }}
+            items={projectChoices.map((p) => ({ value: p.id, label: projectOptionsLabel(p) }))}
           />
           <FilterSelect
             label="Stream"
@@ -544,12 +695,28 @@ function GovernanceChannelsPage() {
         </div>
       </SectionFrame>
 
-      <Tabs defaultValue="calendar">
+      <Tabs defaultValue="hierarchy">
         <TabsList>
+          <TabsTrigger value="hierarchy">My hierarchy</TabsTrigger>
           <TabsTrigger value="calendar">Calendar</TabsTrigger>
           <TabsTrigger value="register">Register</TabsTrigger>
           {admin && scoped && <TabsTrigger value="templates">Templates</TabsTrigger>}
         </TabsList>
+
+        <TabsContent value="hierarchy" className="mt-4">
+          <SectionFrame>
+            <SectionTitle>Governance hierarchy</SectionTitle>
+            <p className="mb-3 text-xs text-muted-foreground">
+              Strategic Alignment forum at the top, then the program board, then each project&apos;s
+              forums — with chair and members at every level.
+            </p>
+            <GovernanceBucketTree
+              buckets={hierarchy}
+              orgWide={leftoverOrgWide}
+              showOrgWide={!myProjectsOnly}
+            />
+          </SectionFrame>
+        </TabsContent>
 
         <TabsContent value="calendar" className="mt-4 space-y-4">
           <SectionFrame>
@@ -609,21 +776,21 @@ function GovernanceChannelsPage() {
                   <tbody>
                     {isLoading && (
                       <tr>
-                        <td colSpan={9} className="text-center text-muted-foreground p-4">
+                        <td colSpan={10} className="text-center text-muted-foreground p-4">
                           Loading…
                         </td>
                       </tr>
                     )}
                     {!isLoading && table.total === 0 && (
                       <tr>
-                        <td colSpan={9} className="text-center text-muted-foreground p-4">
+                        <td colSpan={10} className="text-center text-muted-foreground p-4">
                           No forums match the current filters.
                         </td>
                       </tr>
                     )}
                     {!isLoading && table.total > 0 && table.rows.length === 0 && (
                       <tr>
-                        <td colSpan={9} className="text-center text-muted-foreground p-4">
+                        <td colSpan={10} className="text-center text-muted-foreground p-4">
                           No forums match search.
                         </td>
                       </tr>
@@ -646,6 +813,12 @@ function GovernanceChannelsPage() {
                           <td>{c.cadence || "—"}</td>
                           <td>{channels.find((p) => p.id === c.parent_channel_id)?.name || "—"}</td>
                           <td>{c.chair || "—"}</td>
+                          <td className="max-w-xs text-xs">
+                            {forumPeopleLine({
+                              channel: c,
+                              members: memberViews.filter((m) => m.channel_id === c.id),
+                            })}
+                          </td>
                           <td>{c.next_meeting || "—"}</td>
                           <td>
                             <span
@@ -887,7 +1060,7 @@ function ChannelForm({
   const editableProjects = admin
     ? projects
     : projects.filter((p) => p.pm_user_id && p.pm_user_id === userId);
-  const showMembers = scoped && scope === "project";
+  const showMembers = scoped;
   const parentOptions = channels.filter((c) => c.id && c.id !== value.id);
 
   return (
@@ -1064,8 +1237,8 @@ function ChannelForm({
         <div>
           <Label>Members (from resources)</Label>
           <p className="mb-2 text-xs text-muted-foreground">
-            Chair plus members. Only people on this project forum — program and Strategic Alignment
-            forums are shared and do not use this list.
+            Chair plus members from the resource register. Same people list at project, program, and
+            Strategic Alignment forums.
           </p>
           <div className="mb-2">
             <Label className="text-xs">Chair (resource)</Label>

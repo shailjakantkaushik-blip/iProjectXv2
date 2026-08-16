@@ -103,6 +103,11 @@ export function channelScopeKey(c: GovernanceChannel) {
   return (c.portfolio || "").trim();
 }
 
+/**
+ * A forum belongs to a project only through the same buckets used elsewhere:
+ * project row → program name → Strategic Alignment (`projects.portfolio`).
+ * Org-wide forums (SA with no portfolio) are not mixed into every project.
+ */
 export function inheritedForProject(c: GovernanceChannel, project: GovernanceProject | undefined) {
   if (!project) return false;
   const level = c.scope_level || "strategic_alignment";
@@ -110,9 +115,173 @@ export function inheritedForProject(c: GovernanceChannel, project: GovernancePro
   if (level === "program") {
     return Boolean(project.program) && c.program === project.program;
   }
-  // Org-wide SA (no portfolio) plus the project's Strategic Alignment.
-  if (!c.portfolio) return true;
   return Boolean(project.portfolio) && c.portfolio === project.portfolio;
+}
+
+export function channelsForProjects(channels: GovernanceChannel[], projects: GovernanceProject[]) {
+  if (!projects.length) return [];
+  return channels.filter((c) => projects.some((p) => inheritedForProject(c, p)));
+}
+
+/** Projects the signed-in person is actually on: PM, allocated resource, or stakeholder. */
+export function resolveMyProjectIds(opts: {
+  userId?: string | null;
+  projects: Array<{ id: string; pm_user_id?: string | null }>;
+  myResourceIds: string[];
+  allocationProjectIds: string[];
+  stakeholderProjectIds: string[];
+}) {
+  const ids = new Set<string>();
+  const uid = opts.userId || "";
+  for (const p of opts.projects) {
+    if (uid && p.pm_user_id === uid) ids.add(p.id);
+  }
+  for (const id of opts.allocationProjectIds) if (id) ids.add(id);
+  for (const id of opts.stakeholderProjectIds) if (id) ids.add(id);
+  return [...ids];
+}
+
+export type ForumMemberView = {
+  channel_id: string;
+  resource_id: string;
+  role: string;
+  name: string;
+};
+
+export type ForumNode = {
+  channel: GovernanceChannel;
+  members: ForumMemberView[];
+};
+
+export type ProjectGovernanceBucket = {
+  project: GovernanceProject;
+  forums: ForumNode[];
+};
+
+export type ProgramGovernanceBucket = {
+  program: string;
+  forums: ForumNode[];
+  projects: ProjectGovernanceBucket[];
+};
+
+export type AlignmentGovernanceBucket = {
+  portfolio: string;
+  forums: ForumNode[];
+  programs: ProgramGovernanceBucket[];
+};
+
+function nodesFor(channels: GovernanceChannel[], membersByChannel: Map<string, ForumMemberView[]>) {
+  return [...channels]
+    .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+    .map((channel) => ({
+      channel,
+      members: membersByChannel.get(channel.id) || [],
+    }));
+}
+
+/** Strategic Alignment → Program → Project tree for the given project set. */
+export function buildGovernanceHierarchy(
+  projects: GovernanceProject[],
+  channels: GovernanceChannel[],
+  members: ForumMemberView[],
+): AlignmentGovernanceBucket[] {
+  const membersByChannel = new Map<string, ForumMemberView[]>();
+  for (const m of members) {
+    const list = membersByChannel.get(m.channel_id) || [];
+    list.push(m);
+    membersByChannel.set(m.channel_id, list);
+  }
+
+  const saKeys = [...new Set(projects.map((p) => (p.portfolio || "").trim()).filter(Boolean))].sort(
+    (a, b) => a.localeCompare(b),
+  );
+
+  return saKeys.map((portfolio) => {
+    const saProjects = projects.filter((p) => (p.portfolio || "").trim() === portfolio);
+    const saForums = channels.filter(
+      (c) =>
+        (c.scope_level || "strategic_alignment") === "strategic_alignment" &&
+        (c.portfolio || "").trim() === portfolio,
+    );
+    const programKeys = [
+      ...new Set(saProjects.map((p) => (p.program || "").trim()).filter(Boolean)),
+    ].sort((a, b) => a.localeCompare(b));
+
+    const programs: ProgramGovernanceBucket[] = programKeys.map((program) => {
+      const progProjects = saProjects.filter((p) => (p.program || "").trim() === program);
+      const programForums = channels.filter(
+        (c) => (c.scope_level || "") === "program" && (c.program || "").trim() === program,
+      );
+      const projectBuckets: ProjectGovernanceBucket[] = [...progProjects]
+        .sort((a, b) => projectOptionsLabel(a).localeCompare(projectOptionsLabel(b)))
+        .map((project) => ({
+          project,
+          forums: nodesFor(
+            channels.filter(
+              (c) => (c.scope_level || "") === "project" && c.project_id === project.id,
+            ),
+            membersByChannel,
+          ),
+        }));
+      return {
+        program,
+        forums: nodesFor(programForums, membersByChannel),
+        projects: projectBuckets,
+      };
+    });
+
+    const unassigned = saProjects.filter((p) => !(p.program || "").trim());
+    if (unassigned.length) {
+      programs.push({
+        program: "Unassigned program",
+        forums: [],
+        projects: unassigned
+          .sort((a, b) => projectOptionsLabel(a).localeCompare(projectOptionsLabel(b)))
+          .map((project) => ({
+            project,
+            forums: nodesFor(
+              channels.filter(
+                (c) => (c.scope_level || "") === "project" && c.project_id === project.id,
+              ),
+              membersByChannel,
+            ),
+          })),
+      });
+    }
+
+    return {
+      portfolio,
+      forums: nodesFor(saForums, membersByChannel),
+      programs,
+    };
+  });
+}
+
+export function forumPeopleLine(node: ForumNode) {
+  const named = node.members.map((m) => (m.role === "chair" ? `${m.name} (chair)` : m.name));
+  if (named.length) return named.join(", ");
+  if (node.channel.chair) return `${node.channel.chair} (chair)`;
+  return "No members listed";
+}
+
+export function orgWideForums(
+  channels: GovernanceChannel[],
+  members: ForumMemberView[],
+): ForumNode[] {
+  const membersByChannel = new Map<string, ForumMemberView[]>();
+  for (const m of members) {
+    const list = membersByChannel.get(m.channel_id) || [];
+    list.push(m);
+    membersByChannel.set(m.channel_id, list);
+  }
+  return nodesFor(
+    channels.filter(
+      (c) =>
+        (c.scope_level || "strategic_alignment") === "strategic_alignment" &&
+        !(c.portfolio || "").trim(),
+    ),
+    membersByChannel,
+  );
 }
 
 export function filterGovernanceChannels(
@@ -152,9 +321,7 @@ export function filterGovernanceChannels(
         (level === "program" && c.program === filters.program) ||
         (level === "project" && c.project_id && pids.includes(c.project_id)) ||
         (level === "strategic_alignment" &&
-          projects.some(
-            (p) => p.program === filters.program && (!c.portfolio || c.portfolio === p.portfolio),
-          ));
+          projects.some((p) => p.program === filters.program && c.portfolio === p.portfolio));
       if (!ok) return false;
     }
 
@@ -162,7 +329,7 @@ export function filterGovernanceChannels(
       const pids = projects.filter((p) => p.portfolio === filters.portfolio).map((p) => p.id);
       const level = c.scope_level || "strategic_alignment";
       const ok =
-        (level === "strategic_alignment" && (!c.portfolio || c.portfolio === filters.portfolio)) ||
+        (level === "strategic_alignment" && c.portfolio === filters.portfolio) ||
         (level === "project" && c.project_id && pids.includes(c.project_id)) ||
         (level === "program" &&
           projects.some((p) => p.portfolio === filters.portfolio && p.program === c.program));
