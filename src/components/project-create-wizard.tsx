@@ -357,6 +357,15 @@ export function ProjectCreateWizard() {
       }
 
       // Extra streams (Core is DB-triggered)
+      const includedGateDates = gates
+        .filter((x) => x.include && x.planned_date)
+        .map((x) => x.planned_date)
+        .sort();
+      const streamStart =
+        includedGateDates[0] || emptyToNull(project.planned_start_date);
+      const streamEnd =
+        includedGateDates[includedGateDates.length - 1] ||
+        emptyToNull(project.planned_end_date);
       for (const s of extraStreams) {
         const name = s.name.trim();
         const scode = s.code.trim() || name.slice(0, 8).toUpperCase();
@@ -367,11 +376,13 @@ export function ProjectCreateWizard() {
           name,
           code: scode,
           is_default: false,
+          planned_start_date: streamStart,
+          planned_end_date: streamEnd,
         } as never);
         if (error && !/duplicate|unique/i.test(error.message)) throw error;
       }
 
-      // Resolve Core stream for gate/work defaults
+      // Resolve Core stream for work-item defaults; gates go on every stream
       const { data: streams } = await supabase
         .from("project_streams")
         .select("id,is_default,code")
@@ -381,20 +392,27 @@ export function ProjectCreateWizard() {
         (streams ?? []).find((s: any) => s.code === "CORE")?.id ||
         (streams ?? [])[0]?.id ||
         null;
+      const streamIds = (streams ?? [])
+        .map((s: any) => s.id)
+        .filter(Boolean) as string[];
+      const gateStreamIds = streamIds.length ? streamIds : coreId ? [coreId] : [];
 
-      // Stage gates — use org delivery-method flags (custom methods supported)
+      // Stage gates — one planned set per stream so Forecast can show each lane
       const useGates = methodUsesStageGates(selectedMethod, project.delivery_method);
       if (useGates) {
-        for (const g of gates.filter((x) => x.include && x.gate_name)) {
-          const { error } = await supabase.from("stage_gates").insert({
-            org_id: orgId,
-            project_id: projectId,
-            stream_id: coreId,
-            gate_name: g.gate_name,
-            planned_date: emptyToNull(g.planned_date),
-            status: "Pending",
-          } as never);
-          if (error && !/duplicate|unique/i.test(error.message)) throw error;
+        const included = gates.filter((x) => x.include && x.gate_name);
+        for (const sid of gateStreamIds) {
+          for (const g of included) {
+            const { error } = await supabase.from("stage_gates").insert({
+              org_id: orgId,
+              project_id: projectId,
+              stream_id: sid,
+              gate_name: g.gate_name,
+              planned_date: emptyToNull(g.planned_date),
+              status: "Pending",
+            } as never);
+            if (error && !/duplicate|unique/i.test(error.message)) throw error;
+          }
         }
       }
 
@@ -417,11 +435,13 @@ export function ProjectCreateWizard() {
       // Work items
       const { data: createdGates } = await supabase
         .from("stage_gates")
-        .select("id,gate_name")
+        .select("id,gate_name,stream_id")
         .eq("project_id", projectId);
-      const gateByName = new Map(
-        (createdGates ?? []).map((g: any) => [String(g.gate_name), g.id]),
-      );
+      const gateByName = new Map<string, string>();
+      for (const g of createdGates ?? []) {
+        if (coreId && g.stream_id && g.stream_id !== coreId) continue;
+        gateByName.set(String(g.gate_name), g.id);
+      }
       let sort = 0;
       for (const wi of workItems) {
         if (!wi.title.trim()) continue;
@@ -797,7 +817,12 @@ export function ProjectCreateWizard() {
                     <span className="font-medium">
                       {selectedMethod?.name ?? project.delivery_method}
                     </span>{" "}
-                    template — not shared with other delivery methods.
+                    template — created on <strong>every stream</strong> (Core
+                    {extraStreams.filter((s) => s.name.trim()).length
+                      ? ` + ${extraStreams.filter((s) => s.name.trim()).length} extra`
+                      : ""}
+                    ) so Forecast can show phases per stream. Not shared with other
+                    delivery methods.
                   </p>
                   {gates.map((g, i) => (
                     <div
@@ -1053,7 +1078,9 @@ export function ProjectCreateWizard() {
                 <li>
                   Stage gates to create:{" "}
                   {methodUsesStageGates(selectedMethod, project.delivery_method)
-                    ? gates.filter((g) => g.include).length
+                    ? `${gates.filter((g) => g.include).length} planned dates × ${
+                        1 + extraStreams.filter((s) => s.name.trim()).length
+                      } streams`
                     : 0}
                 </li>
                 <li>FY rows: {fyRows.filter((r) => r.fy.trim()).length}</li>

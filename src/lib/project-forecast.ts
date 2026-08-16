@@ -67,6 +67,17 @@ export type StageGateDefLike = {
   sort_order?: number | null;
 };
 
+export type PlannedGateLike = {
+  stream_id?: string | null;
+  gate_name?: string | null;
+  planned_date?: string | null;
+};
+
+export type MergeForecastPhaseOpts = {
+  gates?: PlannedGateLike[];
+  projectStart?: string | null;
+};
+
 export function forecastPhaseKey(p: Pick<ForecastPhaseRow, "stream_id" | "gate_name">) {
   return `${p.stream_id || "proj"}::${p.gate_name}`;
 }
@@ -78,6 +89,87 @@ export function addCalendarDays(iso: string, days: number): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+export function calendarDaysInclusive(start: string, end: string): number {
+  const a = new Date(`${start.slice(0, 10)}T00:00:00`).getTime();
+  const b = new Date(`${end.slice(0, 10)}T00:00:00`).getTime();
+  return Math.max(1, Math.round((b - a) / 86400000) + 1);
+}
+
+function isoDate(value?: string | null) {
+  return (value || "").slice(0, 10) || null;
+}
+
+/** Prefer this stream's planned gates; else unscoped / Core dates as a template. */
+export function plannedGatesForStream(
+  gates: PlannedGateLike[],
+  stream: ForecastStreamLike,
+  streams: ForecastStreamLike[] = [],
+): PlannedGateLike[] {
+  const sid = stream.id || null;
+  const own = gates.filter((g) => (g.stream_id || null) === sid);
+  if (own.some((g) => isoDate(g.planned_date))) return own;
+  const unscoped = gates.filter((g) => !g.stream_id);
+  if (unscoped.some((g) => isoDate(g.planned_date))) return unscoped;
+  const core = streams.find((s) => s.is_default) || streams[0];
+  if (core?.id && core.id !== sid) {
+    const coreGates = gates.filter((g) => g.stream_id === core.id);
+    if (coreGates.some((g) => isoDate(g.planned_date))) return coreGates;
+  }
+  return own.length ? own : gates.filter((g) => isoDate(g.planned_date));
+}
+
+/**
+ * Build one stream's phases from planned stage-gate dates.
+ * Each gate's planned_date is the phase end (same rule Apply writes back).
+ */
+export function seedForecastPhasesFromPlannedGates(
+  templateNames: string[],
+  streams: ForecastStreamLike[],
+  gates: PlannedGateLike[],
+  projectStart?: string | null,
+): ForecastPhaseRow[] {
+  const lanes = streams.length
+    ? [...streams].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    : [{ id: "", name: "Project", is_default: true, sort_order: 0 }];
+  const rows: ForecastPhaseRow[] = [];
+  lanes.forEach((stream, si) => {
+    const sid = stream.id || null;
+    const source = plannedGatesForStream(gates, stream, lanes);
+    let cursor = isoDate(stream.planned_start_date) || isoDate(projectStart);
+    templateNames.forEach((name, i) => {
+      const gate =
+        source.find((g) => g.gate_name === name && (g.stream_id || null) === sid) ||
+        source.find((g) => g.gate_name === name);
+      const end = isoDate(gate?.planned_date);
+      let start = cursor;
+      let duration = DEFAULT_PHASE_DAYS;
+      let overridden = false;
+      if (start && end) {
+        if (end < start) start = end;
+        duration = calendarDaysInclusive(start, end);
+        overridden = true;
+      } else if (end && !start) {
+        start = addCalendarDays(end, -(DEFAULT_PHASE_DAYS - 1));
+        duration = DEFAULT_PHASE_DAYS;
+        overridden = true;
+      }
+      rows.push({
+        stream_id: sid,
+        stream_name: stream.name || "Stream",
+        gate_name: name,
+        sort_order: si * 100 + i,
+        duration_days: duration,
+        start_date: start,
+        end_date: end,
+        dates_overridden: overridden,
+      });
+      if (end) cursor = addCalendarDays(end, 1);
+      else if (start) cursor = addCalendarDays(start, duration);
+    });
+  });
+  return rows;
 }
 
 export function daysToMonths(days: number): number {
@@ -111,27 +203,50 @@ export function mergeForecastPhases(
   templateNames: string[],
   streams: ForecastStreamLike[],
   stored: ForecastPhaseRow[],
+  opts?: MergeForecastPhaseOpts,
 ): ForecastPhaseRow[] {
   const lanes = streams.length
     ? [...streams].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
     : [{ id: "", name: "Project", is_default: true, sort_order: 0 }];
   const byKey = new Map(stored.map((p) => [forecastPhaseKey(p), p]));
+  const seeded =
+    opts?.gates?.length
+      ? seedForecastPhasesFromPlannedGates(
+          templateNames,
+          lanes,
+          opts.gates,
+          opts.projectStart,
+        )
+      : [];
+  const seedByKey = new Map(seeded.map((p) => [forecastPhaseKey(p), p]));
   const rows: ForecastPhaseRow[] = [];
   lanes.forEach((stream, si) => {
     const sid = stream.id || null;
     templateNames.forEach((name, i) => {
       const prev = byKey.get(forecastPhaseKey({ stream_id: sid, gate_name: name }));
+      const seed = seedByKey.get(forecastPhaseKey({ stream_id: sid, gate_name: name }));
+      const hasStoredDates = Boolean(isoDate(prev?.start_date) && isoDate(prev?.end_date));
+      const useSeed = !hasStoredDates && Boolean(seed?.start_date || seed?.end_date);
       rows.push({
         id: prev?.id,
         stream_id: sid,
         stream_name: stream.name || "Stream",
         gate_name: name,
         sort_order: si * 100 + i,
-        duration_days:
-          Number(prev?.duration_days) > 0 ? Number(prev?.duration_days) : DEFAULT_PHASE_DAYS,
-        start_date: prev?.start_date ?? null,
-        end_date: prev?.end_date ?? null,
-        dates_overridden: Boolean(prev?.dates_overridden),
+        duration_days: useSeed
+          ? Number(seed?.duration_days) > 0
+            ? Number(seed?.duration_days)
+            : DEFAULT_PHASE_DAYS
+          : Number(prev?.duration_days) > 0
+            ? Number(prev?.duration_days)
+            : Number(seed?.duration_days) > 0
+              ? Number(seed?.duration_days)
+              : DEFAULT_PHASE_DAYS,
+        start_date: hasStoredDates ? prev?.start_date ?? null : seed?.start_date ?? prev?.start_date ?? null,
+        end_date: hasStoredDates ? prev?.end_date ?? null : seed?.end_date ?? prev?.end_date ?? null,
+        dates_overridden: hasStoredDates
+          ? Boolean(prev?.dates_overridden)
+          : Boolean(seed?.dates_overridden || prev?.dates_overridden),
       });
     });
   });
@@ -141,8 +256,9 @@ export function mergeForecastPhases(
 export function layoutForecastPhases(
   phases: ForecastPhaseRow[],
   projectStart: string | null | undefined,
+  streams?: ForecastStreamLike[],
 ): ForecastPhaseRow[] {
-  const start = (projectStart || "").slice(0, 10) || null;
+  const start = isoDate(projectStart);
   const groups = new Map<string, ForecastPhaseRow[]>();
   for (const p of phases) {
     const k = p.stream_id || "proj";
@@ -151,8 +267,9 @@ export function layoutForecastPhases(
     groups.set(k, list);
   }
   const out: ForecastPhaseRow[] = [];
-  for (const list of groups.values()) {
-    let cursor = start;
+  for (const [key, list] of groups) {
+    const stream = streams?.find((s) => (s.id || "proj") === key);
+    let cursor = isoDate(stream?.planned_start_date) || start;
     for (const p of list) {
       if (!cursor) {
         out.push({
@@ -314,7 +431,7 @@ export async function applyForecastToProjectPlan(opts: {
   onlyFillEmpty?: boolean;
 }): Promise<{ plannedEnd: string | null }> {
   const start = opts.startDate.slice(0, 10);
-  const laid = layoutForecastPhases(opts.phases, start);
+  const laid = layoutForecastPhases(opts.phases, start, opts.streams);
   const plannedEnd =
     laid
       .map((p) => p.end_date)
@@ -411,4 +528,42 @@ export async function applyForecastToProjectPlan(opts: {
     .eq("org_id", opts.orgId);
 
   return { plannedEnd };
+}
+
+/** Create missing delivery-method gates on each stream, copying Core planned dates. */
+export async function ensureStageGatesForStreams(opts: {
+  orgId: string;
+  projectId: string;
+  streams: ForecastStreamLike[];
+  templateNames: string[];
+  existingGates: PlannedGateLike[];
+}): Promise<number> {
+  if (!opts.templateNames.length || !opts.streams.length) return 0;
+  const core = opts.streams.find((s) => s.is_default) || opts.streams[0];
+  const coreGates = opts.existingGates.filter(
+    (g) => g.stream_id === core?.id || !g.stream_id,
+  );
+  let created = 0;
+  for (const stream of opts.streams) {
+    for (const name of opts.templateNames) {
+      const exists = opts.existingGates.some(
+        (g) =>
+          g.gate_name === name &&
+          (g.stream_id === stream.id || (!g.stream_id && stream.is_default)),
+      );
+      if (exists) continue;
+      const fromCore = coreGates.find((g) => g.gate_name === name);
+      const { error } = await supabase.from("stage_gates").insert({
+        org_id: opts.orgId,
+        project_id: opts.projectId,
+        stream_id: stream.id || null,
+        gate_name: name,
+        planned_date: fromCore?.planned_date ?? null,
+        status: "Pending",
+      } as never);
+      if (error && !/duplicate|unique/i.test(error.message)) throw error;
+      if (!error) created += 1;
+    }
+  }
+  return created;
 }
