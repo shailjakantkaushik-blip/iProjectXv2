@@ -2735,6 +2735,26 @@ export type Database = {
         Args: { p_project_id: string }
         Returns: undefined
       }
+      governance_snap_weekday: {
+        Args: { p_date: string; p_direction: string }
+        Returns: string
+      }
+      governance_add_weekdays: {
+        Args: { p_date: string; p_n: number }
+        Returns: string
+      }
+      governance_add_months_weekday: {
+        Args: { p_date: string; p_months: number }
+        Returns: string
+      }
+      governance_suggest_next_meeting: {
+        Args: { p_last: string; p_cadence: string }
+        Returns: string
+      }
+      governance_default_last_meeting: {
+        Args: { p_cadence: string; p_today?: string }
+        Returns: string
+      }
       ensure_org_delivery_methods: {
         Args: { p_org_id: string }
         Returns: undefined

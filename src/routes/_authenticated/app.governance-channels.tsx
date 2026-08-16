@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { useAuth, isAdmin } from "@/lib/auth-context";
@@ -44,14 +44,19 @@ import {
   buildGovernanceHierarchy,
   canManageGovernanceChannel,
   channelsForProjects,
+  defaultGovernanceMeetingDates,
+  defaultLastMeetingDate,
   filterGovernanceChannels,
   forumPeopleLine,
   isMissingGovernanceScopeColumn,
+  isWeekdayIso,
   normalizeChannel,
   orgWideForums,
   projectOptionsLabel,
   resolveMyProjectIds,
   scopeLabel,
+  snapToWeekdayIso,
+  suggestNextMeetingDate,
 } from "@/lib/governance-forums";
 
 export const Route = createFileRoute("/_authenticated/app/governance-channels")({
@@ -360,9 +365,20 @@ function GovernanceChannelsPage() {
     admin || (scoped && projects.some((p) => p.pm_user_id && p.pm_user_id === user?.id));
 
   const openEdit = (c: Partial<Channel>) => {
-    setEditing(c);
-    if (c.id) {
-      const mine = members.filter((m) => m.channel_id === c.id);
+    let next = { ...c };
+    if (!next.id) {
+      const cadence = next.cadence || "Monthly";
+      const dates = defaultGovernanceMeetingDates(cadence);
+      next = {
+        ...next,
+        cadence,
+        last_meeting: next.last_meeting || dates.last_meeting,
+        next_meeting: next.next_meeting ?? dates.next_meeting,
+      };
+    }
+    setEditing(next);
+    if (next.id) {
+      const mine = members.filter((m) => m.channel_id === next.id);
       setMemberIds(mine.map((m) => m.resource_id));
       setChairResourceId(mine.find((m) => m.role === "chair")?.resource_id || "");
     } else {
@@ -372,7 +388,7 @@ function GovernanceChannelsPage() {
         const mine = projects.filter((p) => p.pm_user_id === user?.id);
         const first = mine[0];
         setEditing({
-          ...c,
+          ...next,
           scope_level: "project",
           project_id: first?.id || "",
           program: first?.program || null,
@@ -722,7 +738,7 @@ function GovernanceChannelsPage() {
           <SectionFrame>
             <SectionTitle>Cadence calendar</SectionTitle>
             <p className="mb-2 text-xs text-muted-foreground">
-              Next and last meeting dates. Child forums escalate to their parent.
+              Next and last meeting dates (weekdays). Child forums escalate to their parent.
             </p>
             <CadenceMonthCalendar channels={visible} allChannels={channels} />
             <div className="mt-4">
@@ -1056,6 +1072,36 @@ function ChannelForm({
   submitting: boolean;
 }) {
   const set = (k: keyof Channel, v: unknown) => onChange({ ...value, [k]: v });
+  const [nextLocked, setNextLocked] = useState(false);
+  const [lastLocked, setLastLocked] = useState(false);
+  useEffect(() => {
+    const suggested = suggestNextMeetingDate(value.last_meeting, value.cadence);
+    const next = value.next_meeting || "";
+    const defaultLast = defaultLastMeetingDate(value.cadence);
+    setNextLocked(Boolean(next && suggested && next !== suggested));
+    setLastLocked(Boolean(value.id && value.last_meeting && value.last_meeting !== defaultLast));
+    // Only when opening a different forum.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value.id]);
+
+  const applyCadenceOrLast = (patch: Partial<Channel>) => {
+    const merged = { ...value, ...patch };
+    let lastIsLocked = lastLocked;
+    if (patch.last_meeting !== undefined) {
+      lastIsLocked = Boolean(merged.last_meeting);
+      setLastLocked(lastIsLocked);
+    }
+    if ((patch.cadence !== undefined && !lastIsLocked) || !merged.last_meeting) {
+      merged.last_meeting = defaultLastMeetingDate(merged.cadence);
+    }
+    if (merged.last_meeting && !isWeekdayIso(merged.last_meeting)) {
+      merged.last_meeting = snapToWeekdayIso(merged.last_meeting, "back");
+    }
+    if (!nextLocked) {
+      merged.next_meeting = suggestNextMeetingDate(merged.last_meeting, merged.cadence);
+    }
+    onChange(merged);
+  };
   const scope = (value.scope_level || "strategic_alignment") as GovernanceScopeLevel;
   const editableProjects = admin
     ? projects
@@ -1172,7 +1218,10 @@ function ChannelForm({
         </div>
         <div>
           <Label>Cadence</Label>
-          <Select value={value.cadence || ""} onValueChange={(v) => set("cadence", v)}>
+          <Select
+            value={value.cadence || ""}
+            onValueChange={(v) => applyCadenceOrLast({ cadence: v })}
+          >
             <SelectTrigger>
               <SelectValue placeholder="Select" />
             </SelectTrigger>
@@ -1209,20 +1258,39 @@ function ChannelForm({
           <Input value={value.chair || ""} onChange={(e) => set("chair", e.target.value)} />
         </div>
         <div>
-          <Label>Last Meeting</Label>
+          <Label>Last meeting (previous)</Label>
           <Input
             type="date"
             value={value.last_meeting || ""}
-            onChange={(e) => set("last_meeting", e.target.value)}
+            onChange={(e) => applyCadenceOrLast({ last_meeting: e.target.value || null })}
           />
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Defaults to the previous weekday occurrence of this cadence.
+          </p>
         </div>
         <div>
-          <Label>Next Meeting</Label>
+          <Label>Next meeting</Label>
           <Input
             type="date"
             value={value.next_meeting || ""}
-            onChange={(e) => set("next_meeting", e.target.value)}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (!v) {
+                setNextLocked(false);
+                onChange({
+                  ...value,
+                  next_meeting: suggestNextMeetingDate(value.last_meeting, value.cadence),
+                });
+                return;
+              }
+              const snapped = isWeekdayIso(v) ? v : snapToWeekdayIso(v, "forward");
+              setNextLocked(true);
+              set("next_meeting", snapped);
+            }}
           />
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Suggested from last meeting + cadence (weekdays only). Edit to keep a custom date.
+          </p>
         </div>
       </div>
       <div>
@@ -1540,7 +1608,9 @@ function CadenceMonthCalendar({
           return (
             <div
               key={`${iso || "e"}-${i}`}
-              className="min-h-[4.5rem] rounded border border-border bg-surface p-1"
+              className={`min-h-[4.5rem] rounded border border-border p-1 ${
+                i % 7 >= 5 ? "bg-muted/40 text-muted-foreground" : "bg-surface"
+              }`}
             >
               <div className="mb-1 font-semibold text-muted-foreground">{day || ""}</div>
               {items.map((c) => {
