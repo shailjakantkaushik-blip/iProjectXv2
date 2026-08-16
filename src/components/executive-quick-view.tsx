@@ -62,7 +62,6 @@ function kindLabel(kind: string) {
 }
 
 function QuestionPanel({
-  label,
   question,
   answer,
   detail,
@@ -70,7 +69,6 @@ function QuestionPanel({
   explain,
   onSelect,
 }: {
-  label: string;
   question: string;
   answer: string;
   detail: string;
@@ -82,8 +80,6 @@ function QuestionPanel({
     <div
       role="button"
       tabIndex={0}
-      title={question}
-      aria-label={question}
       onClick={onSelect}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -91,24 +87,22 @@ function QuestionPanel({
           onSelect();
         }
       }}
-      className={`cursor-pointer rounded-lg border px-3 py-2.5 text-left transition-colors ${
+      className={`cursor-pointer rounded-lg border px-3 py-3 text-left transition-colors ${
         active
           ? "border-primary/40 bg-primary/5"
           : "border-border bg-background hover:border-primary/30"
       }`}
     >
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          {label}
-        </p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-medium leading-snug text-foreground">{question}</p>
         {explain ? (
           <span onClick={(e) => e.stopPropagation()}>
             <ExplainThis explanation={explain} size="xs" />
           </span>
         ) : null}
       </div>
-      <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-foreground">{answer}</p>
-      <p className="mt-0.5 truncate text-xs text-muted-foreground">{detail}</p>
+      <p className="mt-2 text-2xl font-semibold tabular-nums tracking-tight text-foreground">{answer}</p>
+      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{detail}</p>
     </div>
   );
 }
@@ -118,7 +112,7 @@ export function ExecutiveQuickView({
   approvedFunding,
   totalIncurred,
   totalForecast,
-  remaining: _remaining,
+  remaining,
   monthlySpend,
   segmentation,
   gates,
@@ -333,43 +327,41 @@ export function ExecutiveQuickView({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2">
         <QuestionPanel
-          label="Decide"
           question="Do you need to decide?"
           answer={String(briefing.decisionsWaiting)}
-          detail={briefing.decisionsWaiting ? "In queue" : "None waiting"}
+          detail={
+            briefing.decisionsWaiting ? "Waiting on steering" : "Nothing in the queue in this filter."
+          }
           active={askKind === "decision"}
           explain={briefing.questionExplains.decisions}
           onSelect={() => selectQuestion("decision")}
         />
         <QuestionPanel
-          label="Money"
           question="Is the money still inside the envelope?"
           answer={money(totalForecast)}
           detail={
             briefing.moneyAtRisk > 0
-              ? `${money(briefing.moneyAtRisk)} over`
-              : "Inside envelope"
+              ? `${money(briefing.moneyAtRisk)} above budget`
+              : `${money(remaining)} still unspent`
           }
           active={askKind === "money"}
           explain={briefing.questionExplains.money}
           onSelect={() => selectQuestion("money")}
         />
         <QuestionPanel
-          label="Time"
           question="Are we on time?"
           answer={String(briefing.lateGateCount + briefing.overdueCount)}
-          detail={`${briefing.lateGateCount} late · ${briefing.overdueCount} overdue`}
+          detail={`${briefing.lateGateCount} late gates · ${briefing.overdueCount} overdue`}
           active={askKind === "schedule"}
           explain={briefing.questionExplains.time}
           onSelect={() => selectQuestion("schedule")}
         />
         <QuestionPanel
-          label="Risk"
           question="What could still hurt us?"
           answer={String(briefing.criticalRisks)}
-          detail={briefing.criticalRisks ? "Open critical" : "None open"}
+          detail={briefing.criticalRisks ? "Open critical risks" : "No critical risks open in this filter."}
           active={askKind === "risk"}
           explain={briefing.questionExplains.risk}
           onSelect={() => selectQuestion("risk")}
