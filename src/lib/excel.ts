@@ -527,7 +527,7 @@ export async function downloadTemplate() {
     ["FY Allocations", "Set budget and forecast $ per FY. CapEx/OpEx/Benefits are optional detail of the budget split. Optional stream_code."],
     ["Benefits", "Add benefit lines; keep Projects.benefits_target / benefits_realised equal to the sum of lines."],
     ["ROI %", "Target ROI on Projects. Leave blank to let the app compute from benefits_target and budget."],
-    ["Capacity", "resource_allocations.allocation_percent = % of person-month. Optional stream_code scopes the allocation to a stream."],
+    ["Capacity", "resource_allocations.allocated_hours = plan hours from Estimation Planning (stream + stage gate). allocation_percent is derived % of person-month."],
   ];
 
   const sheets: Array<{ name: string; headers: string[]; rows: Dict[] }> = [];

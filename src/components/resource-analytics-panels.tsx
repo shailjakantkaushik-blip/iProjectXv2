@@ -177,18 +177,33 @@ export function ResourceAnalyticsPanels({
       const { data: entries, error: e2 } = await (supabase as any)
         .from("timesheet_entries")
         .select(
-          "timesheet_id,project_id,stream_id,stage_gate_id,billable,labor_cost,hours_mon,hours_tue,hours_wed,hours_thu,hours_fri,hours_sat,hours_sun",
+          "timesheet_id,project_id,work_item_id,stream_id,stage_gate_id,billable,labor_cost,hours_mon,hours_tue,hours_wed,hours_thu,hours_fri,hours_sat,hours_sun",
         )
         .in("timesheet_id", ids);
       if (e2) throw e2;
+      const wiIds = Array.from(
+        new Set(((entries ?? []) as any[]).map((e) => e.work_item_id).filter(Boolean)),
+      ) as string[];
+      const wiById = new Map<
+        string,
+        { stream_id?: string | null; stage_gate_id?: string | null }
+      >();
+      if (wiIds.length) {
+        const { data: wis } = await supabase
+          .from("work_items" as any)
+          .select("id,stream_id,stage_gate_id")
+          .in("id", wiIds);
+        for (const w of (wis ?? []) as any[]) wiById.set(w.id, w);
+      }
       return ((entries ?? []) as any[]).map((e) => {
         const ts = sheetById.get(e.timesheet_id) as any;
         const weekStart = ts?.week_start ? String(ts.week_start).slice(0, 10) : null;
+        const wi = e.work_item_id ? wiById.get(e.work_item_id) : undefined;
         return {
           resource_id: ts?.resource_id ?? null,
           project_id: e.project_id,
-          stream_id: e.stream_id,
-          stage_gate_id: e.stage_gate_id,
+          stream_id: e.stream_id || wi?.stream_id || null,
+          stage_gate_id: e.stage_gate_id || wi?.stage_gate_id || null,
           period_month: normMonth(weekStart),
           week_start: weekStart,
           hours: entryHours(e),
@@ -240,13 +255,13 @@ export function ResourceAnalyticsPanels({
   const projectsById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
   const projectsOrdered = useMemo(() => [...projects].sort(compareProjectsByCodeName), [projects]);
   const resourcesOrdered = useMemo(
-    () => [...resources].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })),
+    () =>
+      [...resources].sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+      ),
     [resources],
   );
-  const resourceNames = useMemo(
-    () => new Map(resources.map((r) => [r.id, r.name])),
-    [resources],
-  );
+  const resourceNames = useMemo(() => new Map(resources.map((r) => [r.id, r.name])), [resources]);
   const capacityByResource = useMemo(
     () => new Map(resources.map((r) => [r.id, Number(r.capacity_hours_week) || 40])),
     [resources],
@@ -348,7 +363,17 @@ export function ResourceAnalyticsPanels({
       if (!inMonthRange(a.period_month, monthFrom, monthTo)) return false;
       return true;
     });
-  }, [scopedPlans, projectFilter, streamFilter, resourceFilter, monthFrom, monthTo, selectedGateIds, gateFilter, gateLabels]);
+  }, [
+    scopedPlans,
+    projectFilter,
+    streamFilter,
+    resourceFilter,
+    monthFrom,
+    monthTo,
+    selectedGateIds,
+    gateFilter,
+    gateLabels,
+  ]);
 
   const filteredActuals = useMemo(() => {
     return scopedActuals.filter((a: TimesheetEffortRow) => {
@@ -367,7 +392,17 @@ export function ResourceAnalyticsPanels({
       if (!inMonthRange(a.period_month || a.week_start, monthFrom, monthTo)) return false;
       return true;
     });
-  }, [scopedActuals, projectFilter, streamFilter, resourceFilter, monthFrom, monthTo, selectedGateIds, gateFilter, gateLabels]);
+  }, [
+    scopedActuals,
+    projectFilter,
+    streamFilter,
+    resourceFilter,
+    monthFrom,
+    monthTo,
+    selectedGateIds,
+    gateFilter,
+    gateLabels,
+  ]);
 
   const filteredDemand = useMemo(() => {
     return scopedDemand.filter((d: WorkItemDemandSlice) => {
@@ -378,7 +413,17 @@ export function ResourceAnalyticsPanels({
       if (!inMonthRange(d.period_month, monthFrom, monthTo)) return false;
       return true;
     });
-  }, [scopedDemand, projectFilter, streamFilter, resourceFilter, monthFrom, monthTo, selectedGateIds, gateFilter, gateLabels]);
+  }, [
+    scopedDemand,
+    projectFilter,
+    streamFilter,
+    resourceFilter,
+    monthFrom,
+    monthTo,
+    selectedGateIds,
+    gateFilter,
+    gateLabels,
+  ]);
 
   const rows = useMemo(
     () =>
@@ -489,7 +534,8 @@ export function ResourceAnalyticsPanels({
         <SectionTitle>Resource cost (FTE actual)</SectionTitle>
         <p className="text-sm text-muted-foreground">
           Cost visibility is limited to roles enabled by your organisation admin (Permissions →
-          capability “Timesheet / resource cost view”). Default roles: Org Admin and Project Manager.
+          capability “Timesheet / resource cost view”). Default roles: Org Admin and Project
+          Manager.
         </p>
       </SectionFrame>
     );
@@ -504,13 +550,14 @@ export function ResourceAnalyticsPanels({
           <SectionTitle>
             {mode === "cost"
               ? "FTE cost: allocation, work-item demand & timesheets"
-              : "Allocation vs work-item demand vs actual"}
+              : "Estimation plan vs timesheet actuals"}
           </SectionTitle>
           <p className="text-xs text-muted-foreground">
-            Alloc hours from resource allocations (Plan). Demand hours and Demand FTE $ from work-item
-            estimate hours × resource cost rates. Actual hours and Actual FTE $ from approved timesheets
-            (feeds incurred labor). Filter by period, project, stream, stage gate, and resource;
-            group by resource, project, stream, stage gate, program, portfolio, or month.
+            <strong>Plan h</strong> are hours of work from Project Estimation Planning, applied per
+            stream and phase into resource allocations. <strong>Actual h</strong> are approved
+            timesheets. Demand h / Demand FTE $ are work-item estimates (Demand layer — not Plan).
+            Filter by period, project, stream, stage gate, and resource; group by resource, project,
+            stream, stage gate, program, portfolio, or month.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -649,15 +696,11 @@ export function ResourceAnalyticsPanels({
           }`}
         >
           <KpiCard label="Period" value={periodLabel} accent="#8b5cf6" />
-          <KpiCard label="Alloc plan h" value={totAlloc.toFixed(1)} accent="#3b82f6" />
+          <KpiCard label="Plan h" value={totAlloc.toFixed(1)} accent="#3b82f6" />
           <KpiCard label="WI demand h" value={totDemand.toFixed(1)} accent="#6366f1" />
           <KpiCard label="Actual h" value={totAct.toFixed(1)} accent="#0ea5e9" />
           <KpiCard label="Billable h" value={totBillable.toFixed(1)} accent="#059669" />
-          <KpiCard
-            label="Non-billable h"
-            value={totNonBillable.toFixed(1)}
-            accent="#a855f7"
-          />
+          <KpiCard label="Non-billable h" value={totNonBillable.toFixed(1)} accent="#a855f7" />
           {canViewCost ? (
             <>
               <KpiCard label="Demand FTE $" value={money(totPlanFte)} accent="#f59e0b" />
@@ -682,7 +725,7 @@ export function ResourceAnalyticsPanels({
           <thead className="sticky top-0 z-[1] bg-[#f1f3f6]">
             <tr>
               <th className="min-w-[12rem]">Dimension</th>
-              <th className="st-num whitespace-nowrap">Alloc h</th>
+              <th className="st-num whitespace-nowrap">Plan h</th>
               <th className="st-num whitespace-nowrap">Demand h</th>
               <th className="st-num whitespace-nowrap">Gap h</th>
               <th className="st-num whitespace-nowrap">Actual h</th>
@@ -720,9 +763,7 @@ export function ResourceAnalyticsPanels({
                   {showCost && (
                     <td className="st-num whitespace-nowrap">{money(r.planned_labor_cost)}</td>
                   )}
-                  {showCost && (
-                    <td className="st-num whitespace-nowrap">{money(r.labor_cost)}</td>
-                  )}
+                  {showCost && <td className="st-num whitespace-nowrap">{money(r.labor_cost)}</td>}
                 </tr>
               ))
             )}

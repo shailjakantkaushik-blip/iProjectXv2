@@ -1966,6 +1966,7 @@ export type Database = {
           org_id: string
           period_month: string
           project_id: string
+          stage_gate_id: string | null
           stream_id: string | null
           resource_id: string
           role_on_project: string | null
@@ -1979,6 +1980,7 @@ export type Database = {
           org_id: string
           period_month: string
           project_id: string
+          stage_gate_id?: string | null
           stream_id?: string | null
           resource_id: string
           role_on_project?: string | null
@@ -1992,12 +1994,20 @@ export type Database = {
           org_id?: string
           period_month?: string
           project_id?: string
+          stage_gate_id?: string | null
           stream_id?: string | null
           resource_id?: string
           role_on_project?: string | null
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "resource_allocations_stage_gate_id_fkey"
+            columns: ["stage_gate_id"]
+            isOneToOne: false
+            referencedRelation: "stage_gates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "resource_allocations_stream_id_fkey"
             columns: ["stream_id"]
