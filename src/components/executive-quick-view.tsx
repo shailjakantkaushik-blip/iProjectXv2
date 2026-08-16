@@ -116,7 +116,7 @@ export function ExecutiveQuickView({
   approvedFunding,
   totalIncurred,
   totalForecast,
-  remaining,
+  remaining: _remaining,
   monthlySpend,
   segmentation,
   gates,
