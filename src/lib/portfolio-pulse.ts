@@ -11,14 +11,10 @@ import {
   type RagTone,
 } from "@/lib/project-health-engine";
 import { projectApprovedFunding, projectForecast } from "@/lib/project-finance";
+import { worstSteeringRag } from "@/lib/ops-enhancements";
 
 export type PulseAreaKey =
-  | "financial"
-  | "delivery"
-  | "resource"
-  | "risk"
-  | "benefits"
-  | "dependencies";
+  "financial" | "delivery" | "resource" | "risk" | "benefits" | "dependencies";
 
 export const PULSE_AREAS: { key: PulseAreaKey; label: string }[] = [
   { key: "financial", label: "Financial" },
@@ -52,6 +48,8 @@ export type PulseWeekChange = {
 export type PortfolioPulseResult = {
   healthPct: number;
   rag: RagTone;
+  /** Worst register/override RAG — steering colour, not the pulse score. */
+  steeringRag: RagTone;
   areas: PulseAreaRow[];
   week: PulseWeekChange;
   projectCount: number;
@@ -205,6 +203,7 @@ export function buildPortfolioPulse(opts: {
 
   const healthPct = Math.round(avg(engines.map((e) => e.engine.score)));
   const rag = scoreToRag(healthPct);
+  const steeringRag = worstSteeringRag(opts.projects.map((row) => row.project));
 
   const areaScores = {} as Record<PulseAreaKey, number>;
   for (const area of PULSE_AREAS) {
@@ -268,14 +267,13 @@ export function buildPortfolioPulse(opts: {
   }
 
   const bullets: string[] = [];
-  if (deteriorated) bullets.push(`${deteriorated} project${deteriorated === 1 ? "" : "s"} deteriorated`);
+  if (deteriorated)
+    bullets.push(`${deteriorated} project${deteriorated === 1 ? "" : "s"} deteriorated`);
   if (improved) bullets.push(`${improved} project${improved === 1 ? "" : "s"} improved`);
   if (Math.abs(forecastVarianceDelta) >= 1000) {
     const abs = Math.round(Math.abs(forecastVarianceDelta));
     const dir = forecastVarianceDelta >= 0 ? "increased" : "decreased";
-    bullets.push(
-      `$${abs.toLocaleString()} forecast variance ${dir}`,
-    );
+    bullets.push(`$${abs.toLocaleString()} forecast variance ${dir}`);
   }
   if (risksBecameCritical) {
     bullets.push(
@@ -294,6 +292,7 @@ export function buildPortfolioPulse(opts: {
   return {
     healthPct: clamp(healthPct),
     rag,
+    steeringRag,
     areas,
     week: {
       projectsDeteriorated: deteriorated,
