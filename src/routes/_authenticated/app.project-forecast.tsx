@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -7,9 +7,23 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth, isAdmin } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
-import { fetchOrgStreams } from "@/lib/project-streams";
-import { RESOURCES_SELECT } from "@/lib/query-selects";
+import { RESOURCES_SELECT, STAGE_GATE_DEFINITIONS_SELECT } from "@/lib/query-selects";
 import { dailyRateFromHourly, isProjectKickedOff } from "@/lib/ops-enhancements";
+import { deliveryMethodsQueryKey, fetchDeliveryMethods, findDeliveryMethod } from "@/lib/delivery-methods";
+import {
+  applyForecastToProjectPlan,
+  daysToMonths,
+  FORECAST_COST_CATEGORIES,
+  layoutForecastPhases,
+  loadForecastPhases,
+  mergeForecastPhases,
+  monthsToDays,
+  parseForecastPhaseNotes,
+  persistForecastPhases,
+  phasesForDeliveryMethod,
+  type ForecastPhaseRow,
+} from "@/lib/project-forecast";
+import { ForecastPhaseGantt } from "@/components/forecast-phase-gantt";
 import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/_authenticated/app/project-forecast")({
@@ -22,10 +36,13 @@ const money = (n: number) =>
 function ProjectForecastPage() {
   const { organization, session, profile, roles } = useAuth();
   const orgId = organization?.id;
+  const fyStartMonth = organization?.fy_start_month || 4;
   const qc = useQueryClient();
   const admin = isAdmin(roles);
   const [projectId, setProjectId] = useState("");
   const [dragResource, setDragResource] = useState<string | null>(null);
+  const [planStart, setPlanStart] = useState("");
+  const [phaseDraft, setPhaseDraft] = useState<ForecastPhaseRow[]>([]);
 
   const { data: projects = [] } = useQuery({
     queryKey: projectOptionsQueryKey(orgId),
@@ -36,50 +53,45 @@ function ProjectForecastPage() {
   const { data: project } = useQuery({
     queryKey: ["project", projectId, "forecast-head"],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("projects")
-        .select("*")
-        .eq("id", projectId)
-        .maybeSingle();
+      const { data } = await supabase.from("projects").select("*").eq("id", projectId).maybeSingle();
       return data as any;
     },
     enabled: !!projectId,
   });
 
-  const { data: streams = [] } = useQuery({
-    queryKey: ["project_streams", orgId, projectId],
-    queryFn: () => fetchOrgStreams(orgId!),
-    enabled: !!orgId && !!projectId,
+  const { data: deliveryMethods = [] } = useQuery({
+    queryKey: deliveryMethodsQueryKey(orgId),
+    queryFn: () => fetchDeliveryMethods(orgId!, { activeOnly: true }),
+    enabled: !!orgId,
   });
 
-  const phases = useMemo(
-    () =>
-      (streams as any[])
-        .filter((s) => s.project_id === projectId)
-        .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)),
-    [streams, projectId],
-  );
+  const { data: gateDefs = [] } = useQuery({
+    queryKey: ["stage_gate_definitions", orgId],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("stage_gate_definitions")
+          .select(STAGE_GATE_DEFINITIONS_SELECT as "*")
+          .eq("org_id", orgId!)
+          .eq("is_active", true)
+          .order("sort_order")
+      ).data ?? [],
+    enabled: !!orgId,
+  });
 
   const { data: resources = [] } = useQuery({
     queryKey: ["resources", orgId],
     queryFn: async () =>
-      (
-        await supabase
-          .from("resources")
-          .select(RESOURCES_SELECT as "*")
-          .eq("status", "Active")
-      ).data ?? [],
+      (await supabase.from("resources").select(RESOURCES_SELECT as "*").eq("status", "Active")).data ??
+      [],
     enabled: !!orgId,
   });
 
   const { data: allocations = [] } = useQuery({
     queryKey: ["resource_allocations", orgId, "capacity"],
     queryFn: async () =>
-      (
-        await supabase
-          .from("resource_allocations")
-          .select("resource_id,allocated_hours,allocation_percent")
-      ).data ?? [],
+      (await supabase.from("resource_allocations").select("resource_id,allocated_hours,allocation_percent"))
+        .data ?? [],
     enabled: !!orgId,
   });
 
@@ -95,6 +107,12 @@ function ProjectForecastPage() {
       return data as any;
     },
     enabled: !!orgId && !!projectId,
+  });
+
+  const { data: storedPhases = [] } = useQuery({
+    queryKey: ["project_forecast_phases", forecast?.id],
+    queryFn: () => loadForecastPhases(forecast.id),
+    enabled: !!forecast?.id,
   });
 
   const { data: phaseRes = [] } = useQuery({
@@ -122,15 +140,50 @@ function ProjectForecastPage() {
     enabled: !!forecast?.id,
   });
 
+  const method = useMemo(
+    () =>
+      project
+        ? (project.delivery_method_id &&
+            deliveryMethods.find((m) => m.id === project.delivery_method_id)) ||
+          findDeliveryMethod(deliveryMethods, project.delivery_method)
+        : undefined,
+    [project, deliveryMethods],
+  );
+
+  const templateNames = useMemo(
+    () =>
+      project
+        ? phasesForDeliveryMethod(deliveryMethods, gateDefs as any[], project)
+        : [],
+    [deliveryMethods, gateDefs, project],
+  );
+
   const locked = forecast?.status === "locked";
   const kickedOff = project ? isProjectKickedOff(project) : false;
   const sponsorMatch = Boolean(
     project?.sponsor &&
-    (String(profile?.full_name || "").toLowerCase() === String(project.sponsor).toLowerCase() ||
-      String(session?.user?.email || "").toLowerCase() === String(project.sponsor).toLowerCase()),
+      (String(profile?.full_name || "").toLowerCase() === String(project.sponsor).toLowerCase() ||
+        String(session?.user?.email || "").toLowerCase() === String(project.sponsor).toLowerCase()),
   );
   const canUnlock = admin || sponsorMatch;
   const canEdit = !locked;
+
+  useEffect(() => {
+    const fromProject = (project?.planned_start_date || project?.start_date || "").slice(0, 10);
+    const fromForecast = (forecast?.plan_start_date || "").slice(0, 10);
+    setPlanStart(fromProject || fromForecast || "");
+  }, [projectId, project?.planned_start_date, project?.start_date, forecast?.plan_start_date]);
+
+  useEffect(() => {
+    const stored =
+      storedPhases.length > 0 ? storedPhases : parseForecastPhaseNotes(forecast?.notes);
+    setPhaseDraft(mergeForecastPhases(templateNames, stored));
+  }, [templateNames, storedPhases, forecast?.notes, forecast?.id]);
+
+  const phases = useMemo(
+    () => layoutForecastPhases(phaseDraft, planStart || null),
+    [phaseDraft, planStart],
+  );
 
   const ensure = useMutation({
     mutationFn: async () => {
@@ -142,13 +195,27 @@ function ProjectForecastPage() {
           project_id: projectId,
           status: kickedOff ? "locked" : "draft",
           locked_at: kickedOff ? new Date().toISOString() : null,
+          plan_start_date: planStart || null,
         })
         .select("*")
         .single();
       if (error) throw error;
+      const laid = layoutForecastPhases(
+        mergeForecastPhases(templateNames, []),
+        planStart || null,
+      );
+      await persistForecastPhases({
+        orgId: orgId!,
+        projectId,
+        forecastId: data.id,
+        phases: laid,
+      });
       return data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["project_forecasts", orgId, projectId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["project_forecasts", orgId, projectId] });
+      qc.invalidateQueries({ queryKey: ["project_forecast_phases"] });
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -174,11 +241,26 @@ function ProjectForecastPage() {
   const laborByPhase = useMemo(() => {
     const m = new Map<string, number>();
     for (const r of phaseRes) {
-      const sid = r.stream_id || "";
-      m.set(sid, (m.get(sid) || 0) + Number(r.labor_cost || 0));
+      const key = r.phase_name || r.forecast_phase_id || r.stream_id || "";
+      m.set(key, (m.get(key) || 0) + Number(r.labor_cost || 0));
     }
     return m;
   }, [phaseRes]);
+
+  const otherByPhase = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of otherCosts) {
+      const key = c.forecast_phase_id || "";
+      if (!key) continue;
+      m.set(key, (m.get(key) || 0) + Number(c.amount || 0));
+    }
+    return m;
+  }, [otherCosts]);
+
+  const laborForPhase = (ph: ForecastPhaseRow) =>
+    (laborByPhase.get(ph.gate_name) || 0) +
+    (ph.id ? laborByPhase.get(ph.id) || 0 : 0);
+  const otherForPhase = (ph: ForecastPhaseRow) => (ph.id ? otherByPhase.get(ph.id) || 0 : 0);
 
   const laborTotal = phaseRes.reduce((s, r) => s + Number(r.labor_cost || 0), 0);
   const otherTotal = otherCosts.reduce((s, r) => s + Number(r.amount || 0), 0);
@@ -216,19 +298,25 @@ function ProjectForecastPage() {
   const usedHours = useMemo(() => {
     const m = new Map<string, number>();
     for (const a of allocations as any[]) {
-      const id = a.resource_id;
-      m.set(id, (m.get(id) || 0) + Number(a.allocated_hours || 0));
+      m.set(a.resource_id, (m.get(a.resource_id) || 0) + Number(a.allocated_hours || 0));
     }
     return m;
   }, [allocations]);
 
+  const rowsForPhase = (ph: ForecastPhaseRow) =>
+    phaseRes.filter(
+      (r) =>
+        r.phase_name === ph.gate_name ||
+        (ph.id && r.forecast_phase_id === ph.id),
+    );
+
   const addResourceToPhase = useMutation({
     mutationFn: async ({
-      streamId,
+      phase,
       resourceId,
       days,
     }: {
-      streamId: string;
+      phase: ForecastPhaseRow;
       resourceId: string;
       days: number;
     }) => {
@@ -240,17 +328,27 @@ function ProjectForecastPage() {
       const res = (resources as any[]).find((r) => r.id === resourceId);
       const daily = dailyRateFromHourly(res?.cost_rate);
       const labor = Math.round(daily * days * 100) / 100;
-      const { error } = await supabase.from("project_forecast_phase_resources" as any).insert({
+      const payload: Record<string, unknown> = {
         org_id: orgId,
         forecast_id: fid,
         project_id: projectId,
-        stream_id: streamId,
+        stream_id: null,
+        phase_name: phase.gate_name,
+        forecast_phase_id: phase.id || null,
         resource_id: resourceId,
         effort_days: days,
         daily_rate: daily,
         labor_cost: labor,
-      });
-      if (error) throw error;
+      };
+      const first = await supabase.from("project_forecast_phase_resources" as any).insert(payload);
+      if (first.error) {
+        delete payload.phase_name;
+        delete payload.forecast_phase_id;
+        const { error } = await supabase
+          .from("project_forecast_phase_resources" as any)
+          .insert(payload);
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["project_forecast_phase_resources"] });
@@ -285,32 +383,38 @@ function ProjectForecastPage() {
     mutationFn: async () => {
       let fid = forecast?.id;
       if (!fid) fid = (await ensure.mutateAsync()).id;
-      const { error } = await supabase.from("project_forecast_other_costs" as any).insert({
+      const payload: Record<string, unknown> = {
         org_id: orgId,
         forecast_id: fid,
         project_id: projectId,
         heading: "Other cost",
+        category: "Other",
         amount: 0,
         sort_order: otherCosts.length,
-      });
-      if (error) throw error;
+      };
+      const first = await supabase.from("project_forecast_other_costs" as any).insert(payload);
+      if (first.error) {
+        delete payload.category;
+        delete payload.forecast_phase_id;
+        const { error } = await supabase.from("project_forecast_other_costs" as any).insert(payload);
+        if (error) throw error;
+      }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["project_forecast_other_costs"] }),
   });
 
   const patchOther = useMutation({
-    mutationFn: async ({
-      id,
-      heading,
-      amount,
-    }: {
+    mutationFn: async (patch: {
       id: string;
       heading?: string;
       amount?: number;
+      category?: string;
+      forecast_phase_id?: string | null;
     }) => {
+      const { id, ...rest } = patch;
       const { error } = await supabase
         .from("project_forecast_other_costs" as any)
-        .update({ heading, amount })
+        .update(rest)
         .eq("id", id);
       if (error) throw error;
     },
@@ -365,25 +469,78 @@ function ProjectForecastPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const minDate = phases.reduce((m, s) => {
-    const d = s.planned_start_date || s.start_date;
-    return d && (!m || d < m) ? d : m;
-  }, "" as string);
-  const maxDate = phases.reduce((m, s) => {
-    const d = s.planned_end_date || s.end_date;
-    return d && (!m || d > m) ? d : m;
-  }, "" as string);
-  const span =
-    minDate && maxDate
-      ? Math.max(1, (new Date(maxDate).getTime() - new Date(minDate).getTime()) / 86400000)
-      : 1;
+  const savePhases = useMutation({
+    mutationFn: async (rows: ForecastPhaseRow[]) => {
+      let fid = forecast?.id;
+      if (!fid) fid = (await ensure.mutateAsync()).id;
+      const laid = layoutForecastPhases(rows, planStart || null);
+      return persistForecastPhases({
+        orgId: orgId!,
+        projectId,
+        forecastId: fid,
+        phases: laid,
+        existingNotes: forecast?.notes,
+      });
+    },
+    onSuccess: (rows) => {
+      setPhaseDraft(rows);
+      qc.invalidateQueries({ queryKey: ["project_forecast_phases"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const applyPlan = useMutation({
+    mutationFn: async (onlyFillEmpty: boolean) => {
+      if (!orgId || !projectId) throw new Error("Select a project first");
+      if (!planStart) throw new Error("Set the project start date first");
+      let fid = forecast?.id;
+      if (!fid) fid = (await ensure.mutateAsync()).id;
+      const laid = layoutForecastPhases(phaseDraft, planStart);
+      await persistForecastPhases({
+        orgId,
+        projectId,
+        forecastId: fid,
+        phases: laid,
+        existingNotes: forecast?.notes,
+      });
+      return applyForecastToProjectPlan({
+        orgId,
+        projectId,
+        startDate: planStart,
+        phases: laid,
+        onlyFillEmpty,
+      });
+    },
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["project", projectId] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["stage_gates"] });
+      qc.invalidateQueries({ queryKey: ["project_forecasts"] });
+      toast.success(
+        r.plannedEnd
+          ? `Project plan updated through ${r.plannedEnd}`
+          : "Project plan updated from the forecast",
+      );
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const patchPhase = (gateName: string, patch: Partial<ForecastPhaseRow>) => {
+    const next = phaseDraft.map((p) => (p.gate_name === gateName ? { ...p, ...patch } : p));
+    setPhaseDraft(next);
+  };
+
+  const persistPhaseDraft = () => {
+    if (!canEdit) return;
+    savePhases.mutate(phaseDraft);
+  };
 
   return (
     <div>
       <PageHeading
         icon="📊"
-        title="Project Forecast"
-        subtitle="Phase Gantt, drag resources onto a phase with effort days, other costs, and a persisted estimate that can override FAC. Locked after kick-off unless the sponsor approves."
+        title="Project Forecast Estimation"
+        subtitle="Estimate effort by delivery-method stage-gate phase, assign resources, and push the resulting timeline onto the project plan when the start date is set."
       />
 
       <SectionFrame>
@@ -403,6 +560,24 @@ function ProjectForecastPage() {
               ))}
             </select>
           </label>
+          {project && (
+            <div className="text-xs text-muted-foreground">
+              Delivery method: <span className="font-semibold text-foreground">{method?.name || project.delivery_method || "—"}</span>
+            </div>
+          )}
+          <label className="text-xs">
+            Project start
+            <input
+              type="date"
+              className="st-input mt-1"
+              value={planStart}
+              disabled={!projectId || !canEdit}
+              onChange={(e) => setPlanStart(e.target.value)}
+              onBlur={() => {
+                if (planStart && canEdit) applyPlan.mutate(true);
+              }}
+            />
+          </label>
           {projectId && !forecast && (
             <Button type="button" onClick={() => ensure.mutate()} disabled={ensure.isPending}>
               Create forecast
@@ -418,121 +593,177 @@ function ProjectForecastPage() {
               {locked ? "Unlock (sponsor)" : "Lock estimate"}
             </Button>
           )}
+          {projectId && (
+            <Button
+              type="button"
+              disabled={!planStart || applyPlan.isPending}
+              onClick={() => applyPlan.mutate(false)}
+            >
+              Apply to project plan
+            </Button>
+          )}
+          {projectId && (
+            <Link
+              to="/app/projects/$id"
+              params={{ id: projectId }}
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              Open project
+            </Link>
+          )}
         </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Setting the start date fills empty planned dates and stage-gate dates from this estimate.
+          Phase rows marked override, or dates you later edit on the project, are kept. Use Apply to
+          project plan to refresh computed dates.
+        </p>
       </SectionFrame>
 
       {!projectId ? (
         <p className="text-sm text-muted-foreground">
-          Choose a project to estimate phases and cost.
+          Choose a project to estimate phases, resources, and cost.
         </p>
       ) : (
         <>
           <SectionFrame>
-            <SectionTitle>Phase Gantt</SectionTitle>
-            <div className="space-y-2">
-              {phases.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  No streams/phases on this project yet.
-                </p>
-              )}
-              {phases.map((ph: any) => {
-                const start = ph.planned_start_date || ph.start_date;
-                const end = ph.planned_end_date || ph.end_date;
-                const left =
-                  start && minDate
-                    ? ((new Date(start).getTime() - new Date(minDate).getTime()) /
-                        86400000 /
-                        span) *
-                      100
-                    : 0;
-                const width =
-                  start && end
-                    ? Math.max(
-                        4,
-                        ((new Date(end).getTime() - new Date(start).getTime()) / 86400000 / span) *
-                          100,
-                      )
-                    : 20;
-                const phaseLabor = laborByPhase.get(ph.id) || 0;
-                return (
-                  <div
-                    key={ph.id}
-                    className="rounded-md border border-dashed border-border p-2"
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const rid = e.dataTransfer.getData("text/resource-id") || dragResource;
-                      if (!rid || !canEdit) return;
-                      const days = Number(
-                        window.prompt("Effort days for this resource on this phase?", "5") || "0",
-                      );
-                      if (!(days > 0)) return;
-                      addResourceToPhase.mutate({ streamId: ph.id, resourceId: rid, days });
-                    }}
-                  >
-                    <div className="mb-1 flex justify-between text-xs">
-                      <span className="font-semibold">{ph.name || ph.code || "Phase"}</span>
-                      <span className="tabular-nums">{money(phaseLabor)}</span>
-                    </div>
-                    <div className="relative h-6 rounded bg-slate-100">
-                      <div
-                        className="absolute top-0 h-6 rounded bg-sky-500/80"
-                        style={{ left: `${left}%`, width: `${width}%` }}
-                        title={`${start || "?"} → ${end || "?"}`}
-                      />
-                    </div>
-                    <div className="mt-2 space-y-1">
-                      {phaseRes
-                        .filter((r) => r.stream_id === ph.id)
-                        .map((r) => {
-                          const res = (resources as any[]).find((x) => x.id === r.resource_id);
-                          return (
-                            <div key={r.id} className="flex flex-wrap items-center gap-2 text-xs">
-                              <span className="min-w-[8rem] font-medium">
-                                {res?.name || "Resource"}
-                              </span>
-                              <input
-                                type="number"
-                                min={0}
-                                step={0.5}
-                                className="st-input !w-20 !py-0.5"
-                                defaultValue={r.effort_days}
-                                disabled={!canEdit}
-                                onBlur={(e) =>
-                                  patchEffort.mutate({
-                                    id: r.id,
-                                    days: Number(e.target.value) || 0,
-                                    rate: Number(r.daily_rate) || 0,
-                                  })
-                                }
-                              />
-                              <span>days · {money(r.labor_cost)}</span>
-                              {canEdit && (
-                                <button
-                                  type="button"
-                                  className="text-red-600"
-                                  onClick={() => removePhaseRes.mutate(r.id)}
-                                >
-                                  Remove
-                                </button>
-                              )}
-                            </div>
-                          );
-                        })}
-                    </div>
-                  </div>
-                );
-              })}
+            <SectionTitle>Phase timeline (months &amp; FY)</SectionTitle>
+            <ForecastPhaseGantt
+              phases={phases.map((p) => ({
+                gate_name: p.gate_name,
+                start_date: p.start_date,
+                end_date: p.end_date,
+                cost: laborForPhase(p) + otherForPhase(p),
+              }))}
+              fyStartMonth={fyStartMonth}
+            />
+          </SectionFrame>
+
+          <SectionFrame>
+            <SectionTitle>Advanced estimate — phases, resources, cost</SectionTitle>
+            <p className="mb-3 text-xs text-muted-foreground">
+              Phases come from the {method?.name || "delivery method"} stage-gate template. Duration
+              is calendar days (months ≈ 30 days) and lays out sequentially from the start date.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="st-table text-xs">
+                <thead>
+                  <tr>
+                    <th>Phase</th>
+                    <th className="st-num">Days</th>
+                    <th className="st-num">Months</th>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th>Override dates</th>
+                    <th className="st-num">Labor</th>
+                    <th className="st-num">Other</th>
+                    <th className="st-num">Phase total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {phases.map((ph) => {
+                    const labor = laborForPhase(ph);
+                    const other = otherForPhase(ph);
+                    return (
+                      <tr key={ph.gate_name}>
+                        <td className="font-medium">{ph.gate_name}</td>
+                        <td>
+                          <input
+                            type="number"
+                            min={0}
+                            step={1}
+                            className="st-input !w-20 !py-0.5"
+                            value={ph.duration_days}
+                            disabled={!canEdit}
+                            onChange={(e) =>
+                              patchPhase(ph.gate_name, {
+                                duration_days: Number(e.target.value) || 0,
+                              })
+                            }
+                            onBlur={persistPhaseDraft}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            min={0}
+                            step={0.1}
+                            className="st-input !w-20 !py-0.5"
+                            value={daysToMonths(ph.duration_days)}
+                            disabled={!canEdit}
+                            onChange={(e) =>
+                              patchPhase(ph.gate_name, {
+                                duration_days: monthsToDays(Number(e.target.value) || 0),
+                              })
+                            }
+                            onBlur={persistPhaseDraft}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="date"
+                            className="st-input !py-0.5"
+                            value={ph.start_date || ""}
+                            disabled={!canEdit || !ph.dates_overridden}
+                            onChange={(e) =>
+                              patchPhase(ph.gate_name, { start_date: e.target.value })
+                            }
+                            onBlur={persistPhaseDraft}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="date"
+                            className="st-input !py-0.5"
+                            value={ph.end_date || ""}
+                            disabled={!canEdit || !ph.dates_overridden}
+                            onChange={(e) =>
+                              patchPhase(ph.gate_name, { end_date: e.target.value })
+                            }
+                            onBlur={persistPhaseDraft}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="checkbox"
+                            disabled={!canEdit}
+                            checked={!!ph.dates_overridden}
+                            onChange={(e) => {
+                              patchPhase(ph.gate_name, { dates_overridden: e.target.checked });
+                              window.setTimeout(persistPhaseDraft, 0);
+                            }}
+                          />
+                        </td>
+                        <td className="st-num tabular-nums">{money(labor)}</td>
+                        <td className="st-num tabular-nums">{money(other)}</td>
+                        <td className="st-num tabular-nums font-semibold">{money(labor + other)}</td>
+                      </tr>
+                    );
+                  })}
+                  {phases.length === 0 && (
+                    <tr>
+                      <td colSpan={9} className="py-4 text-center text-muted-foreground">
+                        No stage-gate phases for this delivery method yet.{" "}
+                        <Link
+                          to="/app/stage-gate-config"
+                          className="font-medium text-primary hover:underline"
+                        >
+                          Configure methods &amp; gates
+                        </Link>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </SectionFrame>
 
           <SectionFrame>
-            <SectionTitle>Resources (drag onto a phase)</SectionTitle>
+            <SectionTitle>Resources by phase</SectionTitle>
             <p className="mb-2 text-xs text-muted-foreground">
-              Daily rate = timesheet hourly cost × 8. Capacity shows remaining hours vs weekly
-              capacity.
+              Drag a resource onto a phase, or add from the list. Daily rate = hourly cost × 8.
+              Effort days drive labor cost; phase duration drives the timeline.
             </p>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {(resources as any[]).map((r) => {
                 const cap = Number(r.capacity_hours_week || 0) * 4;
                 const used = usedHours.get(r.id) || 0;
@@ -558,25 +789,145 @@ function ProjectForecastPage() {
                 );
               })}
             </div>
+            <div className="space-y-3">
+              {phases.map((ph) => (
+                <div
+                  key={ph.gate_name}
+                  className="rounded-md border border-dashed border-border p-3"
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const rid = e.dataTransfer.getData("text/resource-id") || dragResource;
+                    if (!rid || !canEdit) return;
+                    const days = Number(
+                      window.prompt("Effort days for this resource on this phase?", "5") || "0",
+                    );
+                    if (!(days > 0)) return;
+                    addResourceToPhase.mutate({ phase: ph, resourceId: rid, days });
+                  }}
+                >
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-sm font-semibold">{ph.gate_name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {ph.start_date || "—"} → {ph.end_date || "—"} · {money(laborForPhase(ph))}
+                    </div>
+                  </div>
+                  {canEdit && (
+                    <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
+                      <select
+                        className="st-input !py-0.5"
+                        defaultValue=""
+                        onChange={(e) => {
+                          const rid = e.target.value;
+                          e.target.value = "";
+                          if (!rid) return;
+                          const days = Number(
+                            window.prompt("Effort days for this resource on this phase?", "5") ||
+                              "0",
+                          );
+                          if (!(days > 0)) return;
+                          addResourceToPhase.mutate({ phase: ph, resourceId: rid, days });
+                        }}
+                      >
+                        <option value="">Assign resource…</option>
+                        {(resources as any[]).map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div className="space-y-1">
+                    {rowsForPhase(ph).map((r) => {
+                      const res = (resources as any[]).find((x) => x.id === r.resource_id);
+                      return (
+                        <div key={r.id} className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="min-w-[8rem] font-medium">{res?.name || "Resource"}</span>
+                          <input
+                            type="number"
+                            min={0}
+                            step={0.5}
+                            className="st-input !w-20 !py-0.5"
+                            defaultValue={r.effort_days}
+                            disabled={!canEdit}
+                            onBlur={(e) =>
+                              patchEffort.mutate({
+                                id: r.id,
+                                days: Number(e.target.value) || 0,
+                                rate: Number(r.daily_rate) || 0,
+                              })
+                            }
+                          />
+                          <span>days · {money(r.labor_cost)}</span>
+                          {canEdit && (
+                            <button
+                              type="button"
+                              className="text-red-600"
+                              onClick={() => removePhaseRes.mutate(r.id)}
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {rowsForPhase(ph).length === 0 && (
+                      <p className="text-xs text-muted-foreground">No resources on this phase yet.</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </SectionFrame>
 
           <SectionFrame>
             <div className="mb-2 flex items-center justify-between">
-              <SectionTitle>Other costs</SectionTitle>
+              <SectionTitle>Further cost categories</SectionTitle>
               {canEdit && (
                 <Button type="button" size="sm" variant="outline" onClick={() => addOther.mutate()}>
-                  <Plus className="mr-1 h-4 w-4" /> Add cost
+                  <Plus className="mr-1 h-4 w-4" /> Add cost category
                 </Button>
               )}
             </div>
             {otherCosts.map((c) => (
               <div key={c.id} className="mb-2 flex flex-wrap items-center gap-2">
                 <input
-                  className="st-input min-w-[12rem]"
+                  className="st-input min-w-[10rem]"
                   defaultValue={c.heading}
                   disabled={!canEdit}
                   onBlur={(e) => patchOther.mutate({ id: c.id, heading: e.target.value })}
                 />
+                <select
+                  className="st-input !w-44"
+                  defaultValue={c.category || "Other"}
+                  disabled={!canEdit}
+                  onChange={(e) => patchOther.mutate({ id: c.id, category: e.target.value })}
+                >
+                  {FORECAST_COST_CATEGORIES.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="st-input !w-48"
+                  defaultValue={c.forecast_phase_id || ""}
+                  disabled={!canEdit}
+                  onChange={(e) =>
+                    patchOther.mutate({
+                      id: c.id,
+                      forecast_phase_id: e.target.value || null,
+                    })
+                  }
+                >
+                  <option value="">Whole project</option>
+                  {phases.map((p) => (
+                    <option key={p.gate_name} value={p.id || ""}>
+                      {p.gate_name}
+                    </option>
+                  ))}
+                </select>
                 <input
                   type="number"
                   className="st-input !w-32"
@@ -600,7 +951,7 @@ function ProjectForecastPage() {
           </SectionFrame>
 
           <SectionFrame>
-            <SectionTitle>Totals</SectionTitle>
+            <SectionTitle>Total project cost estimation</SectionTitle>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <KpiCard label="Labor" value={money(laborTotal)} />
               <KpiCard label="Other costs" value={money(otherTotal)} />

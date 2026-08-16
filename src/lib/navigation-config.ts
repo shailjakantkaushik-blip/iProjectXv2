@@ -47,9 +47,9 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
     heading: "Strategic Alignment",
     items: [
       { to: "/app/projects", label: "Projects", icon: "FolderKanban" },
+      { to: "/app/project-forecast", label: "Project Forecast Estimation", icon: "GanttChart" },
       { to: "/app/programs", label: "Programs", icon: "Layers" },
       { to: "/app/project-infographic", label: "Project Infographic", icon: "Image" },
-      { to: "/app/project-forecast", label: "Project Forecast", icon: "GanttChart" },
       { to: "/app/portfolio-segmentation", label: "Segmentation", icon: "PieChart" },
       { to: "/app/prioritisation", label: "Prioritisation", icon: "Trophy" },
       { to: "/app/portfolio-movements", label: "Movements", icon: "ArrowLeftRight" },
@@ -297,6 +297,7 @@ export function mergeNavigationConfig(
   const base = defaultNavigationConfig(catalog);
   if (!partial || typeof partial !== "object") return base;
   partial = renamePersistedHeading(partial, "Command", "Command Center");
+  partial = renamePersistedHeading(partial, "Portfolio", "Strategic Alignment");
 
   const catalogHeadings = new Set(catalog.map((g) => g.heading));
   const allPaths = new Set(flattenNavItems(catalog).keys());
