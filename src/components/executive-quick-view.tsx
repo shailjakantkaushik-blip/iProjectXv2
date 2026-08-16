@@ -16,9 +16,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { SectionFrame, SectionTitle, RagChip } from "@/components/streamlit";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { CategoryTick } from "@/components/chart-category-tick";
 import { CHART_SERIES, RAG_COLORS } from "@/lib/chart-theme";
 import { PageLoading } from "@/components/page-loading";
 import { projectApprovedFunding } from "@/lib/project-finance";
+import { projectPortfolio } from "@/lib/project-health";
 import { explainRag } from "@/lib/explain-metric";
 import { isRagOverridden } from "@/lib/ops-enhancements";
 import { EnvelopeBullet } from "@/components/envelope-bullet";
@@ -259,7 +261,7 @@ export function ExecutiveQuickView({
   const alignmentDollars = useMemo(() => {
     const m = new Map<string, number>();
     filtered.forEach((p) => {
-      const k = p.portfolio || "Unassigned";
+      const k = projectPortfolio(p);
       m.set(k, (m.get(k) || 0) + projectApprovedFunding(p));
     });
     if (m.size === 0 && segmentation.length) {
@@ -603,10 +605,19 @@ export function ExecutiveQuickView({
               <p className="py-8 text-center text-sm text-muted-foreground">No alignment $ yet</p>
             </SectionFrame>
           ) : (
-            <ExpandableChart title="Envelope by Strategic Alignment" heightClass="h-48">
-              <BarChart data={alignmentDollars} margin={{ top: 16, right: 12, left: 0, bottom: 4 }}>
+            <ExpandableChart title="Envelope by Strategic Alignment" heightClass="h-56">
+              <BarChart
+                data={alignmentDollars}
+                margin={{ top: 16, right: 12, left: 16, bottom: 40 }}
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-                <XAxis dataKey="name" fontSize={11} />
+                <XAxis
+                  dataKey="name"
+                  interval={0}
+                  minTickGap={0}
+                  tick={<CategoryTick />}
+                  height={44}
+                />
                 <YAxis fontSize={10} tickFormatter={(v) => money(Number(v))} />
                 <Tooltip formatter={(v: number | string) => money(Number(v))} />
                 <Bar dataKey="value" radius={[4, 4, 0, 0]} name="Budget">
