@@ -515,13 +515,19 @@ function ExecutiveCockpit() {
       const rows = projects.filter((p: any) => projectPortfolio(p) === cat);
       const approved = rows.reduce((s: number, p: any) => s + projectApprovedFunding(p), 0);
       const actual = rows.reduce((s: number, p: any) => s + projectIncurred(p), 0);
+      const capex = rows.reduce((s: number, p: any) => s + projectCapexApproved(p), 0);
+      const opex = rows.reduce((s: number, p: any) => s + projectOpexApproved(p), 0);
+      const forecast = rows.reduce((s: number, p: any) => s + projectForecast(p), 0);
       const bf = rows.reduce((s: number, p: any) => s + benefitTargetFor(p), 0);
       return {
         name: cat,
         initiatives: rows.length,
         approved,
         actual,
+        capex,
+        opex,
         remaining: Math.max(0, approved - actual),
+        forecast,
         benefits: bf,
         green: rows.filter((p: any) => (displayRag(p) || "").toLowerCase() === "green").length,
         amber: rows.filter((p: any) => (displayRag(p) || "").toLowerCase() === "amber").length,
@@ -866,134 +872,6 @@ function ExecutiveCockpit() {
         </div>
       </SectionFrame>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <SectionFrame exportName="cockpit-health-band" exportTitle="Health">
-          <SectionTitle>Health</SectionTitle>
-          <MixBar green={onTrackK} amber={atRiskK} red={delayedK} />
-          <p className="mt-2 text-xs text-muted-foreground">
-            {total} project{total === 1 ? "" : "s"} · {pct(onTrackK, total || 1)} Green
-          </p>
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            <ScoreStat label="Strategic programs" value={strategicPrograms} />
-            <ScoreStat label="CapEx programs" value={capexPrograms} />
-            <ScoreStat label="Unfunded" value={unfundedInitiatives} />
-          </div>
-        </SectionFrame>
-
-        <SectionFrame exportName="cockpit-governance" exportTitle="Governance">
-          <SectionTitle>Governance</SectionTitle>
-          <div className="mb-3">
-            <div className="mb-1 flex items-baseline justify-between gap-2 text-xs">
-              <span className="font-semibold uppercase tracking-wide text-muted-foreground">
-                Benefits realised
-              </span>
-              <span className="tabular-nums text-muted-foreground">
-                {money(benefitsRealisedK)} of {money(benefitsForecastK)} · {benefitsPct}%
-              </span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-muted">
-              <div className="h-full rounded-full bg-emerald-500" style={{ width: `${benefitsPct}%` }} />
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            <ScoreStat
-              label="Decisions"
-              value={decisionsPending}
-              hint="Awaiting outcome"
-              to="/app/decisions"
-              accent={decisionsPending ? "#2563eb" : undefined}
-            />
-            <ScoreStat
-              label="Overdue actions"
-              value={overdueActions}
-              to="/app/actions"
-              accent={overdueActions ? "#dc2626" : undefined}
-            />
-            <ScoreStat
-              label="Gates (30d)"
-              value={upcomingGates}
-              hint="Planned in 30 days"
-              to="/app/stage-gates"
-              accent={upcomingGates ? "#7c3aed" : undefined}
-            />
-          </div>
-        </SectionFrame>
-      </div>
-
-      <SectionFrame exportName="cockpit-segmentation" exportTitle="Mix by Strategic Alignment">
-        <SectionTitle>Mix by Strategic Alignment</SectionTitle>
-        {segRows.length === 0 ? (
-          <p className="py-6 text-sm text-muted-foreground">No alignment mix yet.</p>
-        ) : (
-          <div className="space-y-4">
-            <ExpandableChart title="Budget vs incurred by Strategic Alignment" heightClass="h-72">
-              <BarChart data={segRows} margin={{ top: 28, right: 16, left: 8, bottom: 40 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" interval={0} minTickGap={0} tick={<CategoryTick />} height={44} />
-                <YAxis fontSize={10} tickFormatter={(v: number) => money(v)} />
-                <Tooltip
-                  formatter={(v: number, n: string) => [money(v), n]}
-                  labelFormatter={(label) => String(label)}
-                />
-                <Legend verticalAlign="top" />
-                <Bar dataKey="approved" name="Budget" fill="#3b82f6" radius={[4, 4, 0, 0]}>
-                  <LabelList
-                    dataKey="approved"
-                    position="top"
-                    style={{ fontSize: 10 }}
-                    formatter={(v: number) => money(v)}
-                  />
-                </Bar>
-                <Bar dataKey="actual" name="Incurred" fill="#10b981" radius={[4, 4, 0, 0]}>
-                  <LabelList
-                    dataKey="actual"
-                    position="top"
-                    style={{ fontSize: 10 }}
-                    formatter={(v: number) => money(v)}
-                  />
-                </Bar>
-              </BarChart>
-            </ExpandableChart>
-            <div className="st-table-wrap overflow-x-auto">
-              <table className="w-full min-w-[720px] text-sm">
-                <thead className="text-xs uppercase text-muted-foreground">
-                  <tr>
-                    <th className="px-2 py-1.5 text-left">Strategic Alignment</th>
-                    <th className="px-2 py-1.5 text-right">Projects</th>
-                    <th className="px-2 py-1.5 text-right">Budget</th>
-                    <th className="px-2 py-1.5 text-right">Incurred</th>
-                    <th className="px-2 py-1.5 text-right">Remaining</th>
-                    <th className="px-2 py-1.5 text-right">Spend</th>
-                    <th className="px-2 py-1.5 text-left">Health</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {segRows.map((r) => (
-                    <tr key={r.name} className="border-t border-border">
-                      <td className="px-2 py-2 font-medium">{r.name}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{r.initiatives}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{money(r.approved)}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{money(r.actual)}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{money(r.remaining)}</td>
-                      <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">
-                        {pct(r.actual, r.approved)}
-                      </td>
-                      <td className="px-2 py-2">
-                        <MixBar green={r.green} amber={r.amber} red={r.red} compact />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              Bars are Budget and Incurred. The table is the same mix with project count, remaining,
-              spend vs envelope, and Green / Amber / Red.
-            </p>
-          </div>
-        )}
-      </SectionFrame>
-
       <SectionFrame
         exportName="cockpit-health"
         exportTitle="Portfolio Health Snapshot"
@@ -1003,6 +881,19 @@ function ExecutiveCockpit() {
           title="Portfolio health matrix"
           compactMaxHeightClass="max-h-[min(520px,70dvh)]"
         >
+          <div className="mb-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)]">
+            <div>
+              <MixBar green={onTrackK} amber={atRiskK} red={delayedK} />
+              <p className="mt-2 text-xs text-muted-foreground">
+                {total} project{total === 1 ? "" : "s"} · {pct(onTrackK, total || 1)} Green
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <ScoreStat label="Strategic programs" value={strategicPrograms} />
+              <ScoreStat label="CapEx programs" value={capexPrograms} />
+              <ScoreStat label="Unfunded" value={unfundedInitiatives} />
+            </div>
+          </div>
           <p className="mb-2 text-[11px] text-muted-foreground">
             All in-scope projects, sorted worst RAG then lowest health score. Click a row for the
             infographic. Health score stays calculated; RAG uses a manual override when set (M).
@@ -1168,6 +1059,133 @@ function ExecutiveCockpit() {
             shown in red. {healthRows.length} row(s).
           </div>
         </ExpandablePanel>
+      </SectionFrame>
+
+      <SectionFrame exportName="cockpit-governance" exportTitle="Governance">
+          <SectionTitle>Governance</SectionTitle>
+          <div className="mb-3">
+            <div className="mb-1 flex items-baseline justify-between gap-2 text-xs">
+              <span className="font-semibold uppercase tracking-wide text-muted-foreground">
+                Benefits realised
+              </span>
+              <span className="tabular-nums text-muted-foreground">
+                {money(benefitsRealisedK)} of {money(benefitsForecastK)} · {benefitsPct}%
+              </span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-muted">
+              <div className="h-full rounded-full bg-emerald-500" style={{ width: `${benefitsPct}%` }} />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <ScoreStat
+              label="Decisions"
+              value={decisionsPending}
+              hint="Awaiting outcome"
+              to="/app/decisions"
+              accent={decisionsPending ? "#2563eb" : undefined}
+            />
+            <ScoreStat
+              label="Overdue actions"
+              value={overdueActions}
+              to="/app/actions"
+              accent={overdueActions ? "#dc2626" : undefined}
+            />
+            <ScoreStat
+              label="Gates (30d)"
+              value={upcomingGates}
+              hint="Planned in 30 days"
+              to="/app/stage-gates"
+              accent={upcomingGates ? "#7c3aed" : undefined}
+            />
+          </div>
+        </SectionFrame>
+
+      <SectionFrame exportName="cockpit-segmentation" exportTitle="Mix by Strategic Alignment">
+        <SectionTitle>Mix by Strategic Alignment</SectionTitle>
+        {segRows.length === 0 ? (
+          <p className="py-6 text-sm text-muted-foreground">No alignment mix yet.</p>
+        ) : (
+          <div className="space-y-4">
+            <ExpandableChart title="Budget, incurred, and forecast by Strategic Alignment" heightClass="h-72">
+              <BarChart data={segRows} margin={{ top: 28, right: 16, left: 8, bottom: 40 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" interval={0} minTickGap={0} tick={<CategoryTick />} height={44} />
+                <YAxis fontSize={10} tickFormatter={(v: number) => money(v)} />
+                <Tooltip
+                  formatter={(v: number, n: string) => [money(v), n]}
+                  labelFormatter={(label) => String(label)}
+                />
+                <Legend verticalAlign="top" />
+                <Bar dataKey="approved" name="Budget" fill="#3b82f6" radius={[4, 4, 0, 0]}>
+                  <LabelList
+                    dataKey="approved"
+                    position="top"
+                    style={{ fontSize: 10 }}
+                    formatter={(v: number) => money(v)}
+                  />
+                </Bar>
+                <Bar dataKey="actual" name="Incurred" fill="#10b981" radius={[4, 4, 0, 0]}>
+                  <LabelList
+                    dataKey="actual"
+                    position="top"
+                    style={{ fontSize: 10 }}
+                    formatter={(v: number) => money(v)}
+                  />
+                </Bar>
+                <Bar dataKey="forecast" name="Forecast" fill="#f59e0b" radius={[4, 4, 0, 0]}>
+                  <LabelList
+                    dataKey="forecast"
+                    position="top"
+                    style={{ fontSize: 10 }}
+                    formatter={(v: number) => money(v)}
+                  />
+                </Bar>
+              </BarChart>
+            </ExpandableChart>
+            <div className="st-table-wrap overflow-x-auto">
+              <table className="w-full min-w-[960px] text-sm">
+                <thead className="text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-2 py-1.5 text-left">Strategic Alignment</th>
+                    <th className="px-2 py-1.5 text-right">Projects</th>
+                    <th className="px-2 py-1.5 text-right">Budget</th>
+                    <th className="px-2 py-1.5 text-right">CapEx</th>
+                    <th className="px-2 py-1.5 text-right">OpEx</th>
+                    <th className="px-2 py-1.5 text-right">Incurred</th>
+                    <th className="px-2 py-1.5 text-right">Remaining</th>
+                    <th className="px-2 py-1.5 text-right">Forecast</th>
+                    <th className="px-2 py-1.5 text-left">Health</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {segRows.map((r) => (
+                    <tr key={r.name} className="border-t border-border">
+                      <td className="px-2 py-2 font-medium">{r.name}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{r.initiatives}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{money(r.approved)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{money(r.capex)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{money(r.opex)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{money(r.actual)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{money(r.remaining)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">
+                        <span className={r.forecast > r.approved ? "font-semibold text-red-600" : ""}>
+                          {money(r.forecast)}
+                        </span>
+                      </td>
+                      <td className="px-2 py-2">
+                        <MixBar green={r.green} amber={r.amber} red={r.red} compact />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Same money columns as the Portfolio health matrix: Budget, CapEx, OpEx, Incurred,
+              Remaining, Forecast. Forecast over envelope is shown in red.
+            </p>
+          </div>
+        )}
       </SectionFrame>
 
       <SectionFrame exportName="cockpit-summaries" exportTitle="Project summaries">
