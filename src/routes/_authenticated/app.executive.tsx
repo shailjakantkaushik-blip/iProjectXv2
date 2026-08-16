@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { cn } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState, useMemo, useRef } from "react";
@@ -75,7 +76,12 @@ import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-tabl
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
+type ExecutiveTab = "overview" | "summaries";
+
 export const Route = createFileRoute("/_authenticated/app/executive")({
+  validateSearch: (s: Record<string, unknown>): { tab?: ExecutiveTab } => ({
+    tab: s.tab === "summaries" ? "summaries" : "overview",
+  }),
   component: ExecutiveDashboard,
 });
 
@@ -97,6 +103,7 @@ function money(n: number) {
 function moneyM(n: number) { return `$${(n / 1e6).toFixed(1)}M`; }
 
 function ExecutiveDashboard() {
+  const { tab } = Route.useSearch();
   const { organization } = useAuth();
   const qc = useQueryClient();
   const listProjects = useServerFn(listPortfolioProjects);
@@ -788,6 +795,31 @@ function ExecutiveDashboard() {
         />
       </SectionFrame>
 
+      <div className="mb-4 flex flex-wrap gap-1 border-b border-border pb-px">
+        {(
+          [
+            { id: "overview" as const, label: "Overview" },
+            { id: "summaries" as const, label: "Project summaries" },
+          ] as const
+        ).map((t) => (
+          <Link
+            key={t.id}
+            to="/app/executive"
+            search={{ tab: t.id }}
+            className={cn(
+              "rounded-t-md px-3 py-2 text-xs font-semibold transition-colors",
+              tab === t.id
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            {t.label}
+          </Link>
+        ))}
+      </div>
+
+      {tab === "overview" && (
+      <>
       {/* Key Metrics */}
       <SectionFrame>
         <SectionTitle>Key Metrics</SectionTitle>
@@ -958,12 +990,15 @@ function ExecutiveDashboard() {
           </div>
         )}
       </SectionFrame>
+      </>
+      )}
 
+      {tab === "summaries" && (
       <SectionFrame>
         <SectionTitle>Project summaries (since last meeting)</SectionTitle>
         <p className="mb-3 text-sm text-muted-foreground">
-          System-generated completions and the next action plan, plus manual notes from each
-          project&apos;s Summary tab. RAG shows an override when one is set.
+          Read-only rollup of each project&apos;s Project Summary tab. Edit notes, meeting dates,
+          and RAG override on the project page — open a project below.
         </p>
         <div className="space-y-3">
           {filtered.slice(0, 12).map((p: any) => (
@@ -987,7 +1022,10 @@ function ExecutiveDashboard() {
           )}
         </div>
       </SectionFrame>
+      )}
 
+      {tab === "overview" && (
+      <>
       {/* Portfolio Timelines — collapsible Gantt swim-lanes (expandable + scrollable) */}
       <SectionFrame>
         <ExpandablePanel
@@ -1186,6 +1224,8 @@ function ExecutiveDashboard() {
           </div>
         )}
       </SectionFrame>
+      </>
+      )}
 
       </div>
     </div>

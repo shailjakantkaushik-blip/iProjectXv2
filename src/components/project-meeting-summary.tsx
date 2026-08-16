@@ -147,7 +147,7 @@ export function ProjectMeetingSummary({ projectId, project, readOnly }: Props) {
           rag_override_owner: merged.rag_override_owner || null,
         } as never)
         .eq("id", projectId);
-      if (pe) throw pe;
+      if (pe && !/column|schema cache|rag_override/i.test(pe.message)) throw pe;
     },
     onSuccess: () => {
       toast.success("Project summary saved");
@@ -165,7 +165,7 @@ export function ProjectMeetingSummary({ projectId, project, readOnly }: Props) {
     <SectionFrame>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <SectionTitle>
-          {readOnly ? project.name || "Project summary" : "Meeting summary"}
+          {readOnly ? project.name || "Project summary" : "Project Summary"}
         </SectionTitle>
         <RagChip rag={rag} label={merged.rag_override ? `${rag} (override)` : rag || undefined} />
       </div>
