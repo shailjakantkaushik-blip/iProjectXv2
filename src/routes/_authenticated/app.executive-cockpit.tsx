@@ -1061,8 +1061,6 @@ function ExecutiveCockpit() {
         </ExpandablePanel>
       </SectionFrame>
 
-
-
       <SectionFrame exportName="cockpit-governance" exportTitle="Governance">
           <SectionTitle>Governance</SectionTitle>
           <div className="mb-3">
