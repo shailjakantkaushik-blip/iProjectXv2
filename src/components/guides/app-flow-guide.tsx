@@ -3,11 +3,19 @@ import { Link } from "@tanstack/react-router";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SectionFrame, SectionTitle } from "@/components/streamlit";
 import { CartoonGuide } from "@/components/cartoon-mascots";
-import { BuildingBlocksArt, GatesArt, PeopleTimeArt } from "@/components/guides/guide-art";
+import {
+  BuildingBlocksArt,
+  GatesArt,
+  PeopleTimeArt,
+  ProcessFlowDetailedArt,
+  ProcessFlowHighLevelArt,
+  StreamsWorkArt,
+} from "@/components/guides/guide-art";
 import { FinancialsExplained } from "@/components/guides/financials-explained";
 
 export const ABOUT_TABS = [
   "overview",
+  "process",
   "building-blocks",
   "delivery",
   "money",
@@ -36,17 +44,12 @@ function Step({ n, title, children }: { n: string; title: string; children: Reac
   );
 }
 
-export function AppFlowGuide({
-  tab,
-  onTab,
-}: {
-  tab: AboutTab;
-  onTab: (t: AboutTab) => void;
-}) {
+export function AppFlowGuide({ tab, onTab }: { tab: AboutTab; onTab: (t: AboutTab) => void }) {
   return (
     <Tabs value={tab} onValueChange={(v) => isAboutTab(v) && onTab(v)}>
       <TabsList className="mb-4 flex h-auto w-full flex-wrap justify-start gap-1">
         <TabsTrigger value="overview">Big picture</TabsTrigger>
+        <TabsTrigger value="process">Process flow</TabsTrigger>
         <TabsTrigger value="building-blocks">Building blocks</TabsTrigger>
         <TabsTrigger value="delivery">Streams &amp; work</TabsTrigger>
         <TabsTrigger value="money">Money</TabsTrigger>
@@ -65,8 +68,8 @@ export function AppFlowGuide({
             </p>
             <ol className="list-decimal space-y-1 pl-5">
               <li>
-                <strong>Strategic Alignment</strong> — why we are doing the work (Business Strategic,
-                IT Strategic, CAPEX, Unfunded).
+                <strong>Strategic Alignment</strong> — why we are doing the work (Business
+                Strategic, IT Strategic, CAPEX, Unfunded).
               </li>
               <li>
                 <strong>Programs</strong> — a family of related projects.
@@ -89,7 +92,15 @@ export function AppFlowGuide({
             <p className="text-muted-foreground">
               Money, people, and stage gates all attach to a stream (and then roll up to the
               project). That is why you set Budget on the stream, plan people on the stream, and
-              pass gates on the stream.
+              pass gates on the stream. The{" "}
+              <Link
+                to="/app/about"
+                search={{ tab: "process" }}
+                className="font-medium text-primary hover:underline"
+              >
+                Process flow
+              </Link>{" "}
+              tab is the same story as a diagram.
             </p>
           </div>
         </div>
@@ -101,8 +112,8 @@ export function AppFlowGuide({
               Home, Executive Dashboard, and Portfolio Pulse show health across projects.
             </Step>
             <Step n="2" title="Open one project">
-              Projects in the menu opens the project workspace (dropdown to switch). The register
-              of all projects lives on Programs.
+              Projects in the menu opens the project workspace (dropdown to switch). The register of
+              all projects lives on Programs.
             </Step>
             <Step n="3" title="Plan the work">
               Estimation Planning sets the baseline. Work items are the demand. Timesheets capture
@@ -116,6 +127,110 @@ export function AppFlowGuide({
         </SectionFrame>
       </TabsContent>
 
+      <TabsContent value="process" className="space-y-4">
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          This is the operating loop of the product. High level is the seven-step cycle every change
+          follows. Detailed is which screen writes which layer — so Budget, Plan, Forecast, Demand,
+          and Actuals stay apart.
+        </p>
+        <ProcessFlowHighLevelArt />
+        <SectionFrame>
+          <SectionTitle>High level — what happens, in order</SectionTitle>
+          <div className="space-y-3">
+            <Step n="1" title="Align the work">
+              Create (or pick) a program, then a project with a Strategic Alignment bucket, a
+              delivery method, and an owner. The project register lives on Programs; the Projects
+              menu opens one workspace.
+            </Step>
+            <Step n="2" title="Split into streams and set Budget">
+              Core is created for you. Extra lanes (data, security, change) get their own dates. The
+              approved envelope is the stream Budget in Data Editor — the project is the roll-up.
+            </Step>
+            <Step n="3" title="Freeze a Plan">
+              Estimation Planning puts people and other OpEx on each stream and phase. Apply writes
+              planned dates, planned OpEx, and Planned FTE. CapEx plan comes from FY Allocation
+              budget CapEx. Plan does not write actuals.
+            </Step>
+            <Step n="4" title="Keep a Forecast">
+              FY Allocation forecast $ is the in-flight outlook by year. It starts equal to Plan. A
+              late gate can raise phase Forecast; Budget and Plan stay put until someone formally
+              changes them.
+            </Step>
+            <Step n="5" title="Hand out Demand">
+              Work items (and the Work Board) are the to-do list with hours. That is Demand — not
+              the FTE you reserved in the Plan.
+            </Step>
+            <Step n="6" title="Book Actuals">
+              Approved timesheets become Actual FTE $. Posted vendor/travel lines become other OpEx
+              actuals. Together they are incurred.
+            </Step>
+            <Step n="7" title="Steer">
+              Stage gates (or sprints), RAID, and decisions are the checkpoints. Home, Executive
+              Dashboard, Portfolio Pulse, and Financials are the steering pack.
+            </Step>
+          </div>
+        </SectionFrame>
+        <ProcessFlowDetailedArt />
+        <SectionFrame>
+          <SectionTitle>Detailed — who does what, on which page</SectionTitle>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-3">
+              <Step n="A" title="Org admin — control plane">
+                Users, roles, page access, delivery methods and gate names, resources and rates.
+                Without this, timesheets and Plan have nobody to attach to.
+              </Step>
+              <Step n="B" title="PMO / sponsor — shape the portfolio">
+                Programs, New Project, Strategic Alignment, segmentation and prioritisation, Demand
+                Pipeline for ideas that are not projects yet.
+              </Step>
+              <Step n="C" title="PM — plan the lane">
+                Project workspace (overview, streams, RAID). Estimation Planning → Apply. FY
+                Allocation for year split of Budget and Forecast.
+              </Step>
+            </div>
+            <div className="space-y-3">
+              <Step n="D" title="PM / squad — deliver">
+                Work Items and Work Board (Demand). Stage Gates or Agile sprints. Dependencies,
+                change requests, status updates.
+              </Step>
+              <Step n="E" title="Everyone on the work — book time">
+                Timesheets against work items. After PM/RM approval, hours × rate become Actual
+                labor.
+              </Step>
+              <Step n="F" title="Executives — steer without editing Plan">
+                Home, Executive Dashboard (Overview vs Project summaries), Portfolio Pulse,
+                Financials (Plan vs Actual vs Forecast), How money works for the glossary.
+              </Step>
+            </div>
+          </div>
+        </SectionFrame>
+        <SectionFrame>
+          <SectionTitle>Write-path cheat sheet</SectionTitle>
+          <ul className="space-y-1.5 text-sm text-muted-foreground">
+            <li>
+              <strong className="text-foreground">Budget</strong> — Data Editor → Project Streams
+              (never from timesheets or work items).
+            </li>
+            <li>
+              <strong className="text-foreground">Plan</strong> — Estimation Planning Apply (OpEx +
+              FTE) and FY Allocation budget CapEx.
+            </li>
+            <li>
+              <strong className="text-foreground">Forecast</strong> — FY Allocation forecast $; late
+              gates can lift phase forecast.
+            </li>
+            <li>
+              <strong className="text-foreground">Demand</strong> — work-item hours. Does not
+              rewrite Plan columns.
+            </li>
+            <li>
+              <strong className="text-foreground">Actual</strong> — approved timesheets + posted
+              other OpEx.
+            </li>
+          </ul>
+        </SectionFrame>
+      </TabsContent>
+
       <TabsContent value="building-blocks" className="space-y-4">
         <BuildingBlocksArt />
         <div className="grid gap-3 md:grid-cols-2">
@@ -123,16 +238,15 @@ export function AppFlowGuide({
             <SectionTitle>Strategic Alignment</SectionTitle>
             <p className="text-sm leading-relaxed text-muted-foreground">
               This is the investment bucket on the project — not a separate database. Typical
-              values: Business Strategic, IT Strategic, CAPEX, Unfunded. Dashboards group spend
-              here so executives can see <em>why</em> money is going out, not only which project
-              code.
+              values: Business Strategic, IT Strategic, CAPEX, Unfunded. Dashboards group spend here
+              so executives can see <em>why</em> money is going out, not only which project code.
             </p>
           </SectionFrame>
           <SectionFrame>
             <SectionTitle>Programs</SectionTitle>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              A program is a named family (for example “Customer experience”). Several projects
-              sit under it. Open{" "}
+              A program is a named family (for example “Customer experience”). Several projects sit
+              under it. Open{" "}
               <Link to="/app/programs" className="font-medium text-primary hover:underline">
                 Programs
               </Link>{" "}
@@ -146,8 +260,8 @@ export function AppFlowGuide({
               <Link to="/app/projects" className="font-medium text-primary hover:underline">
                 Projects
               </Link>{" "}
-              menu opens that workspace (overview, summary, streams, RAID, finance). Switch with
-              the project dropdown. Create with New Project.
+              menu opens that workspace (overview, summary, streams, RAID, finance). Switch with the
+              project dropdown. Create with New Project.
             </p>
           </SectionFrame>
           <SectionFrame>
@@ -163,9 +277,9 @@ export function AppFlowGuide({
 
       <TabsContent value="delivery" className="space-y-4">
         <p className="text-sm leading-relaxed text-muted-foreground">
-          A project is too big to plan as one lump. Streams split it into lanes (Core is created
-          for you). Work items are the to-do list inside a lane, optionally tied to a stage gate
-          or a sprint.
+          A project is too big to plan as one lump. Streams split it into lanes (Core is created for
+          you). Work items are the to-do list inside a lane, optionally tied to a stage gate or a
+          sprint.
         </p>
         <div className="grid gap-3 md:grid-cols-2">
           <SectionFrame>
@@ -192,7 +306,7 @@ export function AppFlowGuide({
             </p>
           </SectionFrame>
         </div>
-        <PeopleTimeArt />
+        <StreamsWorkArt />
       </TabsContent>
 
       <TabsContent value="money" className="space-y-4">
@@ -250,9 +364,9 @@ export function AppFlowGuide({
             <SectionTitle>RAID and decisions</SectionTitle>
             <p className="text-sm leading-relaxed text-muted-foreground">
               Risks, Actions, Issues, Decisions — plus stakeholders and lessons. These live on the
-              project (and can be filtered by stream). The Executive Dashboard Project summaries
-              tab is the steering pack; you edit the same notes on the project&apos;s Project
-              Summary tab.
+              project (and can be filtered by stream). The Executive Dashboard Project summaries tab
+              is the steering pack; you edit the same notes on the project&apos;s Project Summary
+              tab.
             </p>
           </SectionFrame>
         </div>

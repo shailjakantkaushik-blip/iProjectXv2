@@ -1,6 +1,6 @@
 -- =========================================================================
 -- iProjectX org ONLY — Wipe + seed 4 end-to-end portfolio projects
--- Paste into Supabase SQL Editor and run once.
+-- Paste into Supabase SQL Editor and run once. (Latest finance-layer model.)
 --
 -- SCOPE
 --   Targets organization slug = 'iprojectx' (name iProjectX).
@@ -21,20 +21,29 @@
 --   stage_gate_checklist_responses (templates kept)
 --   project_forecasts / forecast phases / meeting summaries (iProjectX only)
 --
+-- FIVE MONEY LAYERS (do not mix write-paths — matches the app)
+--   Budget   — stream.budget (Data Editor). Project budget is the stream roll-up.
+--   Plan     — Estimation Planning Apply: opex_planned, opex_labor_planned,
+--              resource_allocations, planned dates. CapEx plan = FY budget CapEx.
+--   Forecast — fy_allocations.forecast → monthly *_forecast. FAC = sum of FY forecast.
+--              Phase forecast starts = plan; a late gate can raise it in the UI.
+--   Demand   — work_items.estimate_hours (never writes Plan columns).
+--   Actual   — approved timesheets → opex_labor_actual; posted opex_other_costs
+--              → opex_other_actual; opex_actual = labor + other. CapEx actuals
+--              are the monthly capex_actual spread (not timesheets).
+--
 -- SEEDS
---   4 projects with Core + second stream, method-specific stage gates when uses_stage_gates (Agile uses Agile template),
---   planned stage gates ON EVERY STREAM (same template, stream-specific dates),
---   milestones, FY + monthly finance, resources/allocations,
---   benefits (+ payback), risks, issues, actions, decisions, stakeholders,
---   status updates, documents, lessons, change requests, sprints,
---   work items (+ assignees, including one late task), dependencies, demand pipeline, scenario,
---   timesheets (draft/pending/approved/rejected), opex other costs,
---   sample governance links/tasks, checklist responses,
+--   4 projects with Core + second stream, method-specific stage gates when uses_stage_gates
+--     (Agile: no gates — a single Delivery estimate phase per stream),
+--   milestones, FY budget + FY forecast (Forecast > Budget), monthly cashflow,
+--   Estimation Planning locked + applied (phases, people on every phase, other costs),
+--   Planned FTE allocations spread across phase months,
+--   benefits, RAID, stakeholders, status, documents, lessons, CRs, sprints,
+--   work items as Demand (+ assignees, including one late task),
+--   timesheets (draft/pending/approved/rejected) as Actual labor,
+--   posted other OpEx on streams, governance links/tasks, checklist responses,
 --   Strategic Alignment extras (functional area, payback, manual rank, RAG override),
---   project meeting summaries,
---   project forecasts locked as the planned baseline: per-stream phases seeded from
---   planned gate dates (start/end/duration), phase resources, other costs,
---   governance cadence hierarchy (daily → annual)
+--   project meeting summaries, governance cadence hierarchy (daily → annual)
 --
 -- Requires: always-on Core streams + timesheet / work-item migrations.
 -- Forecast tables are created here if missing (safe IF NOT EXISTS).
@@ -82,6 +91,10 @@ ALTER TABLE public.timesheet_entries
 
 ALTER TABLE public.financials_monthly
   ADD COLUMN IF NOT EXISTS opex_labor_actual NUMERIC(14,2) DEFAULT 0;
+ALTER TABLE public.financials_monthly
+  ADD COLUMN IF NOT EXISTS opex_labor_planned NUMERIC(14,2) DEFAULT 0;
+ALTER TABLE public.financials_monthly
+  ADD COLUMN IF NOT EXISTS opex_other_actual NUMERIC(14,2) DEFAULT 0;
 
 ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS functional_area text;
 ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS payback_months numeric;
@@ -939,8 +952,10 @@ BEGIN
 
         j := 0;
         m := date_trunc('month', s_start)::date;
-        -- Full-schedule monthly cashflow aligned to FY allocations (not first-8 /8).
-        -- Planned ↔ FY budget, Forecast ↔ FAC, Actual ↔ stream incurred on past months.
+        -- Full-schedule monthly cashflow aligned to FY allocations.
+        -- CapEx Plan ← FY budget CapEx. Forecast ← FY forecast $.
+        -- OpEx Plan / Planned FTE ← Estimation Apply (filled after forecasts).
+        -- OpEx Actual ← timesheets + other OpEx (filled later). CapEx Actual ← incurred.
         months_total := 0;
         months_past := 0;
         months_fy_a := 0;
@@ -1069,59 +1084,17 @@ BEGIN
             org_id, project_id, stream_id, period_month,
             capex_planned, capex_actual, capex_forecast,
             opex_planned, opex_actual, opex_forecast,
+            opex_labor_planned, opex_labor_actual, opex_other_actual,
             benefits_planned, benefits_actual
           ) VALUES (
             r_org.id, p_id, sid, m,
             cap_p, cap_act, cap_f,
-            opex_p, opex_act, opex_f,
+            0, 0, opex_f,
+            0, 0, 0,
             ben_p, ben_act
           );
           m := (m + INTERVAL '1 month')::date;
         END LOOP;
-
-        IF coalesce(array_length(res_ids, 1), 0) > 0 THEN
-          FOR j IN 1..3 LOOP
-            m := (date_trunc('month', CURRENT_DATE)::date - ((j - 1) * INTERVAL '1 month'))::date;
-            r1 := 1 + ((i + j - 1) % array_length(res_ids, 1));
-            -- Plan against the stream's current-phase gate (Agile: null stage_gate_id)
-            prev_p := NULL;
-            IF uses_gates AND g_idx >= 1 THEN
-              SELECT g.id INTO prev_p
-              FROM public.stage_gates g
-              WHERE g.stream_id = sid
-                AND g.gate_name = project_gates[g_idx]
-              LIMIT 1;
-            END IF;
-            IF prev_p IS NULL THEN
-              SELECT g.id INTO prev_p
-              FROM public.stage_gates g
-              WHERE g.stream_id = sid
-              ORDER BY g.planned_date NULLS LAST
-              LIMIT 1;
-            END IF;
-            IF array_length(res_ids, 1) = 1 THEN
-              INSERT INTO public.resource_allocations (
-                org_id, project_id, stream_id, stage_gate_id, resource_id, period_month,
-                allocation_percent, allocated_hours, role_on_project
-              ) VALUES (
-                r_org.id, p_id, sid, prev_p, res_ids[r1], m,
-                35 + ((i + j) % 3) * 10, 40,
-                CASE WHEN sid = core_id THEN 'Core Delivery' ELSE alt_names[i] END
-              )
-              ON CONFLICT DO NOTHING;
-            ELSE
-              r2 := 1 + ((i + j + 2) % array_length(res_ids, 1));
-              IF r1 = r2 THEN r2 := 1 + (r1 % array_length(res_ids, 1)); END IF;
-              INSERT INTO public.resource_allocations (
-                org_id, project_id, stream_id, stage_gate_id, resource_id, period_month,
-                allocation_percent, allocated_hours, role_on_project
-              ) VALUES
-                (r_org.id, p_id, sid, prev_p, res_ids[r1], m, 25 + ((i + j) % 3) * 10, 40, CASE WHEN sid = core_id THEN 'Core Delivery' ELSE alt_names[i] END),
-                (r_org.id, p_id, sid, prev_p, res_ids[r2], m, 20 + (i % 4) * 5, 32, CASE WHEN sid = core_id THEN 'Core Support' ELSE alt_names[i] || ' Support' END)
-              ON CONFLICT DO NOTHING;
-            END IF;
-          END LOOP;
-        END IF;
       END LOOP;
 
       -- Project-level attributes
@@ -1259,6 +1232,7 @@ BEGIN
 
       SELECT id INTO ms_id FROM public.milestones WHERE project_id = p_id AND stream_id = core_id ORDER BY planned_date LIMIT 1;
 
+      -- Work items = Demand hours (do not write opex_labor_planned)
       INSERT INTO public.work_items (
         org_id, project_id, stream_id, wbs_code, title, description, status, priority, owner,
         percent_complete, planned_start, planned_end, estimate_hours, actual_hours, milestone_id, sort_order
@@ -1330,9 +1304,9 @@ BEGIN
         total_labor_cost, total_other_cost, total_cost,
         notes, locked_at, plan_start_date, applied_to_plan_at
       ) VALUES (
-        r_org.id, p_id, 'locked', (i = 2),
+        r_org.id, p_id, 'locked', false,
         0, 0, 0,
-        'Seeded planned baseline — phases come from per-stream planned stage gates. Unlock requires sponsor/admin.',
+        'Seeded Plan (applied). Phases from stream gates; Agile uses a Delivery phase. Unlock requires sponsor/admin.',
         now(), starts[i], now()
       )
       ON CONFLICT (org_id, project_id) DO UPDATE SET
@@ -1344,7 +1318,7 @@ BEGIN
       RETURNING id INTO f_id;
 
       IF f_id IS NOT NULL THEN
-        -- One forecast phase per planned gate per stream (phase end = gate planned_date)
+        -- One estimate phase per planned gate per stream (phase end = gate planned_date)
         INSERT INTO public.project_forecast_phases (
           org_id, forecast_id, project_id, stream_id, gate_name, sort_order,
           duration_days, start_date, end_date, dates_overridden
@@ -1384,54 +1358,70 @@ BEGIN
           JOIN public.project_streams s ON s.id = g.stream_id
           WHERE g.project_id = p_id
             AND g.planned_date IS NOT NULL
-        ) x;
+        ) x
+        WHERE x.start_date IS NOT NULL AND x.end_date IS NOT NULL AND x.start_date <= x.end_date;
 
-        FOREACH sid IN ARRAY stream_ids LOOP
-          INSERT INTO public.project_forecast_phase_resources (
-            org_id, forecast_id, project_id, stream_id, resource_id,
-            effort_days, daily_rate, labor_cost, forecast_phase_id, phase_name
-          )
-          SELECT
-            r_org.id,
-            f_id,
-            p_id,
-            sid,
-            CASE WHEN coalesce(array_length(res_ids, 1), 0) > 0
-              THEN res_ids[1 + ((i + CASE WHEN sid = core_id THEN 0 ELSE 1 END - 1) % array_length(res_ids, 1))]
-              ELSE NULL END,
-            CASE WHEN sid = core_id THEN 40 + (i * 5) ELSE 22 + i END,
-            1000,
-            round((CASE WHEN sid = core_id THEN 40 + (i * 5) ELSE 22 + i END) * 1000, 2),
-            ph.id,
-            ph.gate_name
-          FROM (
-            SELECT fp.id, fp.gate_name
-            FROM public.project_forecast_phases fp
-            WHERE fp.forecast_id = f_id AND fp.stream_id = sid
-            ORDER BY fp.sort_order
-            LIMIT 1
-          ) ph
-          UNION ALL
-          SELECT
-            r_org.id, f_id, p_id, sid,
-            CASE WHEN coalesce(array_length(res_ids, 1), 0) > 0
-              THEN res_ids[1 + ((i + CASE WHEN sid = core_id THEN 0 ELSE 1 END - 1) % array_length(res_ids, 1))]
-              ELSE NULL END,
-            CASE WHEN sid = core_id THEN 40 + (i * 5) ELSE 22 + i END,
-            1000,
-            round((CASE WHEN sid = core_id THEN 40 + (i * 5) ELSE 22 + i END) * 1000, 2),
-            NULL, NULL
-          WHERE NOT EXISTS (
+        -- Agile / no-gate streams: a single Delivery phase spanning the stream
+        INSERT INTO public.project_forecast_phases (
+          org_id, forecast_id, project_id, stream_id, gate_name, sort_order,
+          duration_days, start_date, end_date, dates_overridden
+        )
+        SELECT
+          r_org.id, f_id, p_id, s.id, 'Delivery', 0,
+          GREATEST(1, (COALESCE(s.planned_end_date, ends[i]) - COALESCE(s.planned_start_date, starts[i])) + 1),
+          COALESCE(s.planned_start_date, starts[i]),
+          COALESCE(s.planned_end_date, ends[i]),
+          true
+        FROM public.project_streams s
+        WHERE s.project_id = p_id
+          AND NOT EXISTS (
             SELECT 1 FROM public.project_forecast_phases fp
-            WHERE fp.forecast_id = f_id AND fp.stream_id = sid
+            WHERE fp.forecast_id = f_id AND fp.stream_id = s.id
           );
-        END LOOP;
 
+        -- Named people on every phase (Plan FTE). Effort scales with phase length.
+        INSERT INTO public.project_forecast_phase_resources (
+          org_id, forecast_id, project_id, stream_id, resource_id,
+          effort_days, daily_rate, labor_cost, forecast_phase_id, phase_name
+        )
+        SELECT
+          r_org.id,
+          f_id,
+          p_id,
+          fp.stream_id,
+          CASE WHEN coalesce(array_length(res_ids, 1), 0) > 0
+            THEN res_ids[1 + ((i + CASE WHEN fp.stream_id = core_id THEN 0 ELSE 1 END - 1) % array_length(res_ids, 1))]
+            ELSE NULL END,
+          GREATEST(8, round(fp.duration_days * CASE WHEN fp.stream_id = core_id THEN 0.38 ELSE 0.24 END, 1)),
+          1000,
+          round(GREATEST(8, round(fp.duration_days * CASE WHEN fp.stream_id = core_id THEN 0.38 ELSE 0.24 END, 1)) * 1000, 2),
+          fp.id,
+          fp.gate_name
+        FROM public.project_forecast_phases fp
+        WHERE fp.forecast_id = f_id;
+
+        -- Other OpEx on each phase (Plan other — not Demand, not Actual)
         INSERT INTO public.project_forecast_other_costs (
-          org_id, forecast_id, project_id, heading, category, amount, sort_order
-        ) VALUES
-          (r_org.id, f_id, p_id, 'Vendor / licences', 'Vendor / contractor', round(budgets[i] * 0.04, 2), 0),
-          (r_org.id, f_id, p_id, 'Contingency', 'Contingency', round(budgets[i] * 0.02, 2), 1);
+          org_id, forecast_id, project_id, heading, category, amount, sort_order, forecast_phase_id
+        )
+        SELECT
+          r_org.id,
+          f_id,
+          p_id,
+          CASE WHEN fp.sort_order % 2 = 0 THEN 'Vendor / licences' ELSE 'Contingency' END,
+          CASE WHEN fp.sort_order % 2 = 0 THEN 'Vendor / contractor' ELSE 'Contingency' END,
+          round(
+            (opex_a[i] * CASE WHEN fp.stream_id = core_id THEN 0.58 ELSE 0.42 END * 0.22)
+            / GREATEST(1, (
+              SELECT count(*) FROM public.project_forecast_phases p2
+              WHERE p2.forecast_id = f_id AND p2.stream_id = fp.stream_id
+            )),
+            2
+          ),
+          fp.sort_order,
+          fp.id
+        FROM public.project_forecast_phases fp
+        WHERE fp.forecast_id = f_id;
 
         UPDATE public.project_forecasts f SET
           total_labor_cost = coalesce((SELECT sum(labor_cost) FROM public.project_forecast_phase_resources r WHERE r.forecast_id = f.id), 0),
@@ -1440,6 +1430,7 @@ BEGIN
             + coalesce((SELECT sum(amount) FROM public.project_forecast_other_costs c WHERE c.forecast_id = f.id), 0),
           notes = jsonb_build_object(
             'seeded', true,
+            'applied', true,
             'daily_rate', 1000,
             'phases', coalesce((
               SELECT jsonb_agg(jsonb_build_object(
@@ -1457,10 +1448,101 @@ BEGIN
           )::text
         WHERE f.id = f_id;
 
-        IF i = 2 THEN
-          UPDATE public.projects p
-          SET forecast_at_completion = (SELECT total_cost FROM public.project_forecasts WHERE id = f_id)
-          WHERE p.id = p_id;
+        -- Apply Plan into monthly opex_planned / opex_labor_planned (mirrors apply-forecast-planned.ts)
+        UPDATE public.financials_monthly fm SET
+          opex_labor_planned = round(x.labor, 2),
+          opex_planned = round(x.labor + x.other, 2)
+        FROM (
+          SELECT stream_id, period_month, sum(labor) AS labor, sum(other) AS other
+          FROM (
+            SELECT
+              pc.stream_id,
+              gs::date AS period_month,
+              pc.labor / pc.n_months AS labor,
+              pc.other / pc.n_months AS other
+            FROM (
+              SELECT
+                fp.stream_id,
+                fp.start_date,
+                fp.end_date,
+                COALESCE((
+                  SELECT sum(r.labor_cost) FROM public.project_forecast_phase_resources r
+                  WHERE r.forecast_phase_id = fp.id
+                ), 0) AS labor,
+                COALESCE((
+                  SELECT sum(c.amount) FROM public.project_forecast_other_costs c
+                  WHERE c.forecast_phase_id = fp.id
+                ), 0) AS other,
+                GREATEST(1, (
+                  SELECT count(*)::int FROM generate_series(
+                    date_trunc('month', fp.start_date)::timestamp,
+                    date_trunc('month', fp.end_date)::timestamp,
+                    interval '1 month'
+                  )
+                )) AS n_months
+              FROM public.project_forecast_phases fp
+              WHERE fp.forecast_id = f_id
+                AND fp.start_date IS NOT NULL
+                AND fp.end_date IS NOT NULL
+                AND fp.start_date <= fp.end_date
+            ) pc
+            CROSS JOIN LATERAL generate_series(
+              date_trunc('month', pc.start_date)::timestamp,
+              date_trunc('month', pc.end_date)::timestamp,
+              interval '1 month'
+            ) gs
+          ) spread
+          GROUP BY stream_id, period_month
+        ) x
+        WHERE fm.project_id = p_id
+          AND fm.stream_id IS NOT DISTINCT FROM x.stream_id
+          AND fm.period_month = x.period_month;
+
+        -- Planned FTE allocations across phase months
+        IF coalesce(array_length(res_ids, 1), 0) > 0 THEN
+          INSERT INTO public.resource_allocations (
+            org_id, project_id, stream_id, resource_id, period_month,
+            allocated_hours, allocation_percent, role_on_project
+          )
+          SELECT
+            r_org.id,
+            p_id,
+            x.stream_id,
+            x.resource_id,
+            x.period_month,
+            round(x.hours, 1),
+            round((x.hours / 173.2) * 1000) / 10.0,
+            CASE WHEN x.stream_id = core_id THEN 'Core Delivery' ELSE alt_names[i] END
+          FROM (
+            SELECT stream_id, resource_id, period_month, sum(hours) AS hours
+            FROM (
+              SELECT
+                fp.stream_id,
+                r.resource_id,
+                gs::date AS period_month,
+                (COALESCE(r.effort_days, 0) * 8.0) / GREATEST(1, (
+                  SELECT count(*)::int FROM generate_series(
+                    date_trunc('month', fp.start_date)::timestamp,
+                    date_trunc('month', fp.end_date)::timestamp,
+                    interval '1 month'
+                  )
+                )) AS hours
+              FROM public.project_forecast_phase_resources r
+              JOIN public.project_forecast_phases fp ON fp.id = r.forecast_phase_id
+              CROSS JOIN LATERAL generate_series(
+                date_trunc('month', fp.start_date)::timestamp,
+                date_trunc('month', fp.end_date)::timestamp,
+                interval '1 month'
+              ) gs
+              WHERE r.forecast_id = f_id
+                AND r.resource_id IS NOT NULL
+                AND fp.start_date IS NOT NULL
+                AND fp.end_date IS NOT NULL
+                AND fp.start_date <= fp.end_date
+            ) spread
+            GROUP BY stream_id, resource_id, period_month
+          ) x
+          ON CONFLICT DO NOTHING;
         END IF;
       END IF;
     END LOOP;
@@ -1894,22 +1976,27 @@ DECLARE
   d_id uuid;
   i int := 0;
 BEGIN
-  -- Vendor / other OpEx lines (powers Financials Explain + OpEx panels)
+  -- Vendor / other OpEx lines on each stream (Actual other — never Plan)
   BEGIN
     FOR p IN
-      SELECT id, project_code FROM public.projects
-      WHERE org_id = v_org
-      ORDER BY project_code
-      LIMIT 10
+      SELECT pr.id, pr.project_code, s.id AS stream_id, s.is_default
+      FROM public.projects pr
+      JOIN public.project_streams s ON s.project_id = pr.id
+      WHERE pr.org_id = v_org
+      ORDER BY pr.project_code, s.sort_order
     LOOP
       i := i + 1;
       INSERT INTO public.opex_other_costs (
-        org_id, project_id, period_month, amount, category, vendor, description, cost_date
+        org_id, project_id, stream_id, period_month, amount, category, vendor, description, cost_date, status
       ) VALUES
-        (v_org, p.id, date_trunc('month', CURRENT_DATE)::date,
-         12000 + (i * 1500), 'Vendor', 'Acme Consulting', 'Delivery partner fees — ' || p.project_code, CURRENT_DATE - 10),
-        (v_org, p.id, (date_trunc('month', CURRENT_DATE) - interval '1 month')::date,
-         8000 + (i * 900), 'Contractor', 'Northwind Contractors', 'Specialist surge — ' || p.project_code, CURRENT_DATE - 35);
+        (v_org, p.id, p.stream_id, date_trunc('month', CURRENT_DATE)::date,
+         CASE WHEN p.is_default THEN 18000 ELSE 11000 END + (i * 400),
+         'Vendor', 'Acme Consulting',
+         'Delivery partner fees — ' || p.project_code, CURRENT_DATE - 10, 'posted'),
+        (v_org, p.id, p.stream_id, (date_trunc('month', CURRENT_DATE) - interval '1 month')::date,
+         CASE WHEN p.is_default THEN 12000 ELSE 7000 END + (i * 250),
+         'Contractor', 'Northwind Contractors',
+         'Specialist surge — ' || p.project_code, CURRENT_DATE - 35, 'posted');
     END LOOP;
   EXCEPTION WHEN undefined_table THEN
     RAISE NOTICE 'opex_other_costs missing — skip vendor cost seed';
@@ -1982,6 +2069,40 @@ BEGIN
 END
 $extra$;
 
+-- ---------- G) Close the five layers ----------
+-- FAC ← FY Allocation forecast. Incurred ← monthly actuals. Then stream roll-up.
+DO $close$
+DECLARE
+  v_org uuid := current_setting('iprojectx.seed_org_id')::uuid;
+  rec RECORD;
+BEGIN
+  UPDATE public.project_streams s
+  SET
+    forecast_at_completion = COALESCE((
+      SELECT sum(COALESCE(a.forecast, 0)) FROM public.fy_allocations a
+      WHERE a.stream_id = s.id
+    ), s.forecast_at_completion),
+    capex_incurred = COALESCE((
+      SELECT sum(COALESCE(fm.capex_actual, 0)) FROM public.financials_monthly fm
+      WHERE fm.stream_id = s.id
+    ), 0),
+    opex_incurred = COALESCE((
+      SELECT sum(COALESCE(fm.opex_actual, 0)) FROM public.financials_monthly fm
+      WHERE fm.stream_id = s.id
+    ), 0),
+    updated_at = now()
+  WHERE s.org_id = v_org;
+
+  BEGIN
+    FOR rec IN SELECT id FROM public.projects WHERE org_id = v_org LOOP
+      PERFORM public.rollup_project_from_streams(rec.id);
+    END LOOP;
+  EXCEPTION WHEN undefined_function THEN
+    RAISE NOTICE 'rollup_project_from_streams missing — skip final rollup';
+  END;
+END
+$close$;
+
 COMMIT;
 
 -- Verification — iProjectX only (expect 4 projects, 8 streams, gates + forecast phases per stream)
@@ -1997,6 +2118,10 @@ SELECT o.name AS org, o.slug,
        (SELECT count(*) FROM public.timesheets t WHERE t.org_id = o.id) AS timesheets,
        (SELECT count(*) FROM public.project_forecasts f WHERE f.org_id = o.id) AS forecasts,
        (SELECT count(*) FROM public.project_forecast_phases ph WHERE ph.org_id = o.id) AS forecast_phases,
+       (SELECT count(*) FROM public.resource_allocations a WHERE a.org_id = o.id) AS planned_fte_rows,
+       (SELECT coalesce(sum(opex_labor_planned),0) FROM public.financials_monthly f WHERE f.org_id = o.id) AS plan_fte_dollars,
+       (SELECT coalesce(sum(opex_labor_actual),0) FROM public.financials_monthly f WHERE f.org_id = o.id) AS actual_fte_dollars,
+       (SELECT coalesce(sum(estimate_hours),0) FROM public.work_items w WHERE w.org_id = o.id) AS demand_hours,
        (SELECT count(*) FROM public.project_meeting_summaries s WHERE s.org_id = o.id) AS meeting_summaries,
        (SELECT count(*) FROM public.governance_channels c WHERE c.org_id = o.id) AS cadence_forums
 FROM public.organizations o
