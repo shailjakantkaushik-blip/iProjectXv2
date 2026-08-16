@@ -243,8 +243,13 @@
   border-bottom: 1px solid color-mix(in srgb, var(--color-border) 88%, transparent);
 }
 
-/* KPI card */
+/* KPI card — heading is fully visible and slightly larger than the value */
 .kpi-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  text-align: left;
   background: linear-gradient(
     180deg,
     color-mix(in srgb, var(--color-surface) 100%, transparent) 0%,
@@ -253,7 +258,7 @@
   border: 1px solid color-mix(in srgb, var(--color-border) 90%, transparent);
   border-radius: 10px;
   padding: 12px 14px;
-  min-height: 68px;
+  min-height: 0;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 .kpi-card:hover {
@@ -262,22 +267,57 @@
   transform: translateY(-1px);
 }
 
-.kpi-label {
-  font-size: 10.5px;
-  font-weight: 600;
-  color: var(--color-muted-foreground);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+.kpi-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
   margin-bottom: 6px;
+}
+
+.kpi-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--color-heading);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .kpi-value {
   font-family: "Sora", "Manrope", ui-sans-serif, system-ui, sans-serif;
-  font-size: 22px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--color-heading);
-  line-height: 1.12;
-  letter-spacing: -0.03em;
+  line-height: 1.25;
+  letter-spacing: 0;
+  text-align: left;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.kpi-sub {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--color-muted-foreground);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Keep KPI rows wide enough that headings do not get clipped */
+div:has(> .kpi-card) {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12.25rem), 1fr)) !important;
+  gap: 0.75rem;
+  align-items: stretch;
 }
 
 /* Page heading — primary hierarchy above nav section labels */
@@ -524,7 +564,8 @@ html[data-style-theme="aurora"] .shell-root::before {
 @media (max-width: 640px) {
   .section-frame { padding: 12px 12px; border-radius: 8px; }
   .page-heading { font-size: 18px; }
-  .kpi-value { font-size: 18px; }
+  .kpi-label { font-size: 12.5px; }
+  .kpi-value { font-size: 11.5px; }
   .st-table thead th, .st-table tbody td { padding: 6px 8px; font-size: 12px; }
   .st-btn-primary,
   .st-btn-primary.st-btn-inline {
