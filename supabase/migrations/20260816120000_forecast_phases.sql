@@ -1,11 +1,12 @@
--- Forecast phases follow the project's delivery-method stage-gate template
--- (not streams). Duration drives the month/FY Gantt and can populate the plan.
+-- Forecast phases follow streams × delivery-method stage-gate template.
+-- Duration drives the month/FY Gantt and writes planned dates only.
 
 CREATE TABLE IF NOT EXISTS public.project_forecast_phases (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
   forecast_id uuid NOT NULL REFERENCES public.project_forecasts(id) ON DELETE CASCADE,
   project_id uuid NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  stream_id uuid REFERENCES public.project_streams(id) ON DELETE CASCADE,
   gate_name text NOT NULL,
   sort_order integer NOT NULL DEFAULT 0,
   duration_days numeric NOT NULL DEFAULT 20,
@@ -13,9 +14,11 @@ CREATE TABLE IF NOT EXISTS public.project_forecast_phases (
   end_date date,
   dates_overridden boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (forecast_id, gate_name)
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS project_forecast_phases_forecast_stream_gate
+  ON public.project_forecast_phases (forecast_id, COALESCE(stream_id, '00000000-0000-0000-0000-000000000000'), gate_name);
 
 ALTER TABLE public.project_forecast_phase_resources
   ADD COLUMN IF NOT EXISTS forecast_phase_id uuid REFERENCES public.project_forecast_phases(id) ON DELETE SET NULL,

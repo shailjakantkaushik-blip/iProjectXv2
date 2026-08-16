@@ -1,6 +1,7 @@
 /**
- * Project Forecast Estimation — delivery-method phases, sequential dates,
- * and apply-to-plan (fills empty project / gate dates; later overrides stick).
+ * Project Forecast Estimation — streams × delivery-method phases.
+ * The estimate is the planned baseline. After start, actuals live on
+ * streams / gates / incurred cost and must never be overwritten here.
  */
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -22,8 +23,25 @@ export const FORECAST_COST_CATEGORIES = [
 
 export const DEFAULT_PHASE_DAYS = 20;
 
+export const FORECAST_PROJECT_STATUSES = new Set([
+  "not started",
+  "planning",
+  "draft",
+  "in progress",
+  "on hold",
+  "",
+]);
+
+export function isForecastableProjectStatus(status?: string | null) {
+  const s = String(status || "").trim().toLowerCase();
+  if (s === "completed" || s === "cancelled" || s === "canceled" || s === "closed") return false;
+  return FORECAST_PROJECT_STATUSES.has(s) || !s;
+}
+
 export type ForecastPhaseRow = {
   id?: string;
+  stream_id?: string | null;
+  stream_name?: string | null;
   gate_name: string;
   sort_order: number;
   duration_days: number;
@@ -32,11 +50,26 @@ export type ForecastPhaseRow = {
   dates_overridden?: boolean;
 };
 
+export type ForecastStreamLike = {
+  id: string;
+  name?: string | null;
+  is_default?: boolean | null;
+  sort_order?: number | null;
+  planned_start_date?: string | null;
+  planned_end_date?: string | null;
+  actual_start_date?: string | null;
+  actual_end_date?: string | null;
+};
+
 export type StageGateDefLike = {
   gate_name?: string | null;
   delivery_method_id?: string | null;
   sort_order?: number | null;
 };
+
+export function forecastPhaseKey(p: Pick<ForecastPhaseRow, "stream_id" | "gate_name">) {
+  return `${p.stream_id || "proj"}::${p.gate_name}`;
+}
 
 export function addCalendarDays(iso: string, days: number): string {
   const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
@@ -76,29 +109,33 @@ export function phasesForDeliveryMethod(
 
 export function mergeForecastPhases(
   templateNames: string[],
+  streams: ForecastStreamLike[],
   stored: ForecastPhaseRow[],
 ): ForecastPhaseRow[] {
-  const byName = new Map(stored.map((p) => [p.gate_name, p]));
-  const rows = templateNames.map((name, i) => {
-    const prev = byName.get(name);
-    return {
-      id: prev?.id,
-      gate_name: name,
-      sort_order: i,
-      duration_days: Number(prev?.duration_days) > 0 ? Number(prev?.duration_days) : DEFAULT_PHASE_DAYS,
-      start_date: prev?.start_date ?? null,
-      end_date: prev?.end_date ?? null,
-      dates_overridden: Boolean(prev?.dates_overridden),
-    };
+  const lanes = streams.length
+    ? [...streams].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    : [{ id: "", name: "Project", is_default: true, sort_order: 0 }];
+  const byKey = new Map(stored.map((p) => [forecastPhaseKey(p), p]));
+  const rows: ForecastPhaseRow[] = [];
+  lanes.forEach((stream, si) => {
+    const sid = stream.id || null;
+    templateNames.forEach((name, i) => {
+      const prev = byKey.get(forecastPhaseKey({ stream_id: sid, gate_name: name }));
+      rows.push({
+        id: prev?.id,
+        stream_id: sid,
+        stream_name: stream.name || "Stream",
+        gate_name: name,
+        sort_order: si * 100 + i,
+        duration_days:
+          Number(prev?.duration_days) > 0 ? Number(prev?.duration_days) : DEFAULT_PHASE_DAYS,
+        start_date: prev?.start_date ?? null,
+        end_date: prev?.end_date ?? null,
+        dates_overridden: Boolean(prev?.dates_overridden),
+      });
+    });
   });
-  const extras = stored
-    .filter((p) => !templateNames.includes(p.gate_name))
-    .map((p, i) => ({
-      ...p,
-      sort_order: templateNames.length + i,
-      duration_days: Number(p.duration_days) || DEFAULT_PHASE_DAYS,
-    }));
-  return [...rows, ...extras];
+  return rows;
 }
 
 export function layoutForecastPhases(
@@ -106,25 +143,38 @@ export function layoutForecastPhases(
   projectStart: string | null | undefined,
 ): ForecastPhaseRow[] {
   const start = (projectStart || "").slice(0, 10) || null;
-  if (!start) {
-    return phases.map((p) => ({
-      ...p,
-      start_date: p.dates_overridden ? p.start_date || null : null,
-      end_date: p.dates_overridden ? p.end_date || null : null,
-    }));
+  const groups = new Map<string, ForecastPhaseRow[]>();
+  for (const p of phases) {
+    const k = p.stream_id || "proj";
+    const list = groups.get(k) || [];
+    list.push(p);
+    groups.set(k, list);
   }
-  let cursor = start;
-  return phases.map((p) => {
-    const days = Math.max(0, Number(p.duration_days) || 0);
-    if (p.dates_overridden && p.start_date && p.end_date) {
-      cursor = addCalendarDays(p.end_date, 1);
-      return { ...p, start_date: p.start_date, end_date: p.end_date };
+  const out: ForecastPhaseRow[] = [];
+  for (const list of groups.values()) {
+    let cursor = start;
+    for (const p of list) {
+      if (!cursor) {
+        out.push({
+          ...p,
+          start_date: p.dates_overridden ? p.start_date || null : null,
+          end_date: p.dates_overridden ? p.end_date || null : null,
+        });
+        continue;
+      }
+      const days = Math.max(0, Number(p.duration_days) || 0);
+      if (p.dates_overridden && p.start_date && p.end_date) {
+        cursor = addCalendarDays(p.end_date, 1);
+        out.push({ ...p, start_date: p.start_date, end_date: p.end_date });
+        continue;
+      }
+      const phaseStart = cursor;
+      const phaseEnd = days > 0 ? addCalendarDays(phaseStart, Math.max(days - 1, 0)) : phaseStart;
+      cursor = addCalendarDays(phaseEnd, 1);
+      out.push({ ...p, start_date: phaseStart, end_date: phaseEnd });
     }
-    const phaseStart = cursor;
-    const phaseEnd = days > 0 ? addCalendarDays(phaseStart, Math.max(days - 1, 0)) : phaseStart;
-    cursor = addCalendarDays(phaseEnd, 1);
-    return { ...p, start_date: phaseStart, end_date: phaseEnd };
-  });
+  }
+  return out;
 }
 
 export function parseForecastPhaseNotes(notes: unknown): ForecastPhaseRow[] {
@@ -134,6 +184,8 @@ export function parseForecastPhaseNotes(notes: unknown): ForecastPhaseRow[] {
     const list = Array.isArray((raw as any)?.phases) ? (raw as any).phases : [];
     return list
       .map((p: any, i: number) => ({
+        stream_id: p.stream_id || null,
+        stream_name: p.stream_name || null,
         gate_name: String(p.gate_name || "").trim(),
         sort_order: Number(p.sort_order) || i,
         duration_days: Number(p.duration_days) || DEFAULT_PHASE_DAYS,
@@ -162,6 +214,8 @@ export function forecastNotesWithPhases(existingNotes: unknown, phases: Forecast
   return JSON.stringify({
     ...base,
     phases: phases.map((p) => ({
+      stream_id: p.stream_id || null,
+      stream_name: p.stream_name || null,
       gate_name: p.gate_name,
       sort_order: p.sort_order,
       duration_days: p.duration_days,
@@ -189,6 +243,8 @@ export async function loadForecastPhases(forecastId: string): Promise<ForecastPh
   }
   return ((data ?? []) as any[]).map((p, i) => ({
     id: p.id,
+    stream_id: p.stream_id || null,
+    stream_name: p.stream_name || null,
     gate_name: String(p.gate_name || "").trim(),
     sort_order: Number(p.sort_order) || i,
     duration_days: Number(p.duration_days) || DEFAULT_PHASE_DAYS,
@@ -206,21 +262,31 @@ export async function persistForecastPhases(opts: {
   existingNotes?: unknown;
 }): Promise<ForecastPhaseRow[]> {
   const laid = opts.phases.map((p, i) => ({ ...p, sort_order: i }));
-  const { error } = await supabase.from("project_forecast_phases" as any).upsert(
-    laid.map((p) => ({
-      ...(p.id ? { id: p.id } : {}),
-      org_id: opts.orgId,
-      project_id: opts.projectId,
-      forecast_id: opts.forecastId,
-      gate_name: p.gate_name,
-      sort_order: p.sort_order,
-      duration_days: p.duration_days,
-      start_date: p.start_date || null,
-      end_date: p.end_date || null,
-      dates_overridden: Boolean(p.dates_overridden),
-    })),
-    { onConflict: "forecast_id,gate_name" },
-  );
+  const payload = laid.map((p) => ({
+    ...(p.id ? { id: p.id } : {}),
+    org_id: opts.orgId,
+    project_id: opts.projectId,
+    forecast_id: opts.forecastId,
+    stream_id: p.stream_id || null,
+    gate_name: p.gate_name,
+    sort_order: p.sort_order,
+    duration_days: p.duration_days,
+    start_date: p.start_date || null,
+    end_date: p.end_date || null,
+    dates_overridden: Boolean(p.dates_overridden),
+  }));
+  let { error } = await supabase
+    .from("project_forecast_phases" as any)
+    .upsert(payload, { onConflict: "forecast_id,stream_id,gate_name" });
+  if (error) {
+    const retry = await supabase
+      .from("project_forecast_phases" as any)
+      .upsert(
+        payload.map(({ stream_id: _s, ...row }) => row),
+        { onConflict: "forecast_id,gate_name" },
+      );
+    error = retry.error;
+  }
   if (error) {
     if (tableMissing(error)) {
       await supabase
@@ -234,17 +300,27 @@ export async function persistForecastPhases(opts: {
   return loadForecastPhases(opts.forecastId);
 }
 
+/**
+ * Write planned dates only. Actual start/end on the project, streams, and
+ * gates are left untouched so timeline plan-vs-actual stays honest.
+ */
 export async function applyForecastToProjectPlan(opts: {
   orgId: string;
   projectId: string;
   startDate: string;
   phases: ForecastPhaseRow[];
+  streams?: ForecastStreamLike[];
   /** When true, only fill blank planned dates (PM later overrides stay). */
   onlyFillEmpty?: boolean;
 }): Promise<{ plannedEnd: string | null }> {
   const start = opts.startDate.slice(0, 10);
   const laid = layoutForecastPhases(opts.phases, start);
-  const plannedEnd = laid[laid.length - 1]?.end_date || start;
+  const plannedEnd =
+    laid
+      .map((p) => p.end_date)
+      .filter(Boolean)
+      .sort()
+      .slice(-1)[0] || start;
 
   const { data: project } = await supabase
     .from("projects")
@@ -273,18 +349,40 @@ export async function applyForecastToProjectPlan(opts: {
     .eq("id", opts.projectId);
   if (pe) throw pe;
 
+  const streams = opts.streams ?? [];
+  for (const stream of streams) {
+    const streamPhases = laid.filter((p) => p.stream_id === stream.id);
+    if (!streamPhases.length) continue;
+    const sStart = streamPhases[0].start_date || start;
+    const sEnd = streamPhases[streamPhases.length - 1].end_date || plannedEnd;
+    const patch: Record<string, string | null> = {};
+    if (!opts.onlyFillEmpty || !stream.planned_start_date) patch.planned_start_date = sStart;
+    if (!opts.onlyFillEmpty || !stream.planned_end_date) patch.planned_end_date = sEnd;
+    if (Object.keys(patch).length) {
+      const { error } = await supabase
+        .from("project_streams")
+        .update(patch as never)
+        .eq("id", stream.id);
+      if (error) throw error;
+    }
+  }
+
   const { data: gates } = await supabase
     .from("stage_gates")
     .select("id,gate_name,planned_date,actual_date,stream_id")
     .eq("project_id", opts.projectId);
 
   for (const phase of laid) {
-    const matches = ((gates ?? []) as any[]).filter((g) => g.gate_name === phase.gate_name);
+    const matches = ((gates ?? []) as any[]).filter((g) => {
+      if (g.gate_name !== phase.gate_name) return false;
+      if (phase.stream_id) return g.stream_id === phase.stream_id || !g.stream_id;
+      return true;
+    });
     if (matches.length === 0) {
       const { error } = await supabase.from("stage_gates").insert({
         org_id: opts.orgId,
         project_id: opts.projectId,
-        stream_id: null,
+        stream_id: phase.stream_id || null,
         gate_name: phase.gate_name,
         planned_date: phase.end_date,
         status: "Pending",
@@ -303,7 +401,7 @@ export async function applyForecastToProjectPlan(opts: {
     }
   }
 
-  const extra = await supabase
+  await supabase
     .from("project_forecasts" as any)
     .update({
       plan_start_date: start,
@@ -311,9 +409,6 @@ export async function applyForecastToProjectPlan(opts: {
     })
     .eq("project_id", opts.projectId)
     .eq("org_id", opts.orgId);
-  if (extra.error && !tableMissing(extra.error)) {
-    /* optional columns — ignore */
-  }
 
   return { plannedEnd };
 }

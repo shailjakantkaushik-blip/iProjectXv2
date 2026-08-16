@@ -7,13 +7,16 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth, isAdmin } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
-import { RESOURCES_SELECT, STAGE_GATE_DEFINITIONS_SELECT } from "@/lib/query-selects";
+import { RESOURCES_SELECT, STAGE_GATE_DEFINITIONS_SELECT, STAGE_GATES_SELECT } from "@/lib/query-selects";
 import { dailyRateFromHourly, isProjectKickedOff } from "@/lib/ops-enhancements";
 import { deliveryMethodsQueryKey, fetchDeliveryMethods, findDeliveryMethod } from "@/lib/delivery-methods";
+import { fetchOrgStreams, formatStreamLabel } from "@/lib/project-streams";
 import {
   applyForecastToProjectPlan,
   daysToMonths,
   FORECAST_COST_CATEGORIES,
+  forecastPhaseKey,
+  isForecastableProjectStatus,
   layoutForecastPhases,
   loadForecastPhases,
   mergeForecastPhases,
@@ -44,11 +47,15 @@ function ProjectForecastPage() {
   const [planStart, setPlanStart] = useState("");
   const [phaseDraft, setPhaseDraft] = useState<ForecastPhaseRow[]>([]);
 
-  const { data: projects = [] } = useQuery({
+  const { data: allProjects = [] } = useQuery({
     queryKey: projectOptionsQueryKey(orgId),
     queryFn: fetchProjectOptions,
     enabled: !!orgId,
   });
+  const projects = useMemo(
+    () => (allProjects as any[]).filter((p) => isForecastableProjectStatus(p.status)),
+    [allProjects],
+  );
 
   const { data: project } = useQuery({
     queryKey: ["project", projectId, "forecast-head"],
@@ -77,6 +84,27 @@ function ProjectForecastPage() {
           .order("sort_order")
       ).data ?? [],
     enabled: !!orgId,
+  });
+
+  const { data: streams = [] } = useQuery({
+    queryKey: ["project_streams", orgId, projectId],
+    queryFn: async () => {
+      const all = await fetchOrgStreams(orgId!);
+      return all.filter((s) => s.project_id === projectId);
+    },
+    enabled: !!orgId && !!projectId,
+  });
+
+  const { data: gates = [] } = useQuery({
+    queryKey: ["stage_gates", orgId, projectId, "forecast"],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("stage_gates")
+          .select(STAGE_GATES_SELECT as "*")
+          .eq("project_id", projectId)
+      ).data ?? [],
+    enabled: !!orgId && !!projectId,
   });
 
   const { data: resources = [] } = useQuery({
@@ -158,6 +186,21 @@ function ProjectForecastPage() {
     [deliveryMethods, gateDefs, project],
   );
 
+  const projectStreams = useMemo(
+    () =>
+      (streams as any[]).map((s) => ({
+        id: s.id,
+        name: formatStreamLabel(s),
+        is_default: s.is_default,
+        sort_order: s.sort_order,
+        planned_start_date: s.planned_start_date,
+        planned_end_date: s.planned_end_date,
+        actual_start_date: s.actual_start_date,
+        actual_end_date: s.actual_end_date,
+      })),
+    [streams],
+  );
+
   const locked = forecast?.status === "locked";
   const kickedOff = project ? isProjectKickedOff(project) : false;
   const sponsorMatch = Boolean(
@@ -167,6 +210,7 @@ function ProjectForecastPage() {
   );
   const canUnlock = admin || sponsorMatch;
   const canEdit = !locked;
+  const unlockRequested = Boolean(forecast?.unlock_requested_at);
 
   useEffect(() => {
     const fromProject = (project?.planned_start_date || project?.start_date || "").slice(0, 10);
@@ -177,8 +221,8 @@ function ProjectForecastPage() {
   useEffect(() => {
     const stored =
       storedPhases.length > 0 ? storedPhases : parseForecastPhaseNotes(forecast?.notes);
-    setPhaseDraft(mergeForecastPhases(templateNames, stored));
-  }, [templateNames, storedPhases, forecast?.notes, forecast?.id]);
+    setPhaseDraft(mergeForecastPhases(templateNames, projectStreams, stored));
+  }, [templateNames, storedPhases, forecast?.notes, forecast?.id, projectStreams]);
 
   const phases = useMemo(
     () => layoutForecastPhases(phaseDraft, planStart || null),
@@ -201,7 +245,7 @@ function ProjectForecastPage() {
         .single();
       if (error) throw error;
       const laid = layoutForecastPhases(
-        mergeForecastPhases(templateNames, []),
+        mergeForecastPhases(templateNames, projectStreams, []),
         planStart || null,
       );
       await persistForecastPhases({
@@ -258,8 +302,7 @@ function ProjectForecastPage() {
   }, [otherCosts]);
 
   const laborForPhase = (ph: ForecastPhaseRow) =>
-    (laborByPhase.get(ph.gate_name) || 0) +
-    (ph.id ? laborByPhase.get(ph.id) || 0 : 0);
+    rowsForPhase(ph).reduce((s, r) => s + Number(r.labor_cost || 0), 0);
   const otherForPhase = (ph: ForecastPhaseRow) => (ph.id ? otherByPhase.get(ph.id) || 0 : 0);
 
   const laborTotal = phaseRes.reduce((s, r) => s + Number(r.labor_cost || 0), 0);
@@ -304,11 +347,12 @@ function ProjectForecastPage() {
   }, [allocations]);
 
   const rowsForPhase = (ph: ForecastPhaseRow) =>
-    phaseRes.filter(
-      (r) =>
-        r.phase_name === ph.gate_name ||
-        (ph.id && r.forecast_phase_id === ph.id),
-    );
+    phaseRes.filter((r) => {
+      if (ph.id && r.forecast_phase_id === ph.id) return true;
+      const samePhase = r.phase_name === ph.gate_name;
+      const sameStream = (r.stream_id || null) === (ph.stream_id || null);
+      return samePhase && sameStream;
+    });
 
   const addResourceToPhase = useMutation({
     mutationFn: async ({
@@ -332,7 +376,7 @@ function ProjectForecastPage() {
         org_id: orgId,
         forecast_id: fid,
         project_id: projectId,
-        stream_id: null,
+        stream_id: phase.stream_id || null,
         phase_name: phase.gate_name,
         forecast_phase_id: phase.id || null,
         resource_id: resourceId,
@@ -446,10 +490,21 @@ function ProjectForecastPage() {
   });
 
   const setLock = useMutation({
-    mutationFn: async (next: "draft" | "locked") => {
+    mutationFn: async (next: "draft" | "locked" | "request") => {
       if (!forecast?.id) return;
       if (next === "draft" && !canUnlock)
-        throw new Error("Only the project sponsor or an admin can unlock a kicked-off estimate.");
+        throw new Error("Only the project sponsor or an admin can unlock a kicked-off plan.");
+      if (next === "request") {
+        const { error } = await supabase
+          .from("project_forecasts" as any)
+          .update({
+            unlock_requested_at: new Date().toISOString(),
+            unlock_requested_by: session?.user?.id || null,
+          })
+          .eq("id", forecast.id);
+        if (error) throw error;
+        return;
+      }
       const { error } = await supabase
         .from("project_forecasts" as any)
         .update({
@@ -458,16 +513,30 @@ function ProjectForecastPage() {
           locked_by: next === "locked" ? session?.user?.id : null,
           unlock_approved_at: next === "draft" ? new Date().toISOString() : null,
           unlock_approved_by: next === "draft" ? session?.user?.id : null,
+          unlock_requested_at: next === "draft" ? null : forecast.unlock_requested_at,
         })
         .eq("id", forecast.id);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_d, next) => {
       qc.invalidateQueries({ queryKey: ["project_forecasts"] });
-      toast.success(locked ? "Estimate unlocked" : "Estimate locked");
+      toast.success(
+        next === "request"
+          ? "Unlock requested — waiting for sponsor or admin"
+          : locked
+            ? "Plan unlocked for estimate changes"
+            : "Plan locked as the baseline forecast",
+      );
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  useEffect(() => {
+    if (!forecast?.id || !kickedOff) return;
+    if (forecast.status === "draft" && !forecast.unlock_approved_at) {
+      setLock.mutate("locked");
+    }
+  }, [forecast?.id, forecast?.status, forecast?.unlock_approved_at, kickedOff]);
 
   const savePhases = useMutation({
     mutationFn: async (rows: ForecastPhaseRow[]) => {
@@ -508,6 +577,7 @@ function ProjectForecastPage() {
         projectId,
         startDate: planStart,
         phases: laid,
+        streams: projectStreams,
         onlyFillEmpty,
       });
     },
@@ -515,6 +585,7 @@ function ProjectForecastPage() {
       qc.invalidateQueries({ queryKey: ["project", projectId] });
       qc.invalidateQueries({ queryKey: ["projects"] });
       qc.invalidateQueries({ queryKey: ["stage_gates"] });
+      qc.invalidateQueries({ queryKey: ["project_streams"] });
       qc.invalidateQueries({ queryKey: ["project_forecasts"] });
       toast.success(
         r.plannedEnd
@@ -525,8 +596,9 @@ function ProjectForecastPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const patchPhase = (gateName: string, patch: Partial<ForecastPhaseRow>) => {
-    const next = phaseDraft.map((p) => (p.gate_name === gateName ? { ...p, ...patch } : p));
+  const patchPhase = (phase: ForecastPhaseRow, patch: Partial<ForecastPhaseRow>) => {
+    const key = forecastPhaseKey(phase);
+    const next = phaseDraft.map((p) => (forecastPhaseKey(p) === key ? { ...p, ...patch } : p));
     setPhaseDraft(next);
   };
 
@@ -540,7 +612,7 @@ function ProjectForecastPage() {
       <PageHeading
         icon="📊"
         title="Project Forecast Estimation"
-        subtitle="Estimate effort by delivery-method stage-gate phase, assign resources, and push the resulting timeline onto the project plan when the start date is set."
+        subtitle="After a project is created (streams + delivery-method phases), estimate the plan here. Once work starts this stays the planned forecast; actuals update separately so timeline plan vs actual stays in sync."
       />
 
       <SectionFrame>
@@ -555,7 +627,7 @@ function ProjectForecastPage() {
               <option value="">Select a project…</option>
               {projects.map((p: any) => (
                 <option key={p.id} value={p.id}>
-                  {p.project_code} · {p.name}
+                  {p.project_code} · {p.name} · {p.status || "Not Started"}
                 </option>
               ))}
             </select>
@@ -583,23 +655,35 @@ function ProjectForecastPage() {
               Create forecast
             </Button>
           )}
-          {forecast && (
+          {forecast && !locked && (
+            <Button type="button" variant="outline" onClick={() => setLock.mutate("locked")}>
+              <Lock className="mr-1 h-4 w-4" />
+              Lock as plan
+            </Button>
+          )}
+          {forecast && locked && canUnlock && (
+            <Button type="button" variant="outline" onClick={() => setLock.mutate("draft")}>
+              <Unlock className="mr-1 h-4 w-4" />
+              Unlock plan (sponsor)
+            </Button>
+          )}
+          {forecast && locked && !canUnlock && (
             <Button
               type="button"
               variant="outline"
-              onClick={() => setLock.mutate(locked ? "draft" : "locked")}
+              disabled={unlockRequested}
+              onClick={() => setLock.mutate("request")}
             >
-              {locked ? <Unlock className="mr-1 h-4 w-4" /> : <Lock className="mr-1 h-4 w-4" />}
-              {locked ? "Unlock (sponsor)" : "Lock estimate"}
+              {unlockRequested ? "Unlock requested" : "Request sponsor unlock"}
             </Button>
           )}
           {projectId && (
             <Button
               type="button"
-              disabled={!planStart || applyPlan.isPending}
+              disabled={!planStart || applyPlan.isPending || !canEdit}
               onClick={() => applyPlan.mutate(false)}
             >
-              Apply to project plan
+              Apply planned dates
             </Button>
           )}
           {projectId && (
@@ -612,42 +696,81 @@ function ProjectForecastPage() {
             </Link>
           )}
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Setting the start date fills empty planned dates and stage-gate dates from this estimate.
-          Phase rows marked override, or dates you later edit on the project, are kept. Use Apply to
-          project plan to refresh computed dates.
-        </p>
+        {project && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            {kickedOff
+              ? "Project has started. This page is the planned baseline. Actual dates and incurred cost come from streams, gates, and timesheets — they are not overwritten here. Changing the plan needs sponsor or admin unlock."
+              : "Not started yet. Set durations and apply planned dates onto streams, stage gates, and the project. When the PM records Actual Start, this estimate remains the plan and actuals begin to show beside it."}
+          </p>
+        )}
+        {!project && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Shows Not Started and In Progress projects created in the new-project flow (streams +
+            phases). Completed / cancelled projects are omitted.
+          </p>
+        )}
       </SectionFrame>
 
       {!projectId ? (
         <p className="text-sm text-muted-foreground">
-          Choose a project to estimate phases, resources, and cost.
+          Choose a Not Started or In Progress project. Create the structure first in{" "}
+          <Link to="/app/projects/new" className="font-medium text-primary hover:underline">
+            New project
+          </Link>
+          , then estimate streams and phases here.
         </p>
       ) : (
         <>
           <SectionFrame>
             <SectionTitle>Phase timeline (months &amp; FY)</SectionTitle>
             <ForecastPhaseGantt
-              phases={phases.map((p) => ({
-                gate_name: p.gate_name,
-                start_date: p.start_date,
-                end_date: p.end_date,
-                cost: laborForPhase(p) + otherForPhase(p),
-              }))}
+              phases={phases.map((p, idx, arr) => {
+                const gate = (gates as any[]).find(
+                  (g) =>
+                    g.gate_name === p.gate_name &&
+                    (g.stream_id === p.stream_id ||
+                      (!g.stream_id && projectStreams.find((s) => s.id === p.stream_id)?.is_default)),
+                );
+                const stream = projectStreams.find((s) => s.id === p.stream_id);
+                const prev = [...arr]
+                  .slice(0, idx)
+                  .reverse()
+                  .find((x) => (x.stream_id || "") === (p.stream_id || ""));
+                const prevGate = prev
+                  ? (gates as any[]).find(
+                      (g) =>
+                        g.gate_name === prev.gate_name &&
+                        (g.stream_id === prev.stream_id || !g.stream_id),
+                    )
+                  : null;
+                return {
+                  stream_id: p.stream_id,
+                  stream_name: p.stream_name,
+                  gate_name: p.gate_name,
+                  start_date: p.start_date,
+                  end_date: p.end_date,
+                  actual_start: prevGate?.actual_date || stream?.actual_start_date || null,
+                  actual_end: gate?.actual_date || stream?.actual_end_date || null,
+                  cost: laborForPhase(p) + otherForPhase(p),
+                };
+              })}
               fyStartMonth={fyStartMonth}
+              showActuals={kickedOff}
             />
           </SectionFrame>
 
           <SectionFrame>
             <SectionTitle>Advanced estimate — phases, resources, cost</SectionTitle>
             <p className="mb-3 text-xs text-muted-foreground">
-              Phases come from the {method?.name || "delivery method"} stage-gate template. Duration
-              is calendar days (months ≈ 30 days) and lays out sequentially from the start date.
+              Each stream from the project setup is listed with the{" "}
+              {method?.name || "delivery method"} stage-gate phases. Duration is calendar days
+              (months ≈ 30 days) and lays out sequentially per stream from the planned start.
             </p>
             <div className="overflow-x-auto">
               <table className="st-table text-xs">
                 <thead>
                   <tr>
+                    <th>Stream</th>
                     <th>Phase</th>
                     <th className="st-num">Days</th>
                     <th className="st-num">Months</th>
@@ -664,7 +787,8 @@ function ProjectForecastPage() {
                     const labor = laborForPhase(ph);
                     const other = otherForPhase(ph);
                     return (
-                      <tr key={ph.gate_name}>
+                      <tr key={forecastPhaseKey(ph)}>
+                        <td>{ph.stream_name || "—"}</td>
                         <td className="font-medium">{ph.gate_name}</td>
                         <td>
                           <input
@@ -675,7 +799,7 @@ function ProjectForecastPage() {
                             value={ph.duration_days}
                             disabled={!canEdit}
                             onChange={(e) =>
-                              patchPhase(ph.gate_name, {
+                              patchPhase(ph, {
                                 duration_days: Number(e.target.value) || 0,
                               })
                             }
@@ -691,7 +815,7 @@ function ProjectForecastPage() {
                             value={daysToMonths(ph.duration_days)}
                             disabled={!canEdit}
                             onChange={(e) =>
-                              patchPhase(ph.gate_name, {
+                              patchPhase(ph, {
                                 duration_days: monthsToDays(Number(e.target.value) || 0),
                               })
                             }
@@ -705,7 +829,7 @@ function ProjectForecastPage() {
                             value={ph.start_date || ""}
                             disabled={!canEdit || !ph.dates_overridden}
                             onChange={(e) =>
-                              patchPhase(ph.gate_name, { start_date: e.target.value })
+                              patchPhase(ph, { start_date: e.target.value })
                             }
                             onBlur={persistPhaseDraft}
                           />
@@ -717,7 +841,7 @@ function ProjectForecastPage() {
                             value={ph.end_date || ""}
                             disabled={!canEdit || !ph.dates_overridden}
                             onChange={(e) =>
-                              patchPhase(ph.gate_name, { end_date: e.target.value })
+                              patchPhase(ph, { end_date: e.target.value })
                             }
                             onBlur={persistPhaseDraft}
                           />
@@ -728,7 +852,7 @@ function ProjectForecastPage() {
                             disabled={!canEdit}
                             checked={!!ph.dates_overridden}
                             onChange={(e) => {
-                              patchPhase(ph.gate_name, { dates_overridden: e.target.checked });
+                              patchPhase(ph, { dates_overridden: e.target.checked });
                               window.setTimeout(persistPhaseDraft, 0);
                             }}
                           />
@@ -741,7 +865,7 @@ function ProjectForecastPage() {
                   })}
                   {phases.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="py-4 text-center text-muted-foreground">
+                      <td colSpan={10} className="py-4 text-center text-muted-foreground">
                         No stage-gate phases for this delivery method yet.{" "}
                         <Link
                           to="/app/stage-gate-config"
@@ -792,7 +916,7 @@ function ProjectForecastPage() {
             <div className="space-y-3">
               {phases.map((ph) => (
                 <div
-                  key={ph.gate_name}
+                  key={forecastPhaseKey(ph)}
                   className="rounded-md border border-dashed border-border p-3"
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => {
@@ -923,7 +1047,8 @@ function ProjectForecastPage() {
                 >
                   <option value="">Whole project</option>
                   {phases.map((p) => (
-                    <option key={p.gate_name} value={p.id || ""}>
+                    <option key={forecastPhaseKey(p)} value={p.id || ""}>
+                      {p.stream_name ? `${p.stream_name} · ` : ""}
                       {p.gate_name}
                     </option>
                   ))}
@@ -953,12 +1078,19 @@ function ProjectForecastPage() {
           <SectionFrame>
             <SectionTitle>Total project cost estimation</SectionTitle>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <KpiCard label="Labor" value={money(laborTotal)} />
-              <KpiCard label="Other costs" value={money(otherTotal)} />
-              <KpiCard label="Project forecast" value={money(grand)} accent="#1d4ed8" />
+              <KpiCard label="Planned labor" value={money(laborTotal)} />
+              <KpiCard label="Planned other" value={money(otherTotal)} />
+              <KpiCard label="Planned forecast" value={money(grand)} accent="#1d4ed8" />
               <KpiCard
-                label="Current FAC"
-                value={money(Number(project?.forecast_at_completion || 0))}
+                label="Actual incurred"
+                value={money(
+                  (streams as any[]).reduce(
+                    (s, x) => s + Number(x.capex_incurred || 0) + Number(x.opex_incurred || 0),
+                    0,
+                  ) ||
+                    Number(project?.capex_incurred || 0) + Number(project?.opex_incurred || 0),
+                )}
+                accent="#059669"
               />
             </div>
             <label className="mt-3 flex items-center gap-2 text-sm">
@@ -980,8 +1112,11 @@ function ProjectForecastPage() {
             </Button>
             {kickedOff && (
               <p className="mt-2 text-xs text-muted-foreground">
-                This project is kicked off. The estimate locks; only the sponsor (
-                {project?.sponsor || "unset"}) or an admin can unlock it.
+                Actual incurred is live from stream / project actuals. The planned forecast does not
+                change unless the sponsor ({project?.sponsor || "unset"}) or an admin unlocks it.{" "}
+                <Link to="/app/timeline" className="font-medium text-primary hover:underline">
+                  Open timeline (plan vs actual)
+                </Link>
               </p>
             )}
           </SectionFrame>

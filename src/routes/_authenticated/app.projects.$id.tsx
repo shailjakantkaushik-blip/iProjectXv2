@@ -22,6 +22,7 @@ import {
   loadForecastPhases,
   parseForecastPhaseNotes,
 } from "@/lib/project-forecast";
+import { fetchOrgStreams } from "@/lib/project-streams";
 
 type ProjectTab = "overview" | "summary" | "decisions" | "work" | "governance" | "finance" | "streams";
 
@@ -116,11 +117,13 @@ function ProjectDetail() {
           let phases = await loadForecastPhases(fc.id);
           if (!phases.length) phases = parseForecastPhaseNotes(fc.notes);
           if (phases.length) {
+            const allStreams = await fetchOrgStreams(organization.id);
             await applyForecastToProjectPlan({
               orgId: organization.id,
               projectId: id,
               startDate: start,
               phases,
+              streams: allStreams.filter((s) => s.project_id === id),
               onlyFillEmpty: true,
             });
           }
@@ -134,6 +137,7 @@ function ProjectDetail() {
     qc.invalidateQueries({ queryKey: ["project", id] });
     qc.invalidateQueries({ queryKey: ["projects"] });
     qc.invalidateQueries({ queryKey: ["stage_gates"] });
+    qc.invalidateQueries({ queryKey: ["project_streams"] });
   };
 
   const remove = async () => {
