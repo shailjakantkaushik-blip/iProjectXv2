@@ -6,6 +6,7 @@ import { matchPhase } from "@/lib/project-phase";
 import {
   defaultGatesForMethodCode,
   findDeliveryMethod,
+  methodUsesStageGates,
   type DeliveryMethodRow,
 } from "@/lib/delivery-methods";
 
@@ -117,4 +118,137 @@ export function buildStageGateFlows(
       };
     })
     .filter((flow) => flow.stages.length > 0);
+}
+
+export const GATE_DIST_STATUSES = [
+  "Approved",
+  "In Review",
+  "Pending",
+  "On Hold",
+  "Rejected",
+] as const;
+
+export type GateDistStatus = (typeof GATE_DIST_STATUSES)[number];
+
+export type GateDistributionRow = {
+  gate: string;
+  Approved: number;
+  "In Review": number;
+  Pending: number;
+  "On Hold": number;
+  Rejected: number;
+  __total: number;
+};
+
+export type MethodGateDistribution = {
+  methodId: string;
+  methodName: string;
+  methodCode: string;
+  rows: GateDistributionRow[];
+  gateCount: number;
+};
+
+type GateDistGate = {
+  project_id?: string | null;
+  gate_name?: string | null;
+  status?: string | null;
+};
+
+type GateDistProject = {
+  id: string;
+  delivery_method?: string | null;
+  delivery_method_id?: string | null;
+};
+
+function emptyDistRow(gate: string): GateDistributionRow {
+  return {
+    gate,
+    Approved: 0,
+    "In Review": 0,
+    Pending: 0,
+    "On Hold": 0,
+    Rejected: 0,
+    __total: 0,
+  };
+}
+
+function tallyGateDistribution(
+  names: string[],
+  methodGates: GateDistGate[],
+): GateDistributionRow[] {
+  return names.map((n) => {
+    const row = emptyDistRow(n);
+    for (const g of methodGates) {
+      if (String(g.gate_name || "").trim() !== n) continue;
+      const raw = String(g.status || "Pending");
+      const status = (GATE_DIST_STATUSES as readonly string[]).includes(raw)
+        ? (raw as GateDistStatus)
+        : "Pending";
+      row[status] += 1;
+    }
+    row.__total = GATE_DIST_STATUSES.reduce((sum, s) => sum + row[s], 0);
+    return row;
+  });
+}
+
+/**
+ * One Gate Distribution series per delivery method that uses stage gates.
+ * Gate names stay on that method's template — never mixed on one axis.
+ */
+export function buildGateDistributions(
+  methods: DeliveryMethodRow[],
+  gateDefs: StageGateDefLike[],
+  projects: GateDistProject[],
+  gates: GateDistGate[],
+): MethodGateDistribution[] {
+  const build = (
+    methodId: string,
+    methodName: string,
+    methodCode: string,
+    methodProjects: GateDistProject[],
+    templateNames: string[],
+  ): MethodGateDistribution => {
+    const ids = new Set(methodProjects.map((p) => p.id));
+    const methodGates = gates.filter((g) => g.project_id && ids.has(g.project_id));
+    const extra = Array.from(
+      new Set(methodGates.map((g) => String(g.gate_name || "").trim()).filter(Boolean)),
+    );
+    const names = [...templateNames];
+    for (const n of extra) if (!names.includes(n)) names.push(n);
+    return {
+      methodId,
+      methodName,
+      methodCode,
+      rows: tallyGateDistribution(names, methodGates),
+      gateCount: methodGates.length,
+    };
+  };
+
+  if (methods.length === 0) {
+    const names = Array.from(
+      new Set(gates.map((g) => String(g.gate_name || "").trim()).filter(Boolean)),
+    );
+    const rows = tallyGateDistribution(names, gates);
+    return rows.length
+      ? [
+          {
+            methodId: "legacy",
+            methodName: "Stage gates",
+            methodCode: "waterfall",
+            rows,
+            gateCount: gates.length,
+          },
+        ]
+      : [];
+  }
+
+  return methods
+    .filter((method) => methodUsesStageGates(method, method.name))
+    .map((method) => {
+      const fromDefs = orderedGateNames(gateDefs, method.id);
+      const stages = fromDefs.length > 0 ? fromDefs : [...defaultGatesForMethodCode(method.code)];
+      const methodProjects = projects.filter((p) => projectBelongsToMethod(p, method, methods));
+      return build(method.id, method.name, method.code, methodProjects, stages);
+    })
+    .filter((d) => d.rows.length > 0);
 }

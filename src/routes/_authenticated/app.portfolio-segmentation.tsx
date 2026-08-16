@@ -184,7 +184,7 @@ function Segmentation() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="portfolio">Portfolio</SelectItem>
+              <SelectItem value="portfolio">Strategic Alignment</SelectItem>
               <SelectItem value="program">Program</SelectItem>
               <SelectItem value="priority">Priority</SelectItem>
               <SelectItem value="delivery_method">Delivery method</SelectItem>

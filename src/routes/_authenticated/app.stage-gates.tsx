@@ -3,14 +3,23 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { PROJECT_PORTFOLIO_SELECT, STAGE_GATES_SELECT, STAGE_GATE_DEFINITIONS_SELECT } from "@/lib/query-selects";
+import {
+  PROJECT_PORTFOLIO_SELECT,
+  STAGE_GATES_SELECT,
+  STAGE_GATE_DEFINITIONS_SELECT,
+} from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
 import { explainRag } from "@/lib/explain-metric";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, Legend } from "recharts";
-import { GATE_STATUS_COLORS as STATUS_COLORS, CHART_SERIES } from "@/lib/chart-theme";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
+import { GATE_STATUS_COLORS as STATUS_COLORS } from "@/lib/chart-theme";
 import { ExpandableChart } from "@/components/expandable-chart";
-import { persistCurrentPhaseFromGates, resolveCurrentAndNextGate, resolveCurrentStage } from "@/lib/project-phase";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  persistCurrentPhaseFromGates,
+  resolveCurrentAndNextGate,
+  resolveCurrentStage,
+} from "@/lib/project-phase";
 import { fetchOrgStreams, formatProjectStreamRef, formatStreamLabel } from "@/lib/project-streams";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
@@ -19,22 +28,22 @@ import {
   GateChecklistBadge,
   StageGateChecklistPanel,
 } from "@/components/stage-gate-checklist-panel";
-import {
-  approvalBlockedReason,
-  summarizeGateChecklist,
-} from "@/lib/stage-gate-checklist";
+import { approvalBlockedReason, summarizeGateChecklist } from "@/lib/stage-gate-checklist";
 import {
   fetchDeliveryMethods,
   findDeliveryMethod,
   methodUsesStageGates,
   deliveryMethodsQueryKey,
 } from "@/lib/delivery-methods";
+import {
+  buildGateDistributions,
+  GATE_DIST_STATUSES,
+  type MethodGateDistribution,
+} from "@/lib/stage-gate-flow";
 
 export const Route = createFileRoute("/_authenticated/app/stage-gates")({
   component: StageGatesPage,
 });
-
-const PALETTE = CHART_SERIES;
 
 function StageGatesPage() {
   const { organization } = useAuth();
@@ -44,14 +53,20 @@ function StageGatesPage() {
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
-    queryFn: async () => (await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*")).data ?? [],
+    queryFn: async () =>
+      (await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*")).data ?? [],
     enabled: !!organization,
   });
 
   const { data: gates = [] } = useQuery({
     queryKey: ["stage_gates", organization?.id],
     queryFn: async () =>
-      (await supabase.from("stage_gates").select(STAGE_GATES_SELECT as "*").order("planned_date")).data ?? [],
+      (
+        await supabase
+          .from("stage_gates")
+          .select(STAGE_GATES_SELECT as "*")
+          .order("planned_date")
+      ).data ?? [],
     enabled: !!organization,
   });
 
@@ -96,8 +111,7 @@ function StageGatesPage() {
   const phasesForProject = useCallback(
     (p: any): string[] => {
       const method =
-        (p?.delivery_method_id &&
-          deliveryMethods.find((m) => m.id === p.delivery_method_id)) ||
+        (p?.delivery_method_id && deliveryMethods.find((m) => m.id === p.delivery_method_id)) ||
         findDeliveryMethod(deliveryMethods, p?.delivery_method);
       if (!methodUsesStageGates(method, p?.delivery_method)) return [];
       if (method?.id && phasesByMethodId.has(method.id)) {
@@ -182,7 +196,15 @@ function StageGatesPage() {
   );
 
   const setGateStatus = useMutation({
-    mutationFn: async ({ id, status, projectId }: { id: string; status: string; projectId: string }) => {
+    mutationFn: async ({
+      id,
+      status,
+      projectId,
+    }: {
+      id: string;
+      status: string;
+      projectId: string;
+    }) => {
       const g = gates.find((x: any) => x.id === id) as any;
       if (/approved/i.test(status) && g) {
         const reason = approvalBlockedReason(summaryForGate(g));
@@ -192,7 +214,7 @@ function StageGatesPage() {
         .from("stage_gates")
         .update({
           status,
-          ...( /approved/i.test(status)
+          ...(/approved/i.test(status)
             ? { actual_date: new Date().toISOString().slice(0, 10) }
             : {}),
         } as never)
@@ -207,32 +229,11 @@ function StageGatesPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  // Gate distribution: names from gates actually on projects (Agile vs Waterfall templates).
-  const distribution = useMemo(() => {
-    const orderIdx = new Map<string, number>();
-    (defs as any[]).forEach((d, i) => {
-      if (!orderIdx.has(d.gate_name)) orderIdx.set(d.gate_name, d.sort_order ?? i);
-    });
-    const names = Array.from(
-      new Set((gates as any[]).map((g) => g.gate_name).filter(Boolean)),
-    ).sort((a, b) => {
-      const oa = orderIdx.get(a as string);
-      const ob = orderIdx.get(b as string);
-      if (oa !== undefined && ob !== undefined) return oa - ob;
-      return String(a).localeCompare(String(b));
-    }) as string[];
-    const statuses = ["Approved", "In Review", "Pending", "On Hold", "Rejected"];
-    return names.map((n: string) => {
-      const row: any = { gate: n };
-      statuses.forEach((s) => {
-        row[s] = gates.filter(
-          (g: any) => g.gate_name === n && (g.status || "Pending") === s,
-        ).length;
-      });
-      row.__total = statuses.reduce((sum, s) => sum + row[s], 0);
-      return row;
-    });
-  }, [gates, defs]);
+  // Gate distribution: one series per delivery method (do not mix templates).
+  const distributions = useMemo(
+    () => buildGateDistributions(deliveryMethods, defs as any[], projects as any[], gates as any[]),
+    [deliveryMethods, defs, projects, gates],
+  );
 
   // KPIs from actual gates
   const total = gates.length;
@@ -411,10 +412,7 @@ function StageGatesPage() {
   const table = useColumnarTable(register, columns);
 
   const blockedNextCount = useMemo(
-    () =>
-      register.filter(
-        (r) => r.next && approvalBlockedReason(summaryForGate(r.next)),
-      ).length,
+    () => register.filter((r) => r.next && approvalBlockedReason(summaryForGate(r.next))).length,
     [register, summaryForGate],
   );
 
@@ -435,7 +433,10 @@ function StageGatesPage() {
       />
 
       {projects.length === 0 && (
-        <div className="mb-4 rounded-md border border-border bg-surface px-4 py-3 text-sm" role="status">
+        <div
+          className="mb-4 rounded-md border border-border bg-surface px-4 py-3 text-sm"
+          role="status"
+        >
           <p className="font-medium text-foreground">Data not available</p>
           <p className="mt-1 text-muted-foreground">
             No projects in this organisation yet. Seed sample portfolio data or create a project
@@ -461,7 +462,14 @@ function StageGatesPage() {
       </SectionFrame>
 
       <SectionFrame>
-        {distribution.length === 0 ? (
+        <SectionTitle>Gate Distribution</SectionTitle>
+        <p className="mb-3 text-sm text-muted-foreground">
+          Separate view per delivery method. Gate names stay on that method&apos;s template.{" "}
+          <Link to="/app/stage-gate-config" className="font-medium text-primary hover:underline">
+            Configure methods &amp; gates
+          </Link>
+        </p>
+        {distributions.length === 0 ? (
           <div className="rounded-md border p-6 text-center text-xs text-muted-foreground">
             No gates yet. Configure gates in{" "}
             <Link to="/app/stage-gate-config" className="font-medium text-primary hover:underline">
@@ -469,32 +477,24 @@ function StageGatesPage() {
             </Link>{" "}
             and add them to projects.
           </div>
+        ) : distributions.length === 1 ? (
+          <GateDistChart dist={distributions[0]} />
         ) : (
-          <ExpandableChart title="Gate Distribution" heightClass="h-72">
-            <BarChart data={distribution} margin={{ top: 20, right: 20, left: 0, bottom: 40 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-              <XAxis
-                dataKey="gate"
-                fontSize={11}
-                angle={-15}
-                textAnchor="end"
-                interval={0}
-                height={60}
-              />
-              <YAxis allowDecimals={false} fontSize={11} />
-              <Tooltip />
-              <Legend verticalAlign="top" height={28} />
-              {["Approved", "In Review", "Pending", "On Hold", "Rejected"].map((s) => (
-                <Bar
-                  key={s}
-                  dataKey={s}
-                  stackId="s"
-                  fill={STATUS_COLORS[s]}
-                  radius={[2, 2, 0, 0]}
-                />
+          <Tabs defaultValue={distributions[0].methodId}>
+            <TabsList className="mb-3 flex h-auto min-h-9 flex-wrap justify-start gap-1">
+              {distributions.map((d) => (
+                <TabsTrigger key={d.methodId} value={d.methodId}>
+                  {d.methodName}
+                  <span className="ml-1 text-[10px] text-muted-foreground">({d.gateCount})</span>
+                </TabsTrigger>
               ))}
-            </BarChart>
-          </ExpandableChart>
+            </TabsList>
+            {distributions.map((d) => (
+              <TabsContent key={d.methodId} value={d.methodId} className="mt-0">
+                <GateDistChart dist={d} />
+              </TabsContent>
+            ))}
+          </Tabs>
         )}
       </SectionFrame>
 
@@ -534,92 +534,88 @@ function StageGatesPage() {
                   </td>
                 </tr>
               ) : (
-                table.rows.map(({ key, project, streamLabel, streamRef, current, next, phase, rag }) => (
-                  <tr key={key}>
-                    <td>
-                      <div className="leading-tight">
-                        <div className="font-medium">{project.name}</div>
-                        {project.project_code ? (
-                          <div className="font-mono text-[10px] text-muted-foreground">
-                            {project.project_code}
-                          </div>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td>{streamLabel || "—"}</td>
-                    <td className="font-mono text-[11px]">
-                      {streamRef || project.project_code || "—"}
-                    </td>
-                    <td>{project.program || "—"}</td>
-                    <td>{project.sponsor || "—"}</td>
-                    <td>
-                      <RagChip rag={rag} explain={explainRag({ rag, source: "gate" })} />
-                    </td>
-                    <td className="font-medium">{phase || "—"}</td>
-                    <td>{current?.gate_name || "—"}</td>
-                    <td>
-                      {current ? (
-                        <span
-                          className="rounded px-2 py-0.5 text-[11px] text-white"
-                          style={{
-                            background: STATUS_COLORS[current.status || "Pending"] || "#94a3b8",
-                          }}
-                        >
-                          {current.status || "Pending"}
-                        </span>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="font-medium">
-                      {next?.gate_name || (
-                        <span className="text-muted-foreground">All complete</span>
-                      )}
-                    </td>
-                    <td>{next?.planned_date || "—"}</td>
-                    <td>
-                      {next ? (
-                        <div className="flex flex-col gap-1">
-                          <select
-                            className="st-input !py-0.5 !text-xs"
-                            value={next.status || "Pending"}
-                            onChange={(e) =>
-                              setGateStatus.mutate({
-                                id: next.id,
-                                status: e.target.value,
-                                projectId: project.id,
-                              })
-                            }
-                          >
-                            {["Pending", "In Review", "Approved", "On Hold", "Rejected"].map(
-                              (s) => (
-                                <option key={s} value={s}>
-                                  {s}
-                                </option>
-                              ),
-                            )}
-                          </select>
-                          <button
-                            type="button"
-                            className="text-left text-[10px] font-medium text-primary hover:underline"
-                            onClick={() => setChecklistGateId(next.id)}
-                          >
-                            Open checklist
-                          </button>
+                table.rows.map(
+                  ({ key, project, streamLabel, streamRef, current, next, phase, rag }) => (
+                    <tr key={key}>
+                      <td>
+                        <div className="leading-tight">
+                          <div className="font-medium">{project.name}</div>
+                          {project.project_code ? (
+                            <div className="font-mono text-[10px] text-muted-foreground">
+                              {project.project_code}
+                            </div>
+                          ) : null}
                         </div>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td>
-                      {next ? (
-                        <GateChecklistBadge summary={summaryForGate(next)} />
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td>{streamLabel || "—"}</td>
+                      <td className="font-mono text-[11px]">
+                        {streamRef || project.project_code || "—"}
+                      </td>
+                      <td>{project.program || "—"}</td>
+                      <td>{project.sponsor || "—"}</td>
+                      <td>
+                        <RagChip rag={rag} explain={explainRag({ rag, source: "gate" })} />
+                      </td>
+                      <td className="font-medium">{phase || "—"}</td>
+                      <td>{current?.gate_name || "—"}</td>
+                      <td>
+                        {current ? (
+                          <span
+                            className="rounded px-2 py-0.5 text-[11px] text-white"
+                            style={{
+                              background: STATUS_COLORS[current.status || "Pending"] || "#94a3b8",
+                            }}
+                          >
+                            {current.status || "Pending"}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="font-medium">
+                        {next?.gate_name || (
+                          <span className="text-muted-foreground">All complete</span>
+                        )}
+                      </td>
+                      <td>{next?.planned_date || "—"}</td>
+                      <td>
+                        {next ? (
+                          <div className="flex flex-col gap-1">
+                            <select
+                              className="st-input !py-0.5 !text-xs"
+                              value={next.status || "Pending"}
+                              onChange={(e) =>
+                                setGateStatus.mutate({
+                                  id: next.id,
+                                  status: e.target.value,
+                                  projectId: project.id,
+                                })
+                              }
+                            >
+                              {["Pending", "In Review", "Approved", "On Hold", "Rejected"].map(
+                                (s) => (
+                                  <option key={s} value={s}>
+                                    {s}
+                                  </option>
+                                ),
+                              )}
+                            </select>
+                            <button
+                              type="button"
+                              className="text-left text-[10px] font-medium text-primary hover:underline"
+                              onClick={() => setChecklistGateId(next.id)}
+                            >
+                              Open checklist
+                            </button>
+                          </div>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td>{next ? <GateChecklistBadge summary={summaryForGate(next)} /> : "—"}</td>
+                    </tr>
+                  ),
+                )
               )}
             </tbody>
           </table>
@@ -670,5 +666,22 @@ function StageGatesPage() {
         )}
       </SectionFrame>
     </div>
+  );
+}
+
+function GateDistChart({ dist }: { dist: MethodGateDistribution }) {
+  return (
+    <ExpandableChart title={`${dist.methodName} · ${dist.gateCount} gates`} heightClass="h-72">
+      <BarChart data={dist.rows} margin={{ top: 20, right: 20, left: 0, bottom: 40 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+        <XAxis dataKey="gate" fontSize={11} angle={-15} textAnchor="end" interval={0} height={60} />
+        <YAxis allowDecimals={false} fontSize={11} />
+        <Tooltip />
+        <Legend verticalAlign="top" height={28} />
+        {GATE_DIST_STATUSES.map((s) => (
+          <Bar key={s} dataKey={s} stackId="s" fill={STATUS_COLORS[s]} radius={[2, 2, 0, 0]} />
+        ))}
+      </BarChart>
+    </ExpandableChart>
   );
 }

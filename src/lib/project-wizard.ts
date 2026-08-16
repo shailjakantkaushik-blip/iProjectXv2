@@ -83,7 +83,7 @@ export const FIELD_HELP: Record<string, string> = {
     "Human key used across every sheet (gates, finance, work items). Keep short and unique in the organisation (e.g. PRJ-042).",
   name: "Display name on portfolio registers, Gantt, and executive views.",
   portfolio:
-    "Portfolio bucket for executive health & segmentation: Business Strategic | IT Strategic | CAPEX | Unfunded.",
+    "Strategic Alignment bucket for executive health & segmentation: Business Strategic | IT Strategic | CAPEX | Unfunded.",
   program: "Optional program / theme grouping above the project.",
   sponsor: "Executive sponsor name (reporting / governance).",
   bu_id: "Business unit from org catalogue (Data Editor → Business Units).",

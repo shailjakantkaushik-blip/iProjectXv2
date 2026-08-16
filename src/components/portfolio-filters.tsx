@@ -2,6 +2,7 @@ import { useMemo, useState, useRef, useEffect, useCallback, useLayoutEffect } fr
 import { createPortal } from "react-dom";
 import { compareProjectsByCodeName } from "@/lib/project-options";
 import { fyOf, projectScheduleEnd, projectScheduleStart } from "@/lib/project-dates";
+import { STRATEGIC_ALIGNMENT_LABEL } from "@/lib/ops-enhancements";
 
 export type PortfolioFilterState = {
   portfolio: string;
@@ -435,7 +436,7 @@ export function PortfolioFilters({
       />
       <ProjectPicker projects={projects} selected={value.projectIds} onChange={(v) => set("projectIds", v)} />
       <select className={box} value={value.portfolio} onChange={(e) => set("portfolio", e.target.value)}>
-        <option value="All">All portfolios</option>
+        <option value="All">All {STRATEGIC_ALIGNMENT_LABEL}s</option>
         {portfolios.map((p) => (
           <option key={p} value={p}>
             {p}
@@ -486,7 +487,7 @@ export function PortfolioFilters({
 }
 
 /**
- * Executive Dashboard filter set — Project, Portfolio, Program, Sponsor,
+ * Executive Dashboard filter set — Project, Strategic Alignment, Program, Sponsor,
  * Priority, Status, Fiscal Year. Shared with Portfolio Pulse for parity.
  */
 export type ExecutivePortfolioFilterState = {
@@ -564,7 +565,7 @@ export function ExecutivePortfolioFilters({
   value,
   onChange,
   fyStartMonth = 4,
-  title = "Portfolio filters",
+  title = "Filters",
 }: {
   projects: any[];
   value: ExecutivePortfolioFilterState;
@@ -607,7 +608,7 @@ export function ExecutivePortfolioFilters({
     key: keyof ExecutivePortfolioFilterState;
     options: string[];
   }[] = [
-    { label: "Portfolio", key: "portfolio", options: portfolioOpts },
+    { label: STRATEGIC_ALIGNMENT_LABEL, key: "portfolio", options: portfolioOpts },
     { label: "Program", key: "program", options: opts("program") },
     { label: "Sponsor", key: "sponsor", options: opts("sponsor") },
     { label: "Priority", key: "priority", options: opts("priority") },
