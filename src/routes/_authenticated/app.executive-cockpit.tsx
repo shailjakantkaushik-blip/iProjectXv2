@@ -933,12 +933,6 @@ function ExecutiveCockpit() {
                   <th className="sticky left-0 z-[3] bg-muted px-3 py-2 text-left shadow-[4px_0_8px_-2px_rgba(15,23,42,0.18)]">
                     Project
                   </th>
-                  <th className="px-3 py-2 text-left">Strategic Alignment</th>
-                  <th className="px-3 py-2 text-left">Program</th>
-                  <th className="px-3 py-2 text-left">Channel</th>
-                  <th className="px-3 py-2 text-left">Sponsor</th>
-                  <th className="px-3 py-2 text-left">Lead</th>
-                  <th className="px-3 py-2 text-left">Why</th>
                   <th className="px-3 py-2 text-right">Progress</th>
                   <th className="px-3 py-2 text-right">Health</th>
                   <th className="px-3 py-2 text-left">RAG</th>
@@ -952,6 +946,12 @@ function ExecutiveCockpit() {
                   <th className="px-3 py-2 text-left">Financial</th>
                   <th className="px-3 py-2 text-left">Delivery</th>
                   <th className="px-3 py-2 text-left">Benefit</th>
+                  <th className="px-3 py-2 text-left">Strategic Alignment</th>
+                  <th className="px-3 py-2 text-left">Program</th>
+                  <th className="px-3 py-2 text-left">Channel</th>
+                  <th className="px-3 py-2 text-left">Sponsor</th>
+                  <th className="px-3 py-2 text-left">Lead</th>
+                  <th className="px-3 py-2 text-left">Why</th>
                 </tr>
               </thead>
               <tbody>
@@ -969,14 +969,6 @@ function ExecutiveCockpit() {
                           {p.project_code || "—"}
                         </div>
                         <div className="max-w-[14rem] truncate text-xs">{p.name}</div>
-                      </td>
-                      <td className="px-3 py-2 text-xs">{p.portfolio || "—"}</td>
-                      <td className="px-3 py-2 text-xs">{p.program || "—"}</td>
-                      <td className="px-3 py-2 text-xs">{p.governance_channel || "—"}</td>
-                      <td className="px-3 py-2 text-xs">{p.sponsor || "—"}</td>
-                      <td className="px-3 py-2 text-xs">{p.delivery_lead || "—"}</td>
-                      <td className="max-w-[16rem] px-3 py-2 text-xs text-muted-foreground">
-                        {packWhy(p)}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums text-xs">
                         {Math.round(num(p.progress_percent))}%
@@ -1046,6 +1038,14 @@ function ExecutiveCockpit() {
                           label={p.benefit_rag}
                           explain={explainRag({ rag: p.benefit_rag, engine: p.engine, dimension: "benefits" })}
                         />
+                      </td>
+                      <td className="px-3 py-2 text-xs">{p.portfolio || "—"}</td>
+                      <td className="px-3 py-2 text-xs">{p.program || "—"}</td>
+                      <td className="px-3 py-2 text-xs">{p.governance_channel || "—"}</td>
+                      <td className="px-3 py-2 text-xs">{p.sponsor || "—"}</td>
+                      <td className="px-3 py-2 text-xs">{p.delivery_lead || "—"}</td>
+                      <td className="max-w-[16rem] px-3 py-2 text-xs text-muted-foreground">
+                        {packWhy(p)}
                       </td>
                     </tr>
                   );
