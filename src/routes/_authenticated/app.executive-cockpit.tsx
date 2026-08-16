@@ -36,7 +36,7 @@ import {
 import { getPortfolioKpis, listPortfolioProjects } from "@/lib/portfolio.functions";
 import { MAX_PAGE_SIZE } from "@/lib/portfolio-paging";
 import { FINANCIALS_MONTHLY_SELECT } from "@/lib/query-selects";
-import { explainPortfolioSnapshot, explainRag } from "@/lib/explain-metric";
+import { explainPortfolioSnapshot, explainRag, type MetricExplanation } from "@/lib/explain-metric";
 import { displayRag, effectiveRag, isRagOverridden } from "@/lib/ops-enhancements";
 import type { MonthlyFinanceRow } from "@/lib/finance-lifecycle";
 import { isDecisionAwaiting } from "@/lib/decision-approval";
@@ -122,17 +122,22 @@ function ScoreStat({
   hint,
   to,
   accent,
+  explain,
 }: {
   label: string;
   value: ReactNode;
   hint?: ReactNode;
   to?: string;
   accent?: string;
+  explain?: MetricExplanation | null;
 }) {
   const body = (
     <div className="h-full rounded-lg border border-border bg-muted/15 px-3 py-2.5">
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-        {label}
+      <div className="flex items-center gap-1">
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {label}
+        </div>
+        {explain ? <ExplainThis explanation={explain} size="xs" /> : null}
       </div>
       <div className="mt-1 text-lg font-bold tabular-nums leading-tight" style={accent ? { color: accent } : undefined}>
         {value}
@@ -417,6 +422,8 @@ function ExecutiveCockpit() {
     totalValue,
     capexApproved,
     opexApproved,
+    capexIncurred,
+    opexIncurred,
     approvedFunding,
     actualSpend,
     remaining,
@@ -446,8 +453,10 @@ function ExecutiveCockpit() {
       sumBenefitsTarget(benefitsByProject.get(p.id) || [], p, p.id);
 
     const totalValue = projects.reduce((s: number, p: any) => s + num(p.budget), 0);
-    const capexApproved = projects.reduce((s: number, p: any) => s + num(p.capex_approved), 0);
-    const opexApproved = projects.reduce((s: number, p: any) => s + num(p.opex_approved), 0);
+    const capexApproved = projects.reduce((s: number, p: any) => s + projectCapexApproved(p), 0);
+    const opexApproved = projects.reduce((s: number, p: any) => s + projectOpexApproved(p), 0);
+    const capexIncurred = projects.reduce((s: number, p: any) => s + num(p.capex_incurred), 0);
+    const opexIncurred = projects.reduce((s: number, p: any) => s + num(p.opex_incurred), 0);
     const approvedFunding = projects.reduce(
       (s: number, p: any) => s + projectApprovedFunding(p),
       0,
@@ -521,10 +530,12 @@ function ExecutiveCockpit() {
     });
 
     return {
-      totalValue,
-      capexApproved,
-      opexApproved,
-      approvedFunding,
+    totalValue,
+    capexApproved,
+    opexApproved,
+    capexIncurred,
+    opexIncurred,
+    approvedFunding,
       actualSpend,
       remaining,
       fac,
@@ -549,6 +560,7 @@ function ExecutiveCockpit() {
   const actualSpendK = useCache ? kpis!.incurred : actualSpend;
   const remainingK = Math.max(0, approvedFundingK - actualSpendK);
   const facK = useCache ? kpis!.forecast_at_completion : fac;
+  const facDelta = facK - approvedFundingK;
   const onTrackK = useCache ? kpis!.rag_green : onTrack;
   const atRiskK = useCache ? kpis!.rag_amber : atRisk;
   const delayedK = useCache ? kpis!.rag_red : delayed;
@@ -614,6 +626,18 @@ function ExecutiveCockpit() {
           forecast: v.forecast / 1e6,
         };
       });
+  }, [monthly, filtersOn, filteredIds]);
+
+  const planTotal = useMemo(() => {
+    return (monthly as MonthlyFinanceRow[])
+      .filter((m) => inScope((m as any).project_id))
+      .reduce((s, m) => s + num(m.capex_planned) + num(m.opex_planned), 0);
+  }, [monthly, filtersOn, filteredIds]);
+
+  const planTotal = useMemo(() => {
+    return (monthly as MonthlyFinanceRow[])
+      .filter((m) => inScope((m as any).project_id))
+      .reduce((s, m) => s + num(m.capex_planned) + num(m.opex_planned), 0);
   }, [monthly, filtersOn, filteredIds]);
 
   const projectsWithFY =
@@ -725,70 +749,120 @@ function ExecutiveCockpit() {
           <SectionTitle>Money</SectionTitle>
           {explains.budget ? <ExplainThis explanation={explains.budget} size="xs" /> : null}
         </div>
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-          <div className="space-y-3">
-            <EnvelopeBullet
-              budget={approvedFundingK}
-              incurred={actualSpendK}
-              forecast={facK}
+        <div className="space-y-3">
+          <EnvelopeBullet
+            budget={approvedFundingK}
+            incurred={actualSpendK}
+            forecast={facK}
+          />
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+            <ScoreStat
+              label="Budget"
+              value={money(approvedFundingK)}
+              hint="Approved envelope"
+              explain={explains.budget}
+              to="/app/financials"
             />
-            <div className="grid grid-cols-3 gap-2">
-              <ScoreStat
-                label="CapEx"
-                value={money(capexApproved)}
-                hint={totalValue ? `of ${money(totalValue)} value` : undefined}
-              />
-              <ScoreStat label="OpEx" value={money(opexApproved)} />
-              <ScoreStat
-                label="Remaining"
-                value={money(remainingK)}
-                hint={`${pct(remainingK, approvedFundingK)} of envelope`}
-              />
-            </div>
-            {coverageWeak ? (
-              <ScoreStat
-                label="FY allocation coverage"
-                value={`${allocationCoverage}%`}
-                hint={`${projectsWithFY}/${projects.length} projects have an FY split`}
-                to="/app/fy-allocation"
-                accent={allocationCoverage < 50 ? "#dc2626" : "#d97706"}
-              />
-            ) : null}
+            <ScoreStat
+              label="Plan"
+              value={money(planTotal)}
+              hint={planTotal ? "Monthly CapEx + OpEx plan" : "No monthly plan yet"}
+            />
+            <ScoreStat
+              label="Incurred"
+              value={money(actualSpendK)}
+              hint={`${pct(actualSpendK, approvedFundingK)} of envelope`}
+              explain={explains.actual}
+            />
+            <ScoreStat
+              label="Forecast"
+              value={money(facK)}
+              hint="At completion"
+              explain={explains.forecast}
+            />
+            <ScoreStat
+              label="Remaining"
+              value={money(remainingK)}
+              hint={`${pct(remainingK, approvedFundingK)} of envelope`}
+              explain={explains.remaining}
+            />
+            <ScoreStat
+              label="FAC vs envelope"
+              value={`${facDelta > 0 ? "+" : facDelta < 0 ? "−" : ""}${money(Math.abs(facDelta))}`}
+              hint={facDelta > 0 ? "over budget" : facDelta < 0 ? "under budget" : "on envelope"}
+              accent={facDelta > 0 ? "#dc2626" : facDelta < 0 ? "#15803d" : undefined}
+            />
+            <ScoreStat
+              label="CapEx approved"
+              value={money(capexApproved)}
+              hint={totalValue ? `of ${money(totalValue)} value` : undefined}
+            />
+            <ScoreStat
+              label="CapEx incurred"
+              value={money(capexIncurred)}
+              hint={`${pct(capexIncurred, capexApproved)} of CapEx`}
+            />
+            <ScoreStat
+              label="OpEx approved"
+              value={money(opexApproved)}
+            />
+            <ScoreStat
+              label="OpEx incurred"
+              value={money(opexIncurred)}
+              hint={`${pct(opexIncurred, opexApproved)} of OpEx`}
+            />
+            <ScoreStat
+              label="Benefits target"
+              value={money(benefitsForecastK)}
+              explain={explains.benefits}
+              to="/app/benefits"
+            />
+            <ScoreStat
+              label="Benefits realised"
+              value={money(benefitsRealisedK)}
+              hint={`${pct(benefitsRealisedK, benefitsForecastK)} of target`}
+              to="/app/benefits"
+            />
+            <ScoreStat
+              label="FY coverage"
+              value={`${allocationCoverage}%`}
+              hint={`${projectsWithFY}/${projects.length} projects have an FY split`}
+              to="/app/fy-allocation"
+              accent={coverageWeak ? (allocationCoverage < 50 ? "#dc2626" : "#d97706") : undefined}
+            />
           </div>
-          <div>
-            {fyData.length === 0 ? (
-              <p className="py-10 text-center text-sm text-muted-foreground">No FY envelope yet</p>
-            ) : (
-              <ExpandableChart title="Budget vs Forecast by FY" heightClass="h-64">
-                <BarChart data={fyData} margin={{ top: 20, right: 12, left: 0, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="fy" fontSize={11} />
-                  <YAxis
-                    fontSize={10}
-                    tickFormatter={(v: number) => money(v)}
+          {fyData.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">No FY envelope yet</p>
+          ) : (
+            <ExpandableChart title="Budget vs Forecast by FY" heightClass="h-64">
+              <BarChart data={fyData} margin={{ top: 20, right: 12, left: 0, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="fy" fontSize={11} />
+                <YAxis
+                  fontSize={10}
+                  tickFormatter={(v: number) => money(v)}
+                />
+                <Tooltip formatter={(v: number) => money(v)} />
+                <Legend verticalAlign="top" />
+                <Bar dataKey="budget" name="Budget" fill="#3b82f6">
+                  <LabelList
+                    dataKey="budget"
+                    position="top"
+                    style={{ fontSize: 10 }}
+                    formatter={(v: number) => money(v)}
                   />
-                  <Tooltip formatter={(v: number) => money(v)} />
-                  <Legend verticalAlign="top" />
-                  <Bar dataKey="budget" name="Budget" fill="#3b82f6">
-                    <LabelList
-                      dataKey="budget"
-                      position="top"
-                      style={{ fontSize: 10 }}
-                      formatter={(v: number) => money(v)}
-                    />
-                  </Bar>
-                  <Bar dataKey="forecast" name="Forecast" fill="#f59e0b">
-                    <LabelList
-                      dataKey="forecast"
-                      position="top"
-                      style={{ fontSize: 10 }}
-                      formatter={(v: number) => money(v)}
-                    />
-                  </Bar>
-                </BarChart>
-              </ExpandableChart>
-            )}
-          </div>
+                </Bar>
+                <Bar dataKey="forecast" name="Forecast" fill="#f59e0b">
+                  <LabelList
+                    dataKey="forecast"
+                    position="top"
+                    style={{ fontSize: 10 }}
+                    formatter={(v: number) => money(v)}
+                  />
+                </Bar>
+              </BarChart>
+            </ExpandableChart>
+          )}
         </div>
       </SectionFrame>
 
