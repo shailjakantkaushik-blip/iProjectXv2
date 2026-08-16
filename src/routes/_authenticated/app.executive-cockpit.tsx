@@ -22,7 +22,6 @@ import {
   projectOpexApproved,
   projectForecast,
   projectIncurred,
-  projectRemaining,
   fyAllocBudget,
   fyAllocForecast,
   sumBenefitsRealised,
@@ -891,13 +890,13 @@ function ExecutiveCockpit() {
           <p className="mb-2 text-[11px] text-muted-foreground">
             All in-scope projects, sorted worst RAG then lowest health score. Click a row for the
             infographic. Health score stays calculated; RAG uses a manual override when set (M).
-            Program, Why, and money columns come from the steering pack.
+            Money lives in Mix by Strategic Alignment.
           </p>
           <p className="mb-2 text-[11px] text-muted-foreground md:hidden">
             Swipe sideways to see all columns.
           </p>
           <div className="st-table-wrap overflow-auto overscroll-contain">
-            <table className="w-full min-w-[1680px] text-sm">
+            <table className="w-full min-w-[1080px] text-sm">
               <thead className="sticky top-0 z-[2] bg-muted/90 text-xs uppercase text-muted-foreground backdrop-blur">
                 <tr>
                   <th className="sticky left-0 z-[3] bg-muted/90 px-3 py-2 text-left">Project</th>
@@ -916,12 +915,6 @@ function ExecutiveCockpit() {
                   >
                     30 days prediction
                   </th>
-                  <th className="px-3 py-2 text-right">Budget</th>
-                  <th className="px-3 py-2 text-right">CapEx</th>
-                  <th className="px-3 py-2 text-right">OpEx</th>
-                  <th className="px-3 py-2 text-right">Incurred</th>
-                  <th className="px-3 py-2 text-right">Remaining</th>
-                  <th className="px-3 py-2 text-right">Forecast</th>
                   <th className="px-3 py-2 text-left">Schedule</th>
                   <th className="px-3 py-2 text-left">Financial</th>
                   <th className="px-3 py-2 text-left">Delivery</th>
@@ -930,8 +923,6 @@ function ExecutiveCockpit() {
               </thead>
               <tbody>
                 {healthRows.map((p: any) => {
-                  const fac = projectForecast(p);
-                  const budget = projectApprovedFunding(p);
                   return (
                     <tr
                       key={p.id}
@@ -995,24 +986,6 @@ function ExecutiveCockpit() {
                           />
                         ) : null}
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-xs">{money(budget)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-xs">
-                        {money(projectCapexApproved(p))}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-xs">
-                        {money(projectOpexApproved(p))}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-xs">
-                        {money(projectIncurred(p))}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-xs">
-                        {money(projectRemaining(p))}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-xs">
-                        <span className={fac > budget ? "font-semibold text-red-600" : ""}>
-                          {money(fac)}
-                        </span>
-                      </td>
                       <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                         <RagChip
                           rag={p.schedule_rag}
@@ -1049,8 +1022,7 @@ function ExecutiveCockpit() {
           </div>
           <div className="mt-2 text-xs text-muted-foreground">
             Health Score is calculated (Schedule 20% · Financial 20% · Scope 10% · Delivery 15% ·
-            Resource 10% · Risk 10% · Dependencies 10% · Benefits 5%). Forecast over envelope is
-            shown in red. {healthRows.length} row(s).
+            Resource 10% · Risk 10% · Dependencies 10% · Benefits 5%). {healthRows.length} row(s).
           </div>
         </ExpandablePanel>
       </SectionFrame>
@@ -1175,8 +1147,8 @@ function ExecutiveCockpit() {
               </table>
             </div>
             <p className="text-[11px] text-muted-foreground">
-              Same money columns as the Portfolio health matrix: Budget, CapEx, OpEx, Incurred,
-              Remaining, Forecast. Forecast over envelope is shown in red.
+              Budget, CapEx, OpEx, Incurred, Remaining, and Forecast. Forecast over envelope is
+              shown in red.
             </p>
           </div>
         )}
