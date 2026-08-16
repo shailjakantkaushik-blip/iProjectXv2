@@ -258,7 +258,8 @@
   border: 1px solid color-mix(in srgb, var(--color-border) 90%, transparent);
   border-radius: 10px;
   padding: 12px 14px;
-  min-height: 0;
+  height: 100%;
+  min-height: 5.75rem;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 .kpi-card:hover {
@@ -273,6 +274,7 @@
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 6px;
+  min-height: 2.5rem;
 }
 
 .kpi-label {
@@ -287,8 +289,9 @@
   white-space: normal;
   overflow: visible;
   text-overflow: unset;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: auto;
 }
 
 .kpi-value {
@@ -319,12 +322,45 @@ html[data-style-theme] .kpi-value:not([style*="color"]) {
   overflow-wrap: anywhere;
 }
 
-/* Keep KPI rows wide enough that headings do not get clipped */
+/* Equal-width tracks — auto-fill keeps leftover cards the same size (not stretched) */
 div:has(> .kpi-card) {
   display: grid !important;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12.25rem), 1fr)) !important;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 11rem), 1fr)) !important;
   gap: 0.75rem;
   align-items: stretch;
+  justify-items: stretch;
+}
+
+/* Cockpit rows: even columns that match the card count */
+.kpi-align {
+  display: grid !important;
+  gap: 0.75rem;
+  align-items: stretch;
+}
+.kpi-align-7 {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+.kpi-align-6,
+.kpi-align-5 {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+@media (min-width: 768px) {
+  .kpi-align-7 { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+  .kpi-align-6 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+  .kpi-align-5 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+}
+@media (min-width: 1280px) {
+  .kpi-align-7 { grid-template-columns: repeat(7, minmax(0, 1fr)) !important; }
+  .kpi-align-6 { grid-template-columns: repeat(6, minmax(0, 1fr)) !important; }
+  .kpi-align-5 { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; }
+}
+
+/* Vertical KPI stack (sidebar) — do not turn into a wrapping grid */
+.kpi-stack {
+  display: flex !important;
+  flex-direction: column;
+  gap: 0.75rem;
+  grid-template-columns: none !important;
 }
 
 /* Page heading — primary hierarchy above nav section labels */

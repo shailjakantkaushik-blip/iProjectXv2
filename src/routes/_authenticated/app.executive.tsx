@@ -801,7 +801,7 @@ function ExecutiveDashboard() {
         />
       </SectionFrame>
 
-      <div className="mb-4 flex flex-wrap gap-1 border-b border-border pb-px">
+      <div className="mb-3 flex items-end gap-0 border-b border-border">
         {(
           [
             { id: "quick" as const, label: "Quick view" },
@@ -816,10 +816,10 @@ function ExecutiveDashboard() {
               to="/app/executive"
               search={{ tab: t.id }}
               className={cn(
-                "rounded-t-md px-5 py-3 text-sm font-semibold transition-colors sm:text-base",
+                "inline-flex min-w-[8.25rem] items-center justify-center border-b-2 px-3 py-1.5 text-[13px] font-medium -mb-px transition-colors",
                 active
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
               {t.label}
@@ -829,7 +829,7 @@ function ExecutiveDashboard() {
       </div>
 
       {(tab === "quick" || tab === "summaries") && (
-      <div className="mb-4 flex flex-wrap gap-1">
+      <div className="mb-4 inline-flex flex-wrap rounded-md border border-border bg-muted/40 p-0.5">
         {(
           [
             { id: "quick" as const, label: "Briefing" },
@@ -841,10 +841,10 @@ function ExecutiveDashboard() {
             to="/app/executive"
             search={{ tab: t.id }}
             className={cn(
-              "rounded-md px-4 py-2 text-sm font-semibold transition-colors",
+              "inline-flex min-w-[7.5rem] items-center justify-center rounded px-3 py-1 text-[13px] font-medium transition-colors",
               tab === t.id
-                ? "bg-muted text-foreground ring-1 ring-border"
-                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             {t.label}
