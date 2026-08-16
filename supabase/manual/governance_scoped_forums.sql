@@ -3,6 +3,8 @@
 -- Members (resources) attach to project forums. PM can configure project forums;
 -- org admin configures templates and program/SA forums.
 -- Idempotent. Does not rename existing columns.
+-- Then paste governance_weekday_meeting_dates.sql so last/next meeting dates
+-- default from cadence on weekdays only.
 
 -- =============================================================================
 -- 1) Channel scope columns

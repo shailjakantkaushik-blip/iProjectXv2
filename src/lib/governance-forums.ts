@@ -370,3 +370,122 @@ export function canManageGovernanceChannel(
 export function projectOptionsLabel(p: GovernanceProject) {
   return p.project_code ? `${p.project_code} · ${p.name}` : p.name;
 }
+
+/** Local YYYY-MM-DD (no UTC shift). */
+export function localTodayIso(now = new Date()): string {
+  return formatIsoYmd(now.getFullYear(), now.getMonth() + 1, now.getDate());
+}
+
+function formatIsoYmd(y: number, m: number, d: number) {
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+function addCalendarDaysIso(iso: string, days: number): string {
+  const [y, m, d] = String(iso).slice(0, 10).split("-").map(Number);
+  const dt = new Date(y, m - 1, d + days);
+  return formatIsoYmd(dt.getFullYear(), dt.getMonth() + 1, dt.getDate());
+}
+
+/** 1 = Monday … 7 = Sunday */
+function isoDow(iso: string): number {
+  const [y, m, d] = String(iso).slice(0, 10).split("-").map(Number);
+  const js = new Date(y, m - 1, d).getDay();
+  return js === 0 ? 7 : js;
+}
+
+export function isWeekdayIso(iso: string): boolean {
+  return isoDow(iso) <= 5;
+}
+
+/** Saturday → Friday (back) or Monday (forward); Sunday similarly. */
+export function snapToWeekdayIso(iso: string, direction: "back" | "forward"): string {
+  let cur = String(iso).slice(0, 10);
+  for (let i = 0; i < 7; i++) {
+    if (isWeekdayIso(cur)) return cur;
+    cur = addCalendarDaysIso(cur, direction === "back" ? -1 : 1);
+  }
+  return cur;
+}
+
+export function addWorkingDaysIso(iso: string, n: number): string {
+  if (n === 0) return snapToWeekdayIso(iso, "forward");
+  const step = n > 0 ? 1 : -1;
+  let left = Math.abs(n);
+  let cur = String(iso).slice(0, 10);
+  while (left > 0) {
+    cur = addCalendarDaysIso(cur, step);
+    if (isWeekdayIso(cur)) left -= 1;
+  }
+  return cur;
+}
+
+function addCalendarMonthsWeekday(iso: string, months: number): string {
+  const [y, m, d] = String(iso).slice(0, 10).split("-").map(Number);
+  const dt = new Date(y, m - 1 + months, d);
+  const next = formatIsoYmd(dt.getFullYear(), dt.getMonth() + 1, dt.getDate());
+  return snapToWeekdayIso(next, months >= 0 ? "forward" : "back");
+}
+
+/**
+ * Daily / Weekly / Fortnightly count working days only.
+ * Longer cadences add calendar months, then land on a weekday.
+ */
+export function suggestNextMeetingDate(
+  lastMeeting: string | null | undefined,
+  cadence: string | null | undefined,
+): string | null {
+  const last = String(lastMeeting || "").slice(0, 10);
+  if (!last) return null;
+  switch (cadence) {
+    case "Daily":
+      return addWorkingDaysIso(last, 1);
+    case "Weekly":
+      return addWorkingDaysIso(last, 5);
+    case "Fortnightly":
+      return addWorkingDaysIso(last, 10);
+    case "Monthly":
+      return addCalendarMonthsWeekday(last, 1);
+    case "Quarterly":
+      return addCalendarMonthsWeekday(last, 3);
+    case "Half-yearly":
+      return addCalendarMonthsWeekday(last, 6);
+    case "Annual":
+      return addCalendarMonthsWeekday(last, 12);
+    default:
+      return null;
+  }
+}
+
+/** Previous occurrence of this cadence, always a weekday. */
+export function defaultLastMeetingDate(
+  cadence: string | null | undefined,
+  today = localTodayIso(),
+): string {
+  const anchor = snapToWeekdayIso(today, "back");
+  switch (cadence) {
+    case "Daily":
+      return addWorkingDaysIso(anchor, -1);
+    case "Weekly":
+      return addWorkingDaysIso(anchor, -5);
+    case "Fortnightly":
+      return addWorkingDaysIso(anchor, -10);
+    case "Monthly":
+      return addCalendarMonthsWeekday(anchor, -1);
+    case "Quarterly":
+      return addCalendarMonthsWeekday(anchor, -3);
+    case "Half-yearly":
+      return addCalendarMonthsWeekday(anchor, -6);
+    case "Annual":
+      return addCalendarMonthsWeekday(anchor, -12);
+    default:
+      return addWorkingDaysIso(anchor, -1);
+  }
+}
+
+export function defaultGovernanceMeetingDates(
+  cadence: string | null | undefined,
+  today = localTodayIso(),
+): { last_meeting: string; next_meeting: string | null } {
+  const last_meeting = defaultLastMeetingDate(cadence, today);
+  return { last_meeting, next_meeting: suggestNextMeetingDate(last_meeting, cadence) };
+}
