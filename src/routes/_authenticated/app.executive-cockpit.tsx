@@ -15,6 +15,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LabelList, Legend } from "recharts";
 import { fyLabel } from "@/lib/fiscal-year";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { CategoryTick } from "@/components/chart-category-tick";
 import {
   projectApprovedFunding,
   projectCapexApproved,
@@ -664,7 +665,6 @@ function ExecutiveCockpit() {
     crsByProject,
   ]);
 
-  const maxSegApproved = Math.max(1, ...segRows.map((r) => r.approved));
   const benefitsPct = benefitsForecastK
     ? Math.min(100, Math.round((benefitsRealisedK / benefitsForecastK) * 100))
     : 0;
@@ -851,36 +851,70 @@ function ExecutiveCockpit() {
         {segRows.length === 0 ? (
           <p className="py-6 text-sm text-muted-foreground">No alignment mix yet.</p>
         ) : (
-          <div className="space-y-3">
-            {segRows.map((r) => (
-              <div key={r.name} className="grid items-center gap-3 md:grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)_10rem]">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium">{r.name}</div>
-                  <div className="text-[11px] tabular-nums text-muted-foreground">
-                    {r.initiatives} · {money(r.approved)}
-                  </div>
-                </div>
-                <div>
-                  <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className="h-full rounded-full bg-blue-400/80"
-                      style={{ width: `${(r.approved / maxSegApproved) * 100}%` }}
-                    />
-                  </div>
-                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full bg-emerald-600"
-                      style={{
-                        width: `${r.approved ? Math.min(100, (r.actual / r.approved) * 100) : 0}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-                <MixBar green={r.green} amber={r.amber} red={r.red} compact />
-              </div>
-            ))}
+          <div className="space-y-4">
+            <ExpandableChart title="Budget vs incurred by Strategic Alignment" heightClass="h-72">
+              <BarChart data={segRows} margin={{ top: 28, right: 16, left: 8, bottom: 40 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" interval={0} minTickGap={0} tick={<CategoryTick />} height={44} />
+                <YAxis fontSize={10} tickFormatter={(v: number) => money(v)} />
+                <Tooltip
+                  formatter={(v: number, n: string) => [money(v), n]}
+                  labelFormatter={(label) => String(label)}
+                />
+                <Legend verticalAlign="top" />
+                <Bar dataKey="approved" name="Budget" fill="#3b82f6" radius={[4, 4, 0, 0]}>
+                  <LabelList
+                    dataKey="approved"
+                    position="top"
+                    style={{ fontSize: 10 }}
+                    formatter={(v: number) => money(v)}
+                  />
+                </Bar>
+                <Bar dataKey="actual" name="Incurred" fill="#10b981" radius={[4, 4, 0, 0]}>
+                  <LabelList
+                    dataKey="actual"
+                    position="top"
+                    style={{ fontSize: 10 }}
+                    formatter={(v: number) => money(v)}
+                  />
+                </Bar>
+              </BarChart>
+            </ExpandableChart>
+            <div className="st-table-wrap overflow-x-auto">
+              <table className="w-full min-w-[720px] text-sm">
+                <thead className="text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-2 py-1.5 text-left">Strategic Alignment</th>
+                    <th className="px-2 py-1.5 text-right">Projects</th>
+                    <th className="px-2 py-1.5 text-right">Budget</th>
+                    <th className="px-2 py-1.5 text-right">Incurred</th>
+                    <th className="px-2 py-1.5 text-right">Remaining</th>
+                    <th className="px-2 py-1.5 text-right">Spend</th>
+                    <th className="px-2 py-1.5 text-left">Health</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {segRows.map((r) => (
+                    <tr key={r.name} className="border-t border-border">
+                      <td className="px-2 py-2 font-medium">{r.name}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{r.initiatives}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{money(r.approved)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{money(r.actual)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{money(r.remaining)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">
+                        {pct(r.actual, r.approved)}
+                      </td>
+                      <td className="px-2 py-2">
+                        <MixBar green={r.green} amber={r.amber} red={r.red} compact />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             <p className="text-[11px] text-muted-foreground">
-              Wide bar is approved envelope (relative). Thin bar is spend vs that envelope.
+              Bars are Budget and Incurred. The table is the same mix with project count, remaining,
+              spend vs envelope, and Green / Amber / Red.
             </p>
           </div>
         )}
