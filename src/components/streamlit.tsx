@@ -115,17 +115,32 @@ export function RagChip({
   rag,
   label,
   explain,
+  manual,
 }: {
   rag?: string | null;
   label?: ReactNode;
   /** Same Explain control used on financial KPIs — why this colour, with band logic. */
   explain?: MetricExplanation | null;
+  /** Sponsor / meeting override — shown with an M marker. */
+  manual?: boolean;
 }) {
   const v = (rag || "").toLowerCase();
   const cls =
     v === "green" ? "rag-green" : v === "amber" ? "rag-amber" : v === "red" ? "rag-red" : "";
   if (!cls) return <span className="text-xs text-muted-foreground">—</span>;
-  const chip = <span className={`rag-chip ${cls}`}>{label ?? rag}</span>;
+  const chip = (
+    <span
+      className={`rag-chip ${cls}${manual ? " rag-chip--manual" : ""}`}
+      title={manual ? "Manually updated RAG" : undefined}
+    >
+      {label ?? rag}
+      {manual ? (
+        <span className="rag-chip-manual" aria-label="Manually updated RAG">
+          M
+        </span>
+      ) : null}
+    </span>
+  );
   if (!explain) return chip;
   return (
     <span className="inline-flex items-center gap-1">

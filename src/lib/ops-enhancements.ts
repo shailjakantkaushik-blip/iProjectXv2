@@ -58,23 +58,42 @@ export function isProjectKickedOff(project: {
   return Boolean(project.actual_start_date);
 }
 
-export function displayRag(project: { rag?: string | null; rag_override?: string | null }) {
-  const o = String(project.rag_override || "").trim();
-  if (o === "Green" || o === "Amber" || o === "Red") return o;
-  return project.rag || null;
+export function isRagOverridden(project: { rag_override?: string | null } | null | undefined) {
+  const o = String(project?.rag_override || "").trim();
+  return o === "Green" || o === "Amber" || o === "Red";
+}
+
+export function displayRag(project: { rag?: string | null; rag_override?: string | null } | null | undefined) {
+  if (isRagOverridden(project)) return String(project?.rag_override).trim();
+  return project?.rag || null;
+}
+
+/** Sponsor override wins; otherwise calculated health RAG, then register RAG. */
+export function effectiveRag(
+  project: { rag?: string | null; rag_override?: string | null } | null | undefined,
+  calculated?: string | null,
+) {
+  if (isRagOverridden(project)) return String(project?.rag_override).trim();
+  const calc = String(calculated || "").trim();
+  if (calc === "Green" || calc === "Amber" || calc === "Red") return calc;
+  return project?.rag || null;
+}
+
+export function worstRagOf(rags: Array<string | null | undefined>): "Green" | "Amber" | "Red" {
+  let amber = false;
+  for (const raw of rags) {
+    const r = String(raw || "").trim();
+    if (r === "Red") return "Red";
+    if (r === "Amber") amber = true;
+  }
+  return amber ? "Amber" : "Green";
 }
 
 /** Worst colour among steering RAGs (override, else register). */
 export function worstSteeringRag(
   projects: Array<{ rag?: string | null; rag_override?: string | null }>,
 ): "Green" | "Amber" | "Red" {
-  let amber = false;
-  for (const p of projects) {
-    const r = displayRag(p);
-    if (r === "Red") return "Red";
-    if (r === "Amber") amber = true;
-  }
-  return amber ? "Amber" : "Green";
+  return worstRagOf(projects.map((p) => displayRag(p)));
 }
 
 export function workItemScheduleRag(item: {

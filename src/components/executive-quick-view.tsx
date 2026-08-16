@@ -20,6 +20,7 @@ import { CHART_SERIES } from "@/lib/chart-theme";
 import { PageLoading } from "@/components/page-loading";
 import { projectApprovedFunding } from "@/lib/project-finance";
 import { explainRag } from "@/lib/explain-metric";
+import { isRagOverridden } from "@/lib/ops-enhancements";
 import {
   buildExecutiveBriefing,
   type BriefingDecision,
@@ -274,34 +275,20 @@ export function ExecutiveQuickView({
           </div>
           <div className="flex flex-col items-end gap-2">
             <RagChip
-              rag={briefing.calculatedRag}
-              label={`${briefing.calculatedRag} · ${briefing.healthPct}%`}
+              rag={briefing.overallRag}
+              label={`${briefing.overallRag} · ${briefing.healthPct}%`}
+              manual={briefing.ragManual}
               explain={explainRag({
-                rag: briefing.calculatedRag,
+                rag: briefing.overallRag,
                 source: "pulse",
                 score: briefing.healthPct,
+                overridden: briefing.ragManual,
                 extraBullets: [
-                  "Same calculated health as Portfolio Pulse: average Health Engine score across these projects (Green ≥80, Amber ≥65, else Red).",
-                  briefing.steeringRag !== briefing.calculatedRag
-                    ? `Steering RAG (register / override) is ${briefing.steeringRag} — that is the colour PMs set for the pack, not this score.`
-                    : "Steering RAG (register / override) matches this calculated colour.",
+                  "Portfolio RAG uses each project's sponsor override when one is set, otherwise its Health Engine colour. M means at least one RAG is manually updated.",
+                  `Average calculated health score is ${briefing.healthPct}% (${briefing.calculatedRag} if overrides are ignored).`,
                 ],
               })}
             />
-            {briefing.steeringRag !== briefing.calculatedRag && (
-              <RagChip
-                rag={briefing.steeringRag}
-                label={`Steering ${briefing.steeringRag}`}
-                explain={explainRag({
-                  rag: briefing.steeringRag,
-                  source: "register",
-                  extraBullets: [
-                    "Worst project register RAG in this filter, using rag_override when a sponsor has set one.",
-                    `Calculated health is ${briefing.calculatedRag} (${briefing.healthPct}%). Pulse uses that number.`,
-                  ],
-                })}
-              />
-            )}
           </div>
         </div>
       </div>
@@ -467,8 +454,8 @@ export function ExecutiveQuickView({
           <div>
             <SectionTitle>Watch list — why it is on the pack</SectionTitle>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Health score is the engine (same as Portfolio Pulse). Steering RAG is the register, or
-              the sponsor override when one is set.
+              RAG is the sponsor override when one is set (marked M); otherwise Health Engine colour.
+              Health score stays calculated.
             </p>
           </div>
           <Link
@@ -489,7 +476,7 @@ export function ExecutiveQuickView({
               <thead>
                 <tr>
                   <th className="text-left">Project</th>
-                  <th className="text-left">Steering RAG</th>
+                  <th className="text-left">RAG</th>
                   <th className="text-left">Health</th>
                   <th className="text-right">Forecast vs budget</th>
                   <th className="text-left">Why it is here</th>
@@ -508,10 +495,7 @@ export function ExecutiveQuickView({
                       </Link>
                     </td>
                     <td className="text-left">
-                      <RagChip
-                        rag={w.rag}
-                        label={w.project.rag_override ? `${w.rag} (override)` : w.rag}
-                      />
+                      <RagChip rag={w.rag} manual={isRagOverridden(w.project)} />
                     </td>
                     <td className="text-left">
                       <span className="inline-flex items-center gap-2">

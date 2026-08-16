@@ -44,7 +44,7 @@ import {
 } from "@/lib/portfolio.functions";
 import { DEFAULT_PAGE_SIZE } from "@/lib/portfolio-paging";
 import { explainRag } from "@/lib/explain-metric";
-import { FUNCTIONAL_AREAS } from "@/lib/ops-enhancements";
+import { FUNCTIONAL_AREAS, displayRag, isRagOverridden } from "@/lib/ops-enhancements";
 import { PROJECT_OPS_EXTRAS } from "@/lib/project-selects";
 
 const PROGRAM_COLORS = CHART_SERIES;
@@ -719,7 +719,15 @@ export function ProjectRegister() {
                         ]}
                         invalidateKeys={["projects"]}
                         display={(v) => (
-                          <RagChip rag={v} explain={explainRag({ rag: v, source: "register" })} />
+                          <RagChip
+                            rag={displayRag({ rag: v, rag_override: p.rag_override })}
+                            manual={isRagOverridden(p)}
+                            explain={explainRag({
+                              rag: displayRag({ rag: v, rag_override: p.rag_override }),
+                              source: "register",
+                              overridden: isRagOverridden(p),
+                            })}
+                          />
                         )}
                       />
                     </td>

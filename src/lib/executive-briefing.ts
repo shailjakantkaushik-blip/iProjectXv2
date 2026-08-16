@@ -2,7 +2,7 @@
  * Ranked steering-pack items for the Executive Dashboard Quick view.
  * Uses the health engine plus RAID / gates / decisions already in the org.
  */
-import { displayRag, worstSteeringRag } from "@/lib/ops-enhancements";
+import { effectiveRag, isRagOverridden, worstRagOf } from "@/lib/ops-enhancements";
 import {
   projectApprovedFunding,
   projectForecast,
@@ -145,11 +145,13 @@ export function buildExecutiveBriefing(opts: {
   now?: Date;
 }): {
   overallRag: RagTone;
-  /** Same number Pulse uses: average Health Engine score → RAG bands. */
+  /** Average Health Engine score → RAG bands (before sponsor override). */
   calculatedRag: RagTone;
   healthPct: number;
-  /** Worst steering RAG (override, else register) across the filter. */
+  /** Worst effective RAG (override wins) across the filter. Same as overallRag. */
   steeringRag: RagTone;
+  /** True when any in-scope project has rag_override set. */
+  ragManual: boolean;
   headline: string;
   moneyAtRisk: number;
   lateGateCount: number;
@@ -199,7 +201,7 @@ export function buildExecutiveBriefing(opts: {
     const lateGates = pg.filter((g) => isGateScheduleDelayed(g, now)).length;
     const end = p.actual_end_date || p.planned_end_date || p.end_date;
     const isOverdue = !!(end && end < todayIso && p.status !== "Completed");
-    const rag = displayRag(p) || engine.rag;
+    const rag = effectiveRag(p, engine.rag) || engine.rag;
     const topDriver = engine.drivers.find((d) => d.severity === "Red") || engine.drivers[0];
     const topWarn = engine.earlyWarnings[0];
     const topWhy =
@@ -326,8 +328,11 @@ export function buildExecutiveBriefing(opts: {
       )
     : 0;
   const calculatedRag: RagTone = opts.projects.length ? scoreToRag(healthPct) : "Green";
-  const steeringRag: RagTone = worstSteeringRag(opts.projects);
-  const overallRag: RagTone = calculatedRag;
+  const ragManual = opts.projects.some((p) => isRagOverridden(p));
+  const overallRag: RagTone = opts.projects.length
+    ? worstRagOf(opts.projects.map((p) => effectiveRag(p, healthByProject.get(p.id)?.rag)))
+    : "Green";
+  const steeringRag: RagTone = overallRag;
   const moneyAtRisk = watch.reduce((s, w) => s + Math.max(0, w.overrun), 0);
   const lateGateCount = gates.filter((g) => isGateScheduleDelayed(g, now)).length;
   const overdueCount = watch.filter((w) => w.isOverdue).length;
@@ -473,6 +478,7 @@ export function buildExecutiveBriefing(opts: {
     calculatedRag,
     healthPct,
     steeringRag,
+    ragManual,
     headline,
     moneyAtRisk,
     lateGateCount,

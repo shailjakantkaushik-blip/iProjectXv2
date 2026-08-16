@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/query-selects";
+import { displayRag } from "@/lib/ops-enhancements";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -33,6 +34,7 @@ type Project = {
   program?: string | null;
   priority?: string | null;
   rag?: string | null;
+  rag_override?: string | null;
   budget?: number | null;
   capex_approved?: number | null;
   opex_approved?: number | null;
@@ -112,8 +114,8 @@ function RoadmapAnalyticsPage() {
         ...p,
         theme: themeFor(p),
         budget: Number(p.budget || p.capex_approved || 0) + Number(p.opex_approved || 0),
-        sigma: riskFactor(p.rag),
-        score: riskScore(p.rag),
+        sigma: riskFactor(displayRag(p)),
+        score: riskScore(displayRag(p)),
       })),
     [projects],
   );

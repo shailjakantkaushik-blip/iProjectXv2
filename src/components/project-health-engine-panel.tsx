@@ -17,6 +17,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { SectionFrame, SectionTitle, RagChip } from "@/components/streamlit";
+import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
 import { Button } from "@/components/ui/button";
 import { WORK_ITEMS_SELECT } from "@/lib/query-selects";
 import {
@@ -410,6 +411,8 @@ export function ProjectHealthEnginePanel({
   if (!health) return null;
 
   const manualRag = String(project.rag || "").trim();
+  const overrideOn = isRagOverridden(project);
+  const shownRag = displayRag(project) || health.rag;
   const showDrop =
     health.previousScore != null &&
     health.scoreDelta != null &&
@@ -432,6 +435,21 @@ export function ProjectHealthEnginePanel({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {overrideOn ? (
+            <RagChip
+              rag={shownRag}
+              label={shownRag}
+              manual
+              explain={explainRag({
+                rag: shownRag,
+                source: "register",
+                overridden: true,
+                extraBullets: [
+                  `Calculated Health Engine RAG is ${health.rag} (${health.score}/100). Dashboards use the manual colour.`,
+                ],
+              })}
+            />
+          ) : null}
           <RagChip
             rag={health.rag}
             label={`Calculated · ${health.rag}`}
@@ -439,14 +457,9 @@ export function ProjectHealthEnginePanel({
               rag: health.rag,
               engine: health,
               manualRag,
+              overridden: overrideOn,
             })}
           />
-          {manualRag ? (
-            <span className="text-[11px] text-muted-foreground">
-              Manual field:{" "}
-              <RagChip rag={manualRag} explain={explainRag({ rag: manualRag, manualRag })} />
-            </span>
-          ) : null}
         </div>
       </div>
 

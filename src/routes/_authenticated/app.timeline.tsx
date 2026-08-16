@@ -18,6 +18,7 @@ import {
   fetchOrgStreams,
 } from "@/lib/project-streams";
 import { fetchStageGates } from "@/lib/stage-gates";
+import { displayRag } from "@/lib/ops-enhancements";
 
 export const Route = createFileRoute("/_authenticated/app/timeline")({
   component: TimelinePage,
@@ -150,7 +151,7 @@ function TimelinePage() {
       if (fProgram !== "All" && (p.program || "") !== fProgram) return false;
       if (fSponsor !== "All" && (p.sponsor || "") !== fSponsor) return false;
       if (fPhase !== "All" && (projectPhase(p) || "") !== fPhase) return false;
-      if (fRag !== "All" && (p.rag || "") !== fRag) return false;
+      if (fRag !== "All" && (displayRag(p) || "") !== fRag) return false;
       if (fPriority !== "All" && (p.priority || "") !== fPriority) return false;
       if (fMethod !== "All" && (p.delivery_method || "") !== fMethod) return false;
       if (fSchedule !== "All" && scheduleStatus(p) !== fSchedule) return false;

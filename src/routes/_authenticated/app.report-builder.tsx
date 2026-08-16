@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/project-selects";
+import { displayRag } from "@/lib/ops-enhancements";
 import { computeProjectEvm, formatIndex } from "@/lib/evm";
 import {
   projectApprovedFunding,
@@ -157,7 +158,7 @@ function ReportBuilderPage() {
         roiSum += roi;
         roiN += 1;
       }
-      const rag = String(p.rag || "");
+      const rag = String(displayRag(p) || "");
       if (rag === "Red") red += 1;
       else if (rag === "Amber") amber += 1;
       else if (rag === "Green") green += 1;

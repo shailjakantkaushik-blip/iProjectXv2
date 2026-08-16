@@ -26,6 +26,7 @@ import { useAuth, type AppRole } from "@/lib/auth-context";
 import { canActOnDecision } from "@/lib/decision-approval";
 import { useAllowedPages } from "@/lib/permissions";
 import { PROJECT_HOME_SELECT, projectHomeQueryKey } from "@/lib/project-selects";
+import { displayRag } from "@/lib/ops-enhancements";
 
 export const Route = createFileRoute("/_authenticated/app/")({
   component: Home,
@@ -218,7 +219,7 @@ function Home() {
   const totalBudget = projects.reduce((s, p) => s + Number(p.budget || 0), 0);
   const active = projects.filter((p) => p.status === "In Progress").length;
   const completed = projects.filter((p) => p.status === "Completed").length;
-  const atRisk = projects.filter((p) => p.rag === "Red" || p.rag === "Amber").length;
+  const atRisk = projects.filter((p) => displayRag(p) === "Red" || displayRag(p) === "Amber").length;
   const myApprovals = decisions.filter((d: any) => canActOnDecision(d, userId)).length;
 
   return (

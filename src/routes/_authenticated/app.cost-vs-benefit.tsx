@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PROJECT_PORTFOLIO_SELECT, STAGE_GATE_DEFINITIONS_SELECT } from "@/lib/query-selects";
+import { displayRag } from "@/lib/ops-enhancements";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -221,7 +222,7 @@ function CostVsBenefitPage() {
             />
             <Scatter data={scored}>
               {scored.map((p, i) => (
-                <Cell key={i} fill={RAG_COLOR[p.rag || "Green"] || "#3b82f6"} />
+                <Cell key={i} fill={RAG_COLOR[displayRag(p) || "Green"] || "#3b82f6"} />
               ))}
             </Scatter>
           </ScatterChart>

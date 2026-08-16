@@ -6,6 +6,8 @@
  * and statuses. Org data never leaves the session for model inference.
  */
 
+import { displayRag } from "@/lib/ops-enhancements"
+
 export type AssistProject = {
   id: string
   org_id?: string | null
@@ -13,6 +15,7 @@ export type AssistProject = {
   project_code?: string | null
   status?: string | null
   rag?: string | null
+  rag_override?: string | null
   budget?: number | null
   capex_approved?: number | null
   capex_incurred?: number | null
@@ -532,9 +535,9 @@ function answerHelp(): string {
 
 function answerOverview(data: AssistBundle): string {
   const { projects, risks, decisions, actions = [] } = data
-  const red = projects.filter((p) => p.rag === "Red")
-  const amber = projects.filter((p) => p.rag === "Amber")
-  const green = projects.filter((p) => p.rag === "Green")
+  const red = projects.filter((p) => displayRag(p) === "Red")
+  const amber = projects.filter((p) => displayRag(p) === "Amber")
+  const green = projects.filter((p) => displayRag(p) === "Green")
   const openRisks = risks.filter(openRisk)
   const pending = decisions.filter(pendingDecision)
   const overdue = actions.filter(overdueAction)
@@ -561,18 +564,18 @@ function answerOverview(data: AssistBundle): string {
 
 function answerHealth(data: AssistBundle, query: ParsedAssistQuery): string {
   let list = data.projects
-  if (query.rag) list = list.filter((p) => p.rag === query.rag)
+  if (query.rag) list = list.filter((p) => displayRag(p) === query.rag)
   if (query.project) list = list.filter((p) => p.id === query.project!.id)
 
-  const red = data.projects.filter((p) => p.rag === "Red")
-  const amber = data.projects.filter((p) => p.rag === "Amber")
-  const green = data.projects.filter((p) => p.rag === "Green")
+  const red = data.projects.filter((p) => displayRag(p) === "Red")
+  const amber = data.projects.filter((p) => displayRag(p) === "Amber")
+  const green = data.projects.filter((p) => displayRag(p) === "Green")
 
   if (query.project) {
     const p = query.project
     const open = data.risks.filter((r) => r.project_id === p.id && openRisk(r))
     return [
-      `${projectName(p)} is currently RAG ${p.rag || "—"} with status ${p.status || "—"}.`,
+      `${projectName(p)} is currently RAG ${displayRag(p) || "—"} with status ${p.status || "—"}.`,
       p.current_phase ? `Phase: ${p.current_phase}.` : "",
       `Open risks on this project: ${open.length}.`,
       open[0]
@@ -598,7 +601,7 @@ function answerHealth(data: AssistBundle, query: ParsedAssistQuery): string {
         : open.length
           ? `, ${open.length} open risks`
           : ""
-      return `${projectName(p)} — RAG ${p.rag || "—"}, ${p.status || "—"}, phase ${p.current_phase || "—"}${spend}${riskBit}`
+      return `${projectName(p)} — RAG ${displayRag(p) || "—"}, ${p.status || "—"}, phase ${p.current_phase || "—"}${spend}${riskBit}`
     })
 
   return [
@@ -871,7 +874,7 @@ function answerProjects(data: AssistBundle, query: ParsedAssistQuery): string {
   }
 
   let list = data.projects
-  if (query.rag) list = list.filter((p) => p.rag === query.rag)
+  if (query.rag) list = list.filter((p) => displayRag(p) === query.rag)
 
   if (query.countMode && !query.listMode) {
     return query.rag
@@ -883,12 +886,12 @@ function answerProjects(data: AssistBundle, query: ParsedAssistQuery): string {
     const ranked = [...list].sort((a, b) => Number(b.budget || 0) - Number(a.budget || 0)).slice(0, 8)
     return [
       "Largest budgets:",
-      bullets(ranked.map((p) => `${projectName(p)} — ${money(Number(p.budget || 0))} · RAG ${p.rag || "—"}`)),
+      bullets(ranked.map((p) => `${projectName(p)} — ${money(Number(p.budget || 0))} · RAG ${displayRag(p) || "—"}`)),
     ].join("\n")
   }
 
   const lines = list.slice(0, 12).map((p) => {
-    return `${projectName(p)} — RAG ${p.rag || "—"}, ${p.status || "—"}, phase ${p.current_phase || "—"}, budget ${money(Number(p.budget || 0))}`
+    return `${projectName(p)} — RAG ${displayRag(p) || "—"}, ${p.status || "—"}, phase ${p.current_phase || "—"}, budget ${money(Number(p.budget || 0))}`
   })
 
   return [
@@ -912,7 +915,7 @@ function answerProjectDetail(p: AssistProject, data: AssistBundle): string {
   return [
     `Here’s what I know about ${projectName(p)}:`,
     "",
-    `• RAG: ${p.rag || "—"} · Status: ${p.status || "—"} · Phase: ${p.current_phase || "—"}`,
+    `• RAG: ${displayRag(p) || "—"} · Status: ${p.status || "—"} · Phase: ${p.current_phase || "—"}`,
     `• Priority: ${p.priority || "—"} · Sponsor: ${p.sponsor || "—"}`,
     `• Portfolio / programme: ${p.portfolio || "—"} / ${p.program || "—"}`,
     `• Budget ${money(budget)}; incurred ${money(incurred)}${budget > 0 ? ` (${Math.round((incurred / budget) * 100)}%)` : ""}`,
@@ -928,7 +931,7 @@ function answerProjectDetail(p: AssistProject, data: AssistBundle): string {
 }
 
 function answerAttention(data: AssistBundle): string {
-  const red = data.projects.filter((p) => p.rag === "Red")
+  const red = data.projects.filter((p) => displayRag(p) === "Red")
   const critical = data.risks.filter((r) => openRisk(r) && Number(r.severity || 0) >= 15)
   const pending = data.decisions.filter(pendingDecision)
   const overdue = (data.actions || []).filter(overdueAction)

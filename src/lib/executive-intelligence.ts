@@ -17,6 +17,7 @@ import {
   projectIncurred,
   projectRoiPercent,
 } from "@/lib/project-finance";
+import { displayRag } from "@/lib/ops-enhancements";
 
 const num = (v: unknown) => {
   const n = Number(v);
@@ -48,6 +49,8 @@ export type WhatIfProject = {
   actual_end_date?: string | null;
   priority?: string | null;
   status?: string | null;
+  rag?: string | null;
+  rag_override?: string | null;
 };
 
 export type WhatIfDependency = {
@@ -547,6 +550,7 @@ const PRI_WEIGHT: Record<string, number> = {
 export function rankPortfolioInvestments(opts: {
   projects: (WhatIfProject & {
     rag?: string | null;
+    rag_override?: string | null;
     benefits_target?: number | null;
     benefits_realised?: number | null;
     roi_percent?: number | null;
@@ -570,7 +574,7 @@ export function rankPortfolioInvestments(opts: {
         opts.strategicByProject?.[p.id] ??
           (/strategic/i.test(String(p.portfolio || "")) ? 92 : PRI_WEIGHT[p.priority || ""] || 60),
       );
-      const rag = String(p.rag || "").toLowerCase();
+      const rag = String(displayRag(p) || "").toLowerCase();
       const risk: RankedInvestment["risk"] =
         rag === "red" ? "High" : rag === "amber" ? "Medium" : "Low";
       const riskScore = risk === "Low" ? 85 : risk === "Medium" ? 60 : 35;

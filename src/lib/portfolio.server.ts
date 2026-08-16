@@ -3,6 +3,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/project-selects";
+import { displayRag } from "@/lib/ops-enhancements";
 import { WORK_ITEMS_SELECT } from "@/lib/query-selects";
 import { resolveOrgDataClient } from "@/lib/byod.server";
 import {
@@ -95,7 +96,12 @@ export async function listPortfolioProjectsPage(opts: {
   const f = opts.filters ?? {};
   if (f.program && f.program !== "All") q = q.eq("program", f.program);
   if (f.status && f.status !== "All") q = q.eq("status", f.status);
-  if (f.rag && f.rag !== "All") q = q.eq("rag", f.rag);
+  if (f.rag && f.rag !== "All") {
+    const r = String(f.rag).replace(/[^A-Za-z]/g, "");
+    if (r) {
+      q = q.or(`rag_override.eq.${r},and(rag_override.is.null,rag.eq.${r})`);
+    }
+  }
   if (f.search?.trim()) {
     const s = f.search.trim().replace(/%/g, "");
     q = q.or(`name.ilike.%${s}%,project_code.ilike.%${s}%`);
@@ -161,7 +167,7 @@ export async function getOrgKpiSummary(opts: {
   const { data: projects, error: pErr } = await client
     .from("projects")
     .select(
-      "status,rag,budget,capex_approved,opex_approved,capex_incurred,opex_incurred,forecast_at_completion,benefits_target,benefits_realised",
+      "status,rag,rag_override,budget,capex_approved,opex_approved,capex_incurred,opex_incurred,forecast_at_completion,benefits_target,benefits_realised",
     )
     .eq("org_id", opts.orgId);
   if (pErr) throw new Error(pErr.message);
@@ -181,7 +187,7 @@ export async function getOrgKpiSummary(opts: {
     project_count += 1;
     const st = String((p as any).status || "").toLowerCase();
     if (!/closed|complete|cancelled/.test(st)) active_count += 1;
-    const rag = String((p as any).rag || "").toLowerCase();
+    const rag = String(displayRag(p as { rag?: string | null; rag_override?: string | null }) || "").toLowerCase();
     if (rag === "green" || rag === "g") rag_green += 1;
     else if (rag === "amber" || rag === "yellow" || rag === "a") rag_amber += 1;
     else if (rag === "red" || rag === "r") rag_red += 1;
@@ -251,7 +257,7 @@ export async function getPortfolioProjectStats(opts: {
   // Fallback: light column scan when RPC not yet applied.
   const { data: rows, error: qErr } = await client
     .from("projects")
-    .select("status,rag,program,priority,budget,capex_incurred")
+    .select("status,rag,rag_override,program,priority,budget,capex_incurred")
     .eq("org_id", opts.orgId);
   if (qErr) throw new Error(error?.message || qErr.message);
 
@@ -265,7 +271,7 @@ export async function getPortfolioProjectStats(opts: {
   let capex_incurred = 0;
 
   for (const p of rows ?? []) {
-    const rag = String((p as any).rag || "Unknown").trim() || "Unknown";
+    const rag = String(displayRag(p as { rag?: string | null; rag_override?: string | null }) || "Unknown").trim() || "Unknown";
     const status = String((p as any).status || "Unknown").trim() || "Unknown";
     const program = String((p as any).program || "Unassigned").trim() || "Unassigned";
     const priority = String((p as any).priority || "Unassigned").trim() || "Unassigned";

@@ -14,6 +14,7 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
 import { explainRag } from "@/lib/explain-metric";
+import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
 import { exportProjects } from "@/lib/excel";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -155,9 +156,9 @@ function ExecutiveReportsPage() {
   const opexApproved = projects.reduce((s: number, p: any) => s + num(p.opex_approved), 0);
   const opexIncurred = projects.reduce((s: number, p: any) => s + num(p.opex_incurred), 0);
   const incurred = capexIncurred + opexIncurred;
-  const red = projects.filter((p: any) => p.rag === "Red").length;
-  const amber = projects.filter((p: any) => p.rag === "Amber").length;
-  const green = projects.filter((p: any) => p.rag === "Green").length;
+  const red = projects.filter((p: any) => displayRag(p) === "Red").length;
+  const amber = projects.filter((p: any) => displayRag(p) === "Amber").length;
+  const green = projects.filter((p: any) => displayRag(p) === "Green").length;
 
   const benefitsTarget =
     benefits.reduce((s: number, b: any) => s + num(b.target_value), 0) ||
@@ -229,9 +230,9 @@ function ExecutiveReportsPage() {
       cur.budget += num(p.budget);
       cur.incurred += num(p.capex_incurred) + num(p.opex_incurred);
       cur.benefits += num(p.benefits_realised);
-      if (p.rag === "Green") cur.green++;
-      else if (p.rag === "Amber") cur.amber++;
-      else if (p.rag === "Red") cur.red++;
+      if (displayRag(p) === "Green") cur.green++;
+      else if (displayRag(p) === "Amber") cur.amber++;
+      else if (displayRag(p) === "Red") cur.red++;
       m.set(key, cur);
     });
     return Array.from(m.values()).sort((a, b) => a.name.localeCompare(b.name));
@@ -253,9 +254,9 @@ function ExecutiveReportsPage() {
       cur.count += 1;
       cur.budget += num(p.budget);
       cur.incurred += num(p.capex_incurred) + num(p.opex_incurred);
-      if (p.rag === "Green") cur.green++;
-      else if (p.rag === "Amber") cur.amber++;
-      else if (p.rag === "Red") cur.red++;
+      if (displayRag(p) === "Green") cur.green++;
+      else if (displayRag(p) === "Amber") cur.amber++;
+      else if (displayRag(p) === "Red") cur.red++;
       m.set(key, cur);
     });
     return Array.from(m.values()).sort((a, b) => a.name.localeCompare(b.name));
@@ -359,7 +360,7 @@ function ExecutiveReportsPage() {
             current,
             next,
             count: gs.length,
-            rag: s.rag || p.rag,
+            rag: s.rag || displayRag(p),
           });
         }
       } else {
@@ -372,7 +373,7 @@ function ExecutiveReportsPage() {
           current,
           next,
           count: gs.length,
-          rag: p.rag,
+          rag: displayRag(p),
         });
       }
     }
@@ -723,8 +724,13 @@ function ExecutiveReportsPage() {
                           <td>{p.priority || "—"}</td>
                           <td>
                             <RagChip
-                              rag={p.rag}
-                              explain={explainRag({ rag: p.rag, source: "register" })}
+                              rag={displayRag(p)}
+                              manual={isRagOverridden(p)}
+                              explain={explainRag({
+                                rag: displayRag(p),
+                                source: "register",
+                                overridden: isRagOverridden(p),
+                              })}
                             />
                           </td>
                           <td>{fmt$(num(p.budget))}</td>

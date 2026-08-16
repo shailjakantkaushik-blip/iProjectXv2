@@ -1,4 +1,5 @@
 import type { AssistBundle } from "@/lib/local-portfolio-assist";
+import { displayRag } from "@/lib/ops-enhancements";
 
 const money = (n: number) =>
   new Intl.NumberFormat("en-US", {
@@ -29,9 +30,9 @@ export function buildAssistContextPack(bundle: AssistBundle): string {
   const decisions = (bundle.decisions || []).slice(0, 25);
   const actions = (bundle.actions || []).slice(0, 25);
 
-  const red = projects.filter((p) => p.rag === "Red").length;
-  const amber = projects.filter((p) => p.rag === "Amber").length;
-  const green = projects.filter((p) => p.rag === "Green").length;
+  const red = projects.filter((p) => displayRag(p) === "Red").length;
+  const amber = projects.filter((p) => displayRag(p) === "Amber").length;
+  const green = projects.filter((p) => displayRag(p) === "Green").length;
   const budget = projects.reduce((s, p) => s + Number(p.budget || 0), 0);
   const incurred = projects.reduce(
     (s, p) => s + Number(p.capex_incurred || 0) + Number(p.opex_incurred || 0),
@@ -48,7 +49,7 @@ export function buildAssistContextPack(bundle: AssistBundle): string {
 
   for (const p of projects.slice(0, 25)) {
     lines.push(
-      `- ${projectLabel(p)} | RAG ${p.rag || "—"} | ${p.status || "—"} | phase ${p.current_phase || "—"} | budget ${money(Number(p.budget || 0))} | incurred ${money(Number(p.capex_incurred || 0) + Number(p.opex_incurred || 0))} | benefits ${money(Number(p.benefits_realised || 0))}/${money(Number(p.benefits_target || 0))}`,
+      `- ${projectLabel(p)} | RAG ${displayRag(p) || "—"}${p.rag_override ? " (manual)" : ""} | ${p.status || "—"} | phase ${p.current_phase || "—"} | budget ${money(Number(p.budget || 0))} | incurred ${money(Number(p.capex_incurred || 0) + Number(p.opex_incurred || 0))} | benefits ${money(Number(p.benefits_realised || 0))}/${money(Number(p.benefits_target || 0))}`,
     );
   }
 
