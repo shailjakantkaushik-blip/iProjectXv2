@@ -1,14 +1,26 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth, isAdmin } from "@/lib/auth-context";
+import { useAuth, canEditProjects, isAdmin } from "@/lib/auth-context";
 import { ProjectForm, type ProjectFormValues } from "@/components/project-form";
 import { ProjectDecisionsPanel } from "@/components/project-decisions-panel";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
 import { toast } from "sonner";
-import { Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
+import {
+  fetchProjectOptions,
+  projectOptionsQueryKey,
+  writeLastProjectId,
+} from "@/lib/project-options";
 import { cn } from "@/lib/utils";
 import { PageLoading } from "@/components/page-loading";
 import { ProjectStreamsPanel } from "@/components/project-streams-panel";
@@ -53,9 +65,32 @@ function ProjectDetail() {
   const tab: ProjectTab = search.tab || "overview";
   const { roles, organization } = useAuth();
   const admin = isAdmin(roles);
+  const canEdit = canEditProjects(roles);
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
+  const orgId = organization?.id;
+
+  const { data: projectOptions = [] } = useQuery({
+    queryKey: projectOptionsQueryKey(orgId),
+    queryFn: fetchProjectOptions,
+    enabled: !!orgId,
+    staleTime: 15_000,
+  });
+
+  useEffect(() => {
+    if (id && orgId) writeLastProjectId(orgId, id);
+  }, [id, orgId]);
+
+  const switchProject = (nextId: string) => {
+    if (!nextId || nextId === id) return;
+    writeLastProjectId(orgId, nextId);
+    navigate({
+      to: "/app/projects/$id",
+      params: { id: nextId },
+      search: tab === "overview" ? {} : { tab },
+    });
+  };
 
   const projectQ = useQuery({
     queryKey: ["project", id],
@@ -146,7 +181,14 @@ function ProjectDetail() {
     const { error } = await supabase.from("projects").delete().eq("id", id);
     if (error) return toast.error(error.message);
     toast.success("Deleted");
-    navigate({ to: "/app/projects" });
+    qc.invalidateQueries({ queryKey: ["projects"] });
+    const next = (projectOptions as { id: string }[]).find((p) => p.id !== id);
+    if (next) {
+      writeLastProjectId(orgId, next.id);
+      navigate({ to: "/app/projects/$id", params: { id: next.id } });
+    } else {
+      navigate({ to: "/app/projects" });
+    }
   };
 
   const setBaseline = useMutation({
@@ -189,11 +231,42 @@ function ProjectDetail() {
   );
   const workTable = useColumnarTable(workItems, workColumns);
 
+  const options = projectOptions as {
+    id: string;
+    name?: string | null;
+    project_code?: string | null;
+  }[];
+  const projectPicker = (
+    <Select value={id} onValueChange={switchProject}>
+      <SelectTrigger className="w-72" aria-label="Switch project">
+        <SelectValue placeholder="Select a project" />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((p) => (
+          <SelectItem key={p.id} value={p.id}>
+            {p.project_code ? `${p.project_code} · ` : ""}
+            {p.name}
+          </SelectItem>
+        ))}
+        {!options.some((p) => p.id === id) ? (
+          <SelectItem value={id}>
+            {project
+              ? `${project.project_code ? `${project.project_code} · ` : ""}${project.name}`
+              : "Current project"}
+          </SelectItem>
+        ) : null}
+      </SelectContent>
+    </Select>
+  );
+
   if (isLoading) return <PageLoading label="Loading project…" fullScreen={false} />;
   if (!project) {
     return (
-      <div className="text-sm text-muted-foreground">
-        Project not found or you don't have access.
+      <div className="mx-auto max-w-5xl space-y-4">
+        <div className="flex flex-wrap items-center gap-2">{projectPicker}</div>
+        <p className="text-sm text-muted-foreground">
+          Project not found or you don't have access. Choose another project from the list.
+        </p>
       </div>
     );
   }
@@ -221,12 +294,23 @@ function ProjectDetail() {
             ) : null}
           </div>
         </div>
-        {admin && (
-          <Button variant="destructive" size="sm" onClick={remove}>
-            <Trash2 className="mr-2 h-4 w-4" />
-            Delete
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {projectPicker}
+          {(admin || canEdit) && (
+            <Button asChild size="sm" variant="outline">
+              <Link to="/app/projects/new">
+                <Plus className="mr-2 h-4 w-4" />
+                New Project
+              </Link>
+            </Button>
+          )}
+          {admin && (
+            <Button variant="destructive" size="sm" onClick={remove}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-1 border-b border-border pb-px">

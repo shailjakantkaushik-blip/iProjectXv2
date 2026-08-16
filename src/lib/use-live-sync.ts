@@ -140,6 +140,7 @@ export const LIVE_SYNC_ROUTE_TABLES: Record<string, readonly string[]> = {
   ],
   "/app/timeline": [...LIVE_SYNC_CORE_TABLES, "stage_gates"],
   "/app/projects": [...LIVE_SYNC_CORE_TABLES, "stakeholders", "stage_gates"],
+  "/app/programs": [...LIVE_SYNC_CORE_TABLES, "stakeholders", "stage_gates"],
   "/app/financials": [
     ...LIVE_SYNC_CORE_TABLES,
     "financials_monthly",

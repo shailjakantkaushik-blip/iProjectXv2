@@ -77,7 +77,7 @@ const ALL: Record<string, Shortcut> = {
   projects: {
     to: "/app/projects",
     label: "Projects",
-    desc: "Register and project workspaces",
+    desc: "Project workspace — overview, summary, streams, and RAID",
     icon: FolderKanban,
   },
   workItems: {
