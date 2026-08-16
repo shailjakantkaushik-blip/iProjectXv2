@@ -1,8 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { PROJECT_PORTFOLIO_SELECT } from "@/lib/query-selects";
+import { PROJECT_PORTFOLIO_SELECT, STAGE_GATE_DEFINITIONS_SELECT } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
 import { explainRag } from "@/lib/explain-metric";
@@ -11,23 +11,13 @@ import { ExpandableChart } from "@/components/expandable-chart";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
+import { CHART_SERIES } from "@/lib/chart-theme";
+import { deliveryMethodsQueryKey, fetchDeliveryMethods } from "@/lib/delivery-methods";
+import { buildStageGateFlows, type StageGateDefLike } from "@/lib/stage-gate-flow";
 
 export const Route = createFileRoute("/_authenticated/app/roadmap-governance")({
   component: RoadmapGovPage,
 });
-
-/** Fallback when org has no active stage_gate_definitions (matches stage-gate-config DEFAULTS). */
-const STAGE_DEFAULTS = [
-  "Discovery",
-  "Business Case / Seed Funding",
-  "Design",
-  "Business Case / Full Funding",
-  "Build",
-  "Testing",
-  "Deployment",
-  "Handover",
-  "Benefit Realisation",
-];
 
 const STAGE_COLORS = [
   "#94a3b8",
@@ -42,34 +32,19 @@ const STAGE_COLORS = [
   "#a855f7",
 ];
 
-/** Map a project phase to one stage: exact lowercase match first, else fuzzy includes. */
-function resolveStage(phase: string | null | undefined, stages: string[]): string | null {
-  const p = (phase || "").trim().toLowerCase();
-  if (!p) return null;
-  const exact = stages.find((s) => s.trim().toLowerCase() === p);
-  if (exact) return exact;
-  // Prefer longest fuzzy match to avoid "Business Case" hitting multiple gates
-  let best: string | null = null;
-  let bestLen = 0;
-  for (const s of stages) {
-    const sl = s.trim().toLowerCase();
-    if (!sl) continue;
-    if (p.includes(sl) || sl.includes(p)) {
-      if (sl.length > bestLen) {
-        best = s;
-        bestLen = sl.length;
-      }
-    }
-  }
-  return best;
-}
-
 function RoadmapGovPage() {
   const { organization } = useAuth();
-  const { data: projects = [], isError: projectsError, refetch: refetchProjects } = useQuery({
+  const orgId = organization?.id;
+  const {
+    data: projects = [],
+    isError: projectsError,
+    refetch: refetchProjects,
+  } = useQuery({
     queryKey: ["projects", organization?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*");
+      const { data, error } = await supabase
+        .from("projects")
+        .select(PROJECT_PORTFOLIO_SELECT as "*");
       if (error) throw error;
       return data ?? [];
     },
@@ -83,7 +58,7 @@ function RoadmapGovPage() {
       (
         await supabase
           .from("stage_gate_definitions")
-          .select("*")
+          .select(STAGE_GATE_DEFINITIONS_SELECT as "*")
           .eq("org_id", organization!.id)
           .eq("is_active", true)
           .order("sort_order", { ascending: true })
@@ -91,20 +66,17 @@ function RoadmapGovPage() {
     enabled: !!organization,
   });
 
-  const stages = useMemo(() => {
-    const fromDefs = (gateDefs as any[]).map((d) => d.gate_name).filter(Boolean);
-    return fromDefs.length > 0 ? fromDefs : [...STAGE_DEFAULTS];
-  }, [gateDefs]);
+  const { data: deliveryMethods = [] } = useQuery({
+    queryKey: deliveryMethodsQueryKey(orgId),
+    queryFn: () => fetchDeliveryMethods(orgId!, { activeOnly: true }),
+    enabled: !!orgId,
+  });
 
   const active = projects.filter((p) => p.status !== "Completed" && p.status !== "Cancelled");
-  const stageCounts = useMemo(() => {
-    const counts = new Map(stages.map((s) => [s, 0]));
-    for (const p of active) {
-      const matched = resolveStage(p.current_phase, stages);
-      if (matched) counts.set(matched, (counts.get(matched) || 0) + 1);
-    }
-    return stages.map((s) => ({ stage: s, count: counts.get(s) || 0 }));
-  }, [active, stages]);
+  const flows = useMemo(
+    () => buildStageGateFlows(deliveryMethods, gateDefs as StageGateDefLike[], projects),
+    [deliveryMethods, gateDefs, projects],
+  );
 
   const kpis = {
     inFlight: active.length,
@@ -123,10 +95,11 @@ function RoadmapGovPage() {
     }).length,
   };
 
-  const columns: ColumnarColumn<any>[] = useMemo(
+  const columns: ColumnarColumn<Record<string, unknown>>[] = useMemo(
     () => [
       { key: "name", label: "Project" },
       { key: "program", label: "Program" },
+      { key: "delivery_method", label: "Method" },
       { key: "current_phase", label: "Current Phase" },
       { key: "status", label: "Status" },
       { key: "rag", label: "RAG" },
@@ -143,7 +116,10 @@ function RoadmapGovPage() {
       <PageHeading icon="🏛️">Governance — Stage Gates & Approvals</PageHeading>
 
       {(projectsError || projects.length === 0) && (
-        <div className="mb-4 rounded-md border border-border bg-surface px-4 py-3 text-sm" role="status">
+        <div
+          className="mb-4 rounded-md border border-border bg-surface px-4 py-3 text-sm"
+          role="status"
+        >
           <p className="font-medium text-foreground">Data not available</p>
           <p className="mt-1 text-muted-foreground">
             {projectsError
@@ -151,7 +127,11 @@ function RoadmapGovPage() {
               : "No projects yet — stage-gate governance will populate once projects exist."}
           </p>
           {projectsError && (
-            <button type="button" className="st-btn-primary mt-3" onClick={() => void refetchProjects()}>
+            <button
+              type="button"
+              className="st-btn-primary mt-3"
+              onClick={() => void refetchProjects()}
+            >
               Try again
             </button>
           )}
@@ -169,27 +149,62 @@ function RoadmapGovPage() {
       </SectionFrame>
 
       <SectionFrame>
-        <ExpandableChart title="Stage-Gate Flow (active projects)" heightClass="h-64">
-          <BarChart data={stageCounts}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-            <XAxis dataKey="stage" fontSize={10} interval={0} angle={-20} textAnchor="end" height={60} />
-            <YAxis allowDecimals={false} fontSize={11} />
-            <Tooltip />
-            <Bar dataKey="count" radius={[4, 4, 0, 0]} fill="#1d4ed8" />
-          </BarChart>
-        </ExpandableChart>
-        <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-9">
-          {stages.map((s, i) => (
-            <div key={s} className="flex items-center gap-2 text-[11px]">
-              <span
-                className="h-3 w-3 shrink-0 rounded"
-                style={{ background: STAGE_COLORS[i % STAGE_COLORS.length] }}
-              />
-              <span className="truncate" title={s}>
-                {s}
-              </span>
-            </div>
-          ))}
+        <SectionTitle>Stage-Gate Flow (active projects)</SectionTitle>
+        <p className="mb-3 text-sm text-muted-foreground">
+          Each delivery method has its own gates. A project is counted only on its method’s graph,
+          against that method’s template.{" "}
+          <Link to="/app/stage-gate-config" className="font-medium text-primary hover:underline">
+            Configure methods &amp; gates
+          </Link>
+        </p>
+        <div className="space-y-6">
+          {flows.map((flow, i) => {
+            const fill = CHART_SERIES[i % CHART_SERIES.length];
+            return (
+              <div key={flow.methodId}>
+                <ExpandableChart
+                  title={`${flow.methodName} · ${flow.activeCount} active`}
+                  heightClass="h-64"
+                >
+                  <BarChart data={flow.rows}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+                    <XAxis
+                      dataKey="stage"
+                      fontSize={10}
+                      interval={0}
+                      angle={-20}
+                      textAnchor="end"
+                      height={60}
+                    />
+                    <YAxis allowDecimals={false} fontSize={11} />
+                    <Tooltip />
+                    <Bar dataKey="count" name="Active projects" radius={[4, 4, 0, 0]} fill={fill} />
+                  </BarChart>
+                </ExpandableChart>
+                <div
+                  className="mt-2 grid gap-2"
+                  style={{
+                    gridTemplateColumns: `repeat(${Math.min(flow.stages.length, 6)}, minmax(0, 1fr))`,
+                  }}
+                >
+                  {flow.stages.map((s, gi) => (
+                    <div
+                      key={`${flow.methodId}-${s}`}
+                      className="flex items-center gap-2 text-[11px]"
+                    >
+                      <span
+                        className="h-3 w-3 shrink-0 rounded"
+                        style={{ background: STAGE_COLORS[gi % STAGE_COLORS.length] }}
+                      />
+                      <span className="truncate" title={s}>
+                        {s}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </SectionFrame>
 
@@ -226,6 +241,7 @@ function RoadmapGovPage() {
                 <tr key={p.id}>
                   <td className="font-medium">{p.name}</td>
                   <td>{p.program || "—"}</td>
+                  <td>{p.delivery_method || "—"}</td>
                   <td>{p.current_phase || "—"}</td>
                   <td>{p.status}</td>
                   <td>
@@ -238,7 +254,10 @@ function RoadmapGovPage() {
               ))}
               {table.rows.length === 0 && (
                 <tr>
-                  <td colSpan={columns.length} className="py-6 text-center text-sm text-muted-foreground">
+                  <td
+                    colSpan={columns.length}
+                    className="py-6 text-center text-sm text-muted-foreground"
+                  >
                     No projects match filters.
                   </td>
                 </tr>
