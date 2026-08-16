@@ -48,6 +48,18 @@ import {
 import { PortfolioTimeline } from "@/components/portfolio-timeline";
 import { Button } from "@/components/ui/button";
 import { downloadProjectBriefPPT } from "@/lib/project-brief-ppt";
+import {
+  loadForecastPhases,
+  parseForecastPhaseNotes,
+  type ForecastPhaseRow,
+} from "@/lib/project-forecast";
+import {
+  briefForecastTotals,
+  buildBriefForecastRows,
+  formatForecastTotalsLine,
+  mergeEstimateCommentary,
+  moneyBrief,
+} from "@/lib/project-brief-forecast";
 import { exportElementPDF } from "@/components/page-export";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { isDoneGateStatus, resolveCurrentStage, sortGatesByOrgOrder } from "@/lib/project-phase";
@@ -2293,12 +2305,94 @@ function ProjectBrief({
   const [saving, setSaving] = useState<null | 1 | 2>(null);
   const [downloadingBrief, setDownloadingBrief] = useState(false);
 
+  const { data: forecast } = useQuery({
+    queryKey: ["project_forecasts", project.id, "brief"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("project_forecasts" as any)
+        .select("*")
+        .eq("project_id", project.id)
+        .maybeSingle();
+      return data as any;
+    },
+    enabled: !!project.id,
+  });
+
+  const { data: storedPhases = [] } = useQuery({
+    queryKey: ["project_forecast_phases", forecast?.id, "brief"],
+    queryFn: () => loadForecastPhases(forecast.id),
+    enabled: !!forecast?.id,
+  });
+
+  const { data: phaseRes = [] } = useQuery({
+    queryKey: ["project_forecast_phase_resources", forecast?.id, "brief"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("project_forecast_phase_resources" as any)
+        .select("*")
+        .eq("forecast_id", forecast.id);
+      return (data ?? []) as any[];
+    },
+    enabled: !!forecast?.id,
+  });
+
+  const { data: otherCosts = [] } = useQuery({
+    queryKey: ["project_forecast_other_costs", forecast?.id, "brief"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("project_forecast_other_costs" as any)
+        .select("*")
+        .eq("forecast_id", forecast.id)
+        .order("sort_order");
+      return (data ?? []) as any[];
+    },
+    enabled: !!forecast?.id,
+  });
+
+  const { data: briefStreams = [] } = useQuery({
+    queryKey: ["project_streams", project.id, "brief"],
+    queryFn: () => fetchProjectStreams(project.id),
+    enabled: !!project.id,
+  });
+
+  const forecastPhases = useMemo<ForecastPhaseRow[]>(() => {
+    const stored =
+      storedPhases.length > 0 ? storedPhases : parseForecastPhaseNotes(forecast?.notes);
+    if (!stored.length) return [];
+    const byId = new Map(briefStreams.map((s) => [s.id, formatStreamLabel(s)]));
+    return stored.map((p) => ({
+      ...p,
+      stream_name: p.stream_name || byId.get(p.stream_id || "") || "Stream",
+    }));
+  }, [storedPhases, forecast?.notes, briefStreams]);
+
+  const forecastRows = useMemo(
+    () => buildBriefForecastRows(forecastPhases, phaseRes as any[], otherCosts as any[]),
+    [forecastPhases, phaseRes, otherCosts],
+  );
+  const forecastTotals = useMemo(() => briefForecastTotals(forecastRows), [forecastRows]);
+  const forecastTotalsLine = useMemo(
+    () =>
+      forecastRows.length
+        ? formatForecastTotalsLine(forecastTotals.labor, forecastTotals.other, forecastTotals.total)
+        : "",
+    [forecastRows.length, forecastTotals],
+  );
+
   // Reload state when active project changes
   useEffect(() => {
     const b = (project.brief || {}) as any;
     setS1(b.section1 || { sponsor: project.sponsor || "" });
     setS2(b.section2 || {});
   }, [project.id]);
+
+  useEffect(() => {
+    if (!forecastTotalsLine) return;
+    setS2((prev) => ({
+      ...prev,
+      estimate_commentary: mergeEstimateCommentary(prev.estimate_commentary, forecastTotalsLine),
+    }));
+  }, [forecastTotalsLine, project.id]);
 
   const { data: links = [] } = useQuery({
     queryKey: ["documents", project.id],
@@ -2327,7 +2421,13 @@ function ProjectBrief({
   const saveSection = async (section: 1 | 2) => {
     setSaving(section);
     try {
-      const next = { ...(project.brief || {}), section1: s1, section2: s2 };
+      const section2 = forecastTotalsLine
+        ? {
+            ...s2,
+            estimate_commentary: mergeEstimateCommentary(s2.estimate_commentary, forecastTotalsLine),
+          }
+        : s2;
+      const next = { ...(project.brief || {}), section1: s1, section2 };
       const { error } = await supabase
         .from("projects")
         .update({ brief: next })
@@ -2388,9 +2488,18 @@ function ProjectBrief({
               scope_out: s1.scope_out,
               success_measures: s1.key_metrics_success,
             },
-            section2: s2,
+            section2: forecastTotalsLine
+              ? {
+                  ...s2,
+                  estimate_commentary: mergeEstimateCommentary(
+                    s2.estimate_commentary,
+                    forecastTotalsLine,
+                  ),
+                }
+              : s2,
           },
         },
+        forecastRows,
         milestones: (milestones ?? []).map((m: any) => ({
           name: m.name,
           planned_date: m.planned_date,
@@ -2453,6 +2562,12 @@ function ProjectBrief({
             className="data-[state=active]:border-b-2 data-[state=active]:border-blue-600 data-[state=active]:text-blue-700 rounded-none bg-transparent px-4 py-2 text-sm"
           >
             Section 2 · Solution Manager
+          </TabsTrigger>
+          <TabsTrigger
+            value="s3"
+            className="data-[state=active]:border-b-2 data-[state=active]:border-blue-600 data-[state=active]:text-blue-700 rounded-none bg-transparent px-4 py-2 text-sm"
+          >
+            Section 3 · Forecast Estimate
           </TabsTrigger>
           <TabsTrigger
             value="docs"
@@ -2584,12 +2699,19 @@ function ProjectBrief({
                 onChange={(v) => setS2({ ...s2, resource_ask: v })}
               />
             </div>
-            <BriefTextarea
-              label="Estimate Commentary"
-              rows={3}
-              value={s2.estimate_commentary}
-              onChange={(v) => setS2({ ...s2, estimate_commentary: v })}
-            />
+            <div>
+              <BriefTextarea
+                label="Estimate Commentary"
+                rows={4}
+                value={s2.estimate_commentary}
+                onChange={(v) => setS2({ ...s2, estimate_commentary: v })}
+              />
+              <p className="mt-1 text-[11px] text-slate-500">
+                {forecastTotalsLine
+                  ? "The first line stays in sync with Project Forecast Estimation totals."
+                  : "Open Project Forecast Estimation to populate planned labor / other / total here."}
+              </p>
+            </div>
             <BriefTextarea
               label="P&L Benefits Commentary"
               rows={3}
@@ -2627,6 +2749,100 @@ function ProjectBrief({
                 {saving === 2 ? "Saving…" : "Save Section 2"}
               </button>
             </div>
+          </div>
+        </TabsContent>
+
+        {/* ── Section 3 ─────────────────────────────────────── */}
+        <TabsContent value="s3" className="mt-4">
+          <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs text-slate-500">
+              Tabular summary from{" "}
+              <a href="/app/project-forecast" className="font-medium text-blue-700 hover:underline">
+                Project Forecast Estimation
+              </a>
+              . Labor and other costs are the planned baseline for each stream phase.
+            </p>
+            {forecastRows.length === 0 ? (
+              <div className="rounded border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-slate-700">
+                No forecast estimate yet for this project. Create one on Project Forecast
+                Estimation, then return here.
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <div className="rounded border border-slate-200 bg-white px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-wide text-slate-500">
+                      Planned labor
+                    </div>
+                    <div className="text-sm font-semibold tabular-nums">
+                      {moneyBrief(forecastTotals.labor)}
+                    </div>
+                  </div>
+                  <div className="rounded border border-slate-200 bg-white px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-wide text-slate-500">
+                      Planned other
+                    </div>
+                    <div className="text-sm font-semibold tabular-nums">
+                      {moneyBrief(forecastTotals.other)}
+                    </div>
+                  </div>
+                  <div className="rounded border border-slate-200 bg-white px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-wide text-slate-500">
+                      Planned forecast
+                    </div>
+                    <div className="text-sm font-semibold tabular-nums">
+                      {moneyBrief(forecastTotals.total)}
+                    </div>
+                  </div>
+                </div>
+                <div className="overflow-x-auto rounded border border-slate-200 bg-white">
+                  <table className="st-table text-xs">
+                    <thead>
+                      <tr>
+                        <th>Stream</th>
+                        <th>Phase</th>
+                        <th>Start</th>
+                        <th>End</th>
+                        <th className="st-num">Days</th>
+                        <th className="st-num">Labor</th>
+                        <th className="st-num">Other</th>
+                        <th className="st-num">Phase total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {forecastRows.map((row) => (
+                        <tr key={row.key}>
+                          <td>{row.stream_name}</td>
+                          <td className="font-medium">{row.gate_name}</td>
+                          <td>{row.start_date || "—"}</td>
+                          <td>{row.end_date || "—"}</td>
+                          <td className="st-num tabular-nums">{row.duration_days || "—"}</td>
+                          <td className="st-num tabular-nums">{moneyBrief(row.labor)}</td>
+                          <td className="st-num tabular-nums">{moneyBrief(row.other)}</td>
+                          <td className="st-num tabular-nums font-semibold">
+                            {moneyBrief(row.total)}
+                          </td>
+                        </tr>
+                      ))}
+                      <tr>
+                        <td colSpan={5} className="font-semibold">
+                          Total
+                        </td>
+                        <td className="st-num font-semibold tabular-nums">
+                          {moneyBrief(forecastTotals.labor)}
+                        </td>
+                        <td className="st-num font-semibold tabular-nums">
+                          {moneyBrief(forecastTotals.other)}
+                        </td>
+                        <td className="st-num font-semibold tabular-nums">
+                          {moneyBrief(forecastTotals.total)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
           </div>
         </TabsContent>
 

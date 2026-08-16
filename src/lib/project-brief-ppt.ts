@@ -71,6 +71,16 @@ export type ProjectBriefInput = {
     description?: string | null;
   }>;
   timelineImage?: string | null;
+  forecastRows?: Array<{
+    stream_name: string;
+    gate_name: string;
+    start_date?: string | null;
+    end_date?: string | null;
+    duration_days?: number;
+    labor: number;
+    other: number;
+    total: number;
+  }>;
 };
 
 type PptxCtor = typeof import("pptxgenjs").default;
@@ -192,7 +202,7 @@ async function loadPptxgen(): Promise<PptxCtor> {
 }
 
 export async function downloadProjectBriefPPT(input: ProjectBriefInput) {
-  const { project, milestones = [], risks = [], dependencies = [] } = input;
+  const { project, milestones = [], risks = [], dependencies = [], forecastRows = [] } = input;
   const brief = project.brief ?? {};
   const s1 = brief.section1 ?? {};
   const s2 = brief.section2 ?? {};
@@ -322,7 +332,11 @@ export async function downloadProjectBriefPPT(input: ProjectBriefInput) {
     6.2,
     1.35,
     "Estimate Summary and Funding Schedule",
-    `Approved: ${fmt(project.approved_budget)}   Actual: ${fmt(project.actual_spend)}   FAC: ${fmt(project.forecast_at_completion)}\n\n${s2.estimate_commentary ?? ""}`,
+    `Approved: ${fmt(project.approved_budget)}   Actual: ${fmt(project.actual_spend)}   FAC: ${fmt(project.forecast_at_completion)}${
+      forecastRows.length
+        ? `\nForecast estimate: Labor ${fmt(forecastRows.reduce((s, r) => s + r.labor, 0))}   Other ${fmt(forecastRows.reduce((s, r) => s + r.other, 0))}   Planned total ${fmt(forecastRows.reduce((s, r) => s + r.total, 0))}`
+        : ""
+    }\n\n${s2.estimate_commentary ?? ""}`,
   );
   longBox(
     slide2,
@@ -401,6 +415,65 @@ export async function downloadProjectBriefPPT(input: ProjectBriefInput) {
     border: { pt: 0.5, color: "CCCCCC" },
     rowH: 0.26,
   });
+
+  if (forecastRows.length) {
+    const slide3 = pres.addSlide();
+    slide3.background = { color: "F5F5F5" };
+    bandTitle(slide3, `PROJECT BRIEF — ${project.name || "<Initiative Name>"}`, 0.2);
+    slide3.addText("Section 3: Project Forecast Estimate", {
+      x: 10.05,
+      y: 0.22,
+      w: 2.9,
+      h: 0.5,
+      fontSize: 8,
+      italic: true,
+      color: GREEN,
+      align: "center",
+    });
+    const labor = forecastRows.reduce((s, r) => s + r.labor, 0);
+    const other = forecastRows.reduce((s, r) => s + r.other, 0);
+    const total = forecastRows.reduce((s, r) => s + r.total, 0);
+    sectionHeader(slide3, 0.85, "Planned forecast totals", 12.7);
+    slide3.addText(
+      `Labor ${fmt(labor)}    Other ${fmt(other)}    Planned total ${fmt(total)}`,
+      { x: 0.4, y: 1.22, w: 12.5, h: 0.32, fontSize: 12, bold: true, color: "111111" },
+    );
+    const fcRows = [
+      [
+        cell("Stream", true),
+        cell("Phase", true),
+        cell("Days", true),
+        cell("Labor", true),
+        cell("Other", true),
+        cell("Total", true),
+      ],
+      ...forecastRows.slice(0, 16).map((r) => [
+        cell(r.stream_name ?? ""),
+        cell(r.gate_name ?? ""),
+        cell(String(r.duration_days ?? "—")),
+        cell(fmt(r.labor)),
+        cell(fmt(r.other)),
+        cell(fmt(r.total)),
+      ]),
+      [
+        cell("Total", true),
+        cell("", true),
+        cell("", true),
+        cell(fmt(labor), true),
+        cell(fmt(other), true),
+        cell(fmt(total), true),
+      ],
+    ];
+    slide3.addTable(fcRows, {
+      x: 0.3,
+      y: 1.65,
+      w: 12.7,
+      colW: [2.4, 3.3, 1.2, 1.9, 1.9, 2.0],
+      fontSize: 8,
+      border: { pt: 0.5, color: "CCCCCC" },
+      rowH: 0.28,
+    });
+  }
 
   const fileName = `Project-Brief-${safeFileName(
     String(project.project_code || project.name || "Project"),
