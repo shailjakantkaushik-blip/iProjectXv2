@@ -41,13 +41,7 @@ export type ProjectMeta = {
 };
 
 export type PvaGrain =
-  | "resource"
-  | "project"
-  | "stream"
-  | "stage_gate"
-  | "program"
-  | "portfolio"
-  | "month";
+  "resource" | "project" | "stream" | "stage_gate" | "program" | "portfolio" | "month";
 
 export type AllocationPvaRow = {
   key: string;
@@ -105,7 +99,7 @@ export function allocationStatus(
   return "Under";
 }
 
-/** Planned hours from an allocation row (explicit hours, else % of monthly FTE). */
+/** Planned hours from an allocation row (estimation hours; else % of monthly FTE). */
 export function hoursFromAllocation(a: AllocationPlanRow, capacityHoursWeek = 40): number {
   const explicit = num(a.allocated_hours);
   if (explicit > 0) return explicit;
@@ -395,7 +389,8 @@ export function buildAllocationPva(opts: {
       month,
     });
     const label =
-      projectId === "__non_billable__" && (grain === "project" || grain === "stream" || grain === "stage_gate")
+      projectId === "__non_billable__" &&
+      (grain === "project" || grain === "stream" || grain === "stage_gate")
         ? "Non-billable / unallocated"
         : labelFor(grain, {
             resourceId: e.resource_id,
@@ -433,9 +428,7 @@ export function buildAllocationPva(opts: {
       const variance = Math.round((r.planned_hours - r.actual_hours) * 100) / 100;
       const demandGap = Math.round((r.planned_hours - r.demand_hours) * 100) / 100;
       const util =
-        r.planned_hours > 0
-          ? Math.round((r.actual_hours / r.planned_hours) * 1000) / 10
-          : null;
+        r.planned_hours > 0 ? Math.round((r.actual_hours / r.planned_hours) * 1000) / 10 : null;
       return {
         ...r,
         planned_hours: Math.round(r.planned_hours * 100) / 100,

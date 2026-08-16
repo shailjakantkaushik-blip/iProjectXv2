@@ -14,6 +14,8 @@ COMMENT ON COLUMN public.resource_allocations.stage_gate_id IS
   'Optional stage gate / phase for planned FTE allocation (project + stream + gate + month).';
 
 -- Prefer unique key that includes stage_gate (null-safe partial indexes).
+DROP INDEX IF EXISTS public.resource_allocations_stream_uidx;
+DROP INDEX IF EXISTS public.resource_allocations_null_stream_uidx;
 DROP INDEX IF EXISTS public.resource_allocations_project_stream_resource_period_uidx;
 DROP INDEX IF EXISTS public.resource_allocations_project_null_stream_resource_period_uidx;
 

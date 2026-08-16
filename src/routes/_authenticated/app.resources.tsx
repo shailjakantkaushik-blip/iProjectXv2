@@ -15,19 +15,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ReferenceLine,
-  LabelList,
-} from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LabelList } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { compareProjectsByCodeName } from "@/lib/project-options";
+import { formatStreamLabel } from "@/lib/project-streams";
 import { ResourceAnalyticsPanels } from "@/components/resource-analytics-panels";
 import {
   entryHours,
@@ -88,11 +79,16 @@ type Status = keyof typeof STATUS_COLOR;
 const PLAN_BAR = "#2563eb";
 const ACTUAL_BAR = "#0d9488";
 
-/** Convert timesheet hours in a month to % of monthly FTE capacity. */
+/** Convert hours in a month to % of monthly FTE capacity (colour / load only). */
 function hoursToMonthPct(hours: number, capacityHoursWeek = 40): number {
   const monthCap = (Number(capacityHoursWeek) || 40) * 4.33;
   if (monthCap <= 0 || !Number.isFinite(hours)) return 0;
   return Math.round((hours / monthCap) * 100);
+}
+
+function fmtHours(n: number): string {
+  const v = Math.round((Number(n) || 0) * 10) / 10;
+  return Number.isInteger(v) ? String(v) : v.toFixed(1);
 }
 
 /** Normalize DB dates to YYYY-MM-01 so filters/headers/cells share one key. */
@@ -148,23 +144,49 @@ function ResourcesPage() {
 
   const { data: resourcesAll = [] } = useQuery({
     queryKey: ["resources", organization?.id],
-    queryFn: async () => ((await supabase.from("resources").select(RESOURCES_SELECT as "*")).data as Resource[]) ?? [],
+    queryFn: async () =>
+      ((await supabase.from("resources").select(RESOURCES_SELECT as "*")).data as Resource[]) ?? [],
     enabled: !!organization,
   });
   const { data: allocationsAll = [] } = useQuery({
     queryKey: ["resource_allocations", organization?.id],
     queryFn: async () =>
-      ((await supabase.from("resource_allocations").select(RESOURCE_ALLOCATIONS_SELECT as "*")).data as Allocation[]) ?? [],
+      ((await supabase.from("resource_allocations").select(RESOURCE_ALLOCATIONS_SELECT as "*"))
+        .data as Allocation[]) ?? [],
     enabled: !!organization,
   });
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id, "resources"],
     queryFn: async () =>
-      ((await supabase
-        .from("projects")
-        .select("id,name,project_code,program,portfolio")
-        .order("project_code")
-        .order("name")).data as Project[]) ?? [],
+      ((
+        await supabase
+          .from("projects")
+          .select("id,name,project_code,program,portfolio")
+          .order("project_code")
+          .order("name")
+      ).data as Project[]) ?? [],
+    enabled: !!organization,
+  });
+  const { data: streams = [] } = useQuery({
+    queryKey: ["project_streams", organization?.id, "resources"],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("project_streams")
+          .select("id,project_id,name,code,is_default,sort_order")
+          .order("sort_order")
+      ).data ?? [],
+    enabled: !!organization,
+  });
+  const { data: gates = [] } = useQuery({
+    queryKey: ["stage_gates", organization?.id, "resources"],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("stage_gates")
+          .select("id,project_id,stream_id,gate_name")
+          .order("planned_date")
+      ).data ?? [],
     enabled: !!organization,
   });
 
@@ -182,16 +204,33 @@ function ResourcesPage() {
       const { data: entries, error: e2 } = await (supabase as any)
         .from("timesheet_entries")
         .select(
-          "timesheet_id,project_id,work_item_id,billable,hours_mon,hours_tue,hours_wed,hours_thu,hours_fri,hours_sat,hours_sun",
+          "timesheet_id,project_id,work_item_id,stream_id,stage_gate_id,billable,hours_mon,hours_tue,hours_wed,hours_thu,hours_fri,hours_sat,hours_sun",
         )
         .in("timesheet_id", ids);
       if (e2) throw e2;
+      const wiIds = Array.from(
+        new Set(((entries ?? []) as any[]).map((e) => e.work_item_id).filter(Boolean)),
+      ) as string[];
+      const wiById = new Map<
+        string,
+        { stream_id?: string | null; stage_gate_id?: string | null }
+      >();
+      if (wiIds.length) {
+        const { data: wis } = await supabase
+          .from("work_items" as any)
+          .select("id,stream_id,stage_gate_id")
+          .in("id", wiIds);
+        for (const w of (wis ?? []) as any[]) wiById.set(w.id, w);
+      }
       return ((entries ?? []) as any[]).map((e) => {
         const ts = sheetById.get(e.timesheet_id) as any;
         const weekStart = ts?.week_start ? String(ts.week_start).slice(0, 10) : null;
+        const wi = e.work_item_id ? wiById.get(e.work_item_id) : undefined;
         return {
           resource_id: ts?.resource_id ?? null,
           project_id: e.project_id,
+          stream_id: e.stream_id || wi?.stream_id || null,
+          stage_gate_id: e.stage_gate_id || wi?.stage_gate_id || null,
           period_month: normMonth(weekStart),
           week_start: weekStart,
           hours: entryHours(e),
@@ -271,10 +310,13 @@ function ResourcesPage() {
         const rows = allocationsAll.filter(
           (a) => a.resource_id === r.id && monthsInRange.includes(normMonth(a.period_month)),
         );
-        const total = rows.reduce((s, a) => s + Number(a.allocation_percent || 0), 0);
-        const avg = monthsInRange.length ? total / monthsInRange.length : 0;
         const cap = Number(r.capacity_hours_week) || 40;
         const planHours = rows.reduce((s, a) => s + hoursFromAllocation(a, cap), 0);
+        const monthCap = cap * 4.33;
+        const avg =
+          monthsInRange.length && monthCap > 0
+            ? (planHours / (monthsInRange.length * monthCap)) * 100
+            : 0;
         const actualHours = timesheetActuals
           .filter((a) => {
             if (a.resource_id !== r.id) return false;
@@ -363,9 +405,7 @@ function ResourcesPage() {
   const projectColumns = useMemo(() => {
     // Always show every visible project (not only those with allocations).
     const list =
-      projectFilter === "all"
-        ? [...projects]
-        : projects.filter((p) => p.id === projectFilter);
+      projectFilter === "all" ? [...projects] : projects.filter((p) => p.id === projectFilter);
     return list.sort((a, b) =>
       String(a.project_code || a.name).localeCompare(String(b.project_code || b.name)),
     );
@@ -376,8 +416,6 @@ function ResourcesPage() {
     return resources
       .map((r) => {
         const rows = allocations.filter((a) => a.resource_id === r.id);
-        const total = rows.reduce((s, a) => s + Number(a.allocation_percent || 0), 0);
-        const avg = months.length ? total / months.length : 0;
         const cap = Number(r.capacity_hours_week) || 40;
         const planHours = rows.reduce((s, a) => s + hoursFromAllocation(a, cap), 0);
         let actualHours = 0;
@@ -390,29 +428,18 @@ function ResourcesPage() {
           if (a.billable === false || !a.project_id) nonBillableHours += hrs;
           else billableHours += hrs;
         }
-        // Average monthly actual % (same basis as plan avg %)
-        let actualPctSum = 0;
-        if (months.length) {
-          for (const m of months) {
-            const hrs = filteredActuals
-              .filter(
-                (a) =>
-                  a.resource_id === r.id && normMonth(a.period_month || a.week_start) === m,
-              )
-              .reduce((s, a) => s + (Number(a.hours) || 0), 0);
-            actualPctSum += hoursToMonthPct(hrs, cap);
-          }
-        }
-        const actualPctAvg = months.length ? Math.round(actualPctSum / months.length) : 0;
-        const utilVsPlan =
-          planHours > 0 ? Math.round((actualHours / planHours) * 1000) / 10 : null;
-        let status: Status = statusFor(avg);
+        const monthCap = cap * 4.33;
+        const denom = months.length * monthCap;
+        const planPctAvg = denom > 0 ? Math.round((planHours / denom) * 100) : 0;
+        const actualPctAvg = denom > 0 ? Math.round((actualHours / denom) * 100) : 0;
+        const utilVsPlan = planHours > 0 ? Math.round((actualHours / planHours) * 1000) / 10 : null;
+        let status: Status = statusFor(planPctAvg);
         if (planHours <= 0 && actualHours > 0) status = "Unplanned";
         else if (utilVsPlan != null && utilVsPlan > 110) status = "Over";
         return {
           resource: r.name,
           resourceId: r.id,
-          pct: Math.round(avg),
+          pct: planPctAvg,
           actualPct: actualPctAvg,
           planHours: Math.round(planHours * 10) / 10,
           actualHours: Math.round(actualHours * 10) / 10,
@@ -466,27 +493,26 @@ function ResourcesPage() {
     under: utilisation.filter((u) => u.status === "Under" || u.status === "Unplanned").length,
   };
 
-  // Resource × Month heatmap — plan % and actual % (from timesheets)
+  // Resource × Month heatmap — plan hours (estimation) vs timesheet actual hours
   const heatGrid = useMemo(() => {
     return resources.map((r) => {
       const cap = Number(r.capacity_hours_week) || 40;
       const row: {
         name: string;
-        cells: { month: string; planPct: number; actualPct: number }[];
+        cells: { month: string; planHours: number; actualHours: number; peakPct: number }[];
       } = { name: r.name, cells: [] };
       months.forEach((m) => {
-        const planPct = Math.round(
-          allocations
-            .filter((a) => a.resource_id === r.id && a.period_month === m)
-            .reduce((s, a) => s + Number(a.allocation_percent || 0), 0),
-        );
-        const actualHrs = filteredActuals
+        const planHours = allocations
+          .filter((a) => a.resource_id === r.id && a.period_month === m)
+          .reduce((s, a) => s + hoursFromAllocation(a, cap), 0);
+        const actualHours = filteredActuals
           .filter((a) => a.resource_id === r.id && normMonth(a.period_month || a.week_start) === m)
           .reduce((s, a) => s + (Number(a.hours) || 0), 0);
         row.cells.push({
           month: m,
-          planPct,
-          actualPct: hoursToMonthPct(actualHrs, cap),
+          planHours: Math.round(planHours * 10) / 10,
+          actualHours: Math.round(actualHours * 10) / 10,
+          peakPct: hoursToMonthPct(Math.max(planHours, actualHours), cap),
         });
       });
       return row;
@@ -515,7 +541,7 @@ function ResourcesPage() {
     });
   }, [months, allocations, filteredActuals, resById]);
 
-  // Demand by skill — plan % share vs actual hours→% share
+  // Demand by skill — estimation plan hours vs timesheet actual hours
   const bySkill = useMemo(() => {
     const planMap = new Map<string, number>();
     const actualMap = new Map<string, number>();
@@ -525,7 +551,8 @@ function ResourcesPage() {
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-      const share = Number(a.allocation_percent || 0) / (skills.length || 1);
+      const hours = hoursFromAllocation(a, Number(r?.capacity_hours_week) || 40);
+      const share = hours / (skills.length || 1);
       skills.forEach((s) => planMap.set(s, (planMap.get(s) || 0) + share));
     });
     filteredActuals.forEach((a) => {
@@ -535,36 +562,35 @@ function ResourcesPage() {
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-      const pct = hoursToMonthPct(Number(a.hours) || 0, Number(r?.capacity_hours_week) || 40);
-      const share = pct / (skills.length || 1);
+      const share = (Number(a.hours) || 0) / (skills.length || 1);
       skills.forEach((s) => actualMap.set(s, (actualMap.get(s) || 0) + share));
     });
     const skills = new Set([...planMap.keys(), ...actualMap.keys()]);
     return Array.from(skills)
       .map((skill) => ({
         skill,
-        planPct: Math.round(planMap.get(skill) || 0),
-        actualPct: Math.round(actualMap.get(skill) || 0),
+        planHours: Math.round(planMap.get(skill) || 0),
+        actualHours: Math.round(actualMap.get(skill) || 0),
       }))
-      .sort((a, b) => Math.max(b.planPct, b.actualPct) - Math.max(a.planPct, a.actualPct))
+      .sort((a, b) => Math.max(b.planHours, b.actualHours) - Math.max(a.planHours, a.actualHours))
       .slice(0, 12);
   }, [allocations, filteredActuals, resById]);
 
-  // Resource × Project heatmap — plan % and actual % (hours→% of FTE month)
+  // Resource × Project heatmap — plan hours vs actual hours
   const rpGrid = useMemo(() => {
     const planBy = new Map<string, Map<string, number>>();
     const actualBy = new Map<string, Map<string, number>>();
     allocations.forEach((a) => {
+      const r = resById.get(a.resource_id);
+      const hours = hoursFromAllocation(a, Number(r?.capacity_hours_week) || 40);
       const row = planBy.get(a.resource_id) || new Map();
-      row.set(a.project_id, (row.get(a.project_id) || 0) + Number(a.allocation_percent || 0));
+      row.set(a.project_id, (row.get(a.project_id) || 0) + hours);
       planBy.set(a.resource_id, row);
     });
     filteredActuals.forEach((a) => {
       if (!a.resource_id || !a.project_id || a.billable === false) return;
-      const r = resById.get(a.resource_id);
-      const pct = hoursToMonthPct(Number(a.hours) || 0, Number(r?.capacity_hours_week) || 40);
       const row = actualBy.get(a.resource_id) || new Map();
-      row.set(a.project_id, (row.get(a.project_id) || 0) + pct);
+      row.set(a.project_id, (row.get(a.project_id) || 0) + (Number(a.hours) || 0));
       actualBy.set(a.resource_id, row);
     });
     const cols = projectColumns.map((p) => ({
@@ -584,32 +610,86 @@ function ResourcesPage() {
       });
       filteredActuals.forEach((a) => {
         if (!a.resource_id || (a.project_id && a.billable !== false)) return;
-        const r = resById.get(a.resource_id);
-        const pct = hoursToMonthPct(Number(a.hours) || 0, Number(r?.capacity_hours_week) || 40);
         const row = actualBy.get(a.resource_id) || new Map();
-        row.set("__non_billable__", (row.get("__non_billable__") || 0) + pct);
+        row.set("__non_billable__", (row.get("__non_billable__") || 0) + (Number(a.hours) || 0));
         actualBy.set(a.resource_id, row);
       });
     }
-    const rows = resources.map((r) => ({
-      name: r.name,
-      cells: cols.map((c) => ({
-        projectId: c.id,
-        project: c.title,
-        planPct: Math.round(planBy.get(r.id)?.get(c.id) || 0),
-        actualPct: Math.round(actualBy.get(r.id)?.get(c.id) || 0),
-      })),
-    }));
+    const rows = resources.map((r) => {
+      const cap = Number(r.capacity_hours_week) || 40;
+      const monthCount = Math.max(1, months.length);
+      return {
+        name: r.name,
+        cells: cols.map((c) => {
+          const planHours = Math.round((planBy.get(r.id)?.get(c.id) || 0) * 10) / 10;
+          const actualHours = Math.round((actualBy.get(r.id)?.get(c.id) || 0) * 10) / 10;
+          return {
+            projectId: c.id,
+            project: c.title,
+            planHours,
+            actualHours,
+            peakPct: hoursToMonthPct(Math.max(planHours, actualHours) / monthCount, cap),
+          };
+        }),
+      };
+    });
     return { rows, cols };
-  }, [allocations, filteredActuals, resources, projectColumns, resById]);
+  }, [allocations, filteredActuals, resources, projectColumns, resById, months]);
+
+  const streamPhaseHours = useMemo(() => {
+    const streamLabels = new Map<string, string>();
+    for (const s of streams as any[]) streamLabels.set(s.id, formatStreamLabel(s));
+    const gateLabels = new Map<string, string>();
+    for (const g of gates as any[]) gateLabels.set(g.id, g.gate_name || "Phase");
+    const projectLabels = new Map<string, string>();
+    for (const p of projects) {
+      projectLabels.set(p.id, p.project_code ? `${p.project_code} — ${p.name}` : p.name);
+    }
+    const acc = new Map<string, { label: string; planHours: number; actualHours: number }>();
+    const touch = (key: string, label: string) => {
+      const cur = acc.get(key) || { label, planHours: 0, actualHours: 0 };
+      acc.set(key, cur);
+      return cur;
+    };
+    for (const a of allocations) {
+      const r = resById.get(a.resource_id);
+      const hours = hoursFromAllocation(a, Number(r?.capacity_hours_week) || 40);
+      const stream = a.stream_id ? streamLabels.get(a.stream_id) || "Stream" : "Project";
+      const phase = a.stage_gate_id
+        ? gateLabels.get(a.stage_gate_id) || "Phase"
+        : "Unassigned phase";
+      const proj = projectLabels.get(a.project_id) || a.project_id;
+      const key = `${a.project_id}|${a.stream_id || ""}|${a.stage_gate_id || ""}`;
+      touch(key, `${proj} · ${stream} · ${phase}`).planHours += hours;
+    }
+    for (const a of filteredActuals) {
+      if (!a.project_id || a.billable === false) continue;
+      const stream = a.stream_id ? streamLabels.get(a.stream_id) || "Stream" : "Project";
+      const phase = a.stage_gate_id
+        ? gateLabels.get(a.stage_gate_id) || "Phase"
+        : "Unassigned phase";
+      const proj = projectLabels.get(a.project_id) || a.project_id;
+      const key = `${a.project_id}|${a.stream_id || ""}|${a.stage_gate_id || ""}`;
+      touch(key, `${proj} · ${stream} · ${phase}`).actualHours += Number(a.hours) || 0;
+    }
+    return Array.from(acc.values())
+      .map((r) => ({
+        ...r,
+        planHours: Math.round(r.planHours * 10) / 10,
+        actualHours: Math.round(r.actualHours * 10) / 10,
+        variance: Math.round((r.planHours - r.actualHours) * 10) / 10,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [allocations, filteredActuals, streams, gates, projects, resById]);
 
   return (
     <PageExport name="Resource_Capacity" title="Resource Capacity & Skill Intelligence">
       <PageHeading icon="👥">Resource Capacity & Skill Intelligence</PageHeading>
       <p className="mb-3 max-w-3xl text-sm text-muted-foreground">
-        Compare <strong>planned allocations</strong> with <strong>approved timesheet actuals</strong>{" "}
-        (project / work-item billable hours and non-billable / unallocated). Graphs and heatmaps on
-        Utilisation show plan and actual side by side; export standard reports from either tab.
+        <strong>Plan hours</strong> are work from Project Estimation Planning (applied per stream
+        and phase into resource allocations). <strong>Actual hours</strong> are approved timesheets.
+        Allocation % is derived from those hours vs monthly FTE capacity — it is not the plan
+        itself. Work-item estimates are Demand, not Plan.
       </p>
       <div className="mb-3 flex flex-wrap gap-2">
         {(
@@ -645,509 +725,591 @@ function ResourcesPage() {
 
       {tab === "utilisation" ? (
         <>
-      <SectionFrame>
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 items-end">
-          <div>
-            <label className="text-[11px] font-medium text-muted-foreground">Search</label>
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Name, role, skill…"
-              className="h-9"
-            />
-          </div>
-          <div>
-            <label className="text-[11px] font-medium text-muted-foreground">Role</label>
-            <Select value={roleFilter} onValueChange={setRoleFilter}>
-              <SelectTrigger className="h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All roles</SelectItem>
-                {roleOptions.map((r) => (
-                  <SelectItem key={r} value={r}>
-                    {r}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="text-[11px] font-medium text-muted-foreground">Skill</label>
-            <Select value={skillFilter} onValueChange={setSkillFilter}>
-              <SelectTrigger className="h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All skills</SelectItem>
-                {skillOptions.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {s}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="text-[11px] font-medium text-muted-foreground">Project</label>
-            <Select value={projectFilter} onValueChange={setProjectFilter}>
-              <SelectTrigger className="h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All projects</SelectItem>
-                {projectsOrdered.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.project_code ? `${p.project_code} — ${p.name}` : p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="text-[11px] font-medium text-muted-foreground">Status</label>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="Over">Over</SelectItem>
-                <SelectItem value="Optimal">Optimal</SelectItem>
-                <SelectItem value="Under">Under</SelectItem>
-                <SelectItem value="Unplanned">Unplanned</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="text-[11px] font-medium text-muted-foreground">Month from</label>
-            <Select value={monthFrom} onValueChange={setMonthFrom}>
-              <SelectTrigger className="h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Earliest</SelectItem>
-                {monthOptionsAll.map((m) => (
-                  <SelectItem key={m} value={m}>
-                    {monthLabel(m)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex gap-2 items-end">
-            <div className="flex-1">
-              <label className="text-[11px] font-medium text-muted-foreground">Month to</label>
-              <Select value={monthTo} onValueChange={setMonthTo}>
-                <SelectTrigger className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Latest</SelectItem>
-                  {monthOptionsAll.map((m) => (
-                    <SelectItem key={m} value={m}>
-                      {monthLabel(m)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <SectionFrame>
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 items-end">
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground">Search</label>
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Name, role, skill…"
+                  className="h-9"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground">Role</label>
+                <Select value={roleFilter} onValueChange={setRoleFilter}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All roles</SelectItem>
+                    {roleOptions.map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {r}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground">Skill</label>
+                <Select value={skillFilter} onValueChange={setSkillFilter}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All skills</SelectItem>
+                    {skillOptions.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground">Project</label>
+                <Select value={projectFilter} onValueChange={setProjectFilter}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All projects</SelectItem>
+                    {projectsOrdered.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.project_code ? `${p.project_code} — ${p.name}` : p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground">Status</label>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All statuses</SelectItem>
+                    <SelectItem value="Over">Over</SelectItem>
+                    <SelectItem value="Optimal">Optimal</SelectItem>
+                    <SelectItem value="Under">Under</SelectItem>
+                    <SelectItem value="Unplanned">Unplanned</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground">Month from</label>
+                <Select value={monthFrom} onValueChange={setMonthFrom}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Earliest</SelectItem>
+                    {monthOptionsAll.map((m) => (
+                      <SelectItem key={m} value={m}>
+                        {monthLabel(m)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2 items-end">
+                <div className="flex-1">
+                  <label className="text-[11px] font-medium text-muted-foreground">Month to</label>
+                  <Select value={monthTo} onValueChange={setMonthTo}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Latest</SelectItem>
+                      {monthOptionsAll.map((m) => (
+                        <SelectItem key={m} value={m}>
+                          {monthLabel(m)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button variant="outline" size="sm" onClick={resetFilters} className="h-9">
+                  Reset
+                </Button>
+              </div>
             </div>
-            <Button variant="outline" size="sm" onClick={resetFilters} className="h-9">
-              Reset
-            </Button>
+          </SectionFrame>
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-4 mt-4">
+            <KpiCard label="Resources" value={kpi.total} />
+            <KpiCard label="Over" value={kpi.over} />
+            <KpiCard label="Optimal" value={kpi.optimal} />
+            <KpiCard label="Under" value={kpi.under} />
           </div>
-        </div>
-      </SectionFrame>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-4 mt-4">
-        <KpiCard label="Resources" value={kpi.total} />
-        <KpiCard label="Over" value={kpi.over} />
-        <KpiCard label="Optimal" value={kpi.optimal} />
-        <KpiCard label="Under" value={kpi.under} />
-      </div>
+          <SectionFrame>
+            <ExpandableChart
+              title="Resource utilisation — plan hours vs actual hours"
+              heightClass="h-80"
+              legend={
+                <div className="mt-1 flex flex-wrap justify-end gap-3 text-xs">
+                  <span className="flex items-center gap-1">
+                    <span
+                      className="inline-block h-3 w-3 rounded-sm"
+                      style={{ background: PLAN_BAR }}
+                    />
+                    Plan (estimation hours)
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span
+                      className="inline-block h-3 w-3 rounded-sm"
+                      style={{ background: ACTUAL_BAR }}
+                    />
+                    Actual (approved timesheets)
+                  </span>
+                </div>
+              }
+            >
+              <BarChart
+                data={utilisation.map((u) => ({
+                  resource: u.resource,
+                  planHours: u.planHours,
+                  actualHours: u.actualHours,
+                }))}
+                margin={{ top: 20, right: 60, left: 20, bottom: 60 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+                <XAxis
+                  dataKey="resource"
+                  fontSize={11}
+                  angle={-25}
+                  textAnchor="end"
+                  interval={0}
+                  height={60}
+                  label={{ value: "Resource", position: "insideBottom", offset: -50, fontSize: 11 }}
+                />
+                <YAxis
+                  fontSize={11}
+                  label={{ value: "Hours", angle: -90, position: "insideLeft", fontSize: 11 }}
+                />
+                <Tooltip formatter={(v: number) => `${fmtHours(v)} h`} />
+                <Legend verticalAlign="top" wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="planHours" name="Plan h" fill={PLAN_BAR} radius={[3, 3, 0, 0]}>
+                  <LabelList
+                    dataKey="planHours"
+                    position="top"
+                    formatter={(v: number) => fmtHours(v)}
+                    fontSize={9}
+                  />
+                </Bar>
+                <Bar dataKey="actualHours" name="Actual h" fill={ACTUAL_BAR} radius={[3, 3, 0, 0]}>
+                  <LabelList
+                    dataKey="actualHours"
+                    position="top"
+                    formatter={(v: number) => fmtHours(v)}
+                    fontSize={9}
+                  />
+                </Bar>
+              </BarChart>
+            </ExpandableChart>
+          </SectionFrame>
 
-      <SectionFrame>
-        <ExpandableChart
-          title="Resource utilisation — plan % vs actual %"
-          heightClass="h-80"
-          legend={
-            <div className="mt-1 flex flex-wrap justify-end gap-3 text-xs">
+          <SectionFrame>
+            <SectionTitle>Month-wise heatmap (Resource × Month) — plan / actual hours</SectionTitle>
+            <p className="mb-2 text-[12px] text-muted-foreground">
+              Each cell shows <span style={{ color: PLAN_BAR }}>plan h</span> /{" "}
+              <span style={{ color: ACTUAL_BAR }}>actual h</span>. Plan hours come from estimation
+              planning (stream + phase allocations). Colour is load vs monthly FTE capacity.
+            </p>
+            <div className="overflow-auto max-h-[420px]">
+              <table className="border-collapse text-xs w-max">
+                <thead>
+                  <tr>
+                    <th className="sticky left-0 z-10 bg-background px-1.5 py-1 text-left whitespace-nowrap">
+                      Resource
+                    </th>
+                    {months.map((m) => (
+                      <th
+                        key={m}
+                        className="p-0.5 text-center font-normal text-muted-foreground w-16"
+                      >
+                        {monthLabel(m)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {heatGrid.map((row) => (
+                    <tr key={row.name}>
+                      <td className="sticky left-0 z-10 bg-background px-1.5 py-0.5 font-medium whitespace-nowrap">
+                        {row.name}
+                      </td>
+                      {row.cells.map((c) => {
+                        const peak = c.peakPct;
+                        return (
+                          <td key={c.month} className="p-0.5">
+                            <div
+                              className="flex h-8 w-16 flex-col items-center justify-center rounded text-[9px] font-semibold leading-tight"
+                              style={{
+                                background: peak === 0 ? "rgba(148,163,184,0.25)" : heatColor(peak),
+                                color: peak === 0 ? "#64748b" : "#fff",
+                              }}
+                              title={`${row.name} · ${monthLabel(c.month)}: plan ${fmtHours(c.planHours)} h · actual ${fmtHours(c.actualHours)} h`}
+                            >
+                              <span>{fmtHours(c.planHours)}h</span>
+                              <span className="opacity-90">{fmtHours(c.actualHours)}h</span>
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
               <span className="flex items-center gap-1">
-                <span className="inline-block h-3 w-3 rounded-sm" style={{ background: PLAN_BAR }} />
-                Plan (allocation)
+                <span
+                  className="inline-block h-2.5 w-2.5 rounded-sm"
+                  style={{ background: PLAN_BAR }}
+                />
+                Top = plan
               </span>
               <span className="flex items-center gap-1">
                 <span
-                  className="inline-block h-3 w-3 rounded-sm"
+                  className="inline-block h-2.5 w-2.5 rounded-sm"
                   style={{ background: ACTUAL_BAR }}
                 />
-                Actual (timesheets → % of FTE month)
+                Bottom = actual
               </span>
+              <div className="flex max-w-xs flex-1 items-center gap-2">
+                <span>0%</span>
+                <div
+                  className="h-2 flex-1 rounded"
+                  style={{
+                    background:
+                      "linear-gradient(to right, rgb(22,163,74), rgb(234,179,8), rgb(220,38,38))",
+                  }}
+                />
+                <span>120%</span>
+              </div>
             </div>
-          }
-        >
-          <BarChart
-            data={utilisation.map((u) => ({
-              resource: u.resource,
-              planPct: u.pct,
-              actualPct: u.actualPct,
-            }))}
-            margin={{ top: 20, right: 60, left: 20, bottom: 60 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-            <XAxis
-              dataKey="resource"
-              fontSize={11}
-              angle={-25}
-              textAnchor="end"
-              interval={0}
-              height={60}
-              label={{ value: "Resource", position: "insideBottom", offset: -50, fontSize: 11 }}
-            />
-            <YAxis
-              fontSize={11}
-              domain={[0, 120]}
-              label={{ value: "% of capacity", angle: -90, position: "insideLeft", fontSize: 11 }}
-            />
-            <Tooltip formatter={(v: number) => `${v}%`} />
-            <Legend verticalAlign="top" wrapperStyle={{ fontSize: 11 }} />
-            <ReferenceLine
-              y={100}
-              stroke="#dc2626"
-              strokeDasharray="6 4"
-              label={{ value: "100% capacity", position: "right", fill: "#dc2626", fontSize: 11 }}
-            />
-            <Bar dataKey="planPct" name="Plan %" fill={PLAN_BAR} radius={[3, 3, 0, 0]}>
-              <LabelList
-                dataKey="planPct"
-                position="top"
-                formatter={(v: number) => `${v}%`}
-                fontSize={9}
-              />
-            </Bar>
-            <Bar dataKey="actualPct" name="Actual %" fill={ACTUAL_BAR} radius={[3, 3, 0, 0]}>
-              <LabelList
-                dataKey="actualPct"
-                position="top"
-                formatter={(v: number) => `${v}%`}
-                fontSize={9}
-              />
-            </Bar>
-          </BarChart>
-        </ExpandableChart>
-      </SectionFrame>
+          </SectionFrame>
 
-      <SectionFrame>
-        <SectionTitle>Month-wise heatmap (Resource × Month) — plan / actual</SectionTitle>
-        <p className="mb-2 text-[12px] text-muted-foreground">
-          Each cell shows <span style={{ color: PLAN_BAR }}>plan%</span> /{" "}
-          <span style={{ color: ACTUAL_BAR }}>actual%</span>. Colour uses the higher of the two.
-        </p>
-        <div className="overflow-auto max-h-[420px]">
-          <table className="border-collapse text-xs w-max">
-            <thead>
-              <tr>
-                <th className="sticky left-0 z-10 bg-background px-1.5 py-1 text-left whitespace-nowrap">
-                  Resource
-                </th>
-                {months.map((m) => (
-                  <th
-                    key={m}
-                    className="p-0.5 text-center font-normal text-muted-foreground w-16"
-                  >
-                    {monthLabel(m)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {heatGrid.map((row) => (
-                <tr key={row.name}>
-                  <td className="sticky left-0 z-10 bg-background px-1.5 py-0.5 font-medium whitespace-nowrap">
-                    {row.name}
-                  </td>
-                  {row.cells.map((c) => {
-                    const peak = Math.max(c.planPct, c.actualPct);
-                    return (
-                      <td key={c.month} className="p-0.5">
-                        <div
-                          className="flex h-8 w-16 flex-col items-center justify-center rounded text-[9px] font-semibold leading-tight"
-                          style={{
-                            background:
-                              peak === 0 ? "rgba(148,163,184,0.25)" : heatColor(peak),
-                            color: peak === 0 ? "#64748b" : "#fff",
-                          }}
-                          title={`${row.name} · ${monthLabel(c.month)}: plan ${c.planPct}% · actual ${c.actualPct}%`}
-                        >
-                          <span>{c.planPct}%</span>
-                          <span className="opacity-90">{c.actualPct}%</span>
-                        </div>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: PLAN_BAR }} />
-            Top = plan
-          </span>
-          <span className="flex items-center gap-1">
-            <span
-              className="inline-block h-2.5 w-2.5 rounded-sm"
-              style={{ background: ACTUAL_BAR }}
-            />
-            Bottom = actual
-          </span>
-          <div className="flex max-w-xs flex-1 items-center gap-2">
-            <span>0%</span>
-            <div
-              className="h-2 flex-1 rounded"
-              style={{
-                background:
-                  "linear-gradient(to right, rgb(22,163,74), rgb(234,179,8), rgb(220,38,38))",
-              }}
-            />
-            <span>120%</span>
-          </div>
-        </div>
-      </SectionFrame>
+          <SectionFrame>
+            <ExpandableChart title="Monthly plan vs actual hours" heightClass="h-80">
+              <BarChart
+                data={monthlyPlanActual}
+                margin={{ top: 10, right: 20, left: 20, bottom: 20 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+                <XAxis dataKey="month" fontSize={11} />
+                <YAxis
+                  fontSize={11}
+                  label={{ value: "Hours", angle: -90, position: "insideLeft", fontSize: 11 }}
+                />
+                <Tooltip formatter={(v: number) => `${fmtHours(v)} h`} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="planHours" name="Plan hours" fill={PLAN_BAR} radius={[3, 3, 0, 0]} />
+                <Bar
+                  dataKey="actualHours"
+                  name="Actual hours"
+                  fill={ACTUAL_BAR}
+                  radius={[3, 3, 0, 0]}
+                />
+              </BarChart>
+            </ExpandableChart>
+          </SectionFrame>
 
-      <SectionFrame>
-        <ExpandableChart title="Monthly plan vs actual hours" heightClass="h-80">
-          <BarChart data={monthlyPlanActual} margin={{ top: 10, right: 20, left: 20, bottom: 20 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-            <XAxis dataKey="month" fontSize={11} />
-            <YAxis
-              fontSize={11}
-              label={{ value: "Hours", angle: -90, position: "insideLeft", fontSize: 11 }}
-            />
-            <Tooltip />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Bar dataKey="planHours" name="Plan hours" fill={PLAN_BAR} radius={[3, 3, 0, 0]} />
-            <Bar dataKey="actualHours" name="Actual hours" fill={ACTUAL_BAR} radius={[3, 3, 0, 0]} />
-          </BarChart>
-        </ExpandableChart>
-      </SectionFrame>
-
-      <SectionFrame>
-        <ExpandableChart title="Demand by skill — plan vs actual" heightClass="h-72">
-          <BarChart data={bySkill} margin={{ top: 28, right: 12, left: 8, bottom: 48 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-            <XAxis
-              dataKey="skill"
-              fontSize={10}
-              angle={-25}
-              textAnchor="end"
-              interval={0}
-              height={56}
-            />
-            <YAxis
-              fontSize={11}
-              domain={[0, (dataMax: number) => Math.ceil((dataMax || 0) * 1.18) || 10]}
-              label={{ value: "% (FTE)", angle: -90, position: "insideLeft", fontSize: 11 }}
-            />
-            <Tooltip formatter={(v: number) => `${v}%`} />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Bar dataKey="planPct" name="Plan %" fill={PLAN_BAR} radius={[3, 3, 0, 0]} />
-            <Bar dataKey="actualPct" name="Actual %" fill={ACTUAL_BAR} radius={[3, 3, 0, 0]} />
-          </BarChart>
-        </ExpandableChart>
-      </SectionFrame>
-
-      <SectionFrame>
-        <SectionTitle>Resource × Project — plan / actual</SectionTitle>
-        <p className="mb-2 text-[12px] text-muted-foreground">
-          Cells show plan% / actual% (actual from approved timesheets as % of FTE month). Non-billable
-          column appears when unallocated timesheet hours exist. Hover a project code for the full
-          name.
-        </p>
-        <div className="overflow-auto max-h-[480px]">
-          <table className="border-collapse text-xs w-max">
-            <thead>
-              <tr>
-                <th className="sticky left-0 z-10 bg-background px-1.5 py-1 text-left whitespace-nowrap">
-                  Resource
-                </th>
-                {rpGrid.cols.map((c) => (
-                  <th
-                    key={c.id}
-                    className="p-0.5 text-center font-normal text-muted-foreground w-16 cursor-default"
-                    title={c.title}
-                    aria-label={c.title}
-                  >
-                    <span className="block truncate px-0.5" title={c.title}>
-                      {c.label}
-                    </span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rpGrid.rows.map((row) => (
-                <tr key={row.name}>
-                  <td className="sticky left-0 z-10 bg-background px-1.5 py-0.5 font-medium whitespace-nowrap">
-                    {row.name}
-                  </td>
-                  {row.cells.map((c) => {
-                    const peak = Math.max(c.planPct, c.actualPct);
-                    return (
-                      <td key={c.projectId} className="p-0.5">
-                        <div
-                          className="flex h-8 w-16 flex-col items-center justify-center rounded text-[9px] font-semibold leading-tight"
-                          style={{
-                            background:
-                              peak === 0
-                                ? "rgba(148,163,184,0.2)"
-                                : heatColor(Math.min(120, peak > 100 ? peak : peak / 2 + 30)),
-                            color: peak === 0 ? "#64748b" : "#fff",
-                          }}
-                          title={`${row.name} → ${c.project}: plan ${c.planPct}% · actual ${c.actualPct}%`}
-                        >
-                          <span>{c.planPct}%</span>
-                          <span className="opacity-90">{c.actualPct}%</span>
-                        </div>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </SectionFrame>
-
-      <SectionFrame>
-        <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <SectionTitle>Utilisation — plan vs timesheet actuals</SectionTitle>
-            <p className="text-[12px] text-muted-foreground">
-              Plan % from resource allocations. Actual / billable / non-billable hours from approved
-              timesheets (project &amp; work-item bookings plus unallocated non-billable).
+          <SectionFrame>
+            <SectionTitle>Plan vs actual by stream and phase</SectionTitle>
+            <p className="mb-2 text-[12px] text-muted-foreground">
+              Plan hours are estimation-planning effort spread across each stream and stage-gate
+              (phase). Actual hours are approved timesheets booked to the same stream and phase.
             </p>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                exportResourceUtilisationCsv(utilisationExportRows);
-                toast.success("Utilisation CSV downloaded");
-              }}
-            >
-              <Download className="mr-1.5 h-3.5 w-3.5" />
-              CSV
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                void exportResourceReportsExcel({
-                  utilisation: utilisationExportRows,
-                  pva: [],
-                })
-                  .then(() => toast.success("Resource reports exported"))
-                  .catch((e: Error) => toast.error(e.message || "Export failed"));
-              }}
-            >
-              <Download className="mr-1.5 h-3.5 w-3.5" />
-              Excel
-            </Button>
-          </div>
-        </div>
-        <div className="overflow-auto max-h-[420px]">
-          <table className="w-max min-w-full border-collapse text-[12.5px]">
-            <thead>
-              <tr className="border-b bg-[#f1f3f6]">
-                <th className="px-2.5 py-2 text-left font-semibold">Resource</th>
-                <th className="w-20 px-2.5 py-2 text-right font-semibold tabular-nums">Plan %</th>
-                <th className="w-20 px-2.5 py-2 text-right font-semibold tabular-nums">Actual %</th>
-                <th className="w-20 px-2.5 py-2 text-right font-semibold tabular-nums">Plan h</th>
-                <th className="w-20 px-2.5 py-2 text-right font-semibold tabular-nums">Actual h</th>
-                <th className="w-20 px-2.5 py-2 text-right font-semibold tabular-nums">Billable</th>
-                <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">
-                  Non-billable
-                </th>
-                <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">
-                  Util vs plan
-                </th>
-                <th className="w-28 px-2.5 py-2 text-left font-semibold">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {utilisation.map((u) => (
-                <tr key={u.resource} className="border-b border-[#eef0f3]">
-                  <td className="px-2.5 py-1.5 font-medium">{u.resource}</td>
-                  <td className="w-20 px-2.5 py-1.5 text-right tabular-nums">{u.pct}</td>
-                  <td className="w-20 px-2.5 py-1.5 text-right tabular-nums">{u.actualPct}</td>
-                  <td className="w-20 px-2.5 py-1.5 text-right tabular-nums">{u.planHours}</td>
-                  <td className="w-20 px-2.5 py-1.5 text-right tabular-nums">{u.actualHours}</td>
-                  <td className="w-20 px-2.5 py-1.5 text-right tabular-nums">{u.billableHours}</td>
-                  <td className="w-24 px-2.5 py-1.5 text-right tabular-nums">
-                    {u.nonBillableHours}
-                  </td>
-                  <td className="w-24 px-2.5 py-1.5 text-right tabular-nums">
-                    {u.utilVsPlan == null ? "—" : `${u.utilVsPlan}%`}
-                  </td>
-                  <td className="w-28 px-2.5 py-1.5">
-                    <span
-                      className="inline-block rounded-full px-2 py-0.5 text-xs font-medium text-white"
-                      style={{ background: STATUS_COLOR[u.status] }}
-                    >
-                      {u.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </SectionFrame>
+            <div className="overflow-auto max-h-[360px]">
+              <table className="w-full min-w-[32rem] border-collapse text-[12.5px]">
+                <thead>
+                  <tr className="border-b bg-[#f1f3f6]">
+                    <th className="px-2.5 py-2 text-left font-semibold">
+                      Project · stream · phase
+                    </th>
+                    <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">
+                      Plan h
+                    </th>
+                    <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">
+                      Actual h
+                    </th>
+                    <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">
+                      Var h
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {streamPhaseHours.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-2.5 py-6 text-center text-muted-foreground">
+                        No estimation allocations or timesheet hours for this filter.
+                      </td>
+                    </tr>
+                  ) : (
+                    streamPhaseHours.map((r) => (
+                      <tr key={r.label} className="border-b border-[#eef0f3]">
+                        <td className="px-2.5 py-1.5 font-medium">{r.label}</td>
+                        <td className="px-2.5 py-1.5 text-right tabular-nums">
+                          {fmtHours(r.planHours)}
+                        </td>
+                        <td className="px-2.5 py-1.5 text-right tabular-nums">
+                          {fmtHours(r.actualHours)}
+                        </td>
+                        <td className="px-2.5 py-1.5 text-right tabular-nums">
+                          {fmtHours(r.variance)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </SectionFrame>
 
-      <SectionFrame>
-        <SectionTitle>Monthly plan / actual matrix</SectionTitle>
-        <p className="mb-2 text-[12px] text-muted-foreground">
-          Same as the heatmap — each cell is plan% / actual%.
-        </p>
-        <div className="overflow-auto max-h-[420px]">
-          <table className="border-collapse text-[12.5px] w-max">
-            <thead>
-              <tr className="border-b bg-[#f1f3f6]">
-                <th className="sticky left-0 z-10 bg-[#f1f3f6] px-2 py-2 text-left font-semibold whitespace-nowrap">
-                  Resource
-                </th>
-                {months.map((m) => (
-                  <th
-                    key={m}
-                    className="w-16 px-1 py-2 text-center font-semibold tabular-nums whitespace-nowrap"
-                  >
-                    {monthLabel(m)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {heatGrid.map((row) => (
-                <tr key={row.name} className="border-b border-[#eef0f3]">
-                  <td className="sticky left-0 z-10 bg-white px-2 py-1.5 font-medium whitespace-nowrap">
-                    {row.name}
-                  </td>
-                  {row.cells.map((c) => (
-                    <td key={c.month} className="w-16 px-1 py-1.5 text-center tabular-nums text-[11px]">
-                      {c.planPct}/{c.actualPct}
-                    </td>
+          <SectionFrame>
+            <ExpandableChart title="Hours by skill — plan vs actual" heightClass="h-72">
+              <BarChart data={bySkill} margin={{ top: 28, right: 12, left: 8, bottom: 48 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+                <XAxis
+                  dataKey="skill"
+                  fontSize={10}
+                  angle={-25}
+                  textAnchor="end"
+                  interval={0}
+                  height={56}
+                />
+                <YAxis
+                  fontSize={11}
+                  domain={[0, (dataMax: number) => Math.ceil((dataMax || 0) * 1.18) || 10]}
+                  label={{ value: "Hours", angle: -90, position: "insideLeft", fontSize: 11 }}
+                />
+                <Tooltip formatter={(v: number) => `${fmtHours(v)} h`} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="planHours" name="Plan h" fill={PLAN_BAR} radius={[3, 3, 0, 0]} />
+                <Bar
+                  dataKey="actualHours"
+                  name="Actual h"
+                  fill={ACTUAL_BAR}
+                  radius={[3, 3, 0, 0]}
+                />
+              </BarChart>
+            </ExpandableChart>
+          </SectionFrame>
+
+          <SectionFrame>
+            <SectionTitle>Resource × Project — plan / actual hours</SectionTitle>
+            <p className="mb-2 text-[12px] text-muted-foreground">
+              Cells show plan h / actual h. Plan is estimation-planning hours on the project. Actual
+              is approved timesheets. Non-billable column appears when unallocated timesheet hours
+              exist. Colour is average monthly load vs FTE capacity.
+            </p>
+            <div className="overflow-auto max-h-[480px]">
+              <table className="border-collapse text-xs w-max">
+                <thead>
+                  <tr>
+                    <th className="sticky left-0 z-10 bg-background px-1.5 py-1 text-left whitespace-nowrap">
+                      Resource
+                    </th>
+                    {rpGrid.cols.map((c) => (
+                      <th
+                        key={c.id}
+                        className="p-0.5 text-center font-normal text-muted-foreground w-16 cursor-default"
+                        title={c.title}
+                        aria-label={c.title}
+                      >
+                        <span className="block truncate px-0.5" title={c.title}>
+                          {c.label}
+                        </span>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rpGrid.rows.map((row) => (
+                    <tr key={row.name}>
+                      <td className="sticky left-0 z-10 bg-background px-1.5 py-0.5 font-medium whitespace-nowrap">
+                        {row.name}
+                      </td>
+                      {row.cells.map((c) => {
+                        const peak = c.peakPct;
+                        return (
+                          <td key={c.projectId} className="p-0.5">
+                            <div
+                              className="flex h-8 w-16 flex-col items-center justify-center rounded text-[9px] font-semibold leading-tight"
+                              style={{
+                                background:
+                                  peak === 0
+                                    ? "rgba(148,163,184,0.2)"
+                                    : heatColor(Math.min(120, peak)),
+                                color: peak === 0 ? "#64748b" : "#fff",
+                              }}
+                              title={`${row.name} → ${c.project}: plan ${fmtHours(c.planHours)} h · actual ${fmtHours(c.actualHours)} h`}
+                            >
+                              <span>{fmtHours(c.planHours)}h</span>
+                              <span className="opacity-90">{fmtHours(c.actualHours)}h</span>
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
                   ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </SectionFrame>
+                </tbody>
+              </table>
+            </div>
+          </SectionFrame>
+
+          <SectionFrame>
+            <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <SectionTitle>Utilisation — plan vs timesheet actuals</SectionTitle>
+                <p className="text-[12px] text-muted-foreground">
+                  Plan h from Project Estimation Planning (allocated hours per stream and phase).
+                  Plan % is those hours vs monthly FTE capacity. Actual / billable / non-billable
+                  from approved timesheets.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    exportResourceUtilisationCsv(utilisationExportRows);
+                    toast.success("Utilisation CSV downloaded");
+                  }}
+                >
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  CSV
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    void exportResourceReportsExcel({
+                      utilisation: utilisationExportRows,
+                      pva: [],
+                    })
+                      .then(() => toast.success("Resource reports exported"))
+                      .catch((e: Error) => toast.error(e.message || "Export failed"));
+                  }}
+                >
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  Excel
+                </Button>
+              </div>
+            </div>
+            <div className="overflow-auto max-h-[420px]">
+              <table className="w-max min-w-full border-collapse text-[12.5px]">
+                <thead>
+                  <tr className="border-b bg-[#f1f3f6]">
+                    <th className="px-2.5 py-2 text-left font-semibold">Resource</th>
+                    <th className="w-20 px-2.5 py-2 text-right font-semibold tabular-nums">
+                      Plan %
+                    </th>
+                    <th className="w-20 px-2.5 py-2 text-right font-semibold tabular-nums">
+                      Actual %
+                    </th>
+                    <th className="w-20 px-2.5 py-2 text-right font-semibold tabular-nums">
+                      Plan h
+                    </th>
+                    <th className="w-20 px-2.5 py-2 text-right font-semibold tabular-nums">
+                      Actual h
+                    </th>
+                    <th className="w-20 px-2.5 py-2 text-right font-semibold tabular-nums">
+                      Billable
+                    </th>
+                    <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">
+                      Non-billable
+                    </th>
+                    <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">
+                      Util vs plan
+                    </th>
+                    <th className="w-28 px-2.5 py-2 text-left font-semibold">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {utilisation.map((u) => (
+                    <tr key={u.resource} className="border-b border-[#eef0f3]">
+                      <td className="px-2.5 py-1.5 font-medium">{u.resource}</td>
+                      <td className="w-20 px-2.5 py-1.5 text-right tabular-nums">{u.pct}</td>
+                      <td className="w-20 px-2.5 py-1.5 text-right tabular-nums">{u.actualPct}</td>
+                      <td className="w-20 px-2.5 py-1.5 text-right tabular-nums">{u.planHours}</td>
+                      <td className="w-20 px-2.5 py-1.5 text-right tabular-nums">
+                        {u.actualHours}
+                      </td>
+                      <td className="w-20 px-2.5 py-1.5 text-right tabular-nums">
+                        {u.billableHours}
+                      </td>
+                      <td className="w-24 px-2.5 py-1.5 text-right tabular-nums">
+                        {u.nonBillableHours}
+                      </td>
+                      <td className="w-24 px-2.5 py-1.5 text-right tabular-nums">
+                        {u.utilVsPlan == null ? "—" : `${u.utilVsPlan}%`}
+                      </td>
+                      <td className="w-28 px-2.5 py-1.5">
+                        <span
+                          className="inline-block rounded-full px-2 py-0.5 text-xs font-medium text-white"
+                          style={{ background: STATUS_COLOR[u.status] }}
+                        >
+                          {u.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </SectionFrame>
+
+          <SectionFrame>
+            <SectionTitle>Monthly plan / actual matrix</SectionTitle>
+            <p className="mb-2 text-[12px] text-muted-foreground">
+              Same as the heatmap — each cell is plan h / actual h.
+            </p>
+            <div className="overflow-auto max-h-[420px]">
+              <table className="border-collapse text-[12.5px] w-max">
+                <thead>
+                  <tr className="border-b bg-[#f1f3f6]">
+                    <th className="sticky left-0 z-10 bg-[#f1f3f6] px-2 py-2 text-left font-semibold whitespace-nowrap">
+                      Resource
+                    </th>
+                    {months.map((m) => (
+                      <th
+                        key={m}
+                        className="w-16 px-1 py-2 text-center font-semibold tabular-nums whitespace-nowrap"
+                      >
+                        {monthLabel(m)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {heatGrid.map((row) => (
+                    <tr key={row.name} className="border-b border-[#eef0f3]">
+                      <td className="sticky left-0 z-10 bg-white px-2 py-1.5 font-medium whitespace-nowrap">
+                        {row.name}
+                      </td>
+                      {row.cells.map((c) => (
+                        <td
+                          key={c.month}
+                          className="w-16 px-1 py-1.5 text-center tabular-nums text-[11px]"
+                        >
+                          {fmtHours(c.planHours)}/{fmtHours(c.actualHours)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </SectionFrame>
         </>
       ) : null}
     </PageExport>

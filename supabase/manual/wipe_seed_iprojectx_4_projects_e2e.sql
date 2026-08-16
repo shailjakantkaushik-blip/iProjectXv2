@@ -1801,23 +1801,25 @@ BEGIN
         -- Planned FTE allocations across phase months
         IF coalesce(array_length(res_ids, 1), 0) > 0 THEN
           INSERT INTO public.resource_allocations (
-            org_id, project_id, stream_id, resource_id, period_month,
+            org_id, project_id, stream_id, stage_gate_id, resource_id, period_month,
             allocated_hours, allocation_percent, role_on_project
           )
           SELECT
             r_org.id,
             p_id,
             x.stream_id,
+            x.stage_gate_id,
             x.resource_id,
             x.period_month,
             round(x.hours, 1),
             round((x.hours / 173.2) * 1000) / 10.0,
             CASE WHEN x.stream_id = core_id THEN 'Core Delivery' ELSE alt_names[i] END
           FROM (
-            SELECT stream_id, resource_id, period_month, sum(hours) AS hours
+            SELECT stream_id, stage_gate_id, resource_id, period_month, sum(hours) AS hours
             FROM (
               SELECT
                 fp.stream_id,
+                sg.id AS stage_gate_id,
                 r.resource_id,
                 gs::date AS period_month,
                 (COALESCE(r.effort_days, 0) * 8.0) / GREATEST(1, (
@@ -1829,6 +1831,10 @@ BEGIN
                 )) AS hours
               FROM public.project_forecast_phase_resources r
               JOIN public.project_forecast_phases fp ON fp.id = r.forecast_phase_id
+              LEFT JOIN public.stage_gates sg
+                ON sg.project_id = p_id
+               AND sg.gate_name = fp.gate_name
+               AND sg.stream_id IS NOT DISTINCT FROM fp.stream_id
               CROSS JOIN LATERAL generate_series(
                 date_trunc('month', fp.start_date)::timestamp,
                 date_trunc('month', fp.end_date)::timestamp,
@@ -1840,7 +1846,7 @@ BEGIN
                 AND fp.end_date IS NOT NULL
                 AND fp.start_date <= fp.end_date
             ) spread
-            GROUP BY stream_id, resource_id, period_month
+            GROUP BY stream_id, stage_gate_id, resource_id, period_month
           ) x
           ON CONFLICT DO NOTHING;
         END IF;
