@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Lock, Unlock } from "lucide-react";
+import { Plus, Lock, Unlock, ChevronDown, ChevronRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, isAdmin } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
@@ -50,6 +50,7 @@ function ProjectForecastPage() {
   const [projectId, setProjectId] = useState("");
   const [planStart, setPlanStart] = useState("");
   const [phaseDraft, setPhaseDraft] = useState<ForecastPhaseRow[]>([]);
+  const [otherCatsOpen, setOtherCatsOpen] = useState(false);
 
   const { data: allProjects = [] } = useQuery({
     queryKey: projectOptionsQueryKey(orgId),
@@ -957,15 +958,44 @@ function ProjectForecastPage() {
           </SectionFrame>
 
           <SectionFrame>
-            <div className="mb-2 flex items-center justify-between">
-              <SectionTitle>Further cost categories</SectionTitle>
-              {canEdit && (
-                <Button type="button" size="sm" variant="outline" onClick={() => addOther.mutate()}>
-                  <Plus className="mr-1 h-4 w-4" /> Add cost category
-                </Button>
-              )}
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <button
+                type="button"
+                className="flex min-w-0 items-center gap-1.5 text-left"
+                aria-expanded={otherCatsOpen}
+                onClick={() => setOtherCatsOpen((o) => !o)}
+              >
+                {otherCatsOpen ? (
+                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                )}
+                <SectionTitle>Further cost categories</SectionTitle>
+              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {otherCosts.length
+                    ? `${otherCosts.length} · ${money(otherTotal)}`
+                    : "None yet"}
+                </span>
+                {canEdit && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setOtherCatsOpen(true);
+                      addOther.mutate();
+                    }}
+                  >
+                    <Plus className="mr-1 h-4 w-4" /> Add cost category
+                  </Button>
+                )}
+              </div>
             </div>
-            {otherCosts.map((c) => (
+            {otherCatsOpen && (
+              <>
+                {otherCosts.map((c) => (
               <div key={c.id} className="mb-2 flex flex-wrap items-center gap-2">
                 <input
                   className="st-input min-w-[10rem]"
@@ -1023,6 +1053,14 @@ function ProjectForecastPage() {
                 )}
               </div>
             ))}
+                {otherCosts.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    No further cost lines yet. Add travel, vendors, software, or other non-labor
+                    costs.
+                  </p>
+                )}
+              </>
+            )}
           </SectionFrame>
 
           <SectionFrame>
