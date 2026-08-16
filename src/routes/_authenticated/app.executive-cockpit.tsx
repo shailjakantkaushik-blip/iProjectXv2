@@ -205,6 +205,7 @@ function ExecutiveCockpit() {
   const [filters, setFilters] = useState<ExecutivePortfolioFilterState>(emptyExecutiveFilters);
   const [summariesCollapsed, setSummariesCollapsed] = useState(section !== "summaries");
   const [openSummaryIds, setOpenSummaryIds] = useState<Set<string>>(() => new Set());
+  const [asksHost, setAsksHost] = useState<HTMLElement | null>(null);
   const asOf = new Date().toLocaleDateString(undefined, {
     day: "numeric",
     month: "short",
@@ -707,6 +708,7 @@ function ExecutiveCockpit() {
 
       <ExecutiveQuickView
         mode="steering"
+        asksHost={asksHost}
         filtered={projects}
         approvedFunding={approvedFundingK}
         totalIncurred={actualSpendK}
@@ -1145,6 +1147,8 @@ function ExecutiveCockpit() {
           )}
         </ExpandablePanel>
       </SectionFrame>
+
+      <div id="pack-asks-end" ref={setAsksHost} />
     </div>
   );
 }
