@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
 import { explainRag } from "@/lib/explain-metric";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, Legend } from "recharts";
-import { GATE_STATUS_COLORS as STATUS_COLORS, CHART_SERIES } from "@/lib/chart-theme";
+import { GATE_STATUS_COLORS as STATUS_COLORS } from "@/lib/chart-theme";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { persistCurrentPhaseFromGates, resolveCurrentAndNextGate, resolveCurrentStage } from "@/lib/project-phase";
 import { fetchOrgStreams, formatProjectStreamRef, formatStreamLabel } from "@/lib/project-streams";
@@ -29,12 +29,13 @@ import {
   methodUsesStageGates,
   deliveryMethodsQueryKey,
 } from "@/lib/delivery-methods";
+import { projectBelongsToMethod } from "@/lib/stage-gate-flow";
 
 export const Route = createFileRoute("/_authenticated/app/stage-gates")({
   component: StageGatesPage,
 });
 
-const PALETTE = CHART_SERIES;
+const GATE_STATUSES = ["Approved", "In Review", "Pending", "On Hold", "Rejected"] as const;
 
 function StageGatesPage() {
   const { organization } = useAuth();
@@ -75,11 +76,13 @@ function StageGatesPage() {
     enabled: !!organization?.id,
   });
 
-  const { data: deliveryMethods = [] } = useQuery({
+  const deliveryMethodsQ = useQuery({
     queryKey: deliveryMethodsQueryKey(orgId),
     queryFn: () => fetchDeliveryMethods(orgId!, { activeOnly: true }),
     enabled: !!orgId,
   });
+  const deliveryMethods = deliveryMethodsQ.data ?? [];
+  const methodsReady = deliveryMethodsQ.isFetched;
 
   const phasesByMethodId = useMemo(() => {
     const m = new Map<string, string[]>();
@@ -207,32 +210,45 @@ function StageGatesPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  // Gate distribution: names from gates actually on projects (Agile vs Waterfall templates).
-  const distribution = useMemo(() => {
-    const orderIdx = new Map<string, number>();
-    (defs as any[]).forEach((d, i) => {
-      if (!orderIdx.has(d.gate_name)) orderIdx.set(d.gate_name, d.sort_order ?? i);
-    });
-    const names = Array.from(
-      new Set((gates as any[]).map((g) => g.gate_name).filter(Boolean)),
-    ).sort((a, b) => {
-      const oa = orderIdx.get(a as string);
-      const ob = orderIdx.get(b as string);
-      if (oa !== undefined && ob !== undefined) return oa - ob;
-      return String(a).localeCompare(String(b));
-    }) as string[];
-    const statuses = ["Approved", "In Review", "Pending", "On Hold", "Rejected"];
-    return names.map((n: string) => {
-      const row: any = { gate: n };
-      statuses.forEach((s) => {
-        row[s] = gates.filter(
-          (g: any) => g.gate_name === n && (g.status || "Pending") === s,
-        ).length;
-      });
-      row.__total = statuses.reduce((sum, s) => sum + row[s], 0);
-      return row;
-    });
-  }, [gates, defs]);
+  // One stacked distribution per delivery method — never mix templates on one axis.
+  const methodDistributions = useMemo(() => {
+    if (!methodsReady) return [];
+    return deliveryMethods
+      .map((method) => {
+        const methodProjects = (projects as any[]).filter((p) =>
+          projectBelongsToMethod(p, method, deliveryMethods),
+        );
+        const ids = new Set(methodProjects.map((p) => p.id));
+        const methodGates = (gates as any[]).filter((g) => ids.has(g.project_id));
+        const fromDefs = (defs as any[])
+          .filter((d) => String(d.delivery_method_id || "") === method.id)
+          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+          .map((d) => String(d.gate_name || "").trim())
+          .filter(Boolean);
+        const names =
+          fromDefs.length > 0
+            ? fromDefs
+            : (Array.from(
+                new Set(methodGates.map((g) => g.gate_name).filter(Boolean)),
+              ) as string[]);
+        const rows = names.map((n: string) => {
+          const row: Record<string, string | number> = { gate: n };
+          GATE_STATUSES.forEach((s) => {
+            row[s] = methodGates.filter(
+              (g: any) => g.gate_name === n && (g.status || "Pending") === s,
+            ).length;
+          });
+          return row;
+        });
+        return {
+          methodId: method.id,
+          methodName: method.name,
+          rows,
+          gateCount: methodGates.length,
+        };
+      })
+      .filter((flow) => flow.rows.length > 0);
+  }, [deliveryMethods, projects, gates, defs, methodsReady]);
 
   // KPIs from actual gates
   const total = gates.length;
@@ -461,7 +477,17 @@ function StageGatesPage() {
       </SectionFrame>
 
       <SectionFrame>
-        {distribution.length === 0 ? (
+        <SectionTitle>Gate distribution by delivery method</SectionTitle>
+        <p className="mb-3 text-sm text-muted-foreground">
+          Each method uses its own gate template. A project is counted only on its method&apos;s
+          graph.{" "}
+          <Link to="/app/stage-gate-config" className="font-medium text-primary hover:underline">
+            Configure methods &amp; gates
+          </Link>
+        </p>
+        {!methodsReady ? (
+          <p className="text-sm text-muted-foreground">Loading delivery-method graphs…</p>
+        ) : methodDistributions.length === 0 ? (
           <div className="rounded-md border p-6 text-center text-xs text-muted-foreground">
             No gates yet. Configure gates in{" "}
             <Link to="/app/stage-gate-config" className="font-medium text-primary hover:underline">
@@ -470,31 +496,39 @@ function StageGatesPage() {
             and add them to projects.
           </div>
         ) : (
-          <ExpandableChart title="Gate Distribution" heightClass="h-72">
-            <BarChart data={distribution} margin={{ top: 20, right: 20, left: 0, bottom: 40 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-              <XAxis
-                dataKey="gate"
-                fontSize={11}
-                angle={-15}
-                textAnchor="end"
-                interval={0}
-                height={60}
-              />
-              <YAxis allowDecimals={false} fontSize={11} />
-              <Tooltip />
-              <Legend verticalAlign="top" height={28} />
-              {["Approved", "In Review", "Pending", "On Hold", "Rejected"].map((s) => (
-                <Bar
-                  key={s}
-                  dataKey={s}
-                  stackId="s"
-                  fill={STATUS_COLORS[s]}
-                  radius={[2, 2, 0, 0]}
-                />
-              ))}
-            </BarChart>
-          </ExpandableChart>
+          <div className="space-y-6">
+            {methodDistributions.map((flow) => (
+              <ExpandableChart
+                key={flow.methodId}
+                title={`${flow.methodName} · ${flow.gateCount} gates`}
+                heightClass="h-72"
+              >
+                <BarChart data={flow.rows} margin={{ top: 20, right: 20, left: 0, bottom: 40 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+                  <XAxis
+                    dataKey="gate"
+                    fontSize={11}
+                    angle={-15}
+                    textAnchor="end"
+                    interval={0}
+                    height={60}
+                  />
+                  <YAxis allowDecimals={false} fontSize={11} />
+                  <Tooltip />
+                  <Legend verticalAlign="top" height={28} />
+                  {GATE_STATUSES.map((s) => (
+                    <Bar
+                      key={s}
+                      dataKey={s}
+                      stackId="s"
+                      fill={STATUS_COLORS[s]}
+                      radius={[2, 2, 0, 0]}
+                    />
+                  ))}
+                </BarChart>
+              </ExpandableChart>
+            ))}
+          </div>
         )}
       </SectionFrame>
 

@@ -20,9 +20,34 @@ type Props = {
   };
   /** Compact read-only card for the executive dashboard. */
   readOnly?: boolean;
+  /** Allow capturing a new action even when notes are read-only (exec tab). */
+  allowAddActions?: boolean;
 };
 
-export function ProjectMeetingSummary({ projectId, project, readOnly }: Props) {
+function isOpenAction(status?: string | null) {
+  return !/done|closed|cancelled|canceled/i.test(String(status || ""));
+}
+
+function isCompleteMilestone(m: { status?: string | null; actual_date?: string | null }) {
+  if (m.actual_date) return true;
+  return /complete|done|achieved|closed/i.test(String(m.status || ""));
+}
+
+/** Soonest incomplete milestone — prefer on/after today, else the overdue one. */
+export function pickNextMilestone<
+  T extends { planned_date?: string | null; actual_date?: string | null; status?: string | null },
+>(milestones: T[]): T | null {
+  const open = milestones.filter((m) => !isCompleteMilestone(m));
+  if (open.length === 0) return null;
+  const today = new Date().toISOString().slice(0, 10);
+  const byPlanned = (a: T, b: T) =>
+    String(a.planned_date || "9999-12-31").localeCompare(String(b.planned_date || "9999-12-31"));
+  const upcoming = open.filter((m) => (m.planned_date || "") >= today).sort(byPlanned);
+  if (upcoming[0]) return upcoming[0];
+  return [...open].sort(byPlanned)[0] ?? null;
+}
+
+export function ProjectMeetingSummary({ projectId, project, readOnly, allowAddActions }: Props) {
   const { organization, session } = useAuth();
   const orgId = organization?.id;
   const qc = useQueryClient();
@@ -61,7 +86,7 @@ export function ProjectMeetingSummary({ projectId, project, readOnly }: Props) {
       (
         await supabase
           .from("actions")
-          .select("id,title,status,due_date,completed_date")
+          .select("id,title,status,due_date,completed_date,owner")
           .eq("project_id", projectId)
       ).data ?? [],
     enabled: !!orgId && !!projectId,
@@ -100,17 +125,39 @@ export function ProjectMeetingSummary({ projectId, project, readOnly }: Props) {
   const systemNext = useMemo(() => {
     const until = next || "9999-12-31";
     const openActions = (actions as any[]).filter((a) => {
-      const open = !/done|closed|cancelled/i.test(String(a.status || ""));
       const due = (a.due_date || "").slice(0, 10);
-      return open && (!due || due <= until);
+      return isOpenAction(a.status) && (!due || due <= until);
     });
-    const upcoming = (milestones as any[]).filter((m) => {
-      const planned = (m.planned_date || "").slice(0, 10);
-      const actual = m.actual_date;
-      return !actual && planned && planned <= until;
-    });
-    return { openActions, upcoming };
+    const nextMilestone = pickNextMilestone(milestones as any[]);
+    return { openActions, nextMilestone };
   }, [actions, milestones, next]);
+
+  const [newAction, setNewAction] = useState({ title: "", owner: "", due_date: "" });
+  const canAddActions = !readOnly || allowAddActions;
+
+  const addAction = useMutation({
+    mutationFn: async () => {
+      const title = newAction.title.trim();
+      if (!orgId || !projectId || !title) throw new Error("Action title is required");
+      const { error } = await supabase.from("actions").insert({
+        org_id: orgId,
+        project_id: projectId,
+        title,
+        owner: newAction.owner.trim() || null,
+        due_date: newAction.due_date || null,
+        status: "Open",
+        priority: "Medium",
+      } as never);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Action added");
+      setNewAction({ title: "", owner: "", due_date: "" });
+      qc.invalidateQueries({ queryKey: ["actions", orgId, projectId, "summary"] });
+      qc.invalidateQueries({ queryKey: ["actions", orgId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const [form, setForm] = useState<Record<string, string>>({});
   const ragSource = extras || project;
@@ -209,15 +256,17 @@ export function ProjectMeetingSummary({ projectId, project, readOnly }: Props) {
                 {a.due_date ? ` · due ${a.due_date}` : ""}
               </li>
             ))}
-            {systemNext.upcoming.map((m: any) => (
-              <li key={m.id}>
-                Milestone: {m.name}
-                {m.planned_date ? ` · ${m.planned_date}` : ""}
+            {systemNext.nextMilestone ? (
+              <li>
+                Next milestone: {systemNext.nextMilestone.name}
+                {systemNext.nextMilestone.planned_date
+                  ? ` · ${systemNext.nextMilestone.planned_date}`
+                  : ""}
               </li>
-            ))}
-            {systemNext.openActions.length === 0 && systemNext.upcoming.length === 0 && (
+            ) : null}
+            {systemNext.openActions.length === 0 && !systemNext.nextMilestone && (
               <li className="text-muted-foreground">
-                No open actions or milestones in this window.
+                No open actions or next milestone in this window.
               </li>
             )}
           </ul>
@@ -233,6 +282,52 @@ export function ProjectMeetingSummary({ projectId, project, readOnly }: Props) {
           )}
         </div>
       </div>
+      {canAddActions && (
+        <div className="mt-3 rounded-lg border border-border bg-surface p-3">
+          <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            Add action
+          </h4>
+          <div className="grid gap-2 md:grid-cols-4">
+            <label className="text-xs md:col-span-2">
+              Title
+              <input
+                className="st-input mt-1"
+                value={newAction.title}
+                onChange={(e) => setNewAction((f) => ({ ...f, title: e.target.value }))}
+                placeholder="What needs to happen"
+              />
+            </label>
+            <label className="text-xs">
+              Owner
+              <input
+                className="st-input mt-1"
+                value={newAction.owner}
+                onChange={(e) => setNewAction((f) => ({ ...f, owner: e.target.value }))}
+                placeholder="Owner"
+              />
+            </label>
+            <label className="text-xs">
+              Due
+              <input
+                type="date"
+                className="st-input mt-1"
+                value={newAction.due_date}
+                onChange={(e) => setNewAction((f) => ({ ...f, due_date: e.target.value }))}
+              />
+            </label>
+          </div>
+          <div className="mt-2">
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => addAction.mutate()}
+              disabled={addAction.isPending || !newAction.title.trim()}
+            >
+              {addAction.isPending ? "Adding…" : "Add action"}
+            </Button>
+          </div>
+        </div>
+      )}
       {!readOnly && (
         <div className="mt-3 grid gap-2 md:grid-cols-4">
           <label className="text-xs">

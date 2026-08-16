@@ -66,16 +66,21 @@ function RoadmapGovPage() {
     enabled: !!organization,
   });
 
-  const { data: deliveryMethods = [] } = useQuery({
+  const deliveryMethodsQ = useQuery({
     queryKey: deliveryMethodsQueryKey(orgId),
     queryFn: () => fetchDeliveryMethods(orgId!, { activeOnly: true }),
     enabled: !!orgId,
   });
+  const deliveryMethods = deliveryMethodsQ.data ?? [];
+  const methodsReady = deliveryMethodsQ.isFetched;
 
   const active = projects.filter((p) => p.status !== "Completed" && p.status !== "Cancelled");
   const flows = useMemo(
-    () => buildStageGateFlows(deliveryMethods, gateDefs as StageGateDefLike[], projects),
-    [deliveryMethods, gateDefs, projects],
+    () =>
+      methodsReady
+        ? buildStageGateFlows(deliveryMethods, gateDefs as StageGateDefLike[], projects)
+        : [],
+    [deliveryMethods, gateDefs, projects, methodsReady],
   );
 
   const kpis = {
@@ -158,6 +163,20 @@ function RoadmapGovPage() {
           </Link>
         </p>
         <div className="space-y-6">
+          {!methodsReady && (
+            <p className="text-sm text-muted-foreground">Loading delivery-method graphs…</p>
+          )}
+          {methodsReady && flows.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              No delivery-method gate templates yet.{" "}
+              <Link
+                to="/app/stage-gate-config"
+                className="font-medium text-primary hover:underline"
+              >
+                Configure methods &amp; gates
+              </Link>
+            </p>
+          )}
           {flows.map((flow, i) => {
             const fill = CHART_SERIES[i % CHART_SERIES.length];
             return (

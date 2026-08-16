@@ -252,8 +252,8 @@
   );
   border: 1px solid color-mix(in srgb, var(--color-border) 90%, transparent);
   border-radius: 10px;
-  padding: 12px 14px;
-  min-height: 68px;
+  padding: 10px 12px;
+  min-height: 58px;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 .kpi-card:hover {
@@ -263,21 +263,21 @@
 }
 
 .kpi-label {
-  font-size: 10.5px;
+  font-size: 9.5px;
   font-weight: 600;
   color: var(--color-muted-foreground);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 6px;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
 }
 
 .kpi-value {
   font-family: "Sora", "Manrope", ui-sans-serif, system-ui, sans-serif;
-  font-size: 22px;
+  font-size: 16px;
   font-weight: 700;
   color: var(--color-heading);
-  line-height: 1.12;
-  letter-spacing: -0.03em;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
 }
 
 /* Page heading — primary hierarchy above nav section labels */
@@ -524,7 +524,7 @@ html[data-style-theme="aurora"] .shell-root::before {
 @media (max-width: 640px) {
   .section-frame { padding: 12px 12px; border-radius: 8px; }
   .page-heading { font-size: 18px; }
-  .kpi-value { font-size: 18px; }
+  .kpi-value { font-size: 15px; }
   .st-table thead th, .st-table tbody td { padding: 6px 8px; font-size: 12px; }
   .st-btn-primary,
   .st-btn-primary.st-btn-inline {
