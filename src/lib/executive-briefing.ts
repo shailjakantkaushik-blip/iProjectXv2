@@ -10,13 +10,14 @@ import {
   type ProjectFinanceLike,
 } from "@/lib/project-finance";
 import { isGateScheduleDelayed } from "@/lib/finance-lifecycle";
-import { isDecisionAwaiting } from "@/lib/decision-approval";
+import { decisionOutcome, isDecisionAwaiting } from "@/lib/decision-approval";
 import {
   evaluateProjectHealth,
   type HealthEngineResult,
   type RagTone,
 } from "@/lib/project-health-engine";
 import type { EvmMonthlyLike } from "@/lib/evm";
+import type { MetricExplanation } from "@/lib/explain-metric";
 
 export type BriefingProject = ProjectFinanceLike & {
   id: string;
@@ -93,6 +94,13 @@ export type ProjectWatchRow = {
   topWhy: string;
 };
 
+export type BriefingQuestionExplains = {
+  decisions: MetricExplanation;
+  money: MetricExplanation;
+  time: MetricExplanation;
+  risk: MetricExplanation;
+};
+
 const num = (v: unknown) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -136,6 +144,7 @@ export function buildExecutiveBriefing(opts: {
   actions: BriefingAction[];
   watch: ProjectWatchRow[];
   healthByProject: Map<string, HealthEngineResult>;
+  questionExplains: BriefingQuestionExplains;
 } {
   const now = opts.now ?? new Date();
   const todayIso = now.toISOString().slice(0, 10);
@@ -312,6 +321,123 @@ export function buildExecutiveBriefing(opts: {
         ? bits.join(" · ") + "."
         : `Portfolio is steady — ${watch.length} project${watch.length === 1 ? "" : "s"}, none flagged.`;
 
+  const envelope = watch.reduce((s, w) => s + w.budget, 0);
+  const facTotal = watch.reduce((s, w) => s + w.fac, 0);
+  const incurredTotal = watch.reduce((s, w) => s + w.incurred, 0);
+  const remaining = Math.max(0, envelope - incurredTotal);
+  const overBudgetRows = [...watch]
+    .filter((w) => w.overrun > 0)
+    .sort((a, b) => b.overrun - a.overrun);
+  const overdueRows = watch.filter((w) => w.isOverdue);
+  const lateGateRows = gates.filter((g) => isGateScheduleDelayed(g, now));
+  const criticalRows = risks.filter(isCriticalRisk);
+
+  const questionExplains: BriefingQuestionExplains = {
+    decisions: explainWhy({
+      title: "Do you need to decide?",
+      headline: decisionsWaiting
+        ? `${decisionsWaiting} decision${decisionsWaiting === 1 ? "" : "s"} still waiting on steering.`
+        : "Nothing is waiting on a steering decision in this filter.",
+      bullets: [
+        "Counts RAID decisions whose outcome is Pending or In Review. Approved, Rejected, and On Hold are excluded.",
+        ...namedLines(
+          decisions.map((d) => {
+            const p = byId.get(d.project_id);
+            const due = String(d.required_date || "").slice(0, 10);
+            const overdue = !!(due && due < todayIso);
+            const dueBit = due
+              ? `required ${due}${overdue ? " (overdue)" : ""}`
+              : "no required date";
+            return `${d.title || "Untitled decision"} — ${p ? labelOf(p) : "Unknown project"} · ${decisionOutcome(d)} · ${dueBit}.`;
+          }),
+        ),
+        ...(decisionsWaiting
+          ? []
+          : [
+              "If a decision should appear here, check it is not On Hold and that its project is in this filter.",
+            ]),
+      ],
+    }),
+    money: explainWhy({
+      title: "Is the money still inside the envelope?",
+      headline:
+        moneyAtRisk > 0
+          ? `FAC ${money(facTotal)} is ${money(moneyAtRisk)} above the ${money(envelope)} envelope.`
+          : `FAC ${money(facTotal)} is inside the ${money(envelope)} envelope.`,
+      bullets: [
+        `Envelope is approved funding (Budget) on the ${watch.length} project${watch.length === 1 ? "" : "s"} in this filter.`,
+        `Incurred-to-date is ${money(incurredTotal)}, so ${money(remaining)} remains against the envelope.`,
+        moneyAtRisk > 0
+          ? "The card’s “above budget” figure is the sum of projects whose Forecast at Completion is above their own envelope — not remaining unspent."
+          : "No project Forecast at Completion is above its own approved envelope.",
+        ...namedLines(
+          overBudgetRows.map(
+            (w) =>
+              `${labelOf(w.project)}: FAC ${money(w.fac)} vs budget ${money(w.budget)} (${money(w.overrun)} over).`,
+          ),
+        ),
+      ],
+    }),
+    time: explainWhy({
+      title: "Are we on time?",
+      headline:
+        lateGateCount + overdueCount === 0
+          ? "No late gates and no projects past planned end."
+          : `${lateGateCount} late gate${lateGateCount === 1 ? "" : "s"} and ${overdueCount} project${overdueCount === 1 ? "" : "s"} past planned end.`,
+      bullets: [
+        "The number on the card is late gates plus overdue projects. A project can contribute to both.",
+        "A gate is late when its planned date has passed with no actual, or the actual is after the plan, and the gate is not completed.",
+        "A project is overdue when planned or actual end is before today and status is not Completed.",
+        ...(lateGateRows.length
+          ? [
+              `Late gates (${lateGateRows.length}):`,
+              ...namedLines(
+                lateGateRows.map((g) => {
+                  const p = byId.get(g.project_id);
+                  const planned = String(g.planned_date || "").slice(0, 10) || "no planned date";
+                  return `${g.gate_name || "Stage gate"} on ${p ? labelOf(p) : "Unknown"} — planned ${planned}, still ${g.status || "open"}.`;
+                }),
+              ),
+            ]
+          : []),
+        ...(overdueRows.length
+          ? [
+              `Overdue projects (${overdueRows.length}):`,
+              ...namedLines(
+                overdueRows.map((w) => {
+                  const end =
+                    w.project.actual_end_date || w.project.planned_end_date || w.project.end_date;
+                  return `${labelOf(w.project)} — planned end ${String(end || "").slice(0, 10) || "—"}, still ${w.project.status || "open"}.`;
+                }),
+              ),
+            ]
+          : []),
+      ],
+    }),
+    risk: explainWhy({
+      title: "What could still hurt us?",
+      headline: criticalRisks
+        ? `${criticalRisks} open critical risk${criticalRisks === 1 ? "" : "s"} (score 12 or higher).`
+        : "No open risks score 12 or higher.",
+      bullets: [
+        "Critical means severity ≥ 12, or probability × impact ≥ 12. Closed, mitigated, accepted, and resolved risks are excluded.",
+        ...namedLines(
+          criticalRows.map((r) => {
+            const p = byId.get(r.project_id);
+            const score =
+              num(r.severity) >= 12 ? num(r.severity) : num(r.probability) * num(r.impact);
+            return `${r.title || "Untitled risk"} — ${p ? labelOf(p) : "Unknown"} · score ${score || "—"} · owner ${r.owner || "unassigned"}.`;
+          }),
+        ),
+        ...(criticalRisks
+          ? []
+          : [
+              "Lower-scoring open risks still sit on the project RAID log; they are not on this card.",
+            ]),
+      ],
+    }),
+  };
+
   return {
     overallRag,
     headline,
@@ -325,6 +451,7 @@ export function buildExecutiveBriefing(opts: {
       .filter((w) => w.rag === "Red" || w.rag === "Amber" || w.isOverdue || w.overrun > 0)
       .slice(0, 6),
     healthByProject,
+    questionExplains,
   };
 }
 
@@ -333,4 +460,25 @@ function money(n: number) {
     "$" +
     new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n || 0)
   );
+}
+
+function namedLines(lines: string[], cap = 8) {
+  if (!lines.length) return [];
+  if (lines.length <= cap) return lines;
+  return [...lines.slice(0, cap), `…and ${lines.length - cap} more.`];
+}
+
+function explainWhy(opts: {
+  title: string;
+  headline: string;
+  bullets: string[];
+}): MetricExplanation {
+  const bullets = opts.bullets.length ? opts.bullets : ["Nothing in this filter matches."];
+  return {
+    title: opts.title,
+    headline: opts.headline,
+    bullets,
+    drivers: bullets.map((b) => ({ label: b })),
+    confidence: "high",
+  };
 }

@@ -209,6 +209,7 @@ export function ExecutiveQuickView({
           value={String(briefing.decisionsWaiting)}
           sub={briefing.decisionsWaiting ? "Waiting on steering" : "Nothing in the queue"}
           accent={briefing.decisionsWaiting ? "#d97706" : "#15803d"}
+          explain={briefing.questionExplains.decisions}
         />
         <KpiCard
           label="Is the money still inside the envelope?"
@@ -219,17 +220,20 @@ export function ExecutiveQuickView({
               : `${money(remaining)} still unspent`
           }
           accent={briefing.moneyAtRisk > 0 ? "#dc2626" : "#1d4ed8"}
+          explain={briefing.questionExplains.money}
         />
         <KpiCard
           label="Are we on time?"
           value={String(briefing.lateGateCount + briefing.overdueCount)}
           sub={`${briefing.lateGateCount} late gates · ${briefing.overdueCount} overdue`}
           accent={briefing.lateGateCount || briefing.overdueCount ? "#dc2626" : "#15803d"}
+          explain={briefing.questionExplains.time}
         />
         <KpiCard
           label="What could still hurt us?"
           value={String(briefing.criticalRisks)}
           sub={briefing.criticalRisks ? "Open critical risks" : "No critical risks open"}
+          explain={briefing.questionExplains.risk}
           accent={briefing.criticalRisks ? "#dc2626" : "#15803d"}
         />
       </div>
