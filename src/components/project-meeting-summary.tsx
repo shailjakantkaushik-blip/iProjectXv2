@@ -104,11 +104,17 @@ export function ProjectMeetingSummary({ projectId, project, readOnly }: Props) {
       const due = (a.due_date || "").slice(0, 10);
       return open && (!due || due <= until);
     });
-    const upcoming = (milestones as any[]).filter((m) => {
-      const planned = (m.planned_date || "").slice(0, 10);
-      const actual = m.actual_date;
-      return !actual && planned && planned <= until;
-    });
+    const upcoming = (milestones as any[])
+      .filter((m) => {
+        const planned = (m.planned_date || "").slice(0, 10);
+        if (m.actual_date || !planned || planned > until) return false;
+        if (/complete|done|achieved/i.test(String(m.status || ""))) return false;
+        return true;
+      })
+      .sort((a, b) =>
+        String(a.planned_date).slice(0, 10).localeCompare(String(b.planned_date).slice(0, 10)),
+      )
+      .slice(0, 1);
     return { openActions, upcoming };
   }, [actions, milestones, next]);
 
@@ -211,13 +217,13 @@ export function ProjectMeetingSummary({ projectId, project, readOnly }: Props) {
             ))}
             {systemNext.upcoming.map((m: any) => (
               <li key={m.id}>
-                Milestone: {m.name}
-                {m.planned_date ? ` · ${m.planned_date}` : ""}
+                Next milestone: {m.name}
+                {m.planned_date ? ` · due ${String(m.planned_date).slice(0, 10)}` : ""}
               </li>
             ))}
             {systemNext.openActions.length === 0 && systemNext.upcoming.length === 0 && (
               <li className="text-muted-foreground">
-                No open actions or milestones in this window.
+                No open actions or next due milestone in this window.
               </li>
             )}
           </ul>
