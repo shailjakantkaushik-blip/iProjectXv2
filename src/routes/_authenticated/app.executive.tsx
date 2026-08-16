@@ -50,6 +50,7 @@ import {
   ExecutivePortfolioFilters,
   applyExecutivePortfolioFilters,
   emptyExecutiveFilters,
+  executiveFiltersActive,
   type ExecutivePortfolioFilterState,
 } from "@/components/portfolio-filters";
 import { unwrapList } from "@/lib/query";
@@ -112,6 +113,7 @@ function ExecutiveDashboard() {
   const qc = useQueryClient();
   const listProjects = useServerFn(listPortfolioProjects);
   const [filters, setFilters] = useState<ExecutivePortfolioFilterState>(emptyExecutiveFilters);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const { fySelected } = filters;
   type TimelineView = "Portfolio" | "Program" | "Health" | "Priority" | "Theme" | "Sponsor" | "Status";
   const [timelineView, setTimelineView] = useState<TimelineView>("Program");
@@ -792,24 +794,47 @@ function ExecutiveDashboard() {
           </div>
         </div>
       )}
+      {tab !== "overview" && !executiveFiltersActive(filters) && !filtersOpen ? (
+        <div className="mb-3 print:hidden">
+          <button
+            type="button"
+            className="text-xs font-medium text-muted-foreground hover:text-foreground"
+            onClick={() => setFiltersOpen(true)}
+          >
+            Filter pack
+          </button>
+        </div>
+      ) : (
       <SectionFrame className="section-frame--filters" exportable={false}>
-        <ExecutivePortfolioFilters
-          projects={projects}
-          value={filters}
-          onChange={setFilters}
-          fyStartMonth={fyStartMonth}
-        />
+            {tab !== "overview" && !executiveFiltersActive(filters) ? (
+              <div className="mb-2 flex justify-end print:hidden">
+                <button
+                  type="button"
+                  className="text-xs font-medium text-muted-foreground hover:text-foreground"
+                  onClick={() => setFiltersOpen(false)}
+                >
+                  Hide filters
+                </button>
+              </div>
+            ) : null}
+            <ExecutivePortfolioFilters
+              projects={projects}
+              value={filters}
+              onChange={setFilters}
+              fyStartMonth={fyStartMonth}
+            />
       </SectionFrame>
+      )}
 
       <div className="mb-3 flex items-end gap-0 border-b border-border">
         {(
           [
             { id: "quick" as const, label: "Quick view" },
+            { id: "summaries" as const, label: "Project summaries" },
             { id: "overview" as const, label: "Detailed info" },
           ] as const
         ).map((t) => {
-          const active =
-            t.id === "quick" ? tab === "quick" || tab === "summaries" : tab === "overview";
+          const active = tab === t.id;
           return (
             <Link
               key={t.id}
@@ -827,31 +852,6 @@ function ExecutiveDashboard() {
           );
         })}
       </div>
-
-      {(tab === "quick" || tab === "summaries") && (
-      <div className="mb-4 inline-flex flex-wrap rounded-md border border-border bg-muted/40 p-0.5">
-        {(
-          [
-            { id: "quick" as const, label: "Briefing" },
-            { id: "summaries" as const, label: "Project summaries" },
-          ] as const
-        ).map((t) => (
-          <Link
-            key={t.id}
-            to="/app/executive"
-            search={{ tab: t.id }}
-            className={cn(
-              "inline-flex min-w-[7.5rem] items-center justify-center rounded px-3 py-1 text-[13px] font-medium transition-colors",
-              tab === t.id
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {t.label}
-          </Link>
-        ))}
-      </div>
-      )}
 
       {tab === "quick" && (
         <ExecutiveQuickView
@@ -1047,7 +1047,7 @@ function ExecutiveDashboard() {
       <SectionFrame>
         <SectionTitle>Project summaries (since last meeting)</SectionTitle>
         <p className="mb-3 text-sm text-muted-foreground">
-          Read-only rollup of each project&apos;s Project Summary tab, on Quick view. Edit notes,
+          Read-only rollup of each project&apos;s Project Summary tab. Edit notes,
           meeting dates, and RAG override on the project page — open a project below.
         </p>
         <div className="space-y-3">
