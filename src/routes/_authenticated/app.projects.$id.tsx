@@ -39,7 +39,7 @@ export const Route = createFileRoute("/_authenticated/app/projects/$id")({
 
 const TABS = [
   { id: "overview", label: "Overview" },
-  { id: "summary", label: "Summary" },
+  { id: "summary", label: "Project Summary" },
   { id: "streams", label: "Streams" },
   { id: "decisions", label: "Key Decisions" },
   { id: "work", label: "Work" },
@@ -125,6 +125,7 @@ function ProjectDetail() {
               phases,
               streams: allStreams.filter((s) => s.project_id === id),
               onlyFillEmpty: true,
+              forecastId: fc.id,
             });
           }
         }
@@ -257,6 +258,21 @@ function ProjectDetail() {
               <KpiCard label="Benefits target" value={money(Number(project.benefits_target || 0))} />
               <KpiCard label="ROI %" value={Number(project.roi_percent || 0)} />
             </div>
+            <p className="mt-3 text-sm">
+              <Link
+                to="/app/projects/$id"
+                params={{ id }}
+                search={{ tab: "summary" }}
+                className="font-medium text-primary hover:underline"
+              >
+                Edit Project Summary
+              </Link>
+              <span className="text-muted-foreground">
+                {" "}
+                — meeting notes, next actions, and RAG override (shown on the Executive Dashboard
+                Project summaries tab).
+              </span>
+            </p>
             <p className="mt-3 text-xs text-muted-foreground">
               Schedule and funding on this project are rollups from{" "}
               <Link
@@ -286,8 +302,11 @@ function ProjectDetail() {
       {tab === "summary" && (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            Progress since the last steering meeting and the plan until the next one. The Executive
-            Dashboard reads this section.{" "}
+            Edit the steering-meeting summary here. The Executive Dashboard{" "}
+            <Link to="/app/executive" search={{ tab: "summaries" }} className="font-medium text-primary hover:underline">
+              Project summaries
+            </Link>{" "}
+            tab shows it read-only.{" "}
             <Link to="/app/project-forecast" className="font-medium text-primary hover:underline">
               Open project forecast
             </Link>

@@ -631,6 +631,7 @@ function ProjectForecastPage() {
         phases: laid,
         streams: projectStreams,
         onlyFillEmpty,
+        forecastId: fid,
       });
     },
     onSuccess: (r) => {
@@ -639,10 +640,12 @@ function ProjectForecastPage() {
       qc.invalidateQueries({ queryKey: ["stage_gates"] });
       qc.invalidateQueries({ queryKey: ["project_streams"] });
       qc.invalidateQueries({ queryKey: ["project_forecasts"] });
+      qc.invalidateQueries({ queryKey: ["resource_allocations"] });
+      qc.invalidateQueries({ queryKey: ["financials_monthly"] });
       toast.success(
         r.plannedEnd
-          ? `Project plan updated through ${r.plannedEnd}`
-          : "Project plan updated from the forecast",
+          ? `Planned baseline applied through ${r.plannedEnd}`
+          : "Planned dates, cost, and FTE applied from the forecast",
       );
     },
     onError: (e: Error) => toast.error(e.message),
@@ -735,7 +738,7 @@ function ProjectForecastPage() {
               disabled={!planStart || applyPlan.isPending || !canEdit}
               onClick={() => applyPlan.mutate(false)}
             >
-              Apply planned dates
+              Apply planned baseline
             </Button>
           )}
           {projectId && (
@@ -751,8 +754,8 @@ function ProjectForecastPage() {
         {project && (
           <p className="mt-2 text-xs text-muted-foreground">
             {kickedOff
-              ? "Project has started. This page is the planned baseline. Actual dates and incurred cost come from streams, gates, and timesheets — they are not overwritten here. Changing the plan needs sponsor or admin unlock."
-              : "Not started yet. Set durations and apply planned dates onto streams, stage gates, and the project. When the PM records Actual Start, this estimate remains the plan and actuals begin to show beside it."}
+              ? "Project has started. This page is the planned baseline (dates, cost, and FTE). Actual dates and incurred cost come from streams, gates, and timesheets — they are not overwritten here. Changing the plan needs sponsor or admin unlock."
+              : "Not started yet. Apply planned baseline writes forecast dates, phase cost, and resource FTE onto the project as Planned. Timeline treats those dates as planned. Actuals start when the PM records Actual Start."}
           </p>
         )}
         {!project && (

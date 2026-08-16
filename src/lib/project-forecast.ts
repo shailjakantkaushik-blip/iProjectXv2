@@ -3,6 +3,7 @@
  * The estimate is the planned baseline. After start, actuals live on
  * streams / gates / incurred cost and must never be overwritten here.
  */
+import { applyForecastPlannedMoneyAndFte, loadForecastApplyInputs } from "@/lib/apply-forecast-planned";
 import { supabase } from "@/integrations/supabase/client";
 import {
   defaultGatesForMethodCode,
@@ -510,8 +511,9 @@ export async function persistForecastPhases(opts: {
 }
 
 /**
- * Write planned dates only. Actual start/end on the project, streams, and
- * gates are left untouched so timeline plan-vs-actual stays honest.
+ * Write the forecast as the planned baseline:
+ * - planned dates on project / streams / gates (never actuals)
+ * - planned monthly cost and FTE allocations from forecast effort
  */
 export async function applyForecastToProjectPlan(opts: {
   orgId: string;
@@ -521,7 +523,8 @@ export async function applyForecastToProjectPlan(opts: {
   streams?: ForecastStreamLike[];
   /** When true, only fill blank planned dates (PM later overrides stay). */
   onlyFillEmpty?: boolean;
-}): Promise<{ plannedEnd: string | null }> {
+  forecastId?: string | null;
+}): Promise<{ plannedEnd: string | null; monthsUpdated?: number; allocationsUpserted?: number }> {
   const start = opts.startDate.slice(0, 10);
   const laid = layoutForecastPhases(opts.phases, start, opts.streams);
   const plannedEnd =
@@ -619,7 +622,27 @@ export async function applyForecastToProjectPlan(opts: {
     .eq("project_id", opts.projectId)
     .eq("org_id", opts.orgId);
 
-  return { plannedEnd };
+  let monthsUpdated = 0;
+  let allocationsUpserted = 0;
+  try {
+    const forecastId = opts.forecastId;
+    const inputs = forecastId ? await loadForecastApplyInputs(forecastId) : { phaseRes: [], otherCosts: [] };
+    const money = await applyForecastPlannedMoneyAndFte({
+      orgId: opts.orgId,
+      projectId: opts.projectId,
+      phases: laid,
+      phaseRes: inputs.phaseRes,
+      otherCosts: inputs.otherCosts,
+      onlyFillEmpty: opts.onlyFillEmpty,
+    });
+    monthsUpdated = money.monthsUpdated;
+    allocationsUpserted = money.allocationsUpserted;
+  } catch (e) {
+    // Dates already applied; money/FTE tables may be missing on older orgs.
+    if (!/does not exist|schema cache|column/i.test(String((e as Error)?.message || e))) throw e;
+  }
+
+  return { plannedEnd, monthsUpdated, allocationsUpserted };
 }
 
 /** Create missing delivery-method gates on each stream, copying Core planned dates. */

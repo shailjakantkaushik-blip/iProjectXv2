@@ -48,7 +48,9 @@ import {
 import { PortfolioTimeline } from "@/components/portfolio-timeline";
 import { Button } from "@/components/ui/button";
 import { downloadProjectBriefPPT } from "@/lib/project-brief-ppt";
+import { plannedCostByPhase } from "@/lib/apply-forecast-planned";
 import {
+  forecastPhaseKey,
   groupForecastRowsByStream,
   loadForecastPhases,
   parseForecastPhaseNotes,
@@ -445,6 +447,51 @@ function InfographicPage() {
       }))
       .filter((p: any) => p.start_date && p.end_date);
   }, [project, projectStreams, gates, showProjectTimeline]);
+  const { data: planForecast } = useQuery({
+    queryKey: ["project_forecasts", project?.id, "infographic-plan"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("project_forecasts" as any)
+        .select("id,notes")
+        .eq("project_id", project.id)
+        .maybeSingle();
+      return data as { id: string; notes?: unknown } | null;
+    },
+    enabled: !!project?.id,
+  });
+  const { data: planPhases = [] } = useQuery({
+    queryKey: ["project_forecast_phases", planForecast?.id, "infographic-plan"],
+    queryFn: () => loadForecastPhases(planForecast!.id),
+    enabled: !!planForecast?.id,
+  });
+  const { data: planPhaseRes = [] } = useQuery({
+    queryKey: ["project_forecast_phase_resources", planForecast?.id, "infographic-plan"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("project_forecast_phase_resources" as any)
+        .select("*")
+        .eq("forecast_id", planForecast!.id);
+      return (data ?? []) as any[];
+    },
+    enabled: !!planForecast?.id,
+  });
+  const { data: planOtherCosts = [] } = useQuery({
+    queryKey: ["project_forecast_other_costs", planForecast?.id, "infographic-plan"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("project_forecast_other_costs" as any)
+        .select("*")
+        .eq("forecast_id", planForecast!.id);
+      return (data ?? []) as any[];
+    },
+    enabled: !!planForecast?.id,
+  });
+  const forecastPlannedByPhase = useMemo(() => {
+    const stored =
+      planPhases.length > 0 ? planPhases : parseForecastPhaseNotes(planForecast?.notes);
+    return plannedCostByPhase(stored, planPhaseRes as any[], planOtherCosts as any[]);
+  }, [planPhases, planForecast?.notes, planPhaseRes, planOtherCosts]);
+
   const { data: monthly = [] } = useQuery({
     queryKey: ["financials_monthly", project?.id],
     queryFn: async () =>
@@ -875,11 +922,19 @@ function InfographicPage() {
       };
     }
 
-    const spendFor = (pgates: any[], rows: MonthlyFinanceRow[], name: string) => {
+    const spendFor = (
+      pgates: any[],
+      rows: MonthlyFinanceRow[],
+      name: string,
+      streamId?: string | null,
+    ) => {
       const spend = phaseSpendByStage(pgates, rows, PHASES).get(name);
+      const fromForecast =
+        forecastPlannedByPhase.get(forecastPhaseKey({ stream_id: streamId || null, gate_name: name }))
+          ?.total ?? 0;
       return {
-        budget: spend?.planned ?? 0,
-        forecast: spend?.forecast ?? 0,
+        budget: spend?.planned || fromForecast,
+        forecast: fromForecast,
         actualSpend: spend?.actual ?? 0,
       };
     };
@@ -895,7 +950,7 @@ function InfographicPage() {
             streamGates.forEach((g) => byName.set((g.gate_name || "").trim(), g));
             const cards = PHASES.map((name) => {
               const g = byName.get(name);
-              const $ = spendFor(streamGates, rows, name);
+              const $ = spendFor(streamGates, rows, name, stream.id);
               return {
                 name,
                 status: g?.status || "Not Started",
@@ -930,7 +985,7 @@ function InfographicPage() {
         }
       } else {
         const rows = monthlyByLane.get(project.id) || (monthly as MonthlyFinanceRow[]);
-        const $ = spendFor(gates as any[], rows, name);
+        const $ = spendFor(gates as any[], rows, name, null);
         budget = $.budget;
         forecast = $.forecast;
         actualSpend = $.actualSpend;
@@ -961,7 +1016,7 @@ function InfographicPage() {
           ];
 
     return { phaseCards, streamGateSections: sections };
-  }, [project, sortedStreams, gates, monthlyByLane, monthly]);
+  }, [project, sortedStreams, gates, monthlyByLane, monthly, forecastPlannedByPhase]);
 
   const gateDetailRows = useMemo(() => {
     return phaseSpendSections.streamGateSections.flatMap((section) =>
@@ -997,9 +1052,9 @@ function InfographicPage() {
       { key: "planned", label: "Planned" },
       { key: "actual", label: "Actual" },
       { key: "approver", label: "Approver" },
-      { key: "budget", label: "Phase Budget" },
-      { key: "forecast", label: "Phase Forecast" },
-      { key: "actualSpend", label: "Phase Actual" },
+      { key: "budget", label: "Planned" },
+      { key: "forecast", label: "Forecast" },
+      { key: "actualSpend", label: "Actual" },
     ],
     [hasStreams],
   );
@@ -1124,13 +1179,11 @@ function InfographicPage() {
   // Phase financials chart
   const phaseChart = phaseCards.map((p) => ({
     name: p.name,
-    "Phase Budget": p.budget,
-    "Phase Forecast": p.forecast,
-    "Phase Actual Spend": p.actualSpend,
+    Planned: p.budget,
+    Forecast: p.forecast,
+    Actual: p.actualSpend,
   }));
-  const hasPhaseFinancials = phaseChart.some(
-    (r) => r["Phase Budget"] || r["Phase Forecast"] || r["Phase Actual Spend"],
-  );
+  const hasPhaseFinancials = phaseChart.some((r) => r.Planned || r.Forecast || r.Actual);
 
   // Timeline
   const startDate = project.start_date ? new Date(project.start_date) : null;
@@ -1375,12 +1428,12 @@ function InfographicPage() {
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <ExpandableChart
-              title="Phase Budget / Forecast / Actual"
+              title="Phase Planned / Forecast / Actual"
               heightClass="h-72"
               legend={
                 hasPhaseFinancials ? undefined : (
                   <div className="text-[11px] text-slate-500 text-center">
-                    No phase-level financials captured on stage gates yet.
+                    No Project Forecast estimate or phase actuals yet.
                   </div>
                 )
               }
@@ -1398,9 +1451,9 @@ function InfographicPage() {
                 <YAxis tick={{ fontSize: 10 }} tickFormatter={money} />
                 <Tooltip formatter={(v: number) => money(v)} />
                 <Legend verticalAlign="top" height={26} wrapperStyle={{ fontSize: 10 }} />
-                <Bar dataKey="Phase Budget" fill="#3b82f6" />
-                <Bar dataKey="Phase Forecast" fill="#8b5cf6" />
-                <Bar dataKey="Phase Actual Spend" fill="#f59e0b" />
+                <Bar dataKey="Planned" fill="#3b82f6" />
+                <Bar dataKey="Forecast" fill="#8b5cf6" />
+                <Bar dataKey="Actual" fill="#f59e0b" />
               </BarChart>
             </ExpandableChart>
 
@@ -1851,6 +1904,11 @@ function InfographicPage() {
         {/* Stage Gates table */}
         <SectionFrame>
           <SectionTitle>Stage Gate Detail{hasStreams ? " by Stream" : ""}</SectionTitle>
+          <p className="mb-2 text-xs text-muted-foreground">
+            Forecast is the current Project Forecast estimate for that stream phase. Planned is the
+            applied baseline (monthly plan after Apply planned baseline). Actual is incurred in the
+            gate window. Timeline uses the same forecast dates as planned.
+          </p>
           <ColumnarToolbar
             globalQ={gateDetailTable.globalQ}
             onGlobalQ={gateDetailTable.setGlobalQ}
@@ -1920,6 +1978,8 @@ function InfographicPage() {
           <SectionTitle>Resources & allocations (by project)</SectionTitle>
           <p className="mb-3 text-xs text-muted-foreground">
             Planned allocation vs approved timesheet actuals for this project (streams rolled up).
+            Planned % comes from resource allocations generated when you apply the Project Forecast
+            baseline.
             Actual % converts timesheet hours to % of monthly FTE capacity. Statuses:{" "}
             <strong>Plan</strong> from allocation %, <strong>Actual</strong> from timesheet %,{" "}
             <strong>Plan vs actual</strong> from actual÷plan (Over &gt;110%, Optimal ≥60%, else
