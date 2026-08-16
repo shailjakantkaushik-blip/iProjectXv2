@@ -96,17 +96,17 @@ export function KpiCard({
 }) {
   return (
     <div
-      className="kpi-card min-w-0"
+      className="kpi-card"
       style={accent ? { borderTopColor: accent, borderTopWidth: 3 } : undefined}
     >
-      <div className="flex items-start justify-between gap-1">
-        <div className="kpi-label min-w-0 truncate">{label}</div>
+      <div className="kpi-head">
+        <div className="kpi-label">{label}</div>
         {explain ? <ExplainThis explanation={explain} size="xs" /> : null}
       </div>
-      <div className="kpi-value break-words" style={accent ? { color: accent } : undefined}>
+      <div className="kpi-value" style={accent ? { color: accent } : undefined}>
         {value}
       </div>
-      {sub && <div className="mt-1 truncate text-[11px] text-muted-foreground">{sub}</div>}
+      {sub && <div className="kpi-sub">{sub}</div>}
     </div>
   );
 }

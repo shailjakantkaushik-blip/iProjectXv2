@@ -793,14 +793,12 @@ function ExecutiveDashboard() {
         <SectionTitle>Key Metrics</SectionTitle>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
           {kpis.map((k) => (
-            <div key={k.label} className="rounded-md border border-border bg-surface p-3">
-              <div className="flex items-start justify-between gap-1">
-                <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                  {k.label}
-                </div>
+            <div key={k.label} className="kpi-card">
+              <div className="kpi-head">
+                <div className="kpi-label">{k.label}</div>
                 {"explain" in k && k.explain ? <ExplainThis explanation={k.explain} size="xs" /> : null}
               </div>
-              <div className="mt-0.5 text-lg font-bold text-foreground">{k.value}</div>
+              <div className="kpi-value">{k.value}</div>
               <div className="mt-1 h-10">
                 <ResponsiveContainer>
                   <LineChart data={k.spark.data} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>

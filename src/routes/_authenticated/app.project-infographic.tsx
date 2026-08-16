@@ -1289,40 +1289,32 @@ function InfographicPage() {
             </div>
           </div>
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5">
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Duration
+            <div className="kpi-card">
+              <div className="kpi-head">
+                <div className="kpi-label">Duration</div>
               </div>
-              <div className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">
-                {durationLabel}
-              </div>
-              <div className="text-[11px] text-muted-foreground">
+              <div className="kpi-value">{durationLabel}</div>
+              <div className="kpi-sub">
                 {fmtDate(project.planned_start_date || project.start_date)} →{" "}
                 {fmtDate(project.planned_end_date || project.end_date || project.target_go_live)}
               </div>
             </div>
-            <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5">
-              <div className="flex items-start justify-between gap-1">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Cost
-                </div>
+            <div className="kpi-card">
+              <div className="kpi-head">
+                <div className="kpi-label">Cost</div>
                 <ExplainThis explanation={explains.forecast} size="xs" />
               </div>
-              <div className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">
-                {money(budget)}
-              </div>
-              <div className="text-[11px] text-muted-foreground">
+              <div className="kpi-value">{money(budget)}</div>
+              <div className="kpi-sub">
                 Budget · Actual {money(incurred)} · FAC {money(forecast)}
               </div>
             </div>
-            <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5">
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Go-Live Date
+            <div className="kpi-card">
+              <div className="kpi-head">
+                <div className="kpi-label">Go-Live Date</div>
               </div>
-              <div className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">
-                {fmtDate(goLive)}
-              </div>
-              <div className="text-[11px] text-muted-foreground">Target go-live</div>
+              <div className="kpi-value">{fmtDate(goLive)}</div>
+              <div className="kpi-sub">Target go-live</div>
             </div>
           </div>
         </SectionFrame>
