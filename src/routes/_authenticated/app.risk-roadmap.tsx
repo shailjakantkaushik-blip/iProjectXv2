@@ -2,7 +2,12 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { PROJECT_PORTFOLIO_SELECT, RISKS_SELECT, STAGE_GATE_DEFINITIONS_SELECT } from "@/lib/query-selects";
+import {
+  PROJECT_PORTFOLIO_SELECT,
+  RISKS_SELECT,
+  STAGE_GATE_DEFINITIONS_SELECT,
+  selectWithRaidCodeFallback,
+} from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -59,11 +64,13 @@ function RiskRoadmapPage() {
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
     queryFn: async () =>
-      (await supabase
-        .from("projects")
-        .select(PROJECT_PORTFOLIO_SELECT as "*")
-        .order("project_code")
-        .order("name")).data ?? [],
+      (
+        await supabase
+          .from("projects")
+          .select(PROJECT_PORTFOLIO_SELECT as "*")
+          .order("project_code")
+          .order("name")
+      ).data ?? [],
     enabled: !!organization,
   });
   const { data: gateDefs = [] } = useQuery({
@@ -80,12 +87,14 @@ function RiskRoadmapPage() {
     enabled: !!organization,
   });
   const orgPhases = useMemo(
-    () => (gateDefs as { gate_name?: string }[]).map((g) => g.gate_name).filter(Boolean) as string[],
+    () =>
+      (gateDefs as { gate_name?: string }[]).map((g) => g.gate_name).filter(Boolean) as string[],
     [gateDefs],
   );
   const { data: risks = [] } = useQuery({
     queryKey: ["risks", organization?.id],
-    queryFn: async () => (await supabase.from("risks").select(RISKS_SELECT as "*")).data ?? [],
+    queryFn: async () =>
+      selectWithRaidCodeFallback((sel) => supabase.from("risks").select(sel as "*"), RISKS_SELECT),
     enabled: !!organization,
   });
 
@@ -116,6 +125,7 @@ function RiskRoadmapPage() {
         label: "Project",
         getValue: (r) => (projectMap.get(r.project_id) as any)?.project_code || "",
       },
+      { key: "raid_code", label: "Risk ID" },
       { key: "title", label: "Title" },
       { key: "category", label: "Category" },
       { key: "owner", label: "Owner" },
@@ -462,6 +472,7 @@ function RiskRoadmapPage() {
                         "—"
                       )}
                     </td>
+                    <td className="font-mono text-xs whitespace-nowrap">{r.raid_code || "—"}</td>
                     <td>{r.title}</td>
                     <td>{r.category || "—"}</td>
                     <td>{r.owner || "—"}</td>

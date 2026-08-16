@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-08-14T15:35:25.686Z",
+  "generatedAt": "2026-08-16T14:34:54.818Z",
   "filename": "iprojectx-byod-schema.sql",
-  "includedCount": 63,
+  "includedCount": 66,
   "excludedCount": 12,
   "included": [
     "20260720095542_fe684dfb-a86c-4dee-8677-269ef34d6e6d.sql",
@@ -66,7 +66,10 @@
     "20260807150000_fix_kpi_refresh_enum_coalesce.sql",
     "20260814150000_delivery_methods_stage_gates.sql",
     "20260814170000_raid_escalation_and_alert_digests.sql",
-    "20260814180000_security_hardening_rls_rate_acl.sql"
+    "20260814180000_security_hardening_rls_rate_acl.sql",
+    "20260816090000_ops_enhancements.sql",
+    "20260816120000_forecast_phases.sql",
+    "20260816150000_raid_codes_and_sponsor_sync.sql"
   ],
   "excluded": [
     "20260721003000_invoice_template_config.sql",
@@ -82,5 +85,5 @@
     "20260731120000_org_integrations.sql",
     "20260801140000_org_ip_restriction.sql"
   ],
-  "bytes": 360362
+  "bytes": 383648
 }

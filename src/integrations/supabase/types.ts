@@ -29,6 +29,7 @@ export type Database = {
           owner: string | null
           priority: string | null
           project_id: string
+          raid_code: string | null
           status: string | null
           title: string
           updated_at: string
@@ -47,6 +48,7 @@ export type Database = {
           owner?: string | null
           priority?: string | null
           project_id: string
+          raid_code?: string | null
           status?: string | null
           title: string
           updated_at?: string
@@ -65,6 +67,7 @@ export type Database = {
           owner?: string | null
           priority?: string | null
           project_id?: string
+          raid_code?: string | null
           status?: string | null
           title?: string
           updated_at?: string
@@ -382,6 +385,7 @@ export type Database = {
           owner: string | null
           program: string | null
           project_id: string
+          raid_code: string | null
           rationale: string | null
           recommendation: string | null
           required_date: string | null
@@ -413,6 +417,7 @@ export type Database = {
           owner?: string | null
           program?: string | null
           project_id: string
+          raid_code?: string | null
           rationale?: string | null
           recommendation?: string | null
           required_date?: string | null
@@ -444,6 +449,7 @@ export type Database = {
           owner?: string | null
           program?: string | null
           project_id?: string
+          raid_code?: string | null
           rationale?: string | null
           recommendation?: string | null
           required_date?: string | null
@@ -1060,6 +1066,7 @@ export type Database = {
           owner: string | null
           priority: string | null
           project_id: string
+          raid_code: string | null
           raised_date: string | null
           resolution: string | null
           resolved_date: string | null
@@ -1079,6 +1086,7 @@ export type Database = {
           owner?: string | null
           priority?: string | null
           project_id: string
+          raid_code?: string | null
           raised_date?: string | null
           resolution?: string | null
           resolved_date?: string | null
@@ -1098,6 +1106,7 @@ export type Database = {
           owner?: string | null
           priority?: string | null
           project_id?: string
+          raid_code?: string | null
           raised_date?: string | null
           resolution?: string | null
           resolved_date?: string | null
@@ -1971,6 +1980,7 @@ export type Database = {
           owner: string | null
           probability: number | null
           project_id: string
+          raid_code: string | null
           severity: number | null
           status: string | null
           title: string
@@ -1992,6 +2002,7 @@ export type Database = {
           owner?: string | null
           probability?: number | null
           project_id: string
+          raid_code?: string | null
           severity?: number | null
           status?: string | null
           title: string
@@ -2013,6 +2024,7 @@ export type Database = {
           owner?: string | null
           probability?: number | null
           project_id?: string
+          raid_code?: string | null
           severity?: number | null
           status?: string | null
           title?: string

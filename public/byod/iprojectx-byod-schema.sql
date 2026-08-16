@@ -1,5 +1,5 @@
 -- iProjectX BYOD tenant schema pack
--- Generated: 2026-08-14T15:35:25.686Z
+-- Generated: 2026-08-16T14:34:54.818Z
 -- Apply this file to the customer Postgres database (psql / migration runner)
 -- BEFORE activating BYOD for the organisation.
 --
@@ -9699,6 +9699,579 @@ END $$;
 
 
 -- =============================================================================
--- End of iProjectX BYOD schema pack (63 migrations)
+-- 20260816090000_ops_enhancements.sql
+-- =============================================================================
+
+-- Additive ops enhancements: forecast, meeting summary, RAG override,
+-- strategic alignment fields, cadence hierarchy, manual rank, payback.
+-- Safe / idempotent. Does not rename existing columns.
+
+-- =============================================================================
+-- 1) Project columns
+-- =============================================================================
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS functional_area text;
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS payback_months numeric;
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS manual_rank integer;
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS rag_override text;
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS rag_override_reason text;
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS rag_override_owner text;
+
+ALTER TABLE public.benefits ADD COLUMN IF NOT EXISTS payback_months numeric;
+
+ALTER TABLE public.governance_channels ADD COLUMN IF NOT EXISTS parent_channel_id uuid
+  REFERENCES public.governance_channels(id) ON DELETE SET NULL;
+ALTER TABLE public.governance_channels ADD COLUMN IF NOT EXISTS last_meeting date;
+
+CREATE INDEX IF NOT EXISTS idx_gov_channels_parent
+  ON public.governance_channels (org_id, parent_channel_id);
+
+-- =============================================================================
+-- 2) Project meeting summaries (progress since last meet / plan to next)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS public.project_meeting_summaries (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  project_id uuid NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  previous_meeting_date date,
+  next_meeting_date date,
+  progress_manual text,
+  action_plan_manual text,
+  updated_by uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (org_id, project_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_meeting_summaries_org
+  ON public.project_meeting_summaries (org_id);
+
+ALTER TABLE public.project_meeting_summaries ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.project_meeting_summaries TO authenticated;
+GRANT ALL ON public.project_meeting_summaries TO service_role;
+
+DROP POLICY IF EXISTS "Members view meeting summaries" ON public.project_meeting_summaries;
+CREATE POLICY "Members view meeting summaries"
+  ON public.project_meeting_summaries FOR SELECT TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()));
+
+DROP POLICY IF EXISTS "Members write meeting summaries" ON public.project_meeting_summaries;
+CREATE POLICY "Members write meeting summaries"
+  ON public.project_meeting_summaries FOR ALL TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()))
+  WITH CHECK (org_id = public.get_user_org(auth.uid()));
+
+DROP TRIGGER IF EXISTS trg_project_meeting_summaries_updated_at ON public.project_meeting_summaries;
+CREATE TRIGGER trg_project_meeting_summaries_updated_at
+  BEFORE UPDATE ON public.project_meeting_summaries
+  FOR EACH ROW EXECUTE FUNCTION public.tg_set_updated_at();
+
+-- =============================================================================
+-- 3) Project forecast (versioned estimate; lock after kickoff)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS public.project_forecasts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  project_id uuid NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  status text NOT NULL DEFAULT 'draft',
+  override_budget boolean NOT NULL DEFAULT false,
+  total_labor_cost numeric NOT NULL DEFAULT 0,
+  total_other_cost numeric NOT NULL DEFAULT 0,
+  total_cost numeric NOT NULL DEFAULT 0,
+  notes text,
+  locked_at timestamptz,
+  locked_by uuid,
+  unlock_requested_at timestamptz,
+  unlock_requested_by uuid,
+  unlock_approved_at timestamptz,
+  unlock_approved_by uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (org_id, project_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.project_forecast_phase_resources (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  forecast_id uuid NOT NULL REFERENCES public.project_forecasts(id) ON DELETE CASCADE,
+  project_id uuid NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  stream_id uuid REFERENCES public.project_streams(id) ON DELETE CASCADE,
+  resource_id uuid REFERENCES public.resources(id) ON DELETE CASCADE,
+  effort_days numeric NOT NULL DEFAULT 0,
+  daily_rate numeric NOT NULL DEFAULT 0,
+  labor_cost numeric NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.project_forecast_other_costs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  forecast_id uuid NOT NULL REFERENCES public.project_forecasts(id) ON DELETE CASCADE,
+  project_id uuid NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  heading text NOT NULL DEFAULT 'Other cost',
+  amount numeric NOT NULL DEFAULT 0,
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_forecast_phase_res_forecast
+  ON public.project_forecast_phase_resources (forecast_id);
+CREATE INDEX IF NOT EXISTS idx_forecast_other_forecast
+  ON public.project_forecast_other_costs (forecast_id);
+
+ALTER TABLE public.project_forecasts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.project_forecast_phase_resources ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.project_forecast_other_costs ENABLE ROW LEVEL SECURITY;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.project_forecasts TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.project_forecast_phase_resources TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.project_forecast_other_costs TO authenticated;
+GRANT ALL ON public.project_forecasts TO service_role;
+GRANT ALL ON public.project_forecast_phase_resources TO service_role;
+GRANT ALL ON public.project_forecast_other_costs TO service_role;
+
+DROP POLICY IF EXISTS "Members view forecasts" ON public.project_forecasts;
+CREATE POLICY "Members view forecasts"
+  ON public.project_forecasts FOR SELECT TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()));
+DROP POLICY IF EXISTS "Members write forecasts" ON public.project_forecasts;
+CREATE POLICY "Members write forecasts"
+  ON public.project_forecasts FOR ALL TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()))
+  WITH CHECK (org_id = public.get_user_org(auth.uid()));
+
+DROP POLICY IF EXISTS "Members view forecast resources" ON public.project_forecast_phase_resources;
+CREATE POLICY "Members view forecast resources"
+  ON public.project_forecast_phase_resources FOR SELECT TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()));
+DROP POLICY IF EXISTS "Members write forecast resources" ON public.project_forecast_phase_resources;
+CREATE POLICY "Members write forecast resources"
+  ON public.project_forecast_phase_resources FOR ALL TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()))
+  WITH CHECK (org_id = public.get_user_org(auth.uid()));
+
+DROP POLICY IF EXISTS "Members view forecast other costs" ON public.project_forecast_other_costs;
+CREATE POLICY "Members view forecast other costs"
+  ON public.project_forecast_other_costs FOR SELECT TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()));
+DROP POLICY IF EXISTS "Members write forecast other costs" ON public.project_forecast_other_costs;
+CREATE POLICY "Members write forecast other costs"
+  ON public.project_forecast_other_costs FOR ALL TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()))
+  WITH CHECK (org_id = public.get_user_org(auth.uid()));
+
+DROP TRIGGER IF EXISTS trg_project_forecasts_updated_at ON public.project_forecasts;
+CREATE TRIGGER trg_project_forecasts_updated_at
+  BEFORE UPDATE ON public.project_forecasts
+  FOR EACH ROW EXECUTE FUNCTION public.tg_set_updated_at();
+
+
+
+-- =============================================================================
+-- 20260816120000_forecast_phases.sql
+-- =============================================================================
+
+-- Forecast phases follow streams × delivery-method stage-gate template.
+-- Duration drives the month/FY Gantt and writes planned dates only.
+
+CREATE TABLE IF NOT EXISTS public.project_forecast_phases (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  forecast_id uuid NOT NULL REFERENCES public.project_forecasts(id) ON DELETE CASCADE,
+  project_id uuid NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  stream_id uuid REFERENCES public.project_streams(id) ON DELETE CASCADE,
+  gate_name text NOT NULL,
+  sort_order integer NOT NULL DEFAULT 0,
+  duration_days numeric NOT NULL DEFAULT 20,
+  start_date date,
+  end_date date,
+  dates_overridden boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS project_forecast_phases_forecast_stream_gate
+  ON public.project_forecast_phases (forecast_id, COALESCE(stream_id, '00000000-0000-0000-0000-000000000000'), gate_name);
+
+ALTER TABLE public.project_forecast_phase_resources
+  ADD COLUMN IF NOT EXISTS forecast_phase_id uuid REFERENCES public.project_forecast_phases(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS phase_name text;
+
+ALTER TABLE public.project_forecast_other_costs
+  ADD COLUMN IF NOT EXISTS category text,
+  ADD COLUMN IF NOT EXISTS forecast_phase_id uuid REFERENCES public.project_forecast_phases(id) ON DELETE SET NULL;
+
+ALTER TABLE public.project_forecasts
+  ADD COLUMN IF NOT EXISTS applied_to_plan_at timestamptz,
+  ADD COLUMN IF NOT EXISTS plan_start_date date;
+
+CREATE INDEX IF NOT EXISTS idx_forecast_phases_forecast
+  ON public.project_forecast_phases (forecast_id);
+
+ALTER TABLE public.project_forecast_phases ENABLE ROW LEVEL SECURITY;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.project_forecast_phases TO authenticated;
+GRANT ALL ON public.project_forecast_phases TO service_role;
+
+DROP POLICY IF EXISTS "Members view forecast phases" ON public.project_forecast_phases;
+CREATE POLICY "Members view forecast phases"
+  ON public.project_forecast_phases FOR SELECT TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()));
+DROP POLICY IF EXISTS "Members write forecast phases" ON public.project_forecast_phases;
+CREATE POLICY "Members write forecast phases"
+  ON public.project_forecast_phases FOR ALL TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()))
+  WITH CHECK (org_id = public.get_user_org(auth.uid()));
+
+DROP TRIGGER IF EXISTS trg_project_forecast_phases_updated_at ON public.project_forecast_phases;
+CREATE TRIGGER trg_project_forecast_phases_updated_at
+  BEFORE UPDATE ON public.project_forecast_phases
+  FOR EACH ROW EXECUTE FUNCTION public.tg_set_updated_at();
+
+
+
+-- =============================================================================
+-- 20260816150000_raid_codes_and_sponsor_sync.sql
+-- =============================================================================
+
+-- Human RAID reference codes (RSK-001 / ISS-001 / ACT-001 / DEC-001 per project)
+-- plus bidirectional project.sponsor ↔ stakeholders sync.
+-- Idempotent. Does not rename existing columns.
+
+-- =============================================================================
+-- 1) RAID reference codes
+-- =============================================================================
+ALTER TABLE public.risks ADD COLUMN IF NOT EXISTS raid_code text;
+ALTER TABLE public.issues ADD COLUMN IF NOT EXISTS raid_code text;
+ALTER TABLE public.actions ADD COLUMN IF NOT EXISTS raid_code text;
+ALTER TABLE public.decisions ADD COLUMN IF NOT EXISTS raid_code text;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_risks_project_raid_code
+  ON public.risks (project_id, raid_code) WHERE raid_code IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_issues_project_raid_code
+  ON public.issues (project_id, raid_code) WHERE raid_code IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_actions_project_raid_code
+  ON public.actions (project_id, raid_code) WHERE raid_code IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_decisions_project_raid_code
+  ON public.decisions (project_id, raid_code) WHERE raid_code IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION public.tg_assign_raid_code()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  prefix text;
+  n int;
+BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    IF (NEW.raid_code IS NULL OR btrim(NEW.raid_code) = '') AND OLD.raid_code IS NOT NULL THEN
+      NEW.raid_code := OLD.raid_code;
+    ELSIF NEW.raid_code IS NOT NULL THEN
+      NEW.raid_code := upper(btrim(NEW.raid_code));
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  IF NEW.raid_code IS NOT NULL AND btrim(NEW.raid_code) <> '' THEN
+    NEW.raid_code := upper(btrim(NEW.raid_code));
+    RETURN NEW;
+  END IF;
+
+  prefix := CASE TG_TABLE_NAME
+    WHEN 'risks' THEN 'RSK'
+    WHEN 'issues' THEN 'ISS'
+    WHEN 'actions' THEN 'ACT'
+    WHEN 'decisions' THEN 'DEC'
+    ELSE 'RAID'
+  END;
+
+  EXECUTE format(
+    $f$
+    SELECT COALESCE(MAX(NULLIF(regexp_replace(raid_code, %L, ''), '')::int), 0)
+    FROM public.%I
+    WHERE project_id = $1
+      AND raid_code ~ %L
+    $f$,
+    '^' || prefix || '-0*',
+    TG_TABLE_NAME,
+    '^' || prefix || '-[0-9]+$'
+  )
+  INTO n
+  USING NEW.project_id;
+
+  NEW.raid_code := prefix || '-' || lpad((n + 1)::text, 3, '0');
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_risks_raid_code ON public.risks;
+CREATE TRIGGER trg_risks_raid_code
+  BEFORE INSERT OR UPDATE ON public.risks
+  FOR EACH ROW EXECUTE FUNCTION public.tg_assign_raid_code();
+
+DROP TRIGGER IF EXISTS trg_issues_raid_code ON public.issues;
+CREATE TRIGGER trg_issues_raid_code
+  BEFORE INSERT OR UPDATE ON public.issues
+  FOR EACH ROW EXECUTE FUNCTION public.tg_assign_raid_code();
+
+DROP TRIGGER IF EXISTS trg_actions_raid_code ON public.actions;
+CREATE TRIGGER trg_actions_raid_code
+  BEFORE INSERT OR UPDATE ON public.actions
+  FOR EACH ROW EXECUTE FUNCTION public.tg_assign_raid_code();
+
+DROP TRIGGER IF EXISTS trg_decisions_raid_code ON public.decisions;
+CREATE TRIGGER trg_decisions_raid_code
+  BEFORE INSERT OR UPDATE ON public.decisions
+  FOR EACH ROW EXECUTE FUNCTION public.tg_assign_raid_code();
+
+WITH numbered AS (
+  SELECT id, row_number() OVER (PARTITION BY project_id ORDER BY created_at, id) AS n
+  FROM public.risks
+  WHERE raid_code IS NULL OR btrim(raid_code) = ''
+)
+UPDATE public.risks r
+SET raid_code = 'RSK-' || lpad(n.n::text, 3, '0')
+FROM numbered n
+WHERE r.id = n.id;
+
+WITH numbered AS (
+  SELECT id, row_number() OVER (PARTITION BY project_id ORDER BY created_at, id) AS n
+  FROM public.issues
+  WHERE raid_code IS NULL OR btrim(raid_code) = ''
+)
+UPDATE public.issues r
+SET raid_code = 'ISS-' || lpad(n.n::text, 3, '0')
+FROM numbered n
+WHERE r.id = n.id;
+
+WITH numbered AS (
+  SELECT id, row_number() OVER (PARTITION BY project_id ORDER BY created_at, id) AS n
+  FROM public.actions
+  WHERE raid_code IS NULL OR btrim(raid_code) = ''
+)
+UPDATE public.actions r
+SET raid_code = 'ACT-' || lpad(n.n::text, 3, '0')
+FROM numbered n
+WHERE r.id = n.id;
+
+WITH numbered AS (
+  SELECT id, row_number() OVER (PARTITION BY project_id ORDER BY created_at, id) AS n
+  FROM public.decisions
+  WHERE raid_code IS NULL OR btrim(raid_code) = ''
+)
+UPDATE public.decisions r
+SET raid_code = 'DEC-' || lpad(n.n::text, 3, '0')
+FROM numbered n
+WHERE r.id = n.id;
+
+COMMENT ON COLUMN public.risks.raid_code IS 'Human Risk ID (RSK-001), unique per project. Not the database UUID.';
+COMMENT ON COLUMN public.issues.raid_code IS 'Human Issue ID (ISS-001), unique per project.';
+COMMENT ON COLUMN public.actions.raid_code IS 'Human Action ID (ACT-001), unique per project.';
+COMMENT ON COLUMN public.decisions.raid_code IS 'Human Decision ID (DEC-001), unique per project.';
+
+-- =============================================================================
+-- 2) Project sponsor ↔ stakeholder (bidirectional)
+-- =============================================================================
+CREATE OR REPLACE FUNCTION public.tg_sync_project_sponsor()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_name text;
+  v_st_name text;
+  v_id uuid;
+  v_match uuid;
+  v_match_name text;
+BEGIN
+  IF current_setting('iprojectx.syncing_sponsor', true) = '1' THEN
+    RETURN NEW;
+  END IF;
+
+  PERFORM set_config('iprojectx.syncing_sponsor', '1', true);
+
+  -- Pointer changed: copy that stakeholder's name onto the project.
+  IF TG_OP = 'UPDATE'
+     AND NEW.sponsor_stakeholder_id IS DISTINCT FROM OLD.sponsor_stakeholder_id
+     AND NEW.sponsor_stakeholder_id IS NOT NULL THEN
+    SELECT name INTO v_st_name
+    FROM public.stakeholders
+    WHERE id = NEW.sponsor_stakeholder_id
+      AND project_id = NEW.id;
+    IF v_st_name IS NOT NULL THEN
+      UPDATE public.projects
+      SET sponsor = v_st_name
+      WHERE id = NEW.id AND sponsor IS DISTINCT FROM v_st_name;
+      UPDATE public.stakeholders
+      SET is_sponsor = true
+      WHERE id = NEW.sponsor_stakeholder_id AND is_sponsor IS NOT TRUE;
+    END IF;
+    PERFORM set_config('iprojectx.syncing_sponsor', '0', true);
+    RETURN NEW;
+  END IF;
+
+  v_name := nullif(btrim(COALESCE(NEW.sponsor, '')), '');
+
+  IF TG_OP = 'UPDATE'
+     AND NEW.sponsor IS NOT DISTINCT FROM OLD.sponsor
+     AND NEW.sponsor_stakeholder_id IS NOT DISTINCT FROM OLD.sponsor_stakeholder_id THEN
+    PERFORM set_config('iprojectx.syncing_sponsor', '0', true);
+    RETURN NEW;
+  END IF;
+
+  IF v_name IS NULL THEN
+    IF NEW.sponsor_stakeholder_id IS NOT NULL THEN
+      UPDATE public.projects SET sponsor_stakeholder_id = NULL WHERE id = NEW.id;
+    END IF;
+    PERFORM set_config('iprojectx.syncing_sponsor', '0', true);
+    RETURN NEW;
+  END IF;
+
+  SELECT id, name INTO v_match, v_match_name
+  FROM public.stakeholders
+  WHERE project_id = NEW.id
+    AND lower(btrim(name)) = lower(v_name)
+  ORDER BY CASE WHEN id = NEW.sponsor_stakeholder_id THEN 0 ELSE 1 END,
+           is_sponsor DESC,
+           created_at ASC
+  LIMIT 1;
+
+  IF v_match IS NOT NULL THEN
+    UPDATE public.stakeholders
+    SET is_sponsor = true
+    WHERE id = v_match AND is_sponsor IS NOT TRUE;
+    IF NEW.sponsor_stakeholder_id IS DISTINCT FROM v_match THEN
+      UPDATE public.projects
+      SET sponsor_stakeholder_id = v_match
+      WHERE id = NEW.id;
+    END IF;
+    IF NEW.sponsor IS DISTINCT FROM v_match_name THEN
+      UPDATE public.projects SET sponsor = v_match_name WHERE id = NEW.id;
+    END IF;
+    PERFORM set_config('iprojectx.syncing_sponsor', '0', true);
+    RETURN NEW;
+  END IF;
+
+  -- Same primary person, renamed on the project sheet.
+  IF NEW.sponsor_stakeholder_id IS NOT NULL
+     AND (TG_OP = 'INSERT' OR NEW.sponsor_stakeholder_id IS NOT DISTINCT FROM OLD.sponsor_stakeholder_id) THEN
+    UPDATE public.stakeholders
+    SET name = v_name, is_sponsor = true
+    WHERE id = NEW.sponsor_stakeholder_id
+      AND project_id = NEW.id;
+    PERFORM set_config('iprojectx.syncing_sponsor', '0', true);
+    RETURN NEW;
+  END IF;
+
+  INSERT INTO public.stakeholders (org_id, project_id, name, role, is_sponsor)
+  VALUES (NEW.org_id, NEW.id, v_name, 'Executive Sponsor', true)
+  RETURNING id INTO v_id;
+
+  UPDATE public.projects
+  SET sponsor_stakeholder_id = v_id
+  WHERE id = NEW.id AND sponsor_stakeholder_id IS DISTINCT FROM v_id;
+
+  PERFORM set_config('iprojectx.syncing_sponsor', '0', true);
+  RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.tg_sync_stakeholder_sponsor()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_primary uuid;
+  v_other_id uuid;
+  v_other_name text;
+  v_project uuid;
+BEGIN
+  IF current_setting('iprojectx.syncing_sponsor', true) = '1' THEN
+    IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+    RETURN NEW;
+  END IF;
+
+  PERFORM set_config('iprojectx.syncing_sponsor', '1', true);
+
+  IF TG_OP = 'DELETE' THEN
+    v_project := OLD.project_id;
+    SELECT sponsor_stakeholder_id INTO v_primary FROM public.projects WHERE id = v_project;
+    IF v_primary = OLD.id THEN
+      SELECT id, name INTO v_other_id, v_other_name
+      FROM public.stakeholders
+      WHERE project_id = v_project AND id <> OLD.id AND is_sponsor IS TRUE
+      ORDER BY created_at ASC
+      LIMIT 1;
+      UPDATE public.projects
+      SET sponsor_stakeholder_id = v_other_id,
+          sponsor = v_other_name
+      WHERE id = v_project;
+    END IF;
+    PERFORM set_config('iprojectx.syncing_sponsor', '0', true);
+    RETURN OLD;
+  END IF;
+
+  SELECT sponsor_stakeholder_id INTO v_primary FROM public.projects WHERE id = NEW.project_id;
+
+  IF TG_OP = 'UPDATE' AND NEW.name IS DISTINCT FROM OLD.name AND v_primary = NEW.id THEN
+    UPDATE public.projects
+    SET sponsor = NEW.name
+    WHERE id = NEW.project_id AND sponsor IS DISTINCT FROM NEW.name;
+  END IF;
+
+  IF NEW.is_sponsor IS TRUE AND (TG_OP = 'INSERT' OR OLD.is_sponsor IS NOT TRUE) THEN
+    IF v_primary IS NULL THEN
+      UPDATE public.projects
+      SET sponsor_stakeholder_id = NEW.id,
+          sponsor = NEW.name
+      WHERE id = NEW.project_id;
+    END IF;
+  END IF;
+
+  IF TG_OP = 'UPDATE' AND OLD.is_sponsor IS TRUE AND NEW.is_sponsor IS NOT TRUE AND v_primary = NEW.id THEN
+    SELECT id, name INTO v_other_id, v_other_name
+    FROM public.stakeholders
+    WHERE project_id = NEW.project_id AND id <> NEW.id AND is_sponsor IS TRUE
+    ORDER BY created_at ASC
+    LIMIT 1;
+    UPDATE public.projects
+    SET sponsor_stakeholder_id = v_other_id,
+        sponsor = v_other_name
+    WHERE id = NEW.project_id;
+  END IF;
+
+  PERFORM set_config('iprojectx.syncing_sponsor', '0', true);
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_projects_sync_sponsor ON public.projects;
+CREATE TRIGGER trg_projects_sync_sponsor
+  AFTER INSERT OR UPDATE OF sponsor, sponsor_stakeholder_id ON public.projects
+  FOR EACH ROW EXECUTE FUNCTION public.tg_sync_project_sponsor();
+
+DROP TRIGGER IF EXISTS trg_stakeholders_sync_sponsor ON public.stakeholders;
+CREATE TRIGGER trg_stakeholders_sync_sponsor
+  AFTER INSERT OR UPDATE OF name, is_sponsor, project_id ON public.stakeholders
+  FOR EACH ROW EXECUTE FUNCTION public.tg_sync_stakeholder_sponsor();
+
+DROP TRIGGER IF EXISTS trg_stakeholders_sync_sponsor_del ON public.stakeholders;
+CREATE TRIGGER trg_stakeholders_sync_sponsor_del
+  BEFORE DELETE ON public.stakeholders
+  FOR EACH ROW EXECUTE FUNCTION public.tg_sync_stakeholder_sponsor();
+
+-- Backfill: project sponsor text → stakeholder + primary link (fires OF sponsor)
+UPDATE public.projects
+SET sponsor = btrim(sponsor)
+WHERE nullif(btrim(COALESCE(sponsor, '')), '') IS NOT NULL;
+
+
+
+-- =============================================================================
+-- End of iProjectX BYOD schema pack (66 migrations)
 -- Skipped control-plane: 20260721003000_invoice_template_config.sql, 20260721004500_fix_landing_invoice_grants.sql, 20260724180000_eoi_and_licenses_policies.sql, 20260724193000_grant_eoi_licenses_policies.sql, 20260724194500_publish_legal_policies.sql, 20260724200000_iprojectx_legal_policy_bodies.sql, 20260724210000_support_tickets.sql, 20260725190000_org_inhouse_ai_model_enabled.sql, 20260725193000_org_sso_config.sql, 20260729120000_org_byod_connections.sql, 20260731120000_org_integrations.sql, 20260801140000_org_ip_restriction.sql
 -- =============================================================================

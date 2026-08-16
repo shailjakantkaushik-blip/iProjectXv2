@@ -99,7 +99,12 @@ function StakeholdersPage() {
       {
         key: "linked_user",
         label: "Linked user",
-        getValue: (s) => (s.user_id ? memberLabel(memberById.get(s.user_id) || { id: s.user_id, full_name: null, email: null }) : ""),
+        getValue: (s) =>
+          s.user_id
+            ? memberLabel(
+                memberById.get(s.user_id) || { id: s.user_id, full_name: null, email: null },
+              )
+            : "",
       },
       {
         key: "is_sponsor",
@@ -406,9 +411,7 @@ function StakeholdersPage() {
               type="checkbox"
               checked={form.set_as_primary_sponsor}
               disabled={!form.is_sponsor}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, set_as_primary_sponsor: e.target.checked }))
-              }
+              onChange={(e) => setForm((f) => ({ ...f, set_as_primary_sponsor: e.target.checked }))}
             />
             Set as primary project sponsor
           </label>
@@ -482,7 +485,7 @@ function StakeholdersPage() {
                             rowId={s.id}
                             field="name"
                             value={s.name}
-                            invalidateKeys={["stakeholders"]}
+                            invalidateKeys={["stakeholders", "projects"]}
                           />
                         </td>
                         <td>

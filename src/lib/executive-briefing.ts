@@ -18,6 +18,7 @@ import {
 } from "@/lib/project-health-engine";
 import type { EvmMonthlyLike } from "@/lib/evm";
 import type { MetricExplanation } from "@/lib/explain-metric";
+import { raidLabel } from "@/lib/raid-code";
 
 export type BriefingProject = ProjectFinanceLike & {
   id: string;
@@ -50,6 +51,7 @@ export type BriefingGate = {
 export type BriefingRisk = {
   id: string;
   project_id: string;
+  raid_code?: string | null;
   title?: string | null;
   status?: string | null;
   severity?: number | null;
@@ -61,6 +63,7 @@ export type BriefingRisk = {
 export type BriefingDecision = {
   id: string;
   project_id: string;
+  raid_code?: string | null;
   title?: string | null;
   outcome?: string | null;
   status?: string | null;
@@ -248,7 +251,7 @@ export function buildExecutiveBriefing(opts: {
       id: `risk-${r.id}`,
       severity: "Red",
       kind: "risk",
-      title: r.title || "Critical risk open",
+      title: raidLabel(r, "Critical risk open"),
       projectId: p.id,
       projectLabel: labelOf(p),
       why: `Severity ${r.severity ?? "—"} · owner ${r.owner || "unassigned"}.`,
@@ -266,7 +269,7 @@ export function buildExecutiveBriefing(opts: {
       id: `decision-${d.id}`,
       severity: overdue ? "Red" : "Amber",
       kind: "decision",
-      title: d.title || "Decision waiting",
+      title: raidLabel(d, "Decision waiting"),
       projectId: p.id,
       projectLabel: labelOf(p),
       why: due ? `Required ${due}${overdue ? " — overdue" : ""}.` : "No required date set.",
@@ -348,7 +351,7 @@ export function buildExecutiveBriefing(opts: {
             const dueBit = due
               ? `required ${due}${overdue ? " (overdue)" : ""}`
               : "no required date";
-            return `${d.title || "Untitled decision"} — ${p ? labelOf(p) : "Unknown project"} · ${decisionOutcome(d)} · ${dueBit}.`;
+            return `${raidLabel(d, "Untitled decision")} — ${p ? labelOf(p) : "Unknown project"} · ${decisionOutcome(d)} · ${dueBit}.`;
           }),
         ),
         ...(decisionsWaiting
@@ -426,7 +429,7 @@ export function buildExecutiveBriefing(opts: {
             const p = byId.get(r.project_id);
             const score =
               num(r.severity) >= 12 ? num(r.severity) : num(r.probability) * num(r.impact);
-            return `${r.title || "Untitled risk"} — ${p ? labelOf(p) : "Unknown"} · score ${score || "—"} · owner ${r.owner || "unassigned"}.`;
+            return `${raidLabel(r, "Untitled risk")} — ${p ? labelOf(p) : "Unknown"} · score ${score || "—"} · owner ${r.owner || "unassigned"}.`;
           }),
         ),
         ...(criticalRisks

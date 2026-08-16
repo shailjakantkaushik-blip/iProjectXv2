@@ -668,7 +668,7 @@ export function ProjectRegister() {
                           rowId={p.id}
                           field="sponsor"
                           value={p.sponsor}
-                          invalidateKeys={["projects"]}
+                          invalidateKeys={["projects", "stakeholders"]}
                         />
                       </div>
                     </td>

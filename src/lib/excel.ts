@@ -520,6 +520,7 @@ export async function downloadTemplate() {
     ["", ""],
     ["Import order", "Business Units → Stage Gate Definitions → Projects → Project Streams → Resources → all other sheets."],
     ["Project code", "Human key used on every child sheet (risks, financials, allocations, etc.)."],
+    ["RAID IDs", "Risk ID / Issue ID / Action ID / Decision ID (RSK-001, ISS-001, ACT-001, DEC-001) are unique per project. Leave blank on insert — the app assigns the next number."],
     ["Stream code", "Optional. On Project Streams sheet set `code`. Child sheets reference it via stream_code when projects.streams_enabled=true."],
     ["Dates", "Use YYYY-MM-DD. Prefer Planned/Actual dates; Schedule Start/End auto-sync in the app."],
     ["FY labels", "Use FY26, FY27 style labels matching your org financial year (default April start → FY ends in labelled year)."],
