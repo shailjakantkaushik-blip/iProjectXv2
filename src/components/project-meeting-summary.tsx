@@ -167,13 +167,13 @@ export function ProjectMeetingSummary({ projectId, project, readOnly }: Props) {
   const rag = displayRag({ rag: ragSource.rag ?? project.rag, rag_override: merged.rag_override });
 
   return (
-    <SectionFrame>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <SectionTitle>
-          {readOnly ? project.name || "Project summary" : "Project Summary"}
-        </SectionTitle>
-        <RagChip rag={rag} manual={isRagOverridden({ rag_override: merged.rag_override })} />
-      </div>
+    <SectionFrame exportable={!readOnly}>
+      {!readOnly && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <SectionTitle>Project Summary</SectionTitle>
+          <RagChip rag={rag} manual={isRagOverridden({ rag_override: merged.rag_override })} />
+        </div>
+      )}
       <div className="grid gap-3 md:grid-cols-2">
         <div className="rounded-lg border border-border bg-surface p-3">
           <h4 className="mb-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">
