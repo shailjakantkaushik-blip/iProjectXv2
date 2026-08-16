@@ -1,5 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { cn } from "@/lib/utils";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState, useMemo, useRef } from "react";
@@ -9,7 +8,6 @@ import {
   Legend, LineChart, Line, CartesianGrid, LabelList,
 } from "recharts";
 import { SectionFrame, SectionTitle, RagChip } from "@/components/streamlit";
-import { ProjectMeetingSummary } from "@/components/project-meeting-summary";
 import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
 import { ChartLegendList, legendItemsFromCounts } from "@/components/chart-legend-list";
 import { useAuth } from "@/lib/auth-context";
@@ -52,7 +50,6 @@ import {
   ExecutivePortfolioFilters,
   applyExecutivePortfolioFilters,
   emptyExecutiveFilters,
-  executiveFiltersActive,
   type ExecutivePortfolioFilterState,
 } from "@/components/portfolio-filters";
 import { unwrapList } from "@/lib/query";
@@ -78,16 +75,24 @@ import { fetchStageGates } from "@/lib/stage-gates";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
-import { ExecutiveQuickView } from "@/components/executive-quick-view";
-
-type ExecutiveTab = "quick" | "overview" | "summaries";
 
 export const Route = createFileRoute("/_authenticated/app/executive")({
-  validateSearch: (s: Record<string, unknown>): { tab?: ExecutiveTab } => {
+  validateSearch: (s: Record<string, unknown>): { _steer?: "pack" | "summaries" } => {
     const raw = String(s.tab || "");
-    if (raw === "summaries") return { tab: "summaries" };
-    if (raw === "overview" || raw === "detailed") return { tab: "overview" };
-    return { tab: "quick" };
+    if (raw === "quick") return { _steer: "pack" };
+    if (raw === "summaries") return { _steer: "summaries" };
+    return {};
+  },
+  beforeLoad: ({ search }) => {
+    if (search._steer === "summaries") {
+      throw redirect({
+        to: "/app/executive-cockpit",
+        search: { section: "summaries" },
+      });
+    }
+    if (search._steer === "pack") {
+      throw redirect({ to: "/app/executive-cockpit" });
+    }
   },
   component: ExecutiveDashboard,
 });
@@ -110,12 +115,10 @@ function money(n: number) {
 function moneyM(n: number) { return `$${(n / 1e6).toFixed(1)}M`; }
 
 function ExecutiveDashboard() {
-  const { tab } = Route.useSearch();
   const { organization } = useAuth();
   const qc = useQueryClient();
   const listProjects = useServerFn(listPortfolioProjects);
   const [filters, setFilters] = useState<ExecutivePortfolioFilterState>(emptyExecutiveFilters);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const { fySelected } = filters;
   type TimelineView = "Portfolio" | "Program" | "Health" | "Priority" | "Theme" | "Sponsor" | "Status";
   const [timelineView, setTimelineView] = useState<TimelineView>("Program");
@@ -752,15 +755,32 @@ function ExecutiveDashboard() {
       {/* Header + filters */}
       <SectionFrame>
         <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-          <div className="page-heading">Executive Summary</div>
-          <button
-            type="button"
-            onClick={() => void exportPdf()}
-            disabled={exporting}
-            className="print:hidden rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:opacity-90 disabled:opacity-60"
-          >
-            {exporting ? "Generating…" : "Generate Executive Dashboard PDF"}
-          </button>
+          <div>
+            <div className="page-heading">Executive Dashboard</div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Charts, timelines, and register. Steering pack and project summaries live on{" "}
+              <Link to="/app/executive-cockpit" className="font-medium text-primary hover:underline">
+                Executive Cockpit
+              </Link>
+              .
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              to="/app/executive-cockpit"
+              className="print:hidden rounded-md border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-muted"
+            >
+              Open Cockpit
+            </Link>
+            <button
+              type="button"
+              onClick={() => void exportPdf()}
+              disabled={exporting}
+              className="print:hidden rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:opacity-90 disabled:opacity-60"
+            >
+              {exporting ? "Generating…" : "Generate Executive Dashboard PDF"}
+            </button>
+          </div>
         </div>
       </SectionFrame>
 
@@ -799,29 +819,7 @@ function ExecutiveDashboard() {
           </div>
         </div>
       )}
-      {tab !== "overview" && !executiveFiltersActive(filters) && !filtersOpen ? (
-        <div className="mb-3 print:hidden">
-          <button
-            type="button"
-            className="text-xs font-medium text-muted-foreground hover:text-foreground"
-            onClick={() => setFiltersOpen(true)}
-          >
-            Filter pack
-          </button>
-        </div>
-      ) : (
       <SectionFrame className="section-frame--filters" exportable={false}>
-            {tab !== "overview" && !executiveFiltersActive(filters) ? (
-              <div className="mb-2 flex justify-end print:hidden">
-                <button
-                  type="button"
-                  className="text-xs font-medium text-muted-foreground hover:text-foreground"
-                  onClick={() => setFiltersOpen(false)}
-                >
-                  Hide filters
-                </button>
-              </div>
-            ) : null}
             <ExecutivePortfolioFilters
               projects={projects}
               value={filters}
@@ -829,52 +827,7 @@ function ExecutiveDashboard() {
               fyStartMonth={fyStartMonth}
             />
       </SectionFrame>
-      )}
 
-      <div className="mb-3 flex items-end gap-0 border-b border-border">
-        {(
-          [
-            { id: "quick" as const, label: "Quick view" },
-            { id: "summaries" as const, label: "Project summaries" },
-            { id: "overview" as const, label: "Detailed info" },
-          ] as const
-        ).map((t) => {
-          const active = tab === t.id;
-          return (
-            <Link
-              key={t.id}
-              to="/app/executive"
-              search={{ tab: t.id }}
-              className={cn(
-                "inline-flex min-w-[8.25rem] items-center justify-center border-b-2 px-3 py-1.5 text-[13px] font-medium -mb-px transition-colors",
-                active
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {t.label}
-            </Link>
-          );
-        })}
-      </div>
-
-      {tab === "quick" && (
-        <ExecutiveQuickView
-          filtered={filtered}
-          approvedFunding={approvedFunding}
-          totalIncurred={totalIncurred}
-          totalForecast={totalForecast}
-          remaining={remaining}
-          monthlySpend={monthlySpend}
-          segmentation={segmentation}
-          gates={gates}
-          monthly={monthly}
-          loading={showColdLoad}
-        />
-      )}
-
-      {tab === "overview" && (
-      <>
       {/* Key Metrics */}
       <SectionFrame>
         <SectionTitle>Key Metrics</SectionTitle>
@@ -1045,42 +998,7 @@ function ExecutiveDashboard() {
           </div>
         )}
       </SectionFrame>
-      </>
-      )}
 
-      {tab === "summaries" && (
-      <SectionFrame>
-        <SectionTitle>Project summaries (since last meeting)</SectionTitle>
-        <p className="mb-3 text-sm text-muted-foreground">
-          Read-only rollup of each project&apos;s Project Summary tab. Edit notes,
-          meeting dates, and RAG override on the project page — open a project below.
-        </p>
-        <div className="space-y-3">
-          {filtered.slice(0, 12).map((p: any) => (
-            <div key={p.id} className="rounded-lg border border-border">
-              <div className="flex items-center justify-between px-3 pt-2 text-xs">
-                <Link
-                  to="/app/projects/$id"
-                  params={{ id: p.id }}
-                  search={{ tab: "summary" }}
-                  className="font-semibold text-primary hover:underline"
-                >
-                  {p.project_code} · {p.name}
-                </Link>
-                <RagChip rag={displayRag(p)} manual={isRagOverridden(p)} />
-              </div>
-              <ProjectMeetingSummary projectId={p.id} project={p} readOnly />
-            </div>
-          ))}
-          {filtered.length === 0 && (
-            <p className="text-sm text-muted-foreground">No projects match the current filters.</p>
-          )}
-        </div>
-      </SectionFrame>
-      )}
-
-      {tab === "overview" && (
-      <>
       {/* Portfolio Timelines — collapsible Gantt swim-lanes (expandable + scrollable) */}
       <SectionFrame>
         <ExpandablePanel
@@ -1279,8 +1197,6 @@ function ExecutiveDashboard() {
           </div>
         )}
       </SectionFrame>
-      </>
-      )}
 
       </div>
     </div>

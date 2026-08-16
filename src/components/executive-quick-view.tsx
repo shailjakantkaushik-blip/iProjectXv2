@@ -130,6 +130,7 @@ export function ExecutiveQuickView({
   gates,
   monthly,
   loading,
+  mode = "full",
 }: {
   filtered: BriefingProject[];
   approvedFunding: number;
@@ -141,6 +142,8 @@ export function ExecutiveQuickView({
   gates: BriefingGate[];
   monthly: MonthlyFinanceRow[];
   loading?: boolean;
+  /** Steering: headline, questions, and asks. Money envelope, pack table, and alignment chart live on Cockpit. */
+  mode?: "full" | "steering";
 }) {
   const { organization } = useAuth();
   const orgId = organization?.id;
@@ -380,13 +383,15 @@ export function ExecutiveQuickView({
         />
       </div>
 
-      <div id="pack-money">
-        <EnvelopeBullet
-          budget={approvedFunding}
-          incurred={totalIncurred}
-          forecast={totalForecast}
-        />
-      </div>
+      {mode === "full" ? (
+        <div id="pack-money">
+          <EnvelopeBullet
+            budget={approvedFunding}
+            incurred={totalIncurred}
+            forecast={totalForecast}
+          />
+        </div>
+      ) : null}
 
       <SectionFrame>
         <div id="pack-asks" className="mb-3 flex flex-wrap items-end justify-between gap-2">
@@ -409,8 +414,8 @@ export function ExecutiveQuickView({
               </button>
             ) : null}
             <Link
-              to="/app/executive"
-              search={{ tab: "summaries" }}
+              to="/app/executive-cockpit"
+              search={{ section: "summaries" }}
               className="text-xs font-medium text-primary hover:underline"
             >
               Project summaries
@@ -489,6 +494,7 @@ export function ExecutiveQuickView({
         )}
       </SectionFrame>
 
+      {mode === "full" ? (
       <SectionFrame>
         <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
           <div>
@@ -500,7 +506,6 @@ export function ExecutiveQuickView({
           </div>
           <Link
             to="/app/executive"
-            search={{ tab: "overview" }}
             className="text-xs font-medium text-primary hover:underline print:hidden"
           >
             Open detailed info
@@ -613,6 +618,7 @@ export function ExecutiveQuickView({
           </p>
         ) : null}
       </SectionFrame>
+      ) : null}
 
       <div className="print:hidden">
         <button
@@ -625,7 +631,10 @@ export function ExecutiveQuickView({
       </div>
 
       {showTrend ? (
-        <div className="grid gap-4 lg:grid-cols-2" data-export-hide>
+        <div
+          className={mode === "steering" ? "grid gap-4" : "grid gap-4 lg:grid-cols-2"}
+          data-export-hide
+        >
           {monthlySpend.length === 0 ? (
             <SectionFrame>
               <SectionTitle>Spend vs forecast</SectionTitle>
@@ -666,7 +675,7 @@ export function ExecutiveQuickView({
             </ExpandableChart>
           )}
 
-          {alignmentDollars.length === 0 ? (
+          {mode === "steering" ? null : alignmentDollars.length === 0 ? (
             <SectionFrame>
               <SectionTitle>Where the envelope sits</SectionTitle>
               <p className="py-8 text-center text-sm text-muted-foreground">No alignment $ yet</p>

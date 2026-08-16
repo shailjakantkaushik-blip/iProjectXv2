@@ -144,7 +144,7 @@ function dimRag(engine: HealthEngineResult, key: string, fallback: RagTone): Rag
 /**
  * Compute health for one project via the weighted Health Engine.
  * `overall_rag` is derived from the score (not manual entry).
- * Pass the same RAID / monthly / allocation rows used on Infographic / Quick view
+ * Pass the same RAID / monthly / allocation rows used on Infographic / Cockpit
  * so 30-day RAG matches those pages.
  */
 export function computeProjectHealth(

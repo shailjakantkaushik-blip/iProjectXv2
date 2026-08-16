@@ -60,7 +60,7 @@ const ALL: Record<string, Shortcut> = {
   executive: {
     to: "/app/executive",
     label: "Executive Dashboard",
-    desc: "Portfolio cockpit — KPIs, RAG, ROI, timelines",
+    desc: "Portfolio charts, KPIs, RAG, ROI, and timelines",
     icon: LayoutDashboard,
   },
   pulse: {
@@ -72,7 +72,7 @@ const ALL: Record<string, Shortcut> = {
   cockpit: {
     to: "/app/executive-cockpit",
     label: "Executive Cockpit",
-    desc: "Board-ready portfolio pulse",
+    desc: "Steering pack, scoreboard, and project summaries",
     icon: Rocket,
   },
   projects: {

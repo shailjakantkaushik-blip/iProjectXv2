@@ -1,5 +1,5 @@
 /**
- * Ranked steering-pack items for the Executive Dashboard Quick view.
+ * Ranked steering-pack items for the Executive Cockpit.
  * Uses the health engine plus RAID / gates / decisions already in the org.
  */
 import { effectiveRag, isRagOverridden, worstRagOf } from "@/lib/ops-enhancements";
