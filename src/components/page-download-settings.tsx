@@ -21,7 +21,7 @@ export function PageDownloadSettings({
   const pages = { ...defaultPageDownloadConfig().pages, ...normalizePageDownloadConfig(value).pages };
 
   // Include Home explicitly
-  const rows = [{ path: "/app", label: "Home", group: "Command" }, ...catalog.filter((p) => p.path !== "/app")];
+  const rows = [{ path: "/app", label: "Home", group: "Command Center" }, ...catalog.filter((p) => p.path !== "/app")];
 
   const groups = new Map<string, typeof rows>();
   for (const row of rows) {
