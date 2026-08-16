@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   PROJECT_DETAIL_SELECT,
@@ -49,8 +49,10 @@ import { PortfolioTimeline } from "@/components/portfolio-timeline";
 import { Button } from "@/components/ui/button";
 import { downloadProjectBriefPPT } from "@/lib/project-brief-ppt";
 import {
+  groupForecastRowsByStream,
   loadForecastPhases,
   parseForecastPhaseNotes,
+  withResolvedForecastStreamNames,
   type ForecastPhaseRow,
 } from "@/lib/project-forecast";
 import {
@@ -2355,20 +2357,38 @@ function ProjectBrief({
     enabled: !!project.id,
   });
 
+  const labeledBriefStreams = useMemo(
+    () =>
+      briefStreams.map((s) => ({
+        id: s.id,
+        name: formatStreamLabel(s),
+        code: s.code,
+        is_default: s.is_default,
+        sort_order: s.sort_order,
+      })),
+    [briefStreams],
+  );
+
   const forecastPhases = useMemo<ForecastPhaseRow[]>(() => {
     const stored =
       storedPhases.length > 0 ? storedPhases : parseForecastPhaseNotes(forecast?.notes);
     if (!stored.length) return [];
-    const byId = new Map(briefStreams.map((s) => [s.id, formatStreamLabel(s)]));
-    return stored.map((p) => ({
-      ...p,
-      stream_name: p.stream_name || byId.get(p.stream_id || "") || "Stream",
-    }));
-  }, [storedPhases, forecast?.notes, briefStreams]);
+    return withResolvedForecastStreamNames(stored, labeledBriefStreams);
+  }, [storedPhases, forecast?.notes, labeledBriefStreams]);
 
   const forecastRows = useMemo(
-    () => buildBriefForecastRows(forecastPhases, phaseRes as any[], otherCosts as any[]),
-    [forecastPhases, phaseRes, otherCosts],
+    () =>
+      buildBriefForecastRows(
+        forecastPhases,
+        phaseRes as any[],
+        otherCosts as any[],
+        labeledBriefStreams,
+      ),
+    [forecastPhases, phaseRes, otherCosts, labeledBriefStreams],
+  );
+  const forecastRowGroups = useMemo(
+    () => groupForecastRowsByStream(forecastRows, labeledBriefStreams),
+    [forecastRows, labeledBriefStreams],
   );
   const forecastTotals = useMemo(() => briefForecastTotals(forecastRows), [forecastRows]);
   const forecastTotalsLine = useMemo(
@@ -2760,7 +2780,8 @@ function ProjectBrief({
               <a href="/app/project-forecast" className="font-medium text-blue-700 hover:underline">
                 Project Forecast Estimation
               </a>
-              . Labor and other costs are the planned baseline for each stream phase.
+              . Rows are grouped by stream, then phase. Labor and other costs are the planned
+              baseline for each stream phase.
             </p>
             {forecastRows.length === 0 ? (
               <div className="rounded border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-slate-700">
@@ -2810,19 +2831,31 @@ function ProjectBrief({
                       </tr>
                     </thead>
                     <tbody>
-                      {forecastRows.map((row) => (
-                        <tr key={row.key}>
-                          <td>{row.stream_name}</td>
-                          <td className="font-medium">{row.gate_name}</td>
-                          <td>{row.start_date || "—"}</td>
-                          <td>{row.end_date || "—"}</td>
-                          <td className="st-num tabular-nums">{row.duration_days || "—"}</td>
-                          <td className="st-num tabular-nums">{moneyBrief(row.labor)}</td>
-                          <td className="st-num tabular-nums">{moneyBrief(row.other)}</td>
-                          <td className="st-num tabular-nums font-semibold">
-                            {moneyBrief(row.total)}
-                          </td>
-                        </tr>
+                      {forecastRowGroups.map((group) => (
+                        <Fragment key={group.streamKey}>
+                          <tr className="st-stream-group">
+                            <td colSpan={8}>
+                              Stream · {group.streamLabel}
+                              <span className="ml-2 text-[10px] font-normal text-muted-foreground">
+                                {group.rows.length} phase{group.rows.length === 1 ? "" : "s"}
+                              </span>
+                            </td>
+                          </tr>
+                          {group.rows.map((row) => (
+                            <tr key={row.key}>
+                              <td className="text-muted-foreground">{group.streamLabel}</td>
+                              <td className="font-medium">{row.gate_name}</td>
+                              <td>{row.start_date || "—"}</td>
+                              <td>{row.end_date || "—"}</td>
+                              <td className="st-num tabular-nums">{row.duration_days || "—"}</td>
+                              <td className="st-num tabular-nums">{moneyBrief(row.labor)}</td>
+                              <td className="st-num tabular-nums">{moneyBrief(row.other)}</td>
+                              <td className="st-num tabular-nums font-semibold">
+                                {moneyBrief(row.total)}
+                              </td>
+                            </tr>
+                          ))}
+                        </Fragment>
                       ))}
                       <tr>
                         <td colSpan={5} className="font-semibold">

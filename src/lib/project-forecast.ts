@@ -54,6 +54,7 @@ export type ForecastPhaseRow = {
 export type ForecastStreamLike = {
   id: string;
   name?: string | null;
+  code?: string | null;
   is_default?: boolean | null;
   sort_order?: number | null;
   planned_start_date?: string | null;
@@ -61,6 +62,76 @@ export type ForecastStreamLike = {
   actual_start_date?: string | null;
   actual_end_date?: string | null;
 };
+
+export type ForecastStreamGroup<T> = {
+  streamKey: string;
+  streamLabel: string;
+  rows: T[];
+};
+
+/** Resolve a display label from the live stream row, then any stored name. */
+export function resolveForecastStreamLabel(
+  streamId: string | null | undefined,
+  storedName: string | null | undefined,
+  streams: ForecastStreamLike[] = [],
+): string {
+  const match = streamId ? streams.find((s) => s.id === streamId) : undefined;
+  if (match) {
+    const named = String(match.name || "").trim();
+    if (named) return named;
+  }
+  const stored = String(storedName || "").trim();
+  if (stored) return stored;
+  return streamId || streams.length ? "Stream" : "Project";
+}
+
+export function formatForecastStreamPhase(
+  streamName: string | null | undefined,
+  gateName: string | null | undefined,
+): string {
+  const stream = String(streamName || "").trim();
+  const phase = String(gateName || "").trim() || "Phase";
+  return stream ? `${stream} · ${phase}` : phase;
+}
+
+export function withResolvedForecastStreamNames<T extends ForecastPhaseRow>(
+  phases: T[],
+  streams: ForecastStreamLike[] = [],
+): T[] {
+  return phases.map((p) => ({
+    ...p,
+    stream_name: resolveForecastStreamLabel(p.stream_id, p.stream_name, streams),
+  }));
+}
+
+/** Group forecast rows by stream so tables can show stream headers, then phases. */
+export function groupForecastRowsByStream<
+  T extends { stream_id?: string | null; stream_name?: string | null },
+>(rows: T[], streams: ForecastStreamLike[] = []): ForecastStreamGroup<T>[] {
+  const groups: ForecastStreamGroup<T>[] = [];
+  const indexByKey = new Map<string, number>();
+  for (const row of rows) {
+    const streamKey = row.stream_id || row.stream_name || "__default";
+    const existing = indexByKey.get(streamKey);
+    if (existing !== undefined) {
+      groups[existing].rows.push(row);
+      continue;
+    }
+    indexByKey.set(streamKey, groups.length);
+    groups.push({
+      streamKey,
+      streamLabel: String(row.stream_name || "").trim() || "Stream",
+      rows: [row],
+    });
+  }
+  if (!streams.length) return groups;
+  const streamOrder = new Map(streams.map((s, i) => [s.id, i]));
+  return [...groups].sort((a, b) => {
+    const ai = streamOrder.has(a.streamKey) ? streamOrder.get(a.streamKey)! : 999;
+    const bi = streamOrder.has(b.streamKey) ? streamOrder.get(b.streamKey)! : 999;
+    return ai - bi;
+  });
+}
 
 export type StageGateDefLike = {
   gate_name?: string | null;
@@ -158,7 +229,7 @@ export function seedForecastPhasesFromPlannedGates(
       }
       rows.push({
         stream_id: sid,
-        stream_name: stream.name || "Stream",
+        stream_name: resolveForecastStreamLabel(sid, stream.name, [stream]),
         gate_name: name,
         sort_order: si * 100 + i,
         duration_days: duration,
@@ -251,7 +322,7 @@ export function mergeForecastPhases(
       rows.push({
         id: prev?.id,
         stream_id: sid,
-        stream_name: stream.name || "Stream",
+        stream_name: resolveForecastStreamLabel(sid, stream.name || prev?.stream_name, [stream]),
         gate_name: name,
         sort_order: si * 100 + i,
         duration_days: useSeed
@@ -312,7 +383,7 @@ export function layoutForecastPhases(
       out.push({ ...p, start_date: phaseStart, end_date: phaseEnd });
     }
   }
-  return out;
+  return withResolvedForecastStreamNames(out, streams);
 }
 
 export function parseForecastPhaseNotes(notes: unknown): ForecastPhaseRow[] {

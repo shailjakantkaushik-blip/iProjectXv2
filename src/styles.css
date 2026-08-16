@@ -391,6 +391,14 @@ div:has(> .kpi-card) {
   color: var(--color-foreground);
 }
 .st-table tbody tr:hover td { background: #f8fafc; }
+.st-table tbody tr.st-stream-group td,
+.st-table tbody tr.st-stream-group:hover td {
+  background: #e4ebf5;
+  color: var(--color-heading);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-bottom: 1px solid #c5d0e0;
+}
 
 /* Table wrapper: enable horizontal scroll within page instead of blowing out viewport */
 .st-table-wrap {

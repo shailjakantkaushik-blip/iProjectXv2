@@ -1,4 +1,9 @@
-import { forecastPhaseKey, type ForecastPhaseRow } from "@/lib/project-forecast";
+import {
+  forecastPhaseKey,
+  resolveForecastStreamLabel,
+  type ForecastPhaseRow,
+  type ForecastStreamLike,
+} from "@/lib/project-forecast";
 
 export const FORECAST_TOTALS_PREFIX = "FORECAST TOTALS:";
 
@@ -18,6 +23,7 @@ export type BriefForecastOtherCost = {
 
 export type BriefForecastRow = {
   key: string;
+  stream_id: string | null;
   stream_name: string;
   gate_name: string;
   start_date: string | null;
@@ -64,13 +70,15 @@ export function buildBriefForecastRows(
   phases: ForecastPhaseRow[],
   phaseRes: BriefForecastPhaseRes[],
   otherCosts: BriefForecastOtherCost[],
+  streams: ForecastStreamLike[] = [],
 ): BriefForecastRow[] {
   return phases.map((ph) => {
     const labor = laborForPhase(ph, phaseRes);
     const other = otherForPhase(ph, otherCosts);
     return {
       key: forecastPhaseKey(ph),
-      stream_name: ph.stream_name || "Stream",
+      stream_id: ph.stream_id || null,
+      stream_name: resolveForecastStreamLabel(ph.stream_id, ph.stream_name, streams),
       gate_name: ph.gate_name,
       start_date: ph.start_date || null,
       end_date: ph.end_date || null,

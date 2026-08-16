@@ -1,3 +1,5 @@
+import { groupForecastRowsByStream } from "@/lib/project-forecast";
+
 /** Green PMO template colors */
 const GREEN = "1E5631";
 const LIGHT_GREEN = "E2EFDA";
@@ -72,6 +74,7 @@ export type ProjectBriefInput = {
   }>;
   timelineImage?: string | null;
   forecastRows?: Array<{
+    stream_id?: string | null;
     stream_name: string;
     gate_name: string;
     start_date?: string | null;
@@ -438,6 +441,33 @@ export async function downloadProjectBriefPPT(input: ProjectBriefInput) {
       `Labor ${fmt(labor)}    Other ${fmt(other)}    Planned total ${fmt(total)}`,
       { x: 0.4, y: 1.22, w: 12.5, h: 0.32, fontSize: 12, bold: true, color: "111111" },
     );
+    const streamBand = (t: string) => ({
+      text: fitText(t, 60),
+      options: { bold: true, fontSize: 8, color: GREEN, fill: { color: LIGHT_GREEN } },
+    });
+    const fcBody: Array<ReturnType<typeof cell>[]> = [];
+    for (const group of groupForecastRowsByStream(forecastRows)) {
+      if (fcBody.length >= 16) break;
+      fcBody.push([
+        streamBand(`Stream · ${group.streamLabel}`),
+        streamBand(""),
+        streamBand(""),
+        streamBand(""),
+        streamBand(""),
+        streamBand(""),
+      ]);
+      for (const r of group.rows) {
+        if (fcBody.length >= 16) break;
+        fcBody.push([
+          cell(r.stream_name ?? ""),
+          cell(r.gate_name ?? ""),
+          cell(String(r.duration_days ?? "—")),
+          cell(fmt(r.labor)),
+          cell(fmt(r.other)),
+          cell(fmt(r.total)),
+        ]);
+      }
+    }
     const fcRows = [
       [
         cell("Stream", true),
@@ -447,14 +477,7 @@ export async function downloadProjectBriefPPT(input: ProjectBriefInput) {
         cell("Other", true),
         cell("Total", true),
       ],
-      ...forecastRows.slice(0, 16).map((r) => [
-        cell(r.stream_name ?? ""),
-        cell(r.gate_name ?? ""),
-        cell(String(r.duration_days ?? "—")),
-        cell(fmt(r.labor)),
-        cell(fmt(r.other)),
-        cell(fmt(r.total)),
-      ]),
+      ...fcBody,
       [
         cell("Total", true),
         cell("", true),

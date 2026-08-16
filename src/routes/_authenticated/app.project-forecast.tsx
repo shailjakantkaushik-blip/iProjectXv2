@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Plus, Lock, Unlock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -17,6 +17,8 @@ import {
   ensureStageGatesForStreams,
   FORECAST_COST_CATEGORIES,
   forecastPhaseKey,
+  formatForecastStreamPhase,
+  groupForecastRowsByStream,
   isForecastableProjectStatus,
   layoutForecastPhases,
   loadForecastPhases,
@@ -193,6 +195,7 @@ function ProjectForecastPage() {
       (streams as any[]).map((s) => ({
         id: s.id,
         name: formatStreamLabel(s),
+        code: s.code,
         is_default: s.is_default,
         sort_order: s.sort_order,
         planned_start_date: s.planned_start_date,
@@ -257,6 +260,10 @@ function ProjectForecastPage() {
   const phases = useMemo(
     () => layoutForecastPhases(phaseDraft, planStart || null, projectStreams),
     [phaseDraft, planStart, projectStreams],
+  );
+  const phaseGroups = useMemo(
+    () => groupForecastRowsByStream(phases, projectStreams),
+    [phases, projectStreams],
   );
 
   const ensure = useMutation({
@@ -823,7 +830,7 @@ function ProjectForecastPage() {
           <SectionFrame>
             <SectionTitle>Advanced estimate — phases, resources, cost</SectionTitle>
             <p className="mb-3 text-xs text-muted-foreground">
-              Each stream from the project setup is listed with the{" "}
+              Each stream from the project setup is grouped with its{" "}
               {method?.name || "delivery method"} stage-gate phases. Planned gate dates from
               new-project setup fill the timeline automatically (per stream). Duration is
               calendar days (months ≈ 30 days) and lays out sequentially per stream from the
@@ -846,86 +853,96 @@ function ProjectForecastPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {phases.map((ph) => {
-                    const labor = laborForPhase(ph);
-                    const other = otherForPhase(ph);
-                    return (
-                      <tr key={forecastPhaseKey(ph)}>
-                        <td>{ph.stream_name || "—"}</td>
-                        <td className="font-medium">{ph.gate_name}</td>
-                        <td>
-                          <input
-                            type="number"
-                            min={0}
-                            step={1}
-                            className="st-input !w-20 !py-0.5"
-                            value={ph.duration_days}
-                            disabled={!canEdit}
-                            onChange={(e) =>
-                              patchPhase(ph, {
-                                duration_days: Number(e.target.value) || 0,
-                              })
-                            }
-                            onBlur={persistPhaseDraft}
-                          />
+                  {phaseGroups.map((group) => (
+                    <Fragment key={group.streamKey}>
+                      <tr className="st-stream-group">
+                        <td colSpan={10}>
+                          Stream · {group.streamLabel}
+                          <span className="ml-2 text-[10px] font-normal text-muted-foreground">
+                            {group.rows.length} phase{group.rows.length === 1 ? "" : "s"}
+                          </span>
                         </td>
-                        <td>
-                          <input
-                            type="number"
-                            min={0}
-                            step={0.1}
-                            className="st-input !w-20 !py-0.5"
-                            value={daysToMonths(ph.duration_days)}
-                            disabled={!canEdit}
-                            onChange={(e) =>
-                              patchPhase(ph, {
-                                duration_days: monthsToDays(Number(e.target.value) || 0),
-                              })
-                            }
-                            onBlur={persistPhaseDraft}
-                          />
-                        </td>
-                        <td>
-                          <input
-                            type="date"
-                            className="st-input !py-0.5"
-                            value={ph.start_date || ""}
-                            disabled={!canEdit || !ph.dates_overridden}
-                            onChange={(e) =>
-                              patchPhase(ph, { start_date: e.target.value })
-                            }
-                            onBlur={persistPhaseDraft}
-                          />
-                        </td>
-                        <td>
-                          <input
-                            type="date"
-                            className="st-input !py-0.5"
-                            value={ph.end_date || ""}
-                            disabled={!canEdit || !ph.dates_overridden}
-                            onChange={(e) =>
-                              patchPhase(ph, { end_date: e.target.value })
-                            }
-                            onBlur={persistPhaseDraft}
-                          />
-                        </td>
-                        <td>
-                          <input
-                            type="checkbox"
-                            disabled={!canEdit}
-                            checked={!!ph.dates_overridden}
-                            onChange={(e) => {
-                              patchPhase(ph, { dates_overridden: e.target.checked });
-                              window.setTimeout(persistPhaseDraft, 0);
-                            }}
-                          />
-                        </td>
-                        <td className="st-num tabular-nums">{money(labor)}</td>
-                        <td className="st-num tabular-nums">{money(other)}</td>
-                        <td className="st-num tabular-nums font-semibold">{money(labor + other)}</td>
                       </tr>
-                    );
-                  })}
+                      {group.rows.map((ph) => {
+                        const labor = laborForPhase(ph);
+                        const other = otherForPhase(ph);
+                        return (
+                          <tr key={forecastPhaseKey(ph)}>
+                            <td className="text-muted-foreground">{group.streamLabel}</td>
+                            <td className="font-medium">{ph.gate_name}</td>
+                            <td>
+                              <input
+                                type="number"
+                                min={0}
+                                step={1}
+                                className="st-input !w-20 !py-0.5"
+                                value={ph.duration_days}
+                                disabled={!canEdit}
+                                onChange={(e) =>
+                                  patchPhase(ph, {
+                                    duration_days: Number(e.target.value) || 0,
+                                  })
+                                }
+                                onBlur={persistPhaseDraft}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                min={0}
+                                step={0.1}
+                                className="st-input !w-20 !py-0.5"
+                                value={daysToMonths(ph.duration_days)}
+                                disabled={!canEdit}
+                                onChange={(e) =>
+                                  patchPhase(ph, {
+                                    duration_days: monthsToDays(Number(e.target.value) || 0),
+                                  })
+                                }
+                                onBlur={persistPhaseDraft}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="date"
+                                className="st-input !py-0.5"
+                                value={ph.start_date || ""}
+                                disabled={!canEdit || !ph.dates_overridden}
+                                onChange={(e) => patchPhase(ph, { start_date: e.target.value })}
+                                onBlur={persistPhaseDraft}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="date"
+                                className="st-input !py-0.5"
+                                value={ph.end_date || ""}
+                                disabled={!canEdit || !ph.dates_overridden}
+                                onChange={(e) => patchPhase(ph, { end_date: e.target.value })}
+                                onBlur={persistPhaseDraft}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="checkbox"
+                                disabled={!canEdit}
+                                checked={!!ph.dates_overridden}
+                                onChange={(e) => {
+                                  patchPhase(ph, { dates_overridden: e.target.checked });
+                                  window.setTimeout(persistPhaseDraft, 0);
+                                }}
+                              />
+                            </td>
+                            <td className="st-num tabular-nums">{money(labor)}</td>
+                            <td className="st-num tabular-nums">{money(other)}</td>
+                            <td className="st-num tabular-nums font-semibold">
+                              {money(labor + other)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </Fragment>
+                  ))}
                   {phases.length === 0 && (
                     <tr>
                       <td colSpan={10} className="py-4 text-center text-muted-foreground">
@@ -987,8 +1004,7 @@ function ProjectForecastPage() {
                   <option value="">Whole project</option>
                   {phases.map((p) => (
                     <option key={forecastPhaseKey(p)} value={p.id || ""}>
-                      {p.stream_name ? `${p.stream_name} · ` : ""}
-                      {p.gate_name}
+                      {formatForecastStreamPhase(p.stream_name, p.gate_name)}
                     </option>
                   ))}
                 </select>
