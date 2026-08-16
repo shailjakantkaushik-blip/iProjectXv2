@@ -1,13 +1,12 @@
 /**
- * Planned → Actual → Compare finance lifecycle.
+ * Budget / Plan / Forecast / Actual cashflow lifecycle.
  *
- * Plan:     FY Allocation (budget + forecast by year)
- *             ↓ cascadeMonthlyFromFyPlan
- *           financials_monthly.*_planned / *_forecast
- * Execute:  financials_monthly.*_actual (source of truth for spend)
- *             ↓ syncProjectIncurredFromMonthly
- *           projects.capex_incurred / opex_incurred
- * Compare:  monthly + phase windows (gate dates) planned vs actual vs forecast
+ * Budget:   stream budget (Data Editor) — FY Allocation budget % is the year split
+ * Plan:     CapEx planned ← FY budget CapEx
+ *           OpEx planned + FTE ← Estimation Planning apply (not FY save)
+ * Forecast: FY Allocation forecast % → monthly *_forecast (phase forecast starts = plan)
+ * Actual:   financials_monthly.*_actual → projects.capex_incurred / opex_incurred
+ * Demand:   work items — compare to Plan; never written here
  */
 
 import { supabase } from "@/integrations/supabase/client";
@@ -19,8 +18,13 @@ import {
   type FyAllocationLike,
   type ProjectFinanceLike,
 } from "@/lib/project-finance";
-import type { StageGateLike } from "@/lib/project-phase";
-import { matchPhase, normLabel, sortGatesByOrgOrder } from "@/lib/project-phase";
+import {
+  isDoneGateStatus,
+  matchPhase,
+  normLabel,
+  sortGatesByOrgOrder,
+  type StageGateLike,
+} from "@/lib/project-phase";
 
 const num = (v: unknown) => {
   const n = Number(v);
@@ -109,9 +113,12 @@ export function sumMonthlyForecast(rows: MonthlyFinanceRow[]): number {
 }
 
 /**
- * Distribute FY budget/forecast into monthly planned/forecast rows.
- * Preserves existing actuals. Months outside project schedule are skipped when
- * start/end are provided; otherwise all 12 FY months are used.
+ * Distribute FY budget/forecast into monthly rows.
+ * - capex_planned always from FY budget CapEx
+ * - opex_planned from FY budget OpEx only until Estimation Planning has been applied
+ * - *_forecast always from FY forecast $
+ * Preserves actuals and opex_labor_planned. Months outside project schedule are
+ * skipped when start/end are provided; otherwise all 12 FY months are used.
  *
  * Stream-aware: when allocations carry `stream_id` (or `streamId` is passed),
  * rows are upserted into that stream lane. Avoids creating parallel null-stream
@@ -151,6 +158,19 @@ export async function cascadeMonthlyFromFyPlan(opts: {
     .from("financials_monthly")
     .select("*")
     .eq("project_id", projectId);
+
+  let estimationOwnsOpex = false;
+  try {
+    const { data: estimate } = await supabase
+      .from("project_forecasts" as any)
+      .select("applied_to_plan_at")
+      .eq("project_id", projectId)
+      .maybeSingle();
+    estimationOwnsOpex = !!(estimate as { applied_to_plan_at?: string | null } | null)
+      ?.applied_to_plan_at;
+  } catch {
+    estimationOwnsOpex = false;
+  }
 
   const hasStreamRows = (existing ?? []).some((r: any) => !!r.stream_id);
   const rowKey = (stream: string | null | undefined, period: string) =>
@@ -206,16 +226,19 @@ export async function cascadeMonthlyFromFyPlan(opts: {
     for (const m of months) {
       const key = rowKey(laneStreamId, m);
       const prev = byKey.get(key);
+      const fyOpexPlan = Math.round(bSplit.opex * 100) / 100;
+      const fyCapexFc = Math.round(fSplit.capex * 100) / 100;
+      const fyOpexFc = Math.round(fSplit.opex * 100) / 100;
       const row = {
         org_id: orgId,
         project_id: projectId,
         stream_id: laneStreamId,
         period_month: m,
         capex_planned: Math.round(bSplit.capex * 100) / 100,
-        opex_planned: Math.round(bSplit.opex * 100) / 100,
-        capex_forecast: Math.round(fSplit.capex * 100) / 100,
-        opex_forecast: Math.round(fSplit.opex * 100) / 100,
-        // preserve actuals + benefits
+        opex_planned: estimationOwnsOpex && prev ? num(prev.opex_planned) : fyOpexPlan,
+        capex_forecast: forecast > 0 || !prev ? fyCapexFc : num(prev.capex_forecast),
+        opex_forecast: forecast > 0 || !prev ? fyOpexFc : num(prev.opex_forecast),
+        // preserve actuals + benefits + planned FTE (estimation)
         capex_actual: num(prev?.capex_actual),
         opex_actual: num(prev?.opex_actual),
         benefits_planned: num(prev?.benefits_planned),
@@ -236,6 +259,58 @@ export async function cascadeMonthlyFromFyPlan(opts: {
     }
   }
   return { monthsUpserted: upserted };
+}
+
+/** Register FAC = sum of FY Allocation forecast $ for the project. */
+export async function syncProjectFacFromFyAllocations(projectId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from("fy_allocations")
+    .select("forecast,forecast_amount,budget,allocated_amount")
+    .eq("project_id", projectId);
+  if (error) throw error;
+  const fac = Math.round((data ?? []).reduce((s, r) => s + fyAllocForecast(r), 0) * 100) / 100;
+  const { error: uerr } = await supabase
+    .from("projects")
+    .update({ forecast_at_completion: fac } as never)
+    .eq("id", projectId);
+  if (uerr) throw uerr;
+  return fac;
+}
+
+/** Gate is late when planned date has passed without completion, or actual > planned. */
+export function isGateScheduleDelayed(
+  gate: {
+    planned_date?: string | null;
+    actual_date?: string | null;
+    status?: string | null;
+  },
+  today = new Date(),
+): boolean {
+  if (isDoneGateStatus(gate.status)) return false;
+  const planned = String(gate.planned_date || "").slice(0, 10);
+  const actual = String(gate.actual_date || "").slice(0, 10);
+  const todayIso = today.toISOString().slice(0, 10);
+  if (planned && actual && actual > planned) return true;
+  if (planned && !actual && planned < todayIso) return true;
+  return false;
+}
+
+/**
+ * Phase forecast equals plan unless a stored FY/monthly forecast exists or the
+ * gate has slipped. Late gates cannot forecast below actuals-to-date or plan.
+ */
+export function livePhaseForecast(opts: {
+  plan: number;
+  storedForecast?: number | null;
+  actual?: number | null;
+  delayed?: boolean;
+}): number {
+  const plan = num(opts.plan);
+  const actual = num(opts.actual);
+  const stored = num(opts.storedForecast);
+  const base = stored > 0 ? stored : plan;
+  if (opts.delayed) return Math.max(base, actual, plan);
+  return base > 0 ? base : plan;
 }
 
 /** Roll monthly CapEx/OpEx actuals up to the project register. */

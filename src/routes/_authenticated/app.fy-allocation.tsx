@@ -36,6 +36,7 @@ import {
 } from "@/lib/project-finance";
 import {
   cascadeMonthlyFromFyPlan,
+  syncProjectFacFromFyAllocations,
   syncProjectIncurredFromMonthly,
 } from "@/lib/finance-lifecycle";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
@@ -118,9 +119,10 @@ function FYAllocationPage() {
     <PageExport name="FY_Allocation" title="FY Budget & Forecast Allocation">
       <PageHeading icon="📅">FY Budget &amp; Forecast Allocation</PageHeading>
       <div className="text-sm text-muted-foreground mb-3">
-        Forward planning: split each project&apos;s Budget and Forecast across Financial Years.
-        Saving also cascades into monthly <em>planned</em> cashflow (actuals are preserved) for
-        Plan vs Actual comparison on Financials.
+        Forward planning: split each project&apos;s <strong>Budget</strong> (approved envelope) and{" "}
+        <strong>Forecast</strong> (in-flight outlook) across Financial Years. Saving writes CapEx
+        plan and monthly Forecast. After Estimation Planning has been applied, OpEx plan and
+        planned FTE stay with that baseline. Actuals are always preserved.
       </div>
 
       <div className="mb-3 flex gap-1 border-b">
@@ -379,8 +381,9 @@ function AllocateTab({
         fyStartMonth,
       });
       await syncProjectIncurredFromMonthly(project.id);
+      await syncProjectFacFromFyAllocations(project.id);
       toast.success(
-        `Allocation saved — ${monthsUpserted} monthly planned periods updated (actuals kept).`,
+        `Allocation saved — ${monthsUpserted} monthly forecast periods updated (plan/actuals kept where owned).`,
       );
     } catch (e) {
       toast.success("Allocation saved");

@@ -574,7 +574,7 @@ function WorkItemsPage() {
       },
       {
         key: "estimate_hours",
-        label: "Planned h",
+        label: "Demand h",
         getValue: (i) => String(numH(i.estimate_hours) || ""),
       },
       {
@@ -949,7 +949,7 @@ function WorkItemsPage() {
             type="number"
             min={0}
             step={0.5}
-            placeholder="Planned hours"
+            placeholder="Demand hours"
             value={form.estimate_hours}
             onChange={(e) => setForm((f) => ({ ...f, estimate_hours: e.target.value }))}
           />
@@ -1042,20 +1042,20 @@ function WorkItemsPage() {
               </div>
             </div>
             <div>
-              <div className="text-muted-foreground">Planned FTE $ (lane)</div>
+              <div className="text-muted-foreground">Demand FTE $ (lane)</div>
               <div className="font-semibold tabular-nums">{money(formLanePlan.plannedFteCost)}</div>
             </div>
           </div>
         ) : (
           <p className="mt-2 text-[11px] text-muted-foreground">
             Select project and stream (and optionally stage gate) to see lane allocated hours from
-            Resource Allocations vs work-item planned demand — use allocated as the ceiling when
-            setting planned hours.
+            Resource Allocations (Plan) vs work-item demand — use allocated as the ceiling when
+            setting demand hours.
           </p>
         )}
         <p className="mt-2 text-[11px] text-muted-foreground">
-          Reverse planning flow: set work-item planned hours as demand against the lane&apos;s
-          resource allocation (pending = allocated − work planned). Planned FTE $ is hours ×
+          Reverse planning flow: set work-item demand hours against the lane&apos;s
+          resource allocation (pending = allocated − demand). Demand FTE $ is hours ×
           assignee cost rates. Actual hours come from approved timesheets. Assign resources so
           timesheet placeholders appear for their linked logins; stream defaults to Core. Use{" "}
           <span className="font-medium text-foreground">Stage gate</span> for Waterfall/Hybrid phase
@@ -1736,7 +1736,7 @@ function WorkItemsPage() {
           {
             name: "Stage gate",
             description:
-              "Waterfall / Hybrid phase for this work item. Used to attribute planned FTE $ and timesheet labor to that gate.",
+              "Waterfall / Hybrid phase for this work item. Used to attribute demand FTE $ and timesheet labor to that gate.",
           },
           {
             name: "Sprint",
@@ -1749,9 +1749,9 @@ function WorkItemsPage() {
               "Hours already booked in Resource Allocation for this project + stream + stage gate (planning ceiling).",
           },
           {
-            name: "Planned h",
+            name: "Demand h",
             description:
-              "Work-item estimate hours (demand). Feeds Resources demand and Planned FTE $ when synced.",
+              "Work-item estimate hours (demand). Compare to Lane allocated (Plan). Does not write Planned FTE.",
           },
           {
             name: "Actual h",
@@ -1759,7 +1759,7 @@ function WorkItemsPage() {
           },
           {
             name: "Pending h",
-            description: "Planned h − Actual h (remaining planned effort).",
+            description: "Demand h − Actual h (remaining demand).",
           },
           {
             name: "Status",

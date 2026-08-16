@@ -507,8 +507,8 @@ export function ResourceAnalyticsPanels({
               : "Allocation vs work-item demand vs actual"}
           </SectionTitle>
           <p className="text-xs text-muted-foreground">
-            Alloc hours from resource allocations. Demand hours and Plan FTE $ from work-item planned
-            hours × resource cost rates. Actual hours and Actual FTE $ from approved timesheets
+            Alloc hours from resource allocations (Plan). Demand hours and Demand FTE $ from work-item
+            estimate hours × resource cost rates. Actual hours and Actual FTE $ from approved timesheets
             (feeds incurred labor). Filter by period, project, stream, stage gate, and resource;
             group by resource, project, stream, stage gate, program, portfolio, or month.
           </p>
@@ -660,7 +660,7 @@ export function ResourceAnalyticsPanels({
           />
           {canViewCost ? (
             <>
-              <KpiCard label="Plan FTE $" value={money(totPlanFte)} accent="#f59e0b" />
+              <KpiCard label="Demand FTE $" value={money(totPlanFte)} accent="#f59e0b" />
               <KpiCard label="Actual FTE $" value={money(totActualFte)} accent="#ea580c" />
             </>
           ) : null}
@@ -691,7 +691,7 @@ export function ResourceAnalyticsPanels({
               <th className="st-num whitespace-nowrap">Var h</th>
               <th className="st-num whitespace-nowrap">Util%</th>
               <th className="whitespace-nowrap">Status</th>
-              {showCost && <th className="st-num whitespace-nowrap">Plan FTE $</th>}
+              {showCost && <th className="st-num whitespace-nowrap">Demand FTE $</th>}
               {showCost && <th className="st-num whitespace-nowrap">Actual FTE $</th>}
             </tr>
           </thead>

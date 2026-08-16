@@ -1592,8 +1592,8 @@ const TIMESHEET_COST_GLOSSARY: ColumnGlossaryItem[] = [
     description: "Traffic-light status from gap / variance thresholds (On track, Watch, Over).",
   },
   {
-    name: "Plan FTE $",
-    description: "Planned labor cost from work-item planned hours × assignee cost rates.",
+    name: "Demand FTE $",
+    description: "Demand labor cost from work-item hours × assignee cost rates (not Planned FTE).",
   },
   {
     name: "Actual FTE $",

@@ -1,7 +1,8 @@
 /**
- * Project Forecast Estimation — streams × delivery-method phases.
- * The estimate is the planned baseline. After start, actuals live on
- * streams / gates / incurred cost and must never be overwritten here.
+ * Project Estimation Planning — streams × delivery-method phases.
+ * The estimate is the planned baseline (dates, OpEx, FTE allocations).
+ * After start, actuals live on streams / gates / timesheets and must never
+ * be overwritten here. Forecast (in-flight) lives on FY Allocation / monthly *_forecast.
  */
 import { applyForecastPlannedMoneyAndFte, loadForecastApplyInputs } from "@/lib/apply-forecast-planned";
 import { supabase } from "@/integrations/supabase/client";
@@ -511,9 +512,10 @@ export async function persistForecastPhases(opts: {
 }
 
 /**
- * Write the forecast as the planned baseline:
+ * Write the estimate as the planned baseline:
  * - planned dates on project / streams / gates (never actuals)
- * - planned monthly cost and FTE allocations from forecast effort
+ * - planned monthly OpEx and FTE allocations from estimate effort
+ * - monthly OpEx forecast filled from plan only when still empty
  */
 export async function applyForecastToProjectPlan(opts: {
   orgId: string;

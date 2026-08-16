@@ -1,9 +1,9 @@
 /**
- * Apply Project Forecast as the planned baseline for cost and FTE.
+ * Apply Estimation Planning as the planned baseline for cost and FTE.
  *
- * Forecast (estimate) is edited on Project Forecast.
- * Apply writes planned money and resource allocations only — never actuals
- * and never monthly *forecast* columns (those stay in-flight FAC).
+ * The estimate is edited on Project Estimation Planning.
+ * Apply writes planned money and resource allocations only — never actuals.
+ * Monthly *_forecast is filled from plan only when still empty (forecast defaults to plan).
  */
 import { supabase } from "@/integrations/supabase/client";
 import { HOURS_PER_DAY } from "@/lib/ops-enhancements";
@@ -93,8 +93,9 @@ export async function loadForecastApplyInputs(forecastId: string): Promise<{
 }
 
 /**
- * Spread forecast labor + other into monthly *planned* cells, and forecast
- * effort into resource_allocations. Actuals and monthly forecast are untouched.
+ * Spread estimation labor + other into monthly *planned* cells, and effort
+ * into resource_allocations (Planned FTE). Actuals are untouched.
+ * opex_forecast is set to the plan amount only when it is still empty.
  */
 export async function applyForecastPlannedMoneyAndFte(opts: {
   orgId: string;
@@ -158,7 +159,7 @@ export async function applyForecastPlannedMoneyAndFte(opts: {
       capex_actual: num(prev?.capex_actual),
       opex_actual: num(prev?.opex_actual),
       capex_forecast: prev?.capex_forecast ?? null,
-      opex_forecast: prev?.opex_forecast ?? null,
+      opex_forecast: num(prev?.opex_forecast) > 0 ? num(prev.opex_forecast) : planned,
       capex_planned: prev?.capex_planned ?? 0,
       benefits_planned: num(prev?.benefits_planned),
       benefits_actual: num(prev?.benefits_actual),

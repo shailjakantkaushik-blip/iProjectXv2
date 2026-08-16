@@ -369,9 +369,9 @@ function ProjectDetail() {
               </Link>{" "}
               (at least Core). Estimate phase effort on{" "}
               <Link to="/app/project-forecast" className="font-medium text-primary hover:underline">
-                Project Forecast Estimation
+                Project Estimation Planning
               </Link>
-              ; setting Planned Start fills empty timeline dates from that forecast.
+              ; setting Planned Start fills empty timeline dates from that estimate.
             </p>
           </SectionFrame>
           <ProjectForm
@@ -392,7 +392,7 @@ function ProjectDetail() {
             </Link>{" "}
             tab shows it read-only.{" "}
             <Link to="/app/project-forecast" className="font-medium text-primary hover:underline">
-              Open project forecast
+              Open estimation planning
             </Link>
           </p>
           <ProjectMeetingSummary projectId={id} project={project} />

@@ -1,6 +1,15 @@
 /**
  * Canonical project finance helpers — single source of truth for portfolio pages.
  *
+ * Layers (do not mix write-paths):
+ * 1. Budget   — stream `budget` in Data Editor (rolls up to the project)
+ * 2. Plan     — Estimation Planning apply → dates, opex_planned, opex_labor_planned,
+ *               resource_allocations. CapEx plan comes from FY budget CapEx.
+ * 3. Forecast — FY Allocation `forecast` by year → monthly *_forecast.
+ *               Phase forecast starts equal to phase plan; slips can raise it.
+ * 4. Demand   — work-item estimate_hours × assignees (never writes Plan columns)
+ * 5. Actual   — timesheets + other OpEx → monthly *_actual → incurred
+ *
  * Hierarchy (most specific → rollup):
  * 1. financials_monthly  — cashflow by period
  * 2. fy_allocations      — budget + forecast split by FY (capex/opex/benefits detail)
@@ -75,7 +84,8 @@ export function projectIncurred(p: ProjectFinanceLike | null | undefined): numbe
 
 /**
  * Forecast at completion.
- * Prefer explicit FAC; else CapEx+OpEx approved; else budget.
+ * Prefer explicit FAC (kept in sync from FY Allocation forecast $);
+ * else CapEx+OpEx approved; else budget.
  * Does NOT invent a 5% uplift — that distorted board views.
  */
 export function projectForecast(p: ProjectFinanceLike | null | undefined): number {

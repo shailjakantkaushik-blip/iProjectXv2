@@ -72,7 +72,7 @@ export const PAGES: { path: string; label: string; group: string }[] = [
   { path: "/app/projects", label: "Projects", group: "Strategic Alignment" },
   { path: "/app/programs", label: "Programs", group: "Strategic Alignment" },
   { path: "/app/project-infographic", label: "Project Infographic", group: "Strategic Alignment" },
-  { path: "/app/project-forecast", label: "Project Forecast Estimation", group: "Strategic Alignment" },
+  { path: "/app/project-forecast", label: "Project Estimation Planning", group: "Strategic Alignment" },
   { path: "/app/portfolio-segmentation", label: "Segmentation", group: "Strategic Alignment" },
   { path: "/app/prioritisation", label: "Prioritisation", group: "Strategic Alignment" },
   { path: "/app/portfolio-movements", label: "Movements", group: "Strategic Alignment" },

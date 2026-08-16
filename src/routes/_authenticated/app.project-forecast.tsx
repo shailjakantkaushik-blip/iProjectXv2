@@ -314,7 +314,7 @@ function ProjectForecastPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const persistTotals = async (fid: string, labor: number, other: number, override: boolean) => {
+  const persistTotals = async (fid: string, labor: number, other: number) => {
     const total = labor + other;
     await supabase
       .from("project_forecasts" as any)
@@ -322,15 +322,9 @@ function ProjectForecastPage() {
         total_labor_cost: labor,
         total_other_cost: other,
         total_cost: total,
-        override_budget: override,
+        override_budget: false,
       })
       .eq("id", fid);
-    if (override) {
-      await supabase
-        .from("projects")
-        .update({ forecast_at_completion: total } as never)
-        .eq("id", projectId);
-    }
   };
 
   const laborByPhase = useMemo(() => {
@@ -376,14 +370,13 @@ function ProjectForecastPage() {
     }
     const t = window.setTimeout(() => {
       lastPersisted.current = { id: forecast.id, labor: laborTotal, other: otherTotal };
-      void persistTotals(forecast.id, laborTotal, otherTotal, !!forecast.override_budget);
+      void persistTotals(forecast.id, laborTotal, otherTotal);
     }, 500);
     return () => window.clearTimeout(t);
   }, [
     forecast?.id,
     forecast?.total_labor_cost,
     forecast?.total_other_cost,
-    forecast?.override_budget,
     locked,
     laborTotal,
     otherTotal,
@@ -519,15 +512,14 @@ function ProjectForecastPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["project_forecast_other_costs"] }),
   });
 
-  const applyOverride = useMutation({
-    mutationFn: async (on: boolean) => {
+  const saveTotals = useMutation({
+    mutationFn: async () => {
       if (!forecast?.id) return;
-      await persistTotals(forecast.id, laborTotal, otherTotal, on);
+      await persistTotals(forecast.id, laborTotal, otherTotal);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["project_forecasts"] });
-      qc.invalidateQueries({ queryKey: ["projects"] });
-      toast.success("Forecast totals saved");
+      toast.success("Estimate totals saved");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -645,7 +637,7 @@ function ProjectForecastPage() {
       toast.success(
         r.plannedEnd
           ? `Planned baseline applied through ${r.plannedEnd}`
-          : "Planned dates, cost, and FTE applied from the forecast",
+          : "Planned dates, cost, and FTE applied from the estimate",
       );
     },
     onError: (e: Error) => toast.error(e.message),
@@ -666,8 +658,8 @@ function ProjectForecastPage() {
     <div>
       <PageHeading
         icon="📊"
-        title="Project Forecast Estimation"
-        subtitle="After a project is created (streams + delivery-method phases), estimate the plan here. Once work starts this stays the planned forecast; actuals update separately so timeline plan vs actual stays in sync."
+        title="Project Estimation Planning"
+        subtitle="Build the planned baseline by stream and phase (people, effort, other OpEx). Apply writes Plan and Planned FTE only. Forecast is the FY Allocation outlook — it starts equal to this plan. Actuals come from timesheets and never overwrite this page."
       />
 
       <SectionFrame>
@@ -707,7 +699,7 @@ function ProjectForecastPage() {
           </label>
           {projectId && !forecast && (
             <Button type="button" onClick={() => ensure.mutate()} disabled={ensure.isPending}>
-              Create forecast
+              Create estimate
             </Button>
           )}
           {forecast && !locked && (
@@ -755,7 +747,7 @@ function ProjectForecastPage() {
           <p className="mt-2 text-xs text-muted-foreground">
             {kickedOff
               ? "Project has started. This page is the planned baseline (dates, cost, and FTE). Actual dates and incurred cost come from streams, gates, and timesheets — they are not overwritten here. Changing the plan needs sponsor or admin unlock."
-              : "Not started yet. Apply planned baseline writes forecast dates, phase cost, and resource FTE onto the project as Planned. Timeline treats those dates as planned. Actuals start when the PM records Actual Start."}
+              : "Not started yet. Apply planned baseline writes phase dates, OpEx cost, and resource FTE as Plan. Forecast starts equal to that plan (FY Allocation can move Forecast later). Actuals start when the PM records Actual Start."}
           </p>
         )}
         {!project && (
@@ -1038,7 +1030,7 @@ function ProjectForecastPage() {
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <KpiCard label="Planned labor" value={money(laborTotal)} />
               <KpiCard label="Planned other" value={money(otherTotal)} />
-              <KpiCard label="Planned forecast" value={money(grand)} accent="#1d4ed8" />
+              <KpiCard label="Planned total" value={money(grand)} accent="#1d4ed8" />
               <KpiCard
                 label="Actual incurred"
                 value={money(
@@ -1051,26 +1043,21 @@ function ProjectForecastPage() {
                 accent="#059669"
               />
             </div>
-            <label className="mt-3 flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                disabled={!forecast || locked}
-                checked={!!forecast?.override_budget}
-                onChange={(e) => applyOverride.mutate(e.target.checked)}
-              />
-              Override project budget forecast (FAC) with this total
-            </label>
+            <p className="mt-3 text-xs text-muted-foreground">
+              This total is the planned OpEx estimate (labor + other). It does not overwrite Budget
+              or Forecast at completion — those stay on stream Budget and FY Allocation Forecast.
+            </p>
             <Button
               className="mt-3"
               type="button"
               disabled={!forecast || locked}
-              onClick={() => applyOverride.mutate(!!forecast?.override_budget)}
+              onClick={() => saveTotals.mutate()}
             >
               Save totals
             </Button>
             {kickedOff && (
               <p className="mt-2 text-xs text-muted-foreground">
-                Actual incurred is live from stream / project actuals. The planned forecast does not
+                Actual incurred is live from stream / project actuals. The plan does not
                 change unless the sponsor ({project?.sponsor || "unset"}) or an admin unlocks it.{" "}
                 <Link to="/app/timeline" className="font-medium text-primary hover:underline">
                   Open timeline (plan vs actual)
