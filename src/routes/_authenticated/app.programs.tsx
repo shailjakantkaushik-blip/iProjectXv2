@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { ProjectRegister } from "@/components/project-register";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -286,7 +287,7 @@ function ProgramsPage() {
       <PageHeading
         icon="🎯"
         title="Programs"
-        subtitle="Program-level rollups under Strategic Alignment. Each project sits in a functional area."
+        subtitle="Program-level rollups under Strategic Alignment, plus the full project register (filters, KPIs, import/export)."
       />
 
       <SectionFrame>
@@ -635,6 +636,8 @@ function ProgramsPage() {
           </BarChart>
         </ExpandableChart>
       </SectionFrame>
+
+      <ProjectRegister />
     </PageExport>
   );
 }

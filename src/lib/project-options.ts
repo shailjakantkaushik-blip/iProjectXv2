@@ -49,6 +49,41 @@ export function projectOptionsQueryKey(orgId: string | null | undefined) {
   return ["projects", orgId, "options"] as const;
 }
 
+const LAST_PROJECT_KEY = "ipx.last-project-id";
+
+function lastProjectStorageKey(orgId: string) {
+  return `${LAST_PROJECT_KEY}.${orgId}`;
+}
+
+/** Last project opened on the Projects workspace, scoped per organisation. */
+export function readLastProjectId(orgId: string | null | undefined): string | null {
+  if (!orgId || typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(lastProjectStorageKey(orgId));
+  } catch {
+    return null;
+  }
+}
+
+export function writeLastProjectId(orgId: string | null | undefined, projectId: string) {
+  if (!orgId || !projectId || typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(lastProjectStorageKey(orgId), projectId);
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+export function pickDefaultProjectId(
+  projects: { id: string }[],
+  orgId?: string | null,
+): string | null {
+  if (!projects.length) return null;
+  const last = readLastProjectId(orgId);
+  if (last && projects.some((p) => p.id === last)) return last;
+  return projects[0]?.id ?? null;
+}
+
 export async function fetchProjectOptions() {
   const { data, error } = await supabase
     .from("projects")
