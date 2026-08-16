@@ -71,6 +71,7 @@ export type PulseProjectInput = {
   changeRequests?: any[];
   allocations?: any[];
   monthly?: any[];
+  benefitLines?: any[];
 };
 
 export type PulseSnapshot = {
@@ -192,6 +193,7 @@ export function buildPortfolioPulse(opts: {
       changeRequests: row.changeRequests,
       allocations: row.allocations,
       monthly: row.monthly,
+      benefitLines: row.benefitLines,
       nowMs,
     });
     const approved = projectApprovedFunding(p);

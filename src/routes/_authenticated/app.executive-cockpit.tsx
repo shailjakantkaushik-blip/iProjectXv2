@@ -152,6 +152,19 @@ function ScoreStat({
   );
 }
 
+function countShownRag(rows: { shown_rag?: string | null }[]) {
+  let green = 0;
+  let amber = 0;
+  let red = 0;
+  for (const r of rows) {
+    const v = String(r.shown_rag || "").toLowerCase();
+    if (v === "green") green += 1;
+    else if (v === "amber") amber += 1;
+    else if (v === "red") red += 1;
+  }
+  return { green, amber, red };
+}
+
 function MixBar({
   green,
   amber,
@@ -431,10 +444,6 @@ function ExecutiveCockpit() {
     actualSpend,
     remaining,
     fac,
-    total,
-    onTrack,
-    atRisk,
-    delayed,
     strategicPrograms,
     capexPrograms,
     unfundedInitiatives,
@@ -469,9 +478,6 @@ function ExecutiveCockpit() {
     const fac = projects.reduce((s: number, p: any) => s + projectForecast(p), 0);
 
     const total = projects.length;
-    const onTrack = projects.filter((p: any) => (displayRag(p) || "").toLowerCase() === "green").length;
-    const atRisk = projects.filter((p: any) => (displayRag(p) || "").toLowerCase() === "amber").length;
-    const delayed = projects.filter((p: any) => (displayRag(p) || "").toLowerCase() === "red").length;
     const strategicPrograms = new Set(
       projects
         .filter((p: any) => {
@@ -532,9 +538,6 @@ function ExecutiveCockpit() {
         remaining: Math.max(0, approved - actual),
         forecast,
         benefits: bf,
-        green: rows.filter((p: any) => (displayRag(p) || "").toLowerCase() === "green").length,
-        amber: rows.filter((p: any) => (displayRag(p) || "").toLowerCase() === "amber").length,
-        red: rows.filter((p: any) => (displayRag(p) || "").toLowerCase() === "red").length,
       };
     });
 
@@ -549,9 +552,6 @@ function ExecutiveCockpit() {
       remaining,
       fac,
       total,
-      onTrack,
-      atRisk,
-      delayed,
       strategicPrograms,
       capexPrograms,
       unfundedInitiatives,
@@ -570,9 +570,6 @@ function ExecutiveCockpit() {
   const remainingK = Math.max(0, approvedFundingK - actualSpendK);
   const facK = useCache ? kpis!.forecast_at_completion : fac;
   const facDelta = facK - approvedFundingK;
-  const onTrackK = useCache ? kpis!.rag_green : onTrack;
-  const atRiskK = useCache ? kpis!.rag_amber : atRisk;
-  const delayedK = useCache ? kpis!.rag_red : delayed;
   const benefitsForecastK = useCache ? kpis!.benefits_target : benefitsForecast;
   const benefitsRealisedK = useCache ? kpis!.benefits_realised : benefitsRealised;
 
@@ -687,6 +684,21 @@ function ExecutiveCockpit() {
     allocationsByProject,
     crsByProject,
   ]);
+
+  const matrixRag = useMemo(() => countShownRag(healthRows), [healthRows]);
+  const mixRagByAlign = useMemo(() => {
+    const m = new Map<string, { green: number; amber: number; red: number }>();
+    for (const p of healthRows) {
+      const cat = projectPortfolio(p);
+      const cur = m.get(cat) || { green: 0, amber: 0, red: 0 };
+      const v = String(p.shown_rag || "").toLowerCase();
+      if (v === "green") cur.green += 1;
+      else if (v === "amber") cur.amber += 1;
+      else if (v === "red") cur.red += 1;
+      m.set(cat, cur);
+    }
+    return m;
+  }, [healthRows]);
 
   const benefitsPct = benefitsForecastK
     ? Math.min(100, Math.round((benefitsRealisedK / benefitsForecastK) * 100))
@@ -913,9 +925,10 @@ function ExecutiveCockpit() {
         >
           <div className="mb-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)]">
             <div>
-              <MixBar green={onTrackK} amber={atRiskK} red={delayedK} />
+              <MixBar green={matrixRag.green} amber={matrixRag.amber} red={matrixRag.red} />
               <p className="mt-2 text-xs text-muted-foreground">
-                {total} project{total === 1 ? "" : "s"} · {pct(onTrackK, total || 1)} Green
+                {healthRows.length} project{healthRows.length === 1 ? "" : "s"} ·{" "}
+                {pct(matrixRag.green, healthRows.length || 1)} Green
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2">
@@ -1291,7 +1304,12 @@ function ExecutiveCockpit() {
                         </span>
                       </td>
                       <td className="px-2 py-2">
-                        <MixBar green={r.green} amber={r.amber} red={r.red} compact />
+                        <MixBar
+                          green={mixRagByAlign.get(r.name)?.green ?? 0}
+                          amber={mixRagByAlign.get(r.name)?.amber ?? 0}
+                          red={mixRagByAlign.get(r.name)?.red ?? 0}
+                          compact
+                        />
                       </td>
                     </tr>
                   ))}

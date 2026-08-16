@@ -142,6 +142,7 @@ export function buildExecutiveBriefing(opts: {
   dependencies?: HealthEngineInput["dependencies"];
   allocations?: HealthEngineInput["allocations"];
   changeRequests?: HealthEngineInput["changeRequests"];
+  benefitLines?: HealthEngineInput["benefitLines"];
   now?: Date;
 }): {
   overallRag: RagTone;
@@ -196,6 +197,9 @@ export function buildExecutiveBriefing(opts: {
       ),
       changeRequests: (opts.changeRequests ?? []).filter(
         (c) => (c as { project_id?: string }).project_id === p.id,
+      ),
+      benefitLines: (opts.benefitLines ?? []).filter(
+        (b) => (b as { project_id?: string }).project_id === p.id,
       ),
     });
     healthByProject.set(p.id, engine);
