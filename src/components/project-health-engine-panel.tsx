@@ -124,6 +124,7 @@ export function ProjectHealthEnginePanel({
   dependencies = [],
   monthly = [],
   allocations = [],
+  benefits = [],
 }: {
   project: any;
   gates?: any[];
@@ -131,6 +132,7 @@ export function ProjectHealthEnginePanel({
   dependencies?: any[];
   monthly?: any[];
   allocations?: any[];
+  benefits?: any[];
 }) {
   const { organization, profile } = useAuth();
   const orgId = organization?.id;
@@ -184,6 +186,7 @@ export function ProjectHealthEnginePanel({
       changeRequests,
       allocations,
       monthly,
+      benefitLines: benefits,
       previousScore: prevScore,
     });
   }, [
@@ -195,6 +198,7 @@ export function ProjectHealthEnginePanel({
     changeRequests,
     allocations,
     monthly,
+    benefits,
     prevScore,
   ]);
 

@@ -12,6 +12,7 @@ import {
   ISSUES_SELECT,
   MILESTONES_SELECT,
   STAGE_GATE_DEFINITIONS_SELECT,
+  WORK_ITEMS_SELECT,
   selectWithRaidCodeFallback,
 } from "@/lib/query-selects";
 import { fetchStageGates } from "@/lib/stage-gates";
@@ -661,13 +662,41 @@ function InfographicPage() {
   const { data: deps = [] } = useQuery({
     queryKey: ["dependencies-brief", project?.id],
     queryFn: async () => {
-      const { data } = await (supabase as any)
+      const { data } = await supabase
         .from("dependencies")
-        .select("*")
-        .or(`from_project_id.eq.${project.id},to_project_id.eq.${project.id}`);
+        .select("id,project_id,status,dep_type,needed_by")
+        .eq("project_id", project.id);
       return data ?? [];
     },
     enabled: !!project,
+  });
+  const { data: workItems = [] } = useQuery({
+    queryKey: ["work_items", orgId, "health-engine", project?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("work_items" as any)
+        .select(WORK_ITEMS_SELECT as "*")
+        .eq("org_id", orgId!)
+        .eq("project_id", project.id);
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
+    enabled: !!orgId && !!project?.id,
+    staleTime: 30_000,
+  });
+  const { data: changeRequests = [] } = useQuery({
+    queryKey: ["change_requests", orgId, "health-engine", project?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("change_requests")
+        .select("id,status,change_type,impact_cost,impact_schedule_days,title")
+        .eq("org_id", orgId!)
+        .eq("project_id", project.id);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!orgId && !!project?.id,
+    staleTime: 30_000,
   });
   const { data: stakeholders = [] } = useQuery({
     queryKey: ["stakeholders", project?.id],
@@ -1174,8 +1203,11 @@ function InfographicPage() {
       dependencies: deps as any[],
       monthly: monthly as any[],
       allocations: projectAllocations as any[],
+      workItems: workItems as any[],
+      changeRequests: changeRequests as any[],
+      benefitLines: benefits as any[],
     });
-  }, [project, gates, risks, deps, monthly, projectAllocations]);
+  }, [project, gates, risks, deps, monthly, projectAllocations, workItems, changeRequests, benefits]);
 
   if (!projects.length) {
     return (
@@ -1505,6 +1537,7 @@ function InfographicPage() {
           dependencies={deps as any[]}
           monthly={monthly as any[]}
           allocations={projectAllocations as any[]}
+          benefits={benefits as any[]}
         />
 
         {/* Stage Gates & Phase $ header */}

@@ -348,7 +348,9 @@ function ExecutiveCockpit() {
       (
         await supabase
           .from("dependencies")
-          .select("id,project_id,status,rag,due_date,dependency_type")
+          .select("id,project_id,status,dep_type,needed_by")
+          .eq("org_id", orgId!)
+          .limit(10000)
       ).data ?? [],
     enabled: !!orgId,
     staleTime: 60_000,
@@ -360,6 +362,8 @@ function ExecutiveCockpit() {
         await supabase
           .from("work_items" as never)
           .select("id,project_id,status,percent_complete,estimate_hours")
+          .eq("org_id", orgId!)
+          .limit(10000)
       ).data ?? [],
     enabled: !!orgId,
     staleTime: 60_000,
@@ -651,18 +655,14 @@ function ExecutiveCockpit() {
     return projects
       .slice()
       .map((p: any) => {
-        const withBenefits = {
-          ...p,
-          benefits_target: sumBenefitsTarget(benefitsScoped as any[], p, p.id),
-          benefits_realised: sumBenefitsRealised(benefitsScoped as any[], p, p.id),
-        };
-        const health = computeProjectHealth(withBenefits, gatesByProject.get(p.id) || [], {
+        const health = computeProjectHealth(p, gatesByProject.get(p.id) || [], {
           monthly: monthlyByProject.get(p.id) || [],
           risks: risksByProject.get(p.id) || [],
           dependencies: depsByProject.get(p.id) || [],
           workItems: workItemsByProject.get(p.id) || [],
           allocations: allocationsByProject.get(p.id) || [],
           changeRequests: crsByProject.get(p.id) || [],
+          benefitLines: (benefitsScoped as any[]).filter((b) => b.project_id === p.id),
         });
         const pm = p.pm_user_id ? profileById.get(p.pm_user_id) : null;
         const deliveryLead =
