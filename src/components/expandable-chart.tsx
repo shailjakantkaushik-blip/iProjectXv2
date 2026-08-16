@@ -7,7 +7,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { Maximize2, X } from "lucide-react";
+import { ChevronDown, Maximize2, X } from "lucide-react";
 import { ResponsiveContainer } from "recharts";
 import {
   Dialog,
@@ -24,6 +24,10 @@ type Props = {
   className?: string;
   /** Compact chart height (default 256 / h-64) */
   heightClass?: string;
+  /** Collapse the in-page chart. Expand still opens the full modal. */
+  collapsible?: boolean;
+  defaultCollapsed?: boolean;
+  collapsedSummary?: ReactNode;
 };
 
 /**
@@ -39,10 +43,15 @@ export function ExpandableChart({
   legend,
   className,
   heightClass = "h-64",
+  collapsible = false,
+  defaultCollapsed = false,
+  collapsedSummary,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [ready, setReady] = useState(false);
   const [chartSize, setChartSize] = useState({ width: 960, height: 520 });
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  const isCollapsed = collapsible && collapsed;
   const measureRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -95,7 +104,35 @@ export function ExpandableChart({
         )}
       >
         <div className="mb-2 flex shrink-0 items-center gap-2 px-1">
+          {collapsible ? (
+            <button
+              type="button"
+              onClick={() => setCollapsed((v) => !v)}
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground print:hidden"
+              aria-expanded={!isCollapsed}
+              aria-label={isCollapsed ? `Show ${title}` : `Hide ${title}`}
+              title={isCollapsed ? "Show" : "Hide"}
+              data-export-hide
+            >
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 transition-transform duration-200",
+                  isCollapsed && "-rotate-90",
+                )}
+              />
+            </button>
+          ) : null}
           <div className="min-w-0 flex-1 text-[12px] font-semibold text-foreground">{title}</div>
+          {collapsible ? (
+            <button
+              type="button"
+              onClick={() => setCollapsed((v) => !v)}
+              className="inline-flex h-7 items-center rounded-md border border-border/70 bg-background/80 px-2 text-[10px] font-medium text-muted-foreground transition hover:text-foreground print:hidden"
+              data-export-hide
+            >
+              {isCollapsed ? "Show" : "Hide"}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => setOpen(true)}
@@ -107,24 +144,32 @@ export function ExpandableChart({
             Expand
           </button>
         </div>
-        <button
-          type="button"
-          className={cn(
-            "w-full shrink-0 cursor-zoom-in border-0 bg-transparent p-0 text-left",
-            heightClass,
-          )}
-          onClick={() => setOpen(true)}
-          aria-label={`Expand ${title}`}
-        >
-          {chart ? (
-            <ResponsiveContainer width="100%" height="100%">
-              {chart}
-            </ResponsiveContainer>
-          ) : (
-            <div className="flex h-full w-full items-center justify-center">{children}</div>
-          )}
-        </button>
-        {legend ? <div className="min-h-0 shrink">{legend}</div> : null}
+        {isCollapsed ? (
+          collapsedSummary ? (
+            <p className="text-xs text-muted-foreground">{collapsedSummary}</p>
+          ) : null
+        ) : (
+          <>
+            <button
+              type="button"
+              className={cn(
+                "w-full shrink-0 cursor-zoom-in border-0 bg-transparent p-0 text-left",
+                heightClass,
+              )}
+              onClick={() => setOpen(true)}
+              aria-label={`Expand ${title}`}
+            >
+              {chart ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  {chart}
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full w-full items-center justify-center">{children}</div>
+              )}
+            </button>
+            {legend ? <div className="min-h-0 shrink">{legend}</div> : null}
+          </>
+        )}
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
