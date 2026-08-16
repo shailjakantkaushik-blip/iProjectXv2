@@ -581,7 +581,7 @@ function ExecutiveCockpit() {
               <ScoreStat
                 label="Remaining"
                 value={money(remainingK)}
-                hint={explains.remaining ? undefined : pct(remainingK, approvedFundingK) + " of envelope"}
+                hint={`${pct(remainingK, approvedFundingK)} of envelope`}
               />
             </div>
             {coverageWeak ? (
