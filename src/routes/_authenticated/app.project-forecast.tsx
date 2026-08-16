@@ -29,6 +29,7 @@ import {
   type PlannedGateLike,
 } from "@/lib/project-forecast";
 import { ForecastPhaseGantt } from "@/components/forecast-phase-gantt";
+import { ForecastResourceBoard } from "@/components/forecast-resource-board";
 import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/_authenticated/app/project-forecast")({
@@ -45,7 +46,6 @@ function ProjectForecastPage() {
   const qc = useQueryClient();
   const admin = isAdmin(roles);
   const [projectId, setProjectId] = useState("");
-  const [dragResource, setDragResource] = useState<string | null>(null);
   const [planStart, setPlanStart] = useState("");
   const [phaseDraft, setPhaseDraft] = useState<ForecastPhaseRow[]>([]);
 
@@ -381,14 +381,6 @@ function ProjectForecastPage() {
     laborTotal,
     otherTotal,
   ]);
-
-  const usedHours = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const a of allocations as any[]) {
-      m.set(a.resource_id, (m.get(a.resource_id) || 0) + Number(a.allocated_hours || 0));
-    }
-    return m;
-  }, [allocations]);
 
   const rowsForPhase = (ph: ForecastPhaseRow) =>
     phaseRes.filter((r) => {
@@ -813,6 +805,22 @@ function ProjectForecastPage() {
           </SectionFrame>
 
           <SectionFrame>
+            <SectionTitle>Resources by phase</SectionTitle>
+            <ForecastResourceBoard
+              resources={resources as any[]}
+              allocations={allocations as any[]}
+              streams={projectStreams}
+              phases={phases}
+              phaseRes={phaseRes as any[]}
+              canEdit={canEdit}
+              planStart={planStart || null}
+              onAssign={(opts) => addResourceToPhase.mutate(opts)}
+              onPatchEffort={(opts) => patchEffort.mutate(opts)}
+              onRemove={(id) => removePhaseRes.mutate(id)}
+            />
+          </SectionFrame>
+
+          <SectionFrame>
             <SectionTitle>Advanced estimate — phases, resources, cost</SectionTitle>
             <p className="mb-3 text-xs text-muted-foreground">
               Each stream from the project setup is listed with the{" "}
@@ -933,130 +941,6 @@ function ProjectForecastPage() {
                   )}
                 </tbody>
               </table>
-            </div>
-          </SectionFrame>
-
-          <SectionFrame>
-            <SectionTitle>Resources by phase</SectionTitle>
-            <p className="mb-2 text-xs text-muted-foreground">
-              Drag a resource onto a phase, or add from the list. Daily rate = hourly cost × 8.
-              Effort days drive labor cost; phase duration drives the timeline.
-            </p>
-            <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {(resources as any[]).map((r) => {
-                const cap = Number(r.capacity_hours_week || 0) * 4;
-                const used = usedHours.get(r.id) || 0;
-                const left = cap - used;
-                return (
-                  <div
-                    key={r.id}
-                    draggable={canEdit}
-                    onDragStart={(e) => {
-                      setDragResource(r.id);
-                      e.dataTransfer.setData("text/resource-id", r.id);
-                    }}
-                    className="cursor-grab rounded-md border border-border bg-surface px-3 py-2 text-xs"
-                  >
-                    <div className="font-semibold">{r.name}</div>
-                    <div className="text-muted-foreground">
-                      {r.role || "—"} · {money(dailyRateFromHourly(r.cost_rate))}/day
-                    </div>
-                    <div className={left < 0 ? "text-red-600" : "text-emerald-700"}>
-                      Capacity (month guide): {Math.round(left)}h remaining of {Math.round(cap)}h
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="space-y-3">
-              {phases.map((ph) => (
-                <div
-                  key={forecastPhaseKey(ph)}
-                  className="rounded-md border border-dashed border-border p-3"
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const rid = e.dataTransfer.getData("text/resource-id") || dragResource;
-                    if (!rid || !canEdit) return;
-                    const days = Number(
-                      window.prompt("Effort days for this resource on this phase?", "5") || "0",
-                    );
-                    if (!(days > 0)) return;
-                    addResourceToPhase.mutate({ phase: ph, resourceId: rid, days });
-                  }}
-                >
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-sm font-semibold">{ph.gate_name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {ph.start_date || "—"} → {ph.end_date || "—"} · {money(laborForPhase(ph))}
-                    </div>
-                  </div>
-                  {canEdit && (
-                    <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
-                      <select
-                        className="st-input !py-0.5"
-                        defaultValue=""
-                        onChange={(e) => {
-                          const rid = e.target.value;
-                          e.target.value = "";
-                          if (!rid) return;
-                          const days = Number(
-                            window.prompt("Effort days for this resource on this phase?", "5") ||
-                              "0",
-                          );
-                          if (!(days > 0)) return;
-                          addResourceToPhase.mutate({ phase: ph, resourceId: rid, days });
-                        }}
-                      >
-                        <option value="">Assign resource…</option>
-                        {(resources as any[]).map((r) => (
-                          <option key={r.id} value={r.id}>
-                            {r.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                  <div className="space-y-1">
-                    {rowsForPhase(ph).map((r) => {
-                      const res = (resources as any[]).find((x) => x.id === r.resource_id);
-                      return (
-                        <div key={r.id} className="flex flex-wrap items-center gap-2 text-xs">
-                          <span className="min-w-[8rem] font-medium">{res?.name || "Resource"}</span>
-                          <input
-                            type="number"
-                            min={0}
-                            step={0.5}
-                            className="st-input !w-20 !py-0.5"
-                            defaultValue={r.effort_days}
-                            disabled={!canEdit}
-                            onBlur={(e) =>
-                              patchEffort.mutate({
-                                id: r.id,
-                                days: Number(e.target.value) || 0,
-                                rate: Number(r.daily_rate) || 0,
-                              })
-                            }
-                          />
-                          <span>days · {money(r.labor_cost)}</span>
-                          {canEdit && (
-                            <button
-                              type="button"
-                              className="text-red-600"
-                              onClick={() => removePhaseRes.mutate(r.id)}
-                            >
-                              Remove
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                    {rowsForPhase(ph).length === 0 && (
-                      <p className="text-xs text-muted-foreground">No resources on this phase yet.</p>
-                    )}
-                  </div>
-                </div>
-              ))}
             </div>
           </SectionFrame>
 
