@@ -11,6 +11,7 @@ import {
   RISKS_SELECT,
   ISSUES_SELECT,
   MILESTONES_SELECT,
+  STAGE_GATE_DEFINITIONS_SELECT,
   selectWithRaidCodeFallback,
 } from "@/lib/query-selects";
 import { fetchStageGates } from "@/lib/stage-gates";
@@ -55,6 +56,7 @@ import {
   groupForecastRowsByStream,
   loadForecastPhases,
   parseForecastPhaseNotes,
+  phasesForDeliveryMethod,
   withResolvedForecastStreamNames,
   type ForecastPhaseRow,
 } from "@/lib/project-forecast";
@@ -80,7 +82,14 @@ import {
   formatProjectStreamRef,
   formatStreamCode,
   formatStreamLabel,
+  gatesForTimelineLane,
 } from "@/lib/project-streams";
+import {
+  deliveryMethodsQueryKey,
+  fetchDeliveryMethods,
+  findDeliveryMethod,
+  methodUsesStageGates,
+} from "@/lib/delivery-methods";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
@@ -114,6 +123,32 @@ const PHASES = [
   "Deployment",
   "Handover",
 ];
+
+function uniqueGateNames(gates: { gate_name?: string | null }[]) {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const g of gates) {
+    const n = String(g.gate_name || "").trim();
+    const key = n.toLowerCase();
+    if (!n || seen.has(key)) continue;
+    seen.add(key);
+    names.push(n);
+  }
+  return names;
+}
+
+/** Method template first, then any extra live gate names the timeline would still show. */
+function mergePhaseNames(template: string[], actual: { gate_name?: string | null }[]) {
+  const names = [...template];
+  const seen = new Set(template.map((n) => n.trim().toLowerCase()).filter(Boolean));
+  for (const n of uniqueGateNames(actual)) {
+    const key = n.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(n);
+  }
+  return names.length ? names : [...PHASES];
+}
 
 const STATUS_STYLE: Record<string, { dot: string; text: string; ring: string }> = {
   Approved: { dot: "bg-emerald-500", text: "text-emerald-700", ring: "ring-emerald-200" },
@@ -381,6 +416,44 @@ function InfographicPage() {
     enabled: !!project?.id,
   });
   const hasStreams = (projectStreams as any[]).length > 0;
+
+  const orgId = organization?.id;
+  const { data: deliveryMethods = [] } = useQuery({
+    queryKey: deliveryMethodsQueryKey(orgId),
+    queryFn: () => fetchDeliveryMethods(orgId!, { activeOnly: true }),
+    enabled: !!orgId,
+  });
+  const { data: gateDefs = [] } = useQuery({
+    queryKey: ["stage_gate_definitions", orgId],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("stage_gate_definitions")
+          .select(STAGE_GATE_DEFINITIONS_SELECT as "*")
+          .eq("org_id", orgId!)
+          .eq("is_active", true)
+          .order("sort_order", { ascending: true })
+      ).data ?? [],
+    enabled: !!orgId,
+  });
+  const deliveryMethod = useMemo(
+    () =>
+      project
+        ? (project.delivery_method_id &&
+            deliveryMethods.find((m) => m.id === project.delivery_method_id)) ||
+          findDeliveryMethod(deliveryMethods, project.delivery_method)
+        : undefined,
+    [project, deliveryMethods],
+  );
+  const orgPhases = useMemo(() => {
+    if (!project) return [...PHASES];
+    const template = methodUsesStageGates(deliveryMethod, project.delivery_method)
+      ? phasesForDeliveryMethod(deliveryMethods, gateDefs as any[], project)
+      : [];
+    if (template.length) return template;
+    const live = uniqueGateNames(gates as any[]);
+    return live.length ? live : [...PHASES];
+  }, [project, deliveryMethod, deliveryMethods, gateDefs, gates]);
 
   const { data: projectAllocations = [] } = useQuery({
     queryKey: ["resource_allocations", project?.id],
@@ -843,10 +916,16 @@ function InfographicPage() {
       return sortedStreams
         .map((stream) => {
           const streamGates = sortGatesByOrgOrder(
-            (gates as any[]).filter(
-              (g) => g.stream_id === stream.id || (!g.stream_id && stream.is_default),
+            gatesForTimelineLane(
+              {
+                project_id: project.id,
+                stream_id: stream.id,
+                is_default: stream.is_default,
+                is_stream_lane: true,
+              },
+              gates as any[],
             ),
-            PHASES,
+            orgPhases,
           );
           const rows = streamGates.map((g) => mapGate(g, seq++));
           return {
@@ -863,7 +942,7 @@ function InfographicPage() {
         .filter((s) => s.rows.length > 0);
     }
 
-    const projectGates = sortGatesByOrgOrder(gates as any[], PHASES);
+    const projectGates = sortGatesByOrgOrder(gates as any[], orgPhases);
     return [
       {
         key: "project",
@@ -876,7 +955,7 @@ function InfographicPage() {
         rows: projectGates.map((g, i) => mapGate(g, i)),
       },
     ].filter((s) => s.rows.length > 0);
-  }, [project, projectStreams, gates]);
+  }, [project, projectStreams, gates, orgPhases]);
 
   /** Monthly cashflow keyed by stream_id, else project_id (null-stream / no-stream projects). */
   const monthlyByLane = useMemo(() => {
@@ -940,7 +1019,7 @@ function InfographicPage() {
       streamId?: string | null,
       gate?: { planned_date?: string | null; actual_date?: string | null; status?: string | null },
     ) => {
-      const spend = phaseSpendByStage(pgates, rows, PHASES).get(name);
+      const spend = phaseSpendByStage(pgates, rows, orgPhases).get(name);
       const fromEstimate =
         forecastPlannedByPhase.get(
           forecastPhaseKey({ stream_id: streamId || null, gate_name: name }),
@@ -962,13 +1041,19 @@ function InfographicPage() {
     const streamGateSections =
       sortedStreams.length > 0
         ? sortedStreams.map((stream) => {
-            const streamGates = (gates as any[]).filter(
-              (g) => g.stream_id === stream.id || (!g.stream_id && stream.is_default),
+            const streamGates = gatesForTimelineLane(
+              {
+                project_id: project.id,
+                stream_id: stream.id,
+                is_default: stream.is_default,
+                is_stream_lane: true,
+              },
+              gates as any[],
             );
             const rows = monthlyByLane.get(stream.id) || monthlyByLane.get(project.id) || [];
             const byName = new Map<string, any>();
             streamGates.forEach((g) => byName.set((g.gate_name || "").trim(), g));
-            const cards = PHASES.map((name) => {
+            const cards = mergePhaseNames(orgPhases, streamGates).map((name) => {
               const g = byName.get(name);
               const $ = spendFor(streamGates, rows, name, stream.id, g);
               return {
@@ -990,7 +1075,7 @@ function InfographicPage() {
           })
         : [];
 
-    const phaseCards = PHASES.map((name) => {
+    const phaseCards = orgPhases.map((name) => {
       const matching = (gates as any[]).filter((g) => (g.gate_name || "").trim() === name);
       const g = matching.find((x) => !isDoneGateStatus(x.status)) || matching[0];
       let budget = 0;
@@ -1036,7 +1121,7 @@ function InfographicPage() {
           ];
 
     return { phaseCards, streamGateSections: sections };
-  }, [project, sortedStreams, gates, monthlyByLane, monthly, forecastPlannedByPhase]);
+  }, [project, sortedStreams, gates, monthlyByLane, monthly, forecastPlannedByPhase, orgPhases]);
 
   const gateDetailRows = useMemo(() => {
     return phaseSpendSections.streamGateSections.flatMap((section) =>
@@ -1520,6 +1605,10 @@ function InfographicPage() {
         {/* Stage Gate cards — one lane per stream */}
         <SectionFrame>
           <SectionTitle>Stage Gates{hasStreams ? " by Stream" : ""}</SectionTitle>
+          <p className="mb-3 text-xs text-muted-foreground">
+            {deliveryMethod?.name || project.delivery_method || "Delivery method"} stage-gate
+            template, same sequence as the timeline.
+          </p>
           <div className="space-y-5">
             {streamGateSections.map((section) => (
               <div key={section.stream?.id || "project"}>
@@ -1533,7 +1622,7 @@ function InfographicPage() {
                     </span>
                   </div>
                 ) : null}
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))]">
                   {section.cards.map((p) => {
                     const s = STATUS_STYLE[p.status] || STATUS_STYLE["Not Started"];
                     const done = isDoneGateStatus(p.status);
