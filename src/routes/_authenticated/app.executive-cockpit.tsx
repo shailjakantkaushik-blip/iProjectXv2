@@ -1025,7 +1025,12 @@ function ExecutiveCockpit() {
                   <th className="px-3 py-2 text-right">Progress</th>
                   <th className="px-3 py-2 text-right">Health</th>
                   <th className="px-3 py-2 text-left">RAG</th>
-                  <th className="px-3 py-2 text-left">30d</th>
+                  <th
+                    className="px-3 py-2 text-left"
+                    title="Health Engine 30-day outlook (forecast score and likely RAG)"
+                  >
+                    30 days prediction
+                  </th>
                   <th className="px-3 py-2 text-right">Budget</th>
                   <th className="px-3 py-2 text-right">CapEx</th>
                   <th className="px-3 py-2 text-right">OpEx</th>

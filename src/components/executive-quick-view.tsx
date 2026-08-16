@@ -566,7 +566,7 @@ export function ExecutiveQuickView({
                     className="text-left"
                     title="Health Engine 30-day outlook (forecast score and likely RAG)"
                   >
-                    30d
+                    30 days prediction
                   </th>
                   <th className="text-right">Budget</th>
                   <th className="text-right">CapEx</th>
@@ -650,8 +650,8 @@ export function ExecutiveQuickView({
         )}
         {briefing.pack.length > 0 ? (
           <p className="mt-2 text-[11px] text-muted-foreground">
-            Current is today&apos;s Health Engine score and steering RAG. 30d is the 30-day outlook
-            (forecast score and likely RAG). Forecast over envelope is shown in red.
+            Current is today&apos;s Health Engine score and steering RAG. 30 days prediction is the
+            30-day outlook (forecast score and likely RAG). Forecast over envelope is shown in red.
           </p>
         ) : null}
       </SectionFrame>
