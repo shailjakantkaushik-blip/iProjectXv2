@@ -640,12 +640,6 @@ function ExecutiveCockpit() {
       .reduce((s, m) => s + num(m.capex_planned) + num(m.opex_planned), 0);
   }, [monthly, filtersOn, filteredIds]);
 
-  const planTotal = useMemo(() => {
-    return (monthly as MonthlyFinanceRow[])
-      .filter((m) => inScope((m as any).project_id))
-      .reduce((s, m) => s + num(m.capex_planned) + num(m.opex_planned), 0);
-  }, [monthly, filtersOn, filteredIds]);
-
   const projectsWithFY =
     new Set(fyAllocScoped.map((a: any) => a.project_id).filter(Boolean)).size ||
     projects.filter((p: any) => p.start_date).length;
