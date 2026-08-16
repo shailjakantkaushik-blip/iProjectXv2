@@ -9,6 +9,7 @@ import {
   findDeliveryMethod,
   type DeliveryMethodRow,
 } from "@/lib/delivery-methods";
+import { HOURS_PER_DAY } from "@/lib/ops-enhancements";
 import { syncScheduleDates } from "@/lib/project-dates";
 
 export const FORECAST_COST_CATEGORIES = [
@@ -180,6 +181,26 @@ export function daysToMonths(days: number): number {
 export function monthsToDays(months: number): number {
   const n = Number(months) || 0;
   return Math.max(0, Math.round(n * 30));
+}
+
+export type ForecastEffortUnit = "hours" | "days" | "months";
+
+export function effortAmountToDays(amount: number, unit: ForecastEffortUnit): number {
+  const n = Number(amount) || 0;
+  if (unit === "hours") return Math.round((n / HOURS_PER_DAY) * 100) / 100;
+  if (unit === "months") return monthsToDays(n);
+  return n;
+}
+
+export function daysToEffortAmount(days: number, unit: ForecastEffortUnit): number {
+  const n = Number(days) || 0;
+  if (unit === "hours") return Math.round(n * HOURS_PER_DAY * 10) / 10;
+  if (unit === "months") return daysToMonths(n);
+  return n;
+}
+
+export function effortDaysToHours(days: number): number {
+  return Math.round((Number(days) || 0) * HOURS_PER_DAY * 10) / 10;
 }
 
 export function phasesForDeliveryMethod(
