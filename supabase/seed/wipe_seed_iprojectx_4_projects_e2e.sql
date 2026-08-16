@@ -292,7 +292,7 @@ DECLARE
     'Sponsor override: integration risk is higher than register Green would imply',
     NULL,
     'Sponsor override: residual cyber exposure until vendor clearance'
-  ];
+  ]::text[];
   gate_names text[] := ARRAY[
     'Discovery','Business Case / Seed Funding','Design','Business Case / Full Funding',
     'Build','Testing','Deployment','Handover','Benefit Realisation'
@@ -1169,14 +1169,14 @@ BEGIN
           org_id, forecast_id, project_id, stream_id, resource_id, effort_days, daily_rate, labor_cost
         )
         SELECT
-          r_org.id, f_id, p_id, sid,
+          r_org.id, f_id, p_id, ph.stream_id,
           CASE WHEN coalesce(array_length(res_ids, 1), 0) > 0
-            THEN res_ids[1 + ((i + CASE WHEN sid = core_id THEN 0 ELSE 1 END - 1) % array_length(res_ids, 1))]
+            THEN res_ids[1 + ((i + CASE WHEN ph.stream_id = core_id THEN 0 ELSE 1 END - 1) % array_length(res_ids, 1))]
             ELSE NULL END,
-          CASE WHEN sid = core_id THEN 40 + (i * 5) ELSE 22 + i END,
+          CASE WHEN ph.stream_id = core_id THEN 40 + (i * 5) ELSE 22 + i END,
           daily_rate,
-          round((CASE WHEN sid = core_id THEN 40 + (i * 5) ELSE 22 + i END) * daily_rate, 2)
-        FROM unnest(stream_ids) AS sid;
+          round((CASE WHEN ph.stream_id = core_id THEN 40 + (i * 5) ELSE 22 + i END) * daily_rate, 2)
+        FROM unnest(stream_ids) AS ph(stream_id);
 
         INSERT INTO public.project_forecast_other_costs (
           org_id, forecast_id, project_id, heading, amount, sort_order
