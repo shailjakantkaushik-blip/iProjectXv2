@@ -686,16 +686,17 @@ function ResourcesPage() {
     <PageExport name="Resource_Capacity" title="Resource Capacity & Skill Intelligence">
       <PageHeading icon="👥">Resource Capacity & Skill Intelligence</PageHeading>
       <p className="mb-3 max-w-3xl text-sm text-muted-foreground">
-        <strong>Plan hours</strong> are work from Project Estimation Planning (applied per stream
-        and phase into resource allocations). <strong>Actual hours</strong> are approved timesheets.
-        Allocation % is derived from those hours vs monthly FTE capacity — it is not the plan
-        itself. Work-item estimates are Demand, not Plan.
+        <strong>Alloc h</strong> (Plan) come from Project Estimation Planning, applied per stream
+        and phase. <strong>Demand h</strong> come from work-item resource effort.{" "}
+        <strong>Actual h</strong> come from approved timesheets. Allocation % is only load vs
+        monthly FTE capacity — it is not Plan. The first tab compares all three layers; Utilisation
+        compares Alloc vs Actual for capacity.
       </p>
       <div className="mb-3 flex flex-wrap gap-2">
         {(
           [
-            ["pva", "Plan vs actual (timesheets)"],
-            ["utilisation", "Utilisation (plan + actual)"],
+            ["pva", "Alloc vs demand vs actual"],
+            ["utilisation", "Utilisation (alloc + actual)"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -848,7 +849,7 @@ function ResourcesPage() {
 
           <SectionFrame>
             <ExpandableChart
-              title="Resource utilisation — plan hours vs actual hours"
+              title="Resource utilisation — alloc hours vs actual hours"
               heightClass="h-80"
               legend={
                 <div className="mt-1 flex flex-wrap justify-end gap-3 text-xs">
@@ -857,7 +858,7 @@ function ResourcesPage() {
                       className="inline-block h-3 w-3 rounded-sm"
                       style={{ background: PLAN_BAR }}
                     />
-                    Plan (estimation hours)
+                    Alloc hours
                   </span>
                   <span className="flex items-center gap-1">
                     <span
@@ -893,7 +894,7 @@ function ResourcesPage() {
                 />
                 <Tooltip formatter={(v: number) => `${fmtHours(v)} h`} />
                 <Legend verticalAlign="top" wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="planHours" name="Plan h" fill={PLAN_BAR} radius={[3, 3, 0, 0]}>
+                <Bar dataKey="planHours" name="Alloc h" fill={PLAN_BAR} radius={[3, 3, 0, 0]}>
                   <LabelList
                     dataKey="planHours"
                     position="top"
@@ -914,11 +915,13 @@ function ResourcesPage() {
           </SectionFrame>
 
           <SectionFrame>
-            <SectionTitle>Month-wise heatmap (Resource × Month) — plan / actual hours</SectionTitle>
+            <SectionTitle>
+              Month-wise heatmap (Resource × Month) — alloc / actual hours
+            </SectionTitle>
             <p className="mb-2 text-[12px] text-muted-foreground">
-              Each cell shows <span style={{ color: PLAN_BAR }}>plan h</span> /{" "}
-              <span style={{ color: ACTUAL_BAR }}>actual h</span>. Plan hours come from estimation
-              planning (stream + phase allocations). Colour is load vs monthly FTE capacity.
+              Each cell shows <span style={{ color: PLAN_BAR }}>alloc h</span> /{" "}
+              <span style={{ color: ACTUAL_BAR }}>actual h</span>. Alloc hours come from estimation
+              planning (stream + phase). Colour is load vs monthly FTE capacity.
             </p>
             <div className="overflow-auto max-h-[420px]">
               <table className="border-collapse text-xs w-max">
@@ -972,7 +975,7 @@ function ResourcesPage() {
                   className="inline-block h-2.5 w-2.5 rounded-sm"
                   style={{ background: PLAN_BAR }}
                 />
-                Top = plan
+                Top = alloc
               </span>
               <span className="flex items-center gap-1">
                 <span
@@ -996,7 +999,7 @@ function ResourcesPage() {
           </SectionFrame>
 
           <SectionFrame>
-            <ExpandableChart title="Monthly plan vs actual hours" heightClass="h-80">
+            <ExpandableChart title="Monthly alloc vs actual hours" heightClass="h-80">
               <BarChart
                 data={monthlyPlanActual}
                 margin={{ top: 10, right: 20, left: 20, bottom: 20 }}
@@ -1009,7 +1012,7 @@ function ResourcesPage() {
                 />
                 <Tooltip formatter={(v: number) => `${fmtHours(v)} h`} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="planHours" name="Plan hours" fill={PLAN_BAR} radius={[3, 3, 0, 0]} />
+                <Bar dataKey="planHours" name="Alloc hours" fill={PLAN_BAR} radius={[3, 3, 0, 0]} />
                 <Bar
                   dataKey="actualHours"
                   name="Actual hours"
@@ -1021,10 +1024,11 @@ function ResourcesPage() {
           </SectionFrame>
 
           <SectionFrame>
-            <SectionTitle>Plan vs actual by stream and phase</SectionTitle>
+            <SectionTitle>Alloc vs actual by stream and phase</SectionTitle>
             <p className="mb-2 text-[12px] text-muted-foreground">
-              Plan hours are estimation-planning effort spread across each stream and stage-gate
-              (phase). Actual hours are approved timesheets booked to the same stream and phase.
+              Alloc hours are estimation-planning effort per stream and stage-gate (phase). Actual
+              hours are approved timesheets on the same stream and phase. Work-item Demand hours are
+              on the Alloc vs demand vs actual tab — they are not Plan.
             </p>
             <div className="overflow-auto max-h-[360px]">
               <table className="w-full min-w-[32rem] border-collapse text-[12.5px]">
@@ -1034,7 +1038,7 @@ function ResourcesPage() {
                       Project · stream · phase
                     </th>
                     <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">
-                      Plan h
+                      Alloc h
                     </th>
                     <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">
                       Actual h
@@ -1073,7 +1077,7 @@ function ResourcesPage() {
           </SectionFrame>
 
           <SectionFrame>
-            <ExpandableChart title="Hours by skill — plan vs actual" heightClass="h-72">
+            <ExpandableChart title="Hours by skill — alloc vs actual" heightClass="h-72">
               <BarChart data={bySkill} margin={{ top: 28, right: 12, left: 8, bottom: 48 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
                 <XAxis
@@ -1091,7 +1095,7 @@ function ResourcesPage() {
                 />
                 <Tooltip formatter={(v: number) => `${fmtHours(v)} h`} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="planHours" name="Plan h" fill={PLAN_BAR} radius={[3, 3, 0, 0]} />
+                <Bar dataKey="planHours" name="Alloc h" fill={PLAN_BAR} radius={[3, 3, 0, 0]} />
                 <Bar
                   dataKey="actualHours"
                   name="Actual h"
@@ -1103,11 +1107,12 @@ function ResourcesPage() {
           </SectionFrame>
 
           <SectionFrame>
-            <SectionTitle>Resource × Project — plan / actual hours</SectionTitle>
+            <SectionTitle>Resource × Project — alloc / actual hours</SectionTitle>
             <p className="mb-2 text-[12px] text-muted-foreground">
-              Cells show plan h / actual h. Plan is estimation-planning hours on the project. Actual
-              is approved timesheets. Non-billable column appears when unallocated timesheet hours
-              exist. Colour is average monthly load vs FTE capacity.
+              Cells show alloc h / actual h. Alloc is estimation-planning hours on the project.
+              Actual is approved timesheets. Demand (work items) is on the Alloc vs demand vs actual
+              tab. Non-billable column appears when unallocated timesheet hours exist. Colour is
+              average monthly load vs FTE capacity.
             </p>
             <div className="overflow-auto max-h-[480px]">
               <table className="border-collapse text-xs w-max">
@@ -1167,11 +1172,11 @@ function ResourcesPage() {
           <SectionFrame>
             <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
               <div>
-                <SectionTitle>Utilisation — plan vs timesheet actuals</SectionTitle>
+                <SectionTitle>Utilisation — alloc vs timesheet actuals</SectionTitle>
                 <p className="text-[12px] text-muted-foreground">
-                  Plan h from Project Estimation Planning (allocated hours per stream and phase).
-                  Plan % is those hours vs monthly FTE capacity. Actual / billable / non-billable
-                  from approved timesheets.
+                  Alloc h from Project Estimation Planning (per stream and phase). Alloc % is those
+                  hours vs monthly FTE capacity. Actual / billable / non-billable from approved
+                  timesheets. Work-item Demand is not shown here.
                 </p>
               </div>
               <div className="flex gap-2">
@@ -1211,13 +1216,13 @@ function ResourcesPage() {
                   <tr className="border-b bg-[#f1f3f6]">
                     <th className="px-2.5 py-2 text-left font-semibold">Resource</th>
                     <th className="w-20 px-2.5 py-2 text-right font-semibold tabular-nums">
-                      Plan %
+                      Alloc %
                     </th>
                     <th className="w-20 px-2.5 py-2 text-right font-semibold tabular-nums">
                       Actual %
                     </th>
                     <th className="w-20 px-2.5 py-2 text-right font-semibold tabular-nums">
-                      Plan h
+                      Alloc h
                     </th>
                     <th className="w-20 px-2.5 py-2 text-right font-semibold tabular-nums">
                       Actual h
@@ -1229,7 +1234,7 @@ function ResourcesPage() {
                       Non-billable
                     </th>
                     <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">
-                      Util vs plan
+                      Util vs alloc
                     </th>
                     <th className="w-28 px-2.5 py-2 text-left font-semibold">Status</th>
                   </tr>
@@ -1269,9 +1274,9 @@ function ResourcesPage() {
           </SectionFrame>
 
           <SectionFrame>
-            <SectionTitle>Monthly plan / actual matrix</SectionTitle>
+            <SectionTitle>Monthly alloc / actual matrix</SectionTitle>
             <p className="mb-2 text-[12px] text-muted-foreground">
-              Same as the heatmap — each cell is plan h / actual h.
+              Same as the heatmap — each cell is alloc h / actual h.
             </p>
             <div className="overflow-auto max-h-[420px]">
               <table className="border-collapse text-[12.5px] w-max">

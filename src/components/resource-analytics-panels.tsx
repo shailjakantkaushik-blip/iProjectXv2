@@ -549,15 +549,15 @@ export function ResourceAnalyticsPanels({
         <div>
           <SectionTitle>
             {mode === "cost"
-              ? "FTE cost: allocation, work-item demand & timesheets"
-              : "Estimation plan vs timesheet actuals"}
+              ? "FTE cost: alloc, work-item demand & timesheets"
+              : "Alloc vs demand vs actual"}
           </SectionTitle>
           <p className="text-xs text-muted-foreground">
-            <strong>Plan h</strong> are hours of work from Project Estimation Planning, applied per
-            stream and phase into resource allocations. <strong>Actual h</strong> are approved
-            timesheets. Demand h / Demand FTE $ are work-item estimates (Demand layer — not Plan).
-            Filter by period, project, stream, stage gate, and resource; group by resource, project,
-            stream, stage gate, program, portfolio, or month.
+            Three separate layers — do not mix them. <strong>Alloc h</strong> is Plan: hours of work
+            from Project Estimation Planning, applied per stream and phase.{" "}
+            <strong>Demand h</strong> is work-item resource effort (estimate hours × assignees).{" "}
+            <strong>Actual h</strong> is approved timesheets. Gap h = Alloc − Demand. Var h = Alloc
+            − Actual. Demand never writes Plan columns.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -696,8 +696,8 @@ export function ResourceAnalyticsPanels({
           }`}
         >
           <KpiCard label="Period" value={periodLabel} accent="#8b5cf6" />
-          <KpiCard label="Plan h" value={totAlloc.toFixed(1)} accent="#3b82f6" />
-          <KpiCard label="WI demand h" value={totDemand.toFixed(1)} accent="#6366f1" />
+          <KpiCard label="Alloc h" value={totAlloc.toFixed(1)} accent="#3b82f6" />
+          <KpiCard label="Demand h" value={totDemand.toFixed(1)} accent="#6366f1" />
           <KpiCard label="Actual h" value={totAct.toFixed(1)} accent="#0ea5e9" />
           <KpiCard label="Billable h" value={totBillable.toFixed(1)} accent="#059669" />
           <KpiCard label="Non-billable h" value={totNonBillable.toFixed(1)} accent="#a855f7" />
@@ -725,7 +725,7 @@ export function ResourceAnalyticsPanels({
           <thead className="sticky top-0 z-[1] bg-[#f1f3f6]">
             <tr>
               <th className="min-w-[12rem]">Dimension</th>
-              <th className="st-num whitespace-nowrap">Plan h</th>
+              <th className="st-num whitespace-nowrap">Alloc h</th>
               <th className="st-num whitespace-nowrap">Demand h</th>
               <th className="st-num whitespace-nowrap">Gap h</th>
               <th className="st-num whitespace-nowrap">Actual h</th>
