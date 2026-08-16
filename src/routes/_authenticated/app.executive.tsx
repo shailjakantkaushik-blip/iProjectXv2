@@ -10,7 +10,7 @@ import {
 } from "recharts";
 import { SectionFrame, SectionTitle, RagChip } from "@/components/streamlit";
 import { ProjectMeetingSummary } from "@/components/project-meeting-summary";
-import { displayRag } from "@/lib/ops-enhancements";
+import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
 import { ChartLegendList, legendItemsFromCounts } from "@/components/chart-legend-list";
 import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
@@ -300,7 +300,7 @@ function ExecutiveDashboard() {
     ).length;
     const ragScore = filtered.length
       ? Math.round(
-          (filtered.filter((p: any) => p.rag === "Green").length / filtered.length) * 100,
+          (filtered.filter((p: any) => displayRag(p) === "Green").length / filtered.length) * 100,
         )
       : 0;
 
@@ -374,9 +374,9 @@ function ExecutiveDashboard() {
         value: `${ragScore}%`,
         headline: `${ragScore}% of filtered projects are Green`,
         bullets: [
-          `Green ${filtered.filter((p: any) => p.rag === "Green").length}`,
-          `Amber ${filtered.filter((p: any) => p.rag === "Amber").length}`,
-          `Red ${filtered.filter((p: any) => p.rag === "Red").length}`,
+          `Green ${filtered.filter((p: any) => displayRag(p) === "Green").length}`,
+          `Amber ${filtered.filter((p: any) => displayRag(p) === "Amber").length}`,
+          `Red ${filtered.filter((p: any) => displayRag(p) === "Red").length}`,
         ],
       }),
     };
@@ -429,7 +429,7 @@ function ExecutiveDashboard() {
       ragData: ["Green", "Amber", "Red"]
         .map((r) => ({
           name: r,
-          value: filtered.filter((p: any) => p.rag === r).length,
+          value: filtered.filter((p: any) => displayRag(p) === r).length,
         }))
         .filter((d) => d.value > 0),
       capexBars: [
@@ -554,7 +554,7 @@ function ExecutiveDashboard() {
       switch (timelineView) {
         case "Portfolio": return p.portfolio || "Unassigned";
         case "Program":   return p.program || "Unassigned";
-        case "Health":    return p.rag || "Unrated";
+        case "Health":    return displayRag(p) || "Unrated";
         case "Priority":  return p.priority || "Unset";
         case "Theme":     return p.theme || "Unassigned";
         case "Sponsor":   return p.sponsor || "Unassigned";
@@ -630,12 +630,12 @@ function ExecutiveDashboard() {
             _kanbanKey: `${p.id}:${s.id}`,
             _streamLabel: formatStreamLabel(s),
             _streamRef: formatProjectStreamRef(p, s),
-            _streamRag: s.rag || p.rag,
+            _streamRag: s.rag || displayRag(p),
           });
         }
       } else {
         const stage = resolveStageShared(p, gatesByProject.get(p.id) || [], orgPhases);
-        pushItem(stage, { ...p, _kanbanKey: p.id, _streamLabel: null, _streamRef: null, _streamRag: p.rag });
+        pushItem(stage, { ...p, _kanbanKey: p.id, _streamLabel: null, _streamRef: null, _streamRag: displayRag(p) });
       }
     }
 
@@ -702,7 +702,8 @@ function ExecutiveDashboard() {
             sponsor: s.owner || p.sponsor,
             budget: Number(s.budget || 0),
             incurred: Number(s.capex_incurred || 0) + Number(s.opex_incurred || 0),
-            rag: s.rag || p.rag,
+            rag: s.rag || displayRag(p),
+            ragManual: !s.rag && isRagOverridden(p),
             phase: resolveStageShared(p, gs, orgPhases),
           });
         }
@@ -715,7 +716,8 @@ function ExecutiveDashboard() {
           sponsor: p.sponsor,
           budget: projectApprovedFunding(p),
           incurred: projectIncurred(p),
-          rag: p.rag,
+          rag: displayRag(p),
+          ragManual: isRagOverridden(p),
           phase: resolveStageShared(p, gatesByProject.get(p.id) || [], orgPhases),
         });
       }
@@ -1060,7 +1062,7 @@ function ExecutiveDashboard() {
                 >
                   {p.project_code} · {p.name}
                 </Link>
-                <RagChip rag={displayRag(p)} />
+                <RagChip rag={displayRag(p)} manual={isRagOverridden(p)} />
               </div>
               <ProjectMeetingSummary projectId={p.id} project={p} readOnly />
             </div>
@@ -1180,7 +1182,7 @@ function ExecutiveDashboard() {
                     <div className="px-0.5 py-2 text-[10px] text-muted-foreground">No active projects</div>
                   ) : (
                     col.items.map((p: any) => {
-                      const rag = (p._streamRag as string) || (p.rag as string) || "";
+                      const rag = (p._streamRag as string) || displayRag(p) || "";
                       const ragColor = RAG_COLORS[rag] || "var(--muted-foreground)";
                       return (
                         <Link
@@ -1263,7 +1265,7 @@ function ExecutiveDashboard() {
                     <td>{r.sponsor ?? "—"}</td>
                     <td>{money(r.budget)}</td>
                     <td>{money(r.incurred)}</td>
-                    <td><RagChip rag={r.rag} explain={explainRag({ rag: r.rag, source: "register" })} /></td>
+                    <td><RagChip rag={r.rag} manual={r.ragManual} explain={explainRag({ rag: r.rag, source: "register", overridden: r.ragManual })} /></td>
                     <td>{r.phase ?? "—"}</td>
                   </tr>
                 ))}
@@ -1481,7 +1483,7 @@ function GanttGroup({
               const widthPct = Math.max(0.6, endPct - startPct);
               const clippedLeft = rawStartPct < 0;
               const clippedRight = rawEndPct > 100;
-              const color = RAG_COLORS[p.rag as string] || "#64748b";
+              const color = RAG_COLORS[displayRag(p) as string] || "#64748b";
               const budget = Number(p.budget || 0);
               const incurred = projectIncurred(p);
               const pct = budget > 0 ? Math.min(100, Math.round((incurred / budget) * 100)) : 0;

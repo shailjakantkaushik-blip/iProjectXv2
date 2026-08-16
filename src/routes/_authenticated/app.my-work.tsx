@@ -12,8 +12,9 @@ import {
   RESOURCES_SELECT,
 } from "@/lib/query-selects";
 import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
+import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
 import { useAuth } from "@/lib/auth-context";
-import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
+import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
 import {
   canActOnDecision,
   decisionOutcome,
@@ -214,7 +215,7 @@ function MyWorkPage() {
       });
   }, [workItems, userId, assignedWorkItemIds]);
 
-  const atRisk = projects.filter((p: any) => p.rag === "Red" || p.rag === "Amber");
+  const atRisk = projects.filter((p: any) => displayRag(p) === "Red" || displayRag(p) === "Amber");
 
   const decide = useMutation({
     mutationFn: async ({ id, outcome }: { id: string; outcome: DecisionOutcome }) => {
@@ -345,15 +346,7 @@ function MyWorkPage() {
                     <div className="truncate text-sm font-semibold">{p.name}</div>
                     <div className="text-[11px] text-muted-foreground">{p.project_code}</div>
                   </div>
-                  <span
-                    className={`rounded px-2 py-0.5 text-[11px] font-semibold ${
-                      p.rag === "Red"
-                        ? "bg-rose-100 text-rose-800"
-                        : "bg-amber-100 text-amber-800"
-                    }`}
-                  >
-                    {p.rag}
-                  </span>
+                  <RagChip rag={displayRag(p)} manual={isRagOverridden(p)} />
                 </Link>
               ))}
             </div>

@@ -6,6 +6,7 @@ import { PROJECT_PORTFOLIO_SELECT, STAGE_GATE_DEFINITIONS_SELECT } from "@/lib/q
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
 import { explainRag } from "@/lib/explain-metric";
+import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
@@ -245,7 +246,15 @@ function RoadmapGovPage() {
                   <td>{p.current_phase || "—"}</td>
                   <td>{p.status}</td>
                   <td>
-                    <RagChip rag={p.rag} explain={explainRag({ rag: p.rag, source: "register" })} />
+                    <RagChip
+                      rag={displayRag(p)}
+                      manual={isRagOverridden(p)}
+                      explain={explainRag({
+                        rag: displayRag(p),
+                        source: "register",
+                        overridden: isRagOverridden(p),
+                      })}
+                    />
                   </td>
                   <td>{p.sponsor || "—"}</td>
                   <td>{p.target_go_live || "—"}</td>

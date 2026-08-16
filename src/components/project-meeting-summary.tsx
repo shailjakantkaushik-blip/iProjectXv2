@@ -4,8 +4,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { RagChip, SectionFrame, SectionTitle } from "@/components/streamlit";
-import { displayRag } from "@/lib/ops-enhancements";
-import { PROJECT_OPS_EXTRAS } from "@/lib/project-selects";
+import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
 import { Button } from "@/components/ui/button";
 
 type Props = {
@@ -32,7 +31,7 @@ export function ProjectMeetingSummary({ projectId, project, readOnly }: Props) {
     queryFn: async () => {
       const wide = await supabase
         .from("projects")
-        .select(`id,rag,${PROJECT_OPS_EXTRAS}` as "*")
+        .select("id,rag,rag_override,rag_override_reason,rag_override_owner" as "*")
         .eq("id", projectId)
         .maybeSingle();
       if (!wide.error) return wide.data as any;
@@ -173,7 +172,7 @@ export function ProjectMeetingSummary({ projectId, project, readOnly }: Props) {
         <SectionTitle>
           {readOnly ? project.name || "Project summary" : "Project Summary"}
         </SectionTitle>
-        <RagChip rag={rag} label={merged.rag_override ? `${rag} (override)` : rag || undefined} />
+        <RagChip rag={rag} manual={isRagOverridden({ rag_override: merged.rag_override })} />
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         <div className="rounded-lg border border-border bg-surface p-3">

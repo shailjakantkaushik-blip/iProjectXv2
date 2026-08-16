@@ -35,6 +35,7 @@ import { getPortfolioKpis, listPortfolioProjects } from "@/lib/portfolio.functio
 import { MAX_PAGE_SIZE } from "@/lib/portfolio-paging";
 import { FINANCIALS_MONTHLY_SELECT } from "@/lib/query-selects";
 import { explainPortfolioSnapshot, explainRag } from "@/lib/explain-metric";
+import { displayRag, effectiveRag, isRagOverridden } from "@/lib/ops-enhancements";
 import type { MonthlyFinanceRow } from "@/lib/finance-lifecycle";
 
 export const Route = createFileRoute("/_authenticated/app/executive-cockpit")({
@@ -251,9 +252,9 @@ function ExecutiveCockpit() {
     const fac = projects.reduce((s: number, p: any) => s + projectForecast(p), 0);
 
     const total = projects.length || 1;
-    const onTrack = projects.filter((p: any) => (p.rag || "").toLowerCase() === "green").length;
-    const atRisk = projects.filter((p: any) => (p.rag || "").toLowerCase() === "amber").length;
-    const delayed = projects.filter((p: any) => (p.rag || "").toLowerCase() === "red").length;
+    const onTrack = projects.filter((p: any) => (displayRag(p) || "").toLowerCase() === "green").length;
+    const atRisk = projects.filter((p: any) => (displayRag(p) || "").toLowerCase() === "amber").length;
+    const delayed = projects.filter((p: any) => (displayRag(p) || "").toLowerCase() === "red").length;
     const strategicPrograms = new Set(
       projects
         .filter((p: any) => {
@@ -309,9 +310,9 @@ function ExecutiveCockpit() {
         actual,
         remaining: Math.max(0, approved - actual),
         benefits: bf,
-        green: rows.filter((p: any) => (p.rag || "").toLowerCase() === "green").length,
-        amber: rows.filter((p: any) => (p.rag || "").toLowerCase() === "amber").length,
-        red: rows.filter((p: any) => (p.rag || "").toLowerCase() === "red").length,
+        green: rows.filter((p: any) => (displayRag(p) || "").toLowerCase() === "green").length,
+        amber: rows.filter((p: any) => (displayRag(p) || "").toLowerCase() === "amber").length,
+        red: rows.filter((p: any) => (displayRag(p) || "").toLowerCase() === "red").length,
       };
     });
     const segApproved = approvedFunding;
@@ -425,7 +426,7 @@ function ExecutiveCockpit() {
         const pm = p.pm_user_id ? profileById.get(p.pm_user_id) : null;
         const deliveryLead =
           (pm?.full_name || pm?.email || p.delivery_lead || p.pm_name || "").trim() || "—";
-        return { ...p, ...health, delivery_lead: deliveryLead };
+        return { ...p, ...health, delivery_lead: deliveryLead, shown_rag: effectiveRag(p, health.overall_rag) };
       });
   }, [projects, benefits, gatesByProject, profileById]);
 
@@ -598,7 +599,7 @@ function ExecutiveCockpit() {
                 <th className="px-3 py-2 text-left">Financial</th>
                 <th className="px-3 py-2 text-left">Delivery</th>
                 <th className="px-3 py-2 text-left">Benefit</th>
-                <th className="px-3 py-2 text-left">Calculated RAG</th>
+                <th className="px-3 py-2 text-left">RAG</th>
                 <th className="px-3 py-2 text-left">30d Forecast</th>
               </tr>
             </thead>
@@ -653,11 +654,14 @@ function ExecutiveCockpit() {
                   </td>
                   <td className="px-3 py-2">
                     <RagChip
-                      rag={p.overall_rag || p.rag}
-                      label={p.overall_rag || p.rag}
+                      rag={p.shown_rag || p.overall_rag || displayRag(p)}
+                      label={p.shown_rag || p.overall_rag || displayRag(p)}
+                      manual={isRagOverridden(p)}
                       explain={explainRag({
-                        rag: p.overall_rag || p.rag,
-                        engine: p.engine,
+                        rag: p.shown_rag || p.overall_rag || displayRag(p),
+                        engine: isRagOverridden(p) ? null : p.engine,
+                        source: isRagOverridden(p) ? "register" : undefined,
+                        overridden: isRagOverridden(p),
                         manualRag: p.rag,
                       })}
                     />

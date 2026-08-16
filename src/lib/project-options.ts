@@ -10,7 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { methodUsesSprints, methodUsesStageGates } from "@/lib/delivery-methods";
 
 export const PROJECT_OPTIONS_SELECT =
-  "id,name,project_code,program,portfolio,sponsor,sponsor_stakeholder_id,rag,status,delivery_method,updated_at" as const;
+  "id,name,project_code,program,portfolio,sponsor,sponsor_stakeholder_id,rag,rag_override,status,delivery_method,updated_at" as const;
 
 export type ProjectOptionLike = {
   project_code?: string | null;

@@ -556,6 +556,8 @@ export function explainRag(opts: {
   /** Optional 0–100 score used when the engine object is not passed (e.g. portfolio pulse). */
   score?: number | null;
   extraBullets?: string[];
+  /** Sponsor / meeting RAG override is driving this chip. */
+  overridden?: boolean;
 }): MetricExplanation {
   const engine = opts.engine ?? null;
   const dimKey = opts.dimension && opts.dimension !== "overall" ? opts.dimension : null;
@@ -592,7 +594,11 @@ export function explainRag(opts: {
         bullets.push(`30-day outlook: ${engine.predictive.warning}`);
       }
       const manual = String(opts.manualRag || "").trim();
-      if (manual && manual.toLowerCase() !== rag.toLowerCase()) {
+      if (opts.overridden) {
+        bullets.push(
+          "This colour is a manually updated RAG (sponsor / meeting override). It replaces calculated health on dashboards, Pulse, and Portfolio Health.",
+        );
+      } else if (manual && manual.toLowerCase() !== rag.toLowerCase()) {
         bullets.push(
           `Register (manual) RAG is ${manual}; this chip is the calculated Health Engine RAG.`,
         );
@@ -622,7 +628,9 @@ export function explainRag(opts: {
       title: "RAG status",
       bullets: [
         `${RAG_BAND_LOGIC}${scoreLabel}`,
-        "This chip is the project register field (PM/PMO entered), not the calculated Health Engine score.",
+        opts.overridden
+          ? "This chip is a manually updated RAG (sponsor / meeting override). It is the colour used on Pulse, Portfolio Health, and registers."
+          : "This chip is the project register field (PM/PMO entered), unless a sponsor override is set.",
         "Open the project infographic → Project Health Engine for weighted dimensions (schedule, financial, delivery, risk) and drivers.",
       ],
     },
@@ -647,6 +655,7 @@ export function explainRag(opts: {
       bullets: [
         `Portfolio health is ${rag}${scoreLabel} ${RAG_BAND_LOGIC}`,
         "Pulse averages Health Engine scores across in-scope projects (financial, delivery, resource, risk, benefits, dependencies).",
+        "When a project has a manually updated RAG, that colour replaces its calculated RAG in this roll-up (marked M).",
       ],
     },
     criticality: {

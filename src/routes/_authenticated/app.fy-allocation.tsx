@@ -4,6 +4,7 @@ import { useMemo, useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/project-selects";
+import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
 import { STAGE_GATE_DEFINITIONS_SELECT } from "@/lib/query-selects";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -716,7 +717,8 @@ function PortfolioViewTab({
           fAmt,
           portfolio: p?.portfolio || p?.portfolio_category || "",
           sponsor: p?.sponsor || "",
-          rag: p?.rag || "NA",
+          rag: displayRag(p) || "NA",
+          ragManual: isRagOverridden(p),
           project: p,
         };
       }),
@@ -1018,7 +1020,10 @@ function PortfolioViewTab({
                       <td className="text-right tabular-nums">{fmt$(r.fAmt)}</td>
                       <td>{r.portfolio || "—"}</td>
                       <td>{r.sponsor || "—"}</td>
-                      <td>{r.rag || "NA"}</td>
+                      <td>
+                        {r.rag || "NA"}
+                        {r.ragManual ? " M" : ""}
+                      </td>
                     </tr>
                   );
                 })
@@ -1058,7 +1063,7 @@ function RoadmapTab({
     return Array.from(set.entries())
       .map(([pid, fs]) => {
         const p: any = projectMap.get(pid);
-        return { id: pid, name: p?.name || pid, rag: p?.rag || "NA", fys: fs };
+        return { id: pid, name: p?.name || pid, rag: displayRag(p) || "NA", fys: fs };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [rowsF, projectMap]);

@@ -8,6 +8,7 @@ import { PROJECT_OPS_EXTRAS } from "@/lib/project-selects";
 import { useAuth } from "@/lib/auth-context";
 import { SectionFrame, SectionTitle, PageHeading, KpiCard, RagChip } from "@/components/streamlit";
 import { explainRag } from "@/lib/explain-metric";
+import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
 import { PageExport } from "@/components/page-export";
 import { PageLoading } from "@/components/page-loading";
 import { Button } from "@/components/ui/button";
@@ -126,9 +127,9 @@ function ProgramsPage() {
       cur.actual += inc;
       cur.fac += fc;
       cur.benefits += Number(p.benefits_realised || 0);
-      if (p.rag === "Green") cur.green++;
-      else if (p.rag === "Amber") cur.amber++;
-      else if (p.rag === "Red") cur.red++;
+      if (displayRag(p) === "Green") cur.green++;
+      else if (displayRag(p) === "Amber") cur.amber++;
+      else if (displayRag(p) === "Red") cur.red++;
       if (p.status === "In Progress") cur.active++;
       if (p.status === "Completed") cur.completed++;
       const s = projectScheduleStart(p);
@@ -572,10 +573,15 @@ function ProgramsPage() {
                         <td>{p.sponsor || "—"}</td>
                         <td>{p.status || "—"}</td>
                         <td>
-                          {p.rag ? (
+                          {displayRag(p) ? (
                             <RagChip
-                              rag={p.rag}
-                              explain={explainRag({ rag: p.rag, source: "register" })}
+                              rag={displayRag(p)}
+                              manual={isRagOverridden(p)}
+                              explain={explainRag({
+                                rag: displayRag(p),
+                                source: "register",
+                                overridden: isRagOverridden(p),
+                              })}
                             />
                           ) : (
                             "—"

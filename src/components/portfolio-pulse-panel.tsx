@@ -321,16 +321,18 @@ export function PortfolioPulsePanel({
               <RagChip
                 rag={pulse.rag}
                 label={pulse.rag}
+                manual={pulse.ragManual}
                 explain={explainRag({
                   rag: pulse.rag,
                   source: "pulse",
                   score: pulse.healthPct,
+                  overridden: pulse.ragManual,
                   extraBullets: pulse.areas
                     .map((a) => `${a.label} ${a.score}/100 (${a.status})`)
                     .concat(
-                      pulse.steeringRag !== pulse.rag
+                      pulse.ragManual
                         ? [
-                            `Steering RAG (register / override) is ${pulse.steeringRag}. Pulse is calculated health, not that colour.`,
+                            "M means a project RAG was updated manually. That colour is used here instead of calculated health for those projects.",
                           ]
                         : [],
                     ),
@@ -338,10 +340,9 @@ export function PortfolioPulsePanel({
               />
             </div>
             <p className="mt-2 text-center text-[11px] text-muted-foreground">{comparedLabel}</p>
-            {pulse.steeringRag !== pulse.rag ? (
+            {pulse.ragManual ? (
               <p className="mt-1 text-center text-[11px] text-muted-foreground">
-                Steering RAG is {pulse.steeringRag} (register / override). This pulse is calculated
-                health.
+                M = manually updated RAG. Portfolio Health uses that colour for those projects.
               </p>
             ) : null}
           </div>

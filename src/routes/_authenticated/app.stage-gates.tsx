@@ -13,6 +13,7 @@ import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/com
 import { explainRag } from "@/lib/explain-metric";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 import { GATE_STATUS_COLORS as STATUS_COLORS } from "@/lib/chart-theme";
+import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -315,7 +316,7 @@ function StageGatesPage() {
             current,
             next,
             phase,
-            rag: s.rag || p.rag,
+            rag: s.rag || displayRag(p),
           });
         }
       } else {
@@ -331,7 +332,7 @@ function StageGatesPage() {
           current,
           next,
           phase,
-          rag: p.rag,
+          rag: displayRag(p),
         });
       }
     }
@@ -554,7 +555,15 @@ function StageGatesPage() {
                       <td>{project.program || "—"}</td>
                       <td>{project.sponsor || "—"}</td>
                       <td>
-                        <RagChip rag={rag} explain={explainRag({ rag, source: "gate" })} />
+                        <RagChip
+                          rag={rag}
+                          manual={isRagOverridden(project) && rag === displayRag(project)}
+                          explain={explainRag({
+                            rag,
+                            source: "gate",
+                            overridden: isRagOverridden(project) && rag === displayRag(project),
+                          })}
+                        />
                       </td>
                       <td className="font-medium">{phase || "—"}</td>
                       <td>{current?.gate_name || "—"}</td>

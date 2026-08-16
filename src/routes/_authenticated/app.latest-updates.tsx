@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { Plus, Flag, MessageSquare } from "lucide-react";
 import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
+import { displayRag } from "@/lib/ops-enhancements";
 
 export const Route = createFileRoute("/_authenticated/app/latest-updates")({
   component: LatestUpdatesPage,
@@ -135,7 +136,7 @@ function LatestUpdatesPage() {
         <KpiCard label="Activity (7d)" value={thisWeek.length} accent="var(--st-accent)" />
         <KpiCard label="Status Updates" value={updates.length} />
         <KpiCard label="Milestone Events" value={milestones.length} />
-        <KpiCard label="At Risk Projects" value={(projects as any[]).filter((p) => p.rag === "Red" || p.rag === "Amber").length} accent="var(--st-warning)" />
+        <KpiCard label="At Risk Projects" value={(projects as any[]).filter((p) => displayRag(p) === "Red" || displayRag(p) === "Amber").length} accent="var(--st-warning)" />
       </div>
 
       <SectionFrame>

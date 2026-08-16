@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Plus, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
-import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
+import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,7 @@ import {
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
+import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
 
 export const Route = createFileRoute("/_authenticated/app/scenarios")({
   component: ScenariosPage,
@@ -67,7 +68,7 @@ function ScenariosPage() {
       (
         await supabase
           .from("projects")
-          .select("id,name,project_code,budget,rag,status,priority")
+          .select("id,name,project_code,budget,rag,rag_override,status,priority")
           .eq("org_id", orgId!)
           .order("name")
       ).data ?? [],
@@ -131,7 +132,7 @@ function ScenariosPage() {
       {
         key: "rag",
         label: "RAG",
-        getValue: (r) => r.project.rag || "",
+        getValue: (r) => displayRag(r.project) || "",
       },
       {
         key: "baseline",
@@ -424,7 +425,13 @@ function ScenariosPage() {
                         </div>
                       </td>
                       <td className="text-sm">{p.status ?? "—"}</td>
-                      <td className="text-sm">{p.rag ?? "—"}</td>
+                      <td className="text-sm">
+                        {displayRag(p) ? (
+                          <RagChip rag={displayRag(p)} manual={isRagOverridden(p)} />
+                        ) : (
+                          "—"
+                        )}
+                      </td>
                       <td className="text-right tabular-nums">
                         {money(Number(p.budget || 0))}
                       </td>

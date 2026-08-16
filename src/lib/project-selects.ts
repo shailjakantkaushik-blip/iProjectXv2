@@ -38,6 +38,9 @@ export const PROJECT_PORTFOLIO_SELECT = [
   "current_phase",
   "created_at",
   "updated_at",
+  "rag_override",
+  "rag_override_reason",
+  "rag_override_owner",
 ].join(",");
 
 /** Opt-in extras — only use on pages that need them (migration 20260816090000). */
@@ -45,14 +48,11 @@ export const PROJECT_OPS_EXTRAS = [
   "functional_area",
   "payback_months",
   "manual_rank",
-  "rag_override",
-  "rag_override_reason",
-  "rag_override_owner",
 ].join(",");
 
 /** Home dashboard KPIs only. Use a dedicated query key — do not share with portfolio. */
 export const PROJECT_HOME_SELECT =
-  "id,name,status,rag,budget,capex_incurred,benefits_realised" as const;
+  "id,name,status,rag,rag_override,budget,capex_incurred,benefits_realised" as const;
 
 export function projectHomeQueryKey(orgId: string | null | undefined) {
   return ["projects", orgId, "home"] as const;

@@ -28,6 +28,7 @@ import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-tabl
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
 import { explainRag } from "@/lib/explain-metric";
+import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
 import { ProjectMeetingSummary } from "@/components/project-meeting-summary";
 import {
   applyForecastToProjectPlan,
@@ -319,8 +320,13 @@ function ProjectDetail() {
             <span>{project.status || "—"}</span>
             <span>·</span>
             <RagChip
-              rag={project.rag}
-              explain={explainRag({ rag: project.rag, source: "register" })}
+              rag={displayRag(project)}
+              manual={isRagOverridden(project)}
+              explain={explainRag({
+                rag: displayRag(project),
+                source: "register",
+                overridden: isRagOverridden(project),
+              })}
             />
             {project.program ? (
               <>

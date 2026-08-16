@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
 import { fyStartFor as fyStartForOrg, fyEndFor as fyEndForOrg, fyLabel as fyLabelOrg } from "@/lib/fiscal-year";
 import { RAG_COLORS } from "@/lib/chart-theme";
+import { displayRag } from "@/lib/ops-enhancements";
 import { ExpandablePanel } from "@/components/expandable-panel";
 import { summarizeTimelineLaneFinancials, gatesForTimelineLane } from "@/lib/project-streams";
 import { darkenHex, scheduleCompletionPct } from "@/lib/schedule-progress";
@@ -321,7 +322,7 @@ export function GanttGroup({
               const aWidthPct = Math.max(0.6, aEndPct - aStartPct);
               const clippedLeft = dateToPct(new Date(primaryS)) < 0;
               const clippedRight = dateToPct(new Date(primaryE)) > 100;
-              const color = RAG_COLORS[p.rag as string] || "#64748b";
+              const color = RAG_COLORS[displayRag(p) as string] || "#64748b";
               const budget = Number(p.budget || 0);
               const incurred = Number(p.capex_incurred || 0) + Number(p.opex_incurred || 0);
               const pct = budget > 0 ? Math.min(100, Math.round((incurred / budget) * 100)) : 0;

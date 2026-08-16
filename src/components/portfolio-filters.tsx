@@ -2,7 +2,7 @@ import { useMemo, useState, useRef, useEffect, useCallback, useLayoutEffect } fr
 import { createPortal } from "react-dom";
 import { compareProjectsByCodeName } from "@/lib/project-options";
 import { fyOf, projectScheduleEnd, projectScheduleStart } from "@/lib/project-dates";
-import { STRATEGIC_ALIGNMENT_LABEL } from "@/lib/ops-enhancements";
+import { STRATEGIC_ALIGNMENT_LABEL, displayRag } from "@/lib/ops-enhancements";
 
 export type PortfolioFilterState = {
   portfolio: string;
@@ -45,7 +45,7 @@ export function applyFilters<T extends Record<string, any>>(
     if (f.portfolio !== "All" && (p.portfolio || "Unassigned") !== f.portfolio) return false;
     if (f.program !== "All" && (p.program || "Unassigned") !== f.program) return false;
     if (f.sponsor !== "All" && (p.sponsor || "—") !== f.sponsor) return false;
-    if (f.rag !== "All" && (p.rag || "Green") !== f.rag) return false;
+    if (f.rag !== "All" && (displayRag(p) || "Green") !== f.rag) return false;
     if (
       phaseMode === "current" &&
       f.phase !== "All" &&

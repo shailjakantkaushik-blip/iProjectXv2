@@ -11,7 +11,7 @@ import {
   type RagTone,
 } from "@/lib/project-health-engine";
 import { projectApprovedFunding, projectForecast } from "@/lib/project-finance";
-import { worstSteeringRag } from "@/lib/ops-enhancements";
+import { effectiveRag, isRagOverridden, worstRagOf } from "@/lib/ops-enhancements";
 
 export type PulseAreaKey =
   "financial" | "delivery" | "resource" | "risk" | "benefits" | "dependencies";
@@ -48,7 +48,9 @@ export type PulseWeekChange = {
 export type PortfolioPulseResult = {
   healthPct: number;
   rag: RagTone;
-  /** Worst register/override RAG — steering colour, not the pulse score. */
+  /** True when at least one in-scope project has a sponsor RAG override. */
+  ragManual: boolean;
+  /** Worst register/override RAG — same colour as `rag` when overrides are applied. */
   steeringRag: RagTone;
   areas: PulseAreaRow[];
   week: PulseWeekChange;
@@ -176,7 +178,7 @@ export function buildPortfolioPulse(opts: {
 }): PortfolioPulseResult {
   const nowMs = opts.nowMs ?? Date.now();
   const previous = opts.previous ?? null;
-  const engines: { id: string; engine: HealthEngineResult; forecastVar: number }[] = [];
+  const engines: { id: string; engine: HealthEngineResult; forecastVar: number; rag: RagTone; ragManual: boolean }[] = [];
 
   for (const row of opts.projects) {
     const p = row.project;
@@ -194,16 +196,20 @@ export function buildPortfolioPulse(opts: {
     });
     const approved = projectApprovedFunding(p);
     const fac = Math.max(projectForecast(p), engine.forecast.forecastFinalCost);
+    const shown = effectiveRag(p, engine.rag);
     engines.push({
       id: p.id,
       engine,
       forecastVar: fac - approved,
+      rag: shown === "Red" || shown === "Amber" || shown === "Green" ? shown : engine.rag,
+      ragManual: isRagOverridden(p),
     });
   }
 
   const healthPct = Math.round(avg(engines.map((e) => e.engine.score)));
-  const rag = scoreToRag(healthPct);
-  const steeringRag = worstSteeringRag(opts.projects.map((row) => row.project));
+  const rag = engines.length ? worstRagOf(engines.map((e) => e.rag)) : scoreToRag(healthPct);
+  const ragManual = engines.some((e) => e.ragManual);
+  const steeringRag = rag;
 
   const areaScores = {} as Record<PulseAreaKey, number>;
   for (const area of PULSE_AREAS) {
@@ -292,6 +298,7 @@ export function buildPortfolioPulse(opts: {
   return {
     healthPct: clamp(healthPct),
     rag,
+    ragManual,
     steeringRag,
     areas,
     week: {

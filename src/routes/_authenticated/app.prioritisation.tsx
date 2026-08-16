@@ -8,6 +8,7 @@ import { PROJECT_OPS_EXTRAS } from "@/lib/project-selects";
 import { useAuth } from "@/lib/auth-context";
 import { SectionFrame, SectionTitle, PageHeading, KpiCard, RagChip } from "@/components/streamlit";
 import { explainRag } from "@/lib/explain-metric";
+import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LabelList, Cell } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
 import {
@@ -325,7 +326,15 @@ function Prioritisation() {
                   <td>{p.program || "—"}</td>
                   <td>{p.priority || "—"}</td>
                   <td>
-                    <RagChip rag={p.rag} explain={explainRag({ rag: p.rag, source: "register" })} />
+                    <RagChip
+                      rag={displayRag(p)}
+                      manual={isRagOverridden(p)}
+                      explain={explainRag({
+                        rag: displayRag(p),
+                        source: "register",
+                        overridden: isRagOverridden(p),
+                      })}
+                    />
                   </td>
                   <td className="text-right tabular-nums">{money(p._funding)}</td>
                   <td className="text-right tabular-nums">

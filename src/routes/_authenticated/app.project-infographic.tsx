@@ -97,6 +97,7 @@ import {
   type MetricExplanation,
 } from "@/lib/explain-metric";
 import { evaluateProjectHealth } from "@/lib/project-health-engine";
+import { displayRag, effectiveRag, isRagOverridden } from "@/lib/ops-enhancements";
 
 export const Route = createFileRoute("/_authenticated/app/project-infographic")({
   validateSearch: (s: Record<string, unknown>) => ({ pid: (s.pid as string) || "" }),
@@ -1167,11 +1168,13 @@ function InfographicPage() {
   const financialHealth = healthEngine
     ? healthEngine.dimensions.find((d) => d.key === "financial")?.rag || "Green"
     : "Green";
-  const overallHealth = healthEngine?.rag || (project.rag as string) || "Amber";
+  const overallHealth = effectiveRag(project, healthEngine?.rag) || "Amber";
   const ragExplains = {
     overall: explainRag({
       rag: overallHealth,
-      engine: healthEngine,
+      engine: isRagOverridden(project) ? null : healthEngine,
+      source: isRagOverridden(project) ? "register" : undefined,
+      overridden: isRagOverridden(project),
       manualRag: project.rag,
     }),
     schedule: explainRag({
@@ -1185,11 +1188,12 @@ function InfographicPage() {
       dimension: "financial",
     }),
     register: explainRag({
-      rag: project.rag,
+      rag: displayRag(project),
       source: "register",
+      overridden: isRagOverridden(project),
       extraBullets: healthEngine
         ? [
-            `Health Engine calculated RAG is ${healthEngine.rag} (${healthEngine.score}/100). ${healthEngine.rag === project.rag ? "Matches the register field." : "Differs from the register field shown on this chip."}`,
+            `Health Engine calculated RAG is ${healthEngine.rag} (${healthEngine.score}/100). ${isRagOverridden(project) ? "Dashboards use the manual override (M)." : healthEngine.rag === project.rag ? "Matches the register field." : "Differs from the register field."}`,
           ]
         : [],
     }),
@@ -1357,7 +1361,11 @@ function InfographicPage() {
               </div>
             </div>
             <div className="flex flex-col items-end gap-1">
-              <RagChip rag={project.rag} explain={ragExplains.register} />
+              <RagChip
+                rag={displayRag(project) || overallHealth}
+                manual={isRagOverridden(project)}
+                explain={ragExplains.register}
+              />
               <div className="text-xs text-muted-foreground">
                 Sponsor:{" "}
                 <span className="font-medium text-foreground">{project.sponsor || "—"}</span>
@@ -2577,7 +2585,7 @@ function ProjectBrief({
           actual_end_date: project.actual_end_date,
           target_go_live: project.target_go_live,
           priority: project.priority,
-          rag_overall: project.rag,
+          rag_overall: displayRag(project) || project.rag,
           program: project.program,
           status: project.status,
           brief: {

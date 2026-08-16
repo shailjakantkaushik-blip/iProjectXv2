@@ -35,6 +35,7 @@ import {
   projectRoiPercent,
 } from "@/lib/project-finance";
 import { projectPortfolio } from "@/lib/project-health";
+import { displayRag } from "@/lib/ops-enhancements";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/project-selects";
 
 export const Route = createFileRoute("/_authenticated/app/portfolio-segmentation")({
@@ -78,7 +79,7 @@ function Segmentation() {
     x: projectApprovedFunding(p),
     y: projectRoiPercent(p),
     z: projectBenefitsTarget(p) || projectApprovedFunding(p) || 100000,
-    rag: p.rag || "Amber",
+    rag: displayRag(p) || "Amber",
   }));
 
   const segCounts = useMemo(() => {
