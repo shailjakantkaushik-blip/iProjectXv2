@@ -537,7 +537,11 @@ function FinancialsPage() {
           Allocation outlook (phase forecast starts equal to plan). <strong>Actual</strong> is
           monthly spend after kickoff. <strong>Planned FTE $</strong> is Estimation Planning
           allocations; <strong>Demand</strong> is work-item hours on Work Items;{" "}
-          <strong>Actual FTE $</strong> is approved timesheets.
+          <strong>Actual FTE $</strong> is approved timesheets.{" "}
+          <Link to="/app/how-money-works" className="font-medium text-primary hover:underline">
+            How money works
+          </Link>{" "}
+          explains this in everyday language.
           {phaseScoped ? (
             <>
               {" "}

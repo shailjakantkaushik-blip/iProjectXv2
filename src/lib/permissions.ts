@@ -93,6 +93,7 @@ export const PAGES: { path: string; label: string; group: string }[] = [
   { path: "/app/timesheets", label: "Timesheets", group: "Delivery" },
   { path: "/app/risk-roadmap", label: "Risk Roadmap", group: "Delivery" },
   { path: "/app/financials", label: "Financials", group: "Financials" },
+  { path: "/app/how-money-works", label: "How money works", group: "Financials" },
   { path: "/app/fy-allocation", label: "FY Allocation", group: "Financials" },
   { path: "/app/phase-financials", label: "Phase Financials", group: "Financials" },
   { path: "/app/evm", label: "Earned Value (EVM)", group: "Financials" },
