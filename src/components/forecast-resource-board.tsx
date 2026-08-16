@@ -95,6 +95,7 @@ export function ForecastResourceBoard({
   const [pending, setPending] = useState<PendingAssign | null>(null);
   const [unit, setUnit] = useState<ForecastEffortUnit>("hours");
   const [amount, setAmount] = useState("40");
+  const [roleFilter, setRoleFilter] = useState("");
 
   const windowEnd = useMemo(() => {
     const ends = phases.map((p) => p.end_date).filter(Boolean) as string[];
@@ -119,6 +120,27 @@ export function ForecastResourceBoard({
     }
     return m;
   }, [allocations]);
+
+  const roleOptions = useMemo(() => {
+    const named = new Set<string>();
+    let untitled = false;
+    for (const r of resources) {
+      const role = String(r.role || "").trim();
+      if (role) named.add(role);
+      else untitled = true;
+    }
+    const list = [...named].sort((a, b) => a.localeCompare(b));
+    if (untitled) list.push("__none__");
+    return list;
+  }, [resources]);
+
+  const shownResources = useMemo(() => {
+    if (!roleFilter) return [];
+    if (roleFilter === "__none__") {
+      return resources.filter((r) => !String(r.role || "").trim());
+    }
+    return resources.filter((r) => String(r.role || "").trim() === roleFilter);
+  }, [resources, roleFilter]);
 
   const lanes = useMemo(() => {
     if (streams.length) return streams;
@@ -180,8 +202,9 @@ export function ForecastResourceBoard({
   return (
     <div>
       <p className="mb-3 text-xs text-muted-foreground">
-        Drag a person onto a stream phase — or click the person, then the phase. Available hours
-        are total capacity through the plan window minus hours already allocated or assigned here.
+        Select a role, then drag a person onto a stream phase — or click the person, then the
+        phase. Available hours are total capacity through the plan window minus hours already
+        allocated or assigned here.
       </p>
       <div className="overflow-x-auto">
         <div
@@ -192,8 +215,26 @@ export function ForecastResourceBoard({
         >
           <div className="rounded-md border border-border bg-muted/20 p-2">
             <div className="mb-2 px-1 text-sm font-semibold">Resources</div>
+            <label className="mb-2 block px-1 text-[11px] text-muted-foreground">
+              Role
+              <select
+                className="st-input mt-1 w-full"
+                value={roleFilter}
+                onChange={(e) => {
+                  setRoleFilter(e.target.value);
+                  setDragResource(null);
+                }}
+              >
+                <option value="">Select a role…</option>
+                {roleOptions.map((role) => (
+                  <option key={role} value={role}>
+                    {role === "__none__" ? "No role" : role}
+                  </option>
+                ))}
+              </select>
+            </label>
             <div className="space-y-2">
-              {resources.map((r) => {
+              {shownResources.map((r) => {
                 const weekly = Number(r.capacity_hours_week || 0) || 40;
                 const total = Math.round(weekly * weeks);
                 const used =
@@ -238,8 +279,12 @@ export function ForecastResourceBoard({
                   </button>
                 );
               })}
-              {resources.length === 0 && (
-                <p className="px-1 text-xs text-muted-foreground">No active resources in the org.</p>
+              {shownResources.length === 0 && (
+                <p className="px-1 text-xs text-muted-foreground">
+                  {!roleFilter
+                    ? "Select a role to see people you can assign."
+                    : "No active resources in this role."}
+                </p>
               )}
             </div>
           </div>
