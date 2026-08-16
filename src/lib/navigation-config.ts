@@ -44,16 +44,17 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
     ],
   },
   {
-    heading: "Portfolio",
+    heading: "Strategic Alignment",
     items: [
       { to: "/app/projects", label: "Projects", icon: "FolderKanban" },
       { to: "/app/programs", label: "Programs", icon: "Layers" },
       { to: "/app/project-infographic", label: "Project Infographic", icon: "Image" },
+      { to: "/app/project-forecast", label: "Project Forecast", icon: "GanttChart" },
       { to: "/app/portfolio-segmentation", label: "Segmentation", icon: "PieChart" },
       { to: "/app/prioritisation", label: "Prioritisation", icon: "Trophy" },
       { to: "/app/portfolio-movements", label: "Movements", icon: "ArrowLeftRight" },
       { to: "/app/demand-pipeline", label: "Demand Pipeline", icon: "Inbox" },
-      { to: "/app/scenarios", label: "Portfolio Scenarios", icon: "Scale" },
+      { to: "/app/scenarios", label: "Alignment Scenarios", icon: "Scale" },
     ],
   },
   {

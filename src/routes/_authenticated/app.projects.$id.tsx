@@ -16,13 +16,14 @@ import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-tabl
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
 import { explainRag } from "@/lib/explain-metric";
+import { ProjectMeetingSummary } from "@/components/project-meeting-summary";
 
-type ProjectTab = "overview" | "decisions" | "work" | "governance" | "finance" | "streams";
+type ProjectTab = "overview" | "summary" | "decisions" | "work" | "governance" | "finance" | "streams";
 
 export const Route = createFileRoute("/_authenticated/app/projects/$id")({
   validateSearch: (s: Record<string, unknown>): { tab?: ProjectTab } => {
     const raw = String(s.tab || "");
-    if (["overview", "decisions", "work", "governance", "finance", "streams"].includes(raw)) {
+    if (["overview", "summary", "decisions", "work", "governance", "finance", "streams"].includes(raw)) {
       return { tab: raw as ProjectTab };
     }
     return {};
@@ -32,6 +33,7 @@ export const Route = createFileRoute("/_authenticated/app/projects/$id")({
 
 const TABS = [
   { id: "overview", label: "Overview" },
+  { id: "summary", label: "Summary" },
   { id: "streams", label: "Streams" },
   { id: "decisions", label: "Key Decisions" },
   { id: "work", label: "Work" },
@@ -236,6 +238,19 @@ function ProjectDetail() {
             busy={busy}
             submitLabel="Save changes"
           />
+        </div>
+      )}
+
+      {tab === "summary" && (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Progress since the last steering meeting and the plan until the next one. The Executive
+            Dashboard reads this section.{" "}
+            <Link to="/app/project-forecast" className="font-medium text-primary hover:underline">
+              Open project forecast
+            </Link>
+          </p>
+          <ProjectMeetingSummary projectId={id} project={project} />
         </div>
       )}
 

@@ -8,6 +8,8 @@ import {
   Legend, LineChart, Line, CartesianGrid, LabelList,
 } from "recharts";
 import { SectionFrame, SectionTitle, RagChip } from "@/components/streamlit";
+import { ProjectMeetingSummary } from "@/components/project-meeting-summary";
+import { displayRag } from "@/lib/ops-enhancements";
 import { ChartLegendList, legendItemsFromCounts } from "@/components/chart-legend-list";
 import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
@@ -539,7 +541,7 @@ function ExecutiveDashboard() {
     const groups = new Map<string, any[]>();
     const keyFor = (p: any): string => {
       switch (timelineView) {
-        case "Portfolio": return "Portfolio";
+        case "Portfolio": return p.portfolio || "Unassigned";
         case "Program":   return p.program || "Unassigned";
         case "Health":    return p.rag || "Unrated";
         case "Priority":  return p.priority || "Unset";
@@ -730,7 +732,7 @@ function ExecutiveDashboard() {
       {/* Header + filters */}
       <SectionFrame>
         <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-          <div className="page-heading">📊 PMO Portfolio — Executive Summary</div>
+          <div className="page-heading">📊 Strategic Alignment — Executive Summary</div>
           <button
             type="button"
             onClick={() => void exportPdf()}
@@ -929,7 +931,7 @@ function ExecutiveDashboard() {
             </ChartBox>
 
             {/* Portfolio Segmentation */}
-            <ChartBox title="Portfolio Segmentation — Projects by Portfolio">
+            <ChartBox title="Segmentation — Projects by Strategic Alignment">
               <BarChart data={segmentation} margin={{ top: 25, right: 15, left: 5, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
                 <XAxis dataKey="name" fontSize={11} />
@@ -959,10 +961,39 @@ function ExecutiveDashboard() {
         )}
       </SectionFrame>
 
+      <SectionFrame>
+        <SectionTitle>Project summaries (since last meeting)</SectionTitle>
+        <p className="mb-3 text-sm text-muted-foreground">
+          System-generated completions and the next action plan, plus manual notes from each
+          project&apos;s Summary tab. RAG shows an override when one is set.
+        </p>
+        <div className="space-y-3">
+          {filtered.slice(0, 12).map((p: any) => (
+            <div key={p.id} className="rounded-lg border border-border">
+              <div className="flex items-center justify-between px-3 pt-2 text-xs">
+                <Link
+                  to="/app/projects/$id"
+                  params={{ id: p.id }}
+                  search={{ tab: "summary" }}
+                  className="font-semibold text-primary hover:underline"
+                >
+                  {p.project_code} · {p.name}
+                </Link>
+                <RagChip rag={displayRag(p)} />
+              </div>
+              <ProjectMeetingSummary projectId={p.id} project={p} readOnly />
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <p className="text-sm text-muted-foreground">No projects match the current filters.</p>
+          )}
+        </div>
+      </SectionFrame>
+
       {/* Portfolio Timelines — collapsible Gantt swim-lanes (expandable + scrollable) */}
       <SectionFrame>
         <ExpandablePanel
-          title="Portfolio Timelines"
+          title="Strategic Alignment Timelines"
           compactMaxHeightClass="max-h-[min(68vh,760px)]"
           toolbar={
             <div className="flex items-center gap-2">
@@ -985,7 +1016,7 @@ function ExecutiveDashboard() {
                 onChange={(e) => setTimelineView(e.target.value as TimelineView)}
                 className="rounded-md border border-border bg-surface px-2 py-1 text-xs"
               >
-                <option value="Portfolio">View: Portfolio</option>
+                <option value="Portfolio">View: Strategic Alignment</option>
                 <option value="Program">View: Program</option>
                 <option value="Health">View: Health (RAG)</option>
                 <option value="Priority">View: Priority</option>

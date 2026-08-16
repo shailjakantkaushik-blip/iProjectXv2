@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/query-selects";
+import { PROJECT_OPS_EXTRAS } from "@/lib/project-selects";
 import { useAuth } from "@/lib/auth-context";
 import { SectionFrame, SectionTitle, PageHeading, KpiCard, RagChip } from "@/components/streamlit";
 import { explainRag } from "@/lib/explain-metric";
@@ -21,11 +22,7 @@ import {
   Legend,
 } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
-import {
-  projectApprovedFunding,
-  projectForecast,
-  projectIncurred,
-} from "@/lib/project-finance";
+import { projectApprovedFunding, projectForecast, projectIncurred } from "@/lib/project-finance";
 import { projectScheduleEnd, projectScheduleStart, fyOf } from "@/lib/project-dates";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
@@ -77,7 +74,13 @@ function ProgramsPage() {
   } = useQuery({
     queryKey: ["projects", orgId],
     queryFn: async () => {
-      const { data, error: qErr } = await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*");
+      const wide = await supabase
+        .from("projects")
+        .select(`${PROJECT_PORTFOLIO_SELECT},${PROJECT_OPS_EXTRAS}` as "*");
+      if (!wide.error) return wide.data ?? [];
+      const { data, error: qErr } = await supabase
+        .from("projects")
+        .select(PROJECT_PORTFOLIO_SELECT as "*");
       if (qErr) throw qErr;
       return data ?? [];
     },
@@ -207,6 +210,8 @@ function ProgramsPage() {
     () => [
       { key: "project_code", label: "Project ID" },
       { key: "name", label: "Project Name" },
+      { key: "portfolio", label: "Strategic Alignment" },
+      { key: "functional_area", label: "Functional Area" },
       { key: "sponsor", label: "Sponsor" },
       { key: "status", label: "Status" },
       { key: "rag", label: "RAG" },
@@ -281,11 +286,11 @@ function ProgramsPage() {
       <PageHeading
         icon="🎯"
         title="Programs"
-        subtitle="Program-level rollups across the portfolio."
+        subtitle="Program-level rollups under Strategic Alignment. Each project sits in a functional area."
       />
 
       <SectionFrame>
-        <SectionTitle>Portfolio KPIs</SectionTitle>
+        <SectionTitle>Strategic Alignment KPIs</SectionTitle>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <KpiCard label="Programs" value={programs.length} accent="#3b82f6" />
           <KpiCard label="Projects" value={projects.length} accent="#06b6d4" />
@@ -515,7 +520,7 @@ function ProgramsPage() {
                 shown={projectTable.rows.length}
                 total={projectTable.total}
                 dirty={projectTable.isDirty}
-          onClear={projectTable.clearAll}
+                onClear={projectTable.clearAll}
                 placeholder="Search projects…"
               />
               <div className="overflow-x-auto">
@@ -531,9 +536,7 @@ function ProgramsPage() {
                           sortKey={projectTable.sortKey}
                           sortDir={projectTable.sortDir}
                           onToggleSort={projectTable.toggleSort}
-                          align={
-                            ["approved", "actual", "fac"].includes(col.key) ? "right" : "left"
-                          }
+                          align={["approved", "actual", "fac"].includes(col.key) ? "right" : "left"}
                         />
                       ))}
                     </tr>
@@ -563,9 +566,20 @@ function ProgramsPage() {
                             {p.name}
                           </Link>
                         </td>
+                        <td>{p.portfolio || "—"}</td>
+                        <td>{p.functional_area || "—"}</td>
                         <td>{p.sponsor || "—"}</td>
                         <td>{p.status || "—"}</td>
-                        <td>{p.rag ? <RagChip rag={p.rag} explain={explainRag({ rag: p.rag, source: "register" })} /> : "—"}</td>
+                        <td>
+                          {p.rag ? (
+                            <RagChip
+                              rag={p.rag}
+                              explain={explainRag({ rag: p.rag, source: "register" })}
+                            />
+                          ) : (
+                            "—"
+                          )}
+                        </td>
                         <td className="text-right tabular-nums">
                           {Math.round(projectApprovedFunding(p)).toLocaleString()}
                         </td>
@@ -581,7 +595,10 @@ function ProgramsPage() {
                     ))}
                     {projectTable.rows.length === 0 && (
                       <tr>
-                        <td colSpan={projectColumns.length} className="text-center text-slate-500 py-4">
+                        <td
+                          colSpan={projectColumns.length}
+                          className="text-center text-slate-500 py-4"
+                        >
                           {projectTable.total === 0
                             ? "No projects mapped."
                             : "No projects match filters."}

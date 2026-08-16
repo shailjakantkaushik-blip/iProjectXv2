@@ -311,6 +311,21 @@
   top: 0;
   vertical-align: top;
 }
+/* Finance pages: emphasise measure headers, not the numeric cells */
+.st-table-finance thead th {
+  background: #0f1b3d;
+  color: #f8fafc;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  font-size: 11px;
+  text-transform: uppercase;
+  border-bottom: 2px solid #3b6fa0;
+}
+.st-table-finance tbody td.st-num,
+.st-table-finance tbody td.text-right {
+  color: var(--color-body, #1e3a5f);
+  font-weight: 500;
+}
 /* Numeric / aligned columns — must beat thead th { text-align: left } (higher specificity).
    Use className="st-num" or Tailwind text-right / text-center on both <th> and <td>. */
 .st-table thead th.text-right,

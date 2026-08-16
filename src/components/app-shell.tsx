@@ -12,6 +12,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   FolderKanban,
+  GanttChart,
   AlertTriangle,
   DollarSign,
   Map,
@@ -140,6 +141,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Bell,
   Info,
   FolderKanban,
+  GanttChart,
   Layers,
   Image: ImageIcon,
   PieChart,

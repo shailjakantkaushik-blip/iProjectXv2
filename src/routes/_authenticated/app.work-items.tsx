@@ -12,7 +12,8 @@ import {
   projectUsesSprints,
 } from "@/lib/project-options";
 import { useAuth } from "@/lib/auth-context";
-import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
+import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
+import { isWorkItemLate, workItemScheduleRag } from "@/lib/ops-enhancements";
 import { PageExport } from "@/components/page-export";
 import { PageLoading } from "@/components/page-loading";
 import { fetchOrgStreams, formatProjectStreamRef, formatStreamLabel } from "@/lib/project-streams";
@@ -92,6 +93,8 @@ function WorkItemsPage() {
   const search = Route.useSearch();
   const [mineOnly, setMineOnly] = useState(!!search.mine);
   const [fProgram, setFProgram] = useState("All");
+  const [fAlignment, setFAlignment] = useState("All");
+  const [fLate, setFLate] = useState("All");
   const [fProject, setFProject] = useState("All");
   const [fStream, setFStream] = useState("All");
   const [fGate, setFGate] = useState("All");
@@ -108,7 +111,7 @@ function WorkItemsPage() {
 
   useEffect(() => {
     setOffset(0);
-  }, [fProject, fStream, fGate, fSprint, fStatus, fProgram, mineOnly]);
+  }, [fProject, fStream, fGate, fSprint, fStatus, fProgram, fAlignment, fLate, mineOnly]);
 
   const { data: projects = [] } = useQuery({
     queryKey: projectOptionsQueryKey(orgId),
@@ -437,6 +440,13 @@ function WorkItemsPage() {
       ).sort() as string[],
     [projects],
   );
+  const alignments = useMemo(
+    () =>
+      Array.from(
+        new Set(projects.map((p: any) => p.portfolio).filter((v: unknown): v is string => !!v)),
+      ).sort() as string[],
+    [projects],
+  );
 
   const filterStreams = useMemo(() => {
     if (fProject !== "All") return streamsByProject.get(fProject) || [];
@@ -459,6 +469,8 @@ function WorkItemsPage() {
 
   const resetFilters = () => {
     setFProgram("All");
+    setFAlignment("All");
+    setFLate("All");
     setFProject("All");
     setFStream("All");
     setFGate("All");
@@ -479,10 +491,13 @@ function WorkItemsPage() {
       }
       const proj = projectById.get(i.project_id) as any;
       if (fProgram !== "All" && (proj?.program || "") !== fProgram) return false;
+      if (fAlignment !== "All" && (proj?.portfolio || "") !== fAlignment) return false;
+      if (fLate === "Late" && !isWorkItemLate(i)) return false;
+      if (fLate === "On track" && isWorkItemLate(i)) return false;
       if (fSprint === "__none__" && i.sprint_id) return false;
       return true;
     });
-  }, [items, mineOnly, userId, myResource, assigneesByWorkItem, projectById, fProgram, fSprint]);
+  }, [items, mineOnly, userId, myResource, assigneesByWorkItem, projectById, fProgram, fAlignment, fLate, fSprint]);
 
   const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
@@ -497,6 +512,16 @@ function WorkItemsPage() {
         key: "program",
         label: "Program",
         getValue: (i) => (projectById.get(i.project_id) as any)?.program || "",
+      },
+      {
+        key: "alignment",
+        label: "Strategic Alignment",
+        getValue: (i) => (projectById.get(i.project_id) as any)?.portfolio || "",
+      },
+      {
+        key: "rag",
+        label: "Task RAG",
+        getValue: (i) => workItemScheduleRag(i),
       },
       {
         key: "stream",
@@ -801,6 +826,8 @@ function WorkItemsPage() {
   const filtersDirty =
     mineOnly ||
     fProgram !== "All" ||
+    fAlignment !== "All" ||
+    fLate !== "All" ||
     fProject !== "All" ||
     fStream !== "All" ||
     fGate !== "All" ||
@@ -1049,7 +1076,37 @@ function WorkItemsPage() {
             Reset
           </button>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Strategic Alignment
+            </span>
+            <select
+              className="st-input"
+              value={fAlignment}
+              onChange={(e) => {
+                setFAlignment(e.target.value);
+                setFProject("All");
+              }}
+            >
+              <option value="All">All alignments</option>
+              {alignments.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Schedule
+            </span>
+            <select className="st-input" value={fLate} onChange={(e) => setFLate(e.target.value)}>
+              <option value="All">All tasks</option>
+              <option value="Late">Running late</option>
+              <option value="On track">On track</option>
+            </select>
+          </label>
           <label className="flex flex-col gap-1">
             <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               Program
@@ -1349,10 +1406,26 @@ function WorkItemsPage() {
                   const proj = projectById.get(i.project_id) as any;
                   const stream = i.stream_id ? streamById.get(i.stream_id) : null;
                   const itemStreams = streamsByProject.get(i.project_id) || [];
+                  const taskRag = workItemScheduleRag(i);
                   return (
-                    <tr key={i.id}>
+                    <tr
+                      key={i.id}
+                      className={taskRag === "Red" ? "bg-red-50" : taskRag === "Amber" ? "bg-amber-50/70" : undefined}
+                    >
                       {columns.map((col) => {
                         switch (col.key) {
+                          case "alignment":
+                            return (
+                              <td key={col.key} className="whitespace-nowrap">
+                                {proj?.portfolio || "—"}
+                              </td>
+                            );
+                          case "rag":
+                            return (
+                              <td key={col.key}>
+                                <RagChip rag={taskRag} />
+                              </td>
+                            );
                           case "project":
                             return (
                               <td key={col.key} className="font-medium font-mono whitespace-nowrap">

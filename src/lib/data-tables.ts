@@ -55,11 +55,19 @@ export const TABLES: TableDef[] = [
       { key: "name", label: "Name", type: "text", required: true },
       {
         key: "portfolio",
-        label: "Portfolio",
+        label: "Strategic Alignment",
         type: "select",
         options: ["Business Strategic", "IT Strategic", "CAPEX", "Unfunded"],
       },
       { key: "program", label: "Program", type: "text" },
+      {
+        key: "functional_area",
+        label: "Functional Area",
+        type: "select",
+        options: ["Finance", "HR", "IT", "Operations", "Legal", "Sales", "Marketing", "Customer", "Risk & Compliance", "Other"],
+      },
+      { key: "payback_months", label: "Payback (months)", type: "number" },
+      { key: "manual_rank", label: "Manual rank", type: "number" },
       { key: "sponsor", label: "Sponsor (text)", type: "text" },
       {
         key: "sponsor_stakeholder_id",
@@ -308,6 +316,7 @@ export const TABLES: TableDef[] = [
       { key: "target_value", label: "Target", type: "number" },
       { key: "realised_value", label: "Realised", type: "number" },
       { key: "realisation_date", label: "Realisation Date", type: "date" },
+      { key: "payback_months", label: "Payback (months)", type: "number" },
       { key: "owner", label: "Owner", type: "text" },
       { key: "status", label: "Status", type: "select", options: ["Planned", "In Progress", "Realised", "At Risk"] },
       { key: "notes", label: "Notes", type: "textarea" },

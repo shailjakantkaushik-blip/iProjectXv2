@@ -1,8 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/query-selects";
+import { PROJECT_OPS_EXTRAS } from "@/lib/project-selects";
 import { useAuth } from "@/lib/auth-context";
 import { SectionFrame, SectionTitle, PageHeading, KpiCard, RagChip } from "@/components/streamlit";
 import { explainRag } from "@/lib/explain-metric";
@@ -13,6 +15,7 @@ import {
   projectBenefitsTarget,
   projectRoiPercent,
 } from "@/lib/project-finance";
+import { paybackScore, projectPaybackMonths } from "@/lib/ops-enhancements";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
@@ -45,27 +48,79 @@ const PRI_WEIGHT: Record<string, number> = {
 
 function Prioritisation() {
   const { organization } = useAuth();
+  const qc = useQueryClient();
   const { data: projects = [] } = useQuery({
-    queryKey: ["projects", organization?.id],
-    queryFn: async () => (await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*")).data ?? [],
+    queryKey: ["projects", organization?.id, "prioritisation"],
+    queryFn: async () => {
+      const wide = await supabase
+        .from("projects")
+        .select(`${PROJECT_PORTFOLIO_SELECT},${PROJECT_OPS_EXTRAS}` as "*");
+      if (!wide.error) return wide.data ?? [];
+      const { data } = await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*");
+      return data ?? [];
+    },
     enabled: !!organization,
+  });
+
+  const { data: benefits = [] } = useQuery({
+    queryKey: ["benefits", organization?.id, "payback"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("benefits")
+        .select("project_id,payback_months");
+      if (error) return [];
+      return data ?? [];
+    },
+    enabled: !!organization,
+  });
+
+  const saveRank = useMutation({
+    mutationFn: async ({ id, manual_rank }: { id: string; manual_rank: number | null }) => {
+      const { error } = await supabase.from("projects").update({ manual_rank } as never).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects", organization?.id, "prioritisation"] });
+      toast.success("Manual rank saved");
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const ranked = useMemo(() => {
     return projects
       .map((p: any) => {
         const funding = projectApprovedFunding(p);
-        // Prefer stored roi_percent; else target ROI = (benefits − funding) / funding
         const roi = projectRoiPercent(p);
         const benTgt = projectBenefitsTarget(p);
         const priScore = PRI_WEIGHT[p.priority || ""] || 25;
-        // Composite score (documented in page subtitle)
+        const months = projectPaybackMonths(p, benefits as any[], p.id);
+        const pb = paybackScore(months);
         const score =
-          roi * 0.5 + priScore * 0.3 + (benTgt / 1_000_000) * 5 - (funding / 1_000_000) * 2;
-        return { ...p, _score: Math.round(score * 10) / 10, _pri: priScore, _roi: roi, _funding: funding, _benTgt: benTgt };
+          roi * 0.5 +
+          priScore * 0.3 +
+          (benTgt / 1_000_000) * 5 -
+          (funding / 1_000_000) * 2 +
+          pb;
+        return {
+          ...p,
+          _score: Math.round(score * 10) / 10,
+          _pri: priScore,
+          _roi: roi,
+          _funding: funding,
+          _benTgt: benTgt,
+          _payback: months,
+          _pb: pb,
+        };
       })
-      .sort((a: any, b: any) => b._score - a._score);
-  }, [projects]);
+      .sort((a: any, b: any) => {
+        const am = a.manual_rank == null ? null : Number(a.manual_rank);
+        const bm = b.manual_rank == null ? null : Number(b.manual_rank);
+        if (am != null && bm != null) return am - bm;
+        if (am != null) return -1;
+        if (bm != null) return 1;
+        return b._score - a._score;
+      });
+  }, [projects, benefits]);
 
   const top10 = ranked.slice(0, 10);
   const bottom5 = ranked.slice(-5).reverse();
@@ -104,7 +159,9 @@ function Prioritisation() {
       { key: "_funding", label: "Approved Funding" },
       { key: "_benTgt", label: "Benefits Tgt" },
       { key: "_roi", label: "ROI %" },
+      { key: "_payback", label: "Payback mo" },
       { key: "_score", label: "Score" },
+      { key: "manual_rank", label: "Manual rank" },
     ],
     [],
   );
@@ -115,11 +172,11 @@ function Prioritisation() {
       <PageHeading
         icon="🏆"
         title="Prioritisation"
-        subtitle="Composite score = (ROI% × 0.5) + (Priority weight × 0.3) + (Benefits target ÷ $1M × 5) − (Approved funding ÷ $1M × 2). ROI uses stored roi_percent, else target ROI."
+        subtitle="Score = (ROI% × 0.5) + (Priority weight × 0.3) + (Benefits ÷ $1M × 5) − (Funding ÷ $1M × 2) + early-payback bonus (up to 15). Manual rank overrides sort when set. Clear the box to return to computed order."
       />
 
       <SectionFrame>
-        <SectionTitle>Portfolio Prioritisation KPIs</SectionTitle>
+        <SectionTitle>Strategic Alignment Prioritisation KPIs</SectionTitle>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <KpiCard label="Projects Ranked" value={ranked.length} accent="#3b82f6" />
           <KpiCard label="P1 / Critical" value={critical} accent="#ef4444" />
@@ -252,7 +309,7 @@ function Prioritisation() {
                     sortDir={rankTable.sortDir}
                     onToggleSort={rankTable.toggleSort}
                     align={
-                      ["_rank", "_funding", "_benTgt", "_roi", "_score"].includes(col.key)
+                      ["_rank", "_funding", "_benTgt", "_roi", "_payback", "_score", "manual_rank"].includes(col.key)
                         ? "right"
                         : "left"
                     }
@@ -277,7 +334,24 @@ function Prioritisation() {
                   <td className="text-right tabular-nums">
                     {Number(p._roi || 0).toFixed(1)}%
                   </td>
+                  <td className="text-right tabular-nums">{p._payback ?? "—"}</td>
                   <td className="text-right tabular-nums font-semibold">{p._score}</td>
+                  <td className="text-right">
+                    <input
+                      className="st-input !w-16 !py-0.5 text-right"
+                      type="number"
+                      min={1}
+                      placeholder="—"
+                      defaultValue={p.manual_rank ?? ""}
+                      onBlur={(e) => {
+                        const raw = e.target.value.trim();
+                        const next = raw === "" ? null : Number(raw);
+                        const prev = p.manual_rank == null ? null : Number(p.manual_rank);
+                        if (next === prev) return;
+                        saveRank.mutate({ id: p.id, manual_rank: Number.isFinite(next as number) ? (next as number) : null });
+                      }}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
