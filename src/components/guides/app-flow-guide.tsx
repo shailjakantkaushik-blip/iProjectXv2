@@ -198,8 +198,9 @@ export function AppFlowGuide({ tab, onTab }: { tab: AboutTab; onTab: (t: AboutTa
                 labor.
               </Step>
               <Step n="F" title="Executives — steer without editing Plan">
-                Home, Executive Dashboard (Overview vs Project summaries), Portfolio Pulse,
-                Financials (Plan vs Actual vs Forecast), How money works for the glossary.
+                Home, Executive Dashboard (Quick view: Briefing and Project summaries; Detailed
+                info), Portfolio Pulse, Financials (Plan vs Actual vs Forecast), How money works for
+                the glossary.
               </Step>
             </div>
           </div>
@@ -364,9 +365,9 @@ export function AppFlowGuide({ tab, onTab }: { tab: AboutTab; onTab: (t: AboutTa
             <SectionTitle>RAID and decisions</SectionTitle>
             <p className="text-sm leading-relaxed text-muted-foreground">
               Risks, Actions, Issues, Decisions — plus stakeholders and lessons. These live on the
-              project (and can be filtered by stream). The Executive Dashboard Project summaries tab
-              is the steering pack; you edit the same notes on the project&apos;s Project Summary
-              tab.
+              project (and can be filtered by stream). The Executive Dashboard Quick view → Project
+              summaries tab is the steering pack; you edit the same notes on the project&apos;s
+              Project Summary tab.
             </p>
           </SectionFrame>
         </div>

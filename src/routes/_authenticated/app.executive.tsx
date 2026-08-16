@@ -807,7 +807,7 @@ function ExecutiveDashboard() {
           ] as const
         ).map((t) => {
           const active =
-            t.id === "quick" ? tab === "quick" : tab === "overview" || tab === "summaries";
+            t.id === "quick" ? tab === "quick" || tab === "summaries" : tab === "overview";
           return (
             <Link
               key={t.id}
@@ -826,26 +826,11 @@ function ExecutiveDashboard() {
         })}
       </div>
 
-      {tab === "quick" && (
-        <ExecutiveQuickView
-          filtered={filtered}
-          approvedFunding={approvedFunding}
-          totalIncurred={totalIncurred}
-          totalForecast={totalForecast}
-          remaining={remaining}
-          monthlySpend={monthlySpend}
-          segmentation={segmentation}
-          gates={gates}
-          monthly={monthly}
-          loading={showColdLoad}
-        />
-      )}
-
-      {tab !== "quick" && (
+      {(tab === "quick" || tab === "summaries") && (
       <div className="mb-4 flex flex-wrap gap-1">
         {(
           [
-            { id: "overview" as const, label: "Overview" },
+            { id: "quick" as const, label: "Briefing" },
             { id: "summaries" as const, label: "Project summaries" },
           ] as const
         ).map((t) => (
@@ -864,6 +849,21 @@ function ExecutiveDashboard() {
           </Link>
         ))}
       </div>
+      )}
+
+      {tab === "quick" && (
+        <ExecutiveQuickView
+          filtered={filtered}
+          approvedFunding={approvedFunding}
+          totalIncurred={totalIncurred}
+          totalForecast={totalForecast}
+          remaining={remaining}
+          monthlySpend={monthlySpend}
+          segmentation={segmentation}
+          gates={gates}
+          monthly={monthly}
+          loading={showColdLoad}
+        />
       )}
 
       {tab === "overview" && (
@@ -1045,8 +1045,8 @@ function ExecutiveDashboard() {
       <SectionFrame>
         <SectionTitle>Project summaries (since last meeting)</SectionTitle>
         <p className="mb-3 text-sm text-muted-foreground">
-          Read-only rollup of each project&apos;s Project Summary tab. Edit notes, meeting dates,
-          and RAG override on the project page — open a project below.
+          Read-only rollup of each project&apos;s Project Summary tab, on Quick view. Edit notes,
+          meeting dates, and RAG override on the project page — open a project below.
         </p>
         <div className="space-y-3">
           {filtered.slice(0, 12).map((p: any) => (
