@@ -774,9 +774,9 @@ function ExecutiveCockpit() {
         monthly={(monthly as MonthlyFinanceRow[]).filter((m) => inScope((m as any).project_id))}
       />
 
-      <SectionFrame exportName="cockpit-money" exportTitle="Money" id="pack-money">
+      <SectionFrame exportName="cockpit-money" exportTitle="Financials" id="pack-money">
         <div className="mb-2 flex items-center gap-2">
-          <SectionTitle>Money</SectionTitle>
+          <SectionTitle>Financials</SectionTitle>
           {explains.budget ? <ExplainThis explanation={explains.budget} size="xs" /> : null}
         </div>
         <div className="space-y-3">
@@ -869,7 +869,7 @@ function ExecutiveCockpit() {
               heightClass="h-64"
               collapsible
               defaultCollapsed
-              collapsedSummary="Chart hidden. Money KPIs stay visible above."
+              collapsedSummary="Chart hidden. Financials KPIs stay visible above."
             >
               <BarChart data={fyData} margin={{ top: 20, right: 12, left: 0, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -927,7 +927,7 @@ function ExecutiveCockpit() {
           <p className="mb-2 text-[11px] text-muted-foreground">
             All in-scope projects, sorted worst RAG then lowest health score. Click a row for the
             infographic. Health score stays calculated; RAG uses a manual override when set (M).
-            Money lives in Mix by Strategic Alignment.
+            Financials live in Mix by Strategic Alignment.
           </p>
           <p className="mb-2 text-[11px] text-muted-foreground md:hidden">
             Swipe sideways to see all columns.

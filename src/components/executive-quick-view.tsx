@@ -69,7 +69,7 @@ function healthHeat(score: number) {
 
 function kindLabel(kind: string) {
   if (kind === "decision") return "Decide";
-  if (kind === "money") return "Money";
+  if (kind === "money") return "Financials";
   if (kind === "schedule") return "Time";
   if (kind === "risk") return "Risk";
   return "Health";
