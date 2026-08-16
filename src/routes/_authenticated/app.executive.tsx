@@ -743,7 +743,7 @@ function ExecutiveDashboard() {
       {/* Header + filters */}
       <SectionFrame>
         <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-          <div className="page-heading">📊 Strategic Alignment — Executive Summary</div>
+          <div className="page-heading">Executive Summary</div>
           <button
             type="button"
             onClick={() => void exportPdf()}

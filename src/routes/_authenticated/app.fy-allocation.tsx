@@ -732,7 +732,7 @@ function PortfolioViewTab({
       { key: "fp", label: "Forecast %" },
       { key: "bAmt", label: "Budget Amount" },
       { key: "fAmt", label: "Forecast Amount" },
-      { key: "portfolio", label: "Portfolio" },
+      { key: "portfolio", label: "Strategic Alignment" },
       { key: "sponsor", label: "Sponsor" },
       { key: "rag", label: "RAG" },
     ],

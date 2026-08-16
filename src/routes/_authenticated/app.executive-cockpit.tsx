@@ -516,7 +516,7 @@ function ExecutiveCockpit() {
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
               <tr>
-                <th className="px-3 py-2 text-left">Portfolio</th>
+                <th className="px-3 py-2 text-left">Strategic Alignment</th>
                 <th className="px-3 py-2 text-right">Initiatives</th>
                 <th className="px-3 py-2 text-right">Approved Funding</th>
                 <th className="px-3 py-2 text-right">Actual Spend</th>
@@ -548,7 +548,7 @@ function ExecutiveCockpit() {
                 </tr>
               ))}
               <tr className="border-t bg-muted/30 font-semibold">
-                <td className="px-3 py-2">All Portfolio</td>
+                <td className="px-3 py-2">All</td>
                 <td className="px-3 py-2 text-right">{segTotals.initiatives}</td>
                 <td className="px-3 py-2 text-right">
                   {Math.round(segTotals.approved).toLocaleString()}
@@ -588,7 +588,7 @@ function ExecutiveCockpit() {
               <tr>
                 <th className="px-3 py-2 text-left">Project ID</th>
                 <th className="px-3 py-2 text-left">Project Name</th>
-                <th className="px-3 py-2 text-left">Portfolio Category</th>
+                <th className="px-3 py-2 text-left">Strategic Alignment</th>
                 <th className="px-3 py-2 text-left">Governance Channel</th>
                 <th className="px-3 py-2 text-left">Sponsor</th>
                 <th className="px-3 py-2 text-left">Delivery Lead</th>

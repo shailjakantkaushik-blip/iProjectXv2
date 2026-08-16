@@ -44,7 +44,7 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
     ],
   },
   {
-    heading: "Strategic Alignment",
+    heading: "Project Arena",
     items: [
       { to: "/app/projects", label: "Projects", icon: "FolderKanban" },
       { to: "/app/project-forecast", label: "Project Estimation Planning", icon: "GanttChart" },
@@ -299,6 +299,7 @@ export function mergeNavigationConfig(
   if (!partial || typeof partial !== "object") return base;
   partial = renamePersistedHeading(partial, "Command", "Command Center");
   partial = renamePersistedHeading(partial, "Portfolio", "Strategic Alignment");
+  partial = renamePersistedHeading(partial, "Strategic Alignment", "Project Arena");
 
   const catalogHeadings = new Set(catalog.map((g) => g.heading));
   const allPaths = new Set(flattenNavItems(catalog).keys());

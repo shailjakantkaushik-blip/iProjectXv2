@@ -31,7 +31,7 @@ import {
 const FIELD_LABELS: Record<string, string> = {
   project_code: "Project code",
   name: "Name",
-  portfolio: "Portfolio",
+  portfolio: "Strategic Alignment",
   program: "Program",
   sponsor: "Sponsor",
   bu_id: "Business unit",
