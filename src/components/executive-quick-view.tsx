@@ -211,7 +211,8 @@ export function ExecutiveQuickView({
       const { data, error } = await supabase
         .from("work_items" as never)
         .select("id,project_id,status,percent_complete,estimate_hours")
-        .eq("org_id", orgId!);
+        .eq("org_id", orgId!)
+        .limit(10000);
       if (error) throw error;
       return data ?? [];
     },
@@ -224,8 +225,9 @@ export function ExecutiveQuickView({
     queryFn: async () => {
       const { data, error } = await supabase
         .from("dependencies")
-        .select("id,project_id,status,rag,due_date,dependency_type")
-        .eq("org_id", orgId!);
+        .select("id,project_id,status,dep_type,needed_by")
+        .eq("org_id", orgId!)
+        .limit(10000);
       if (error) throw error;
       return data ?? [];
     },

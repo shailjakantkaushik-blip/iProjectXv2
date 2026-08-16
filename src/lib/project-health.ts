@@ -154,16 +154,10 @@ export function computeProjectHealth(
 ): ProjectHealthComputed {
   const nowMs = extras?.nowMs ?? Date.now();
   const engine = evaluateProjectHealth({
+    ...extras,
     project,
     gates,
     nowMs,
-    workItems: extras?.workItems,
-    risks: extras?.risks,
-    dependencies: extras?.dependencies,
-    changeRequests: extras?.changeRequests,
-    allocations: extras?.allocations,
-    monthly: extras?.monthly,
-    previousScore: extras?.previousScore,
   });
 
   const start = projectScheduleStart(project);

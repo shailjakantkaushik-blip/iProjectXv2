@@ -8,10 +8,11 @@
 
 import {
   projectApprovedFunding,
-  projectBenefitsRealised,
-  projectBenefitsTarget,
   projectForecast,
   projectIncurred,
+  sumBenefitsRealised,
+  sumBenefitsTarget,
+  type BenefitLineLike,
   type ProjectFinanceLike,
 } from "@/lib/project-finance";
 import { projectScheduleEnd, projectScheduleStart } from "@/lib/project-dates";
@@ -75,7 +76,9 @@ export type HealthDependencyLike = {
   status?: string | null;
   rag?: string | null;
   due_date?: string | null;
+  needed_by?: string | null;
   dependency_type?: string | null;
+  dep_type?: string | null;
 };
 
 export type HealthChangeRequestLike = {
@@ -126,6 +129,8 @@ export type HealthEngineInput = {
   changeRequests?: HealthChangeRequestLike[];
   allocations?: HealthAllocationLike[];
   monthly?: EvmMonthlyLike[];
+  /** Benefits register lines — canonical target/realised (same as Cockpit). */
+  benefitLines?: BenefitLineLike[];
   /** Prior health score (e.g. last visit) for “dropped 82 → 72” copy. */
   previousScore?: number | null;
   nowMs?: number;
@@ -381,8 +386,9 @@ function scoreDependencies(deps: HealthDependencyLike[], nowMs: number): {
   const open = deps.filter(isOpenDep);
   const today = nowMs;
   const overdue = open.filter((d) => {
-    if (!d.due_date) return /red|amber/i.test(String(d.rag || ""));
-    return new Date(d.due_date).getTime() < today;
+    const due = d.due_date || d.needed_by;
+    if (!due) return /red|amber/i.test(String(d.rag || ""));
+    return new Date(due).getTime() < today;
   });
   let score = 94 - open.length * 5 - overdue.length * 10;
   return {
@@ -394,9 +400,12 @@ function scoreDependencies(deps: HealthDependencyLike[], nowMs: number): {
   };
 }
 
-function scoreBenefits(project: ProjectFinanceLike): { score: number; detail: string } {
-  const target = projectBenefitsTarget(project);
-  const realised = projectBenefitsRealised(project);
+function scoreBenefits(
+  project: ProjectFinanceLike & { id?: string },
+  benefitLines?: BenefitLineLike[],
+): { score: number; detail: string } {
+  const target = sumBenefitsTarget(benefitLines, project, project.id);
+  const realised = sumBenefitsRealised(benefitLines, project, project.id);
   if (target <= 0) {
     return {
       score: realised > 0 ? 90 : 78,
@@ -668,7 +677,7 @@ export function evaluateProjectHealth(input: HealthEngineInput): HealthEngineRes
   const resource = scoreResource(allocations, ftePlan, fteActual);
   const risk = scoreRisk(risks);
   const deps = scoreDependencies(dependencies, nowMs);
-  const benefits = scoreBenefits(project);
+  const benefits = scoreBenefits(project, input.benefitLines);
 
   const raw: Record<HealthDimensionKey, { score: number; detail: string }> = {
     schedule,
