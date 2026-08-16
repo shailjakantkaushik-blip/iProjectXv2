@@ -29,7 +29,10 @@ import {
   TIMESHEET_STATUS_CLASS,
   TIMESHEET_STATUS_LABEL,
   weekStartMonday,
+  mondaysOverlappingMonth,
+  workItemMonthPlan,
   workItemWeekdayPlan,
+  spreadHoursAcrossWeekdays,
   type DayKey,
   type TimesheetStatus,
 } from "@/lib/timesheet";
@@ -154,9 +157,7 @@ function projectTaskLabel(
   projectById: Map<string, { id: string; name?: string | null; project_code?: string | null }>,
 ): string {
   if (e.billable === false) return `Non-billable · ${workItemTitle(e, workById)}`;
-  const proj =
-    e.projects ||
-    (e.project_id ? projectById.get(e.project_id) : null);
+  const proj = e.projects || (e.project_id ? projectById.get(e.project_id) : null);
   const code = (proj as any)?.project_code || (proj as any)?.name || "—";
   return `${code} · ${workItemTitle(e, workById)}`;
 }
@@ -188,7 +189,7 @@ function TimesheetsPage() {
   const [weekStart, setWeekStart] = useState(() => weekStartMonday());
   const [customTaskDraft, setCustomTaskDraft] = useState("");
   /** Calendar is the primary fill UX; Grid keeps the classic spreadsheet. */
-  const [hoursView, setHoursView] = useState<"calendar" | "grid">("calendar");
+  const [hoursView, setHoursView] = useState<"calendar" | "grid" | "month">("calendar");
 
   useEffect(() => {
     if (search.tab && setupOnlyTabs.includes(search.tab) && !canAccessSetup) {
@@ -317,8 +318,7 @@ function TimesheetsPage() {
     const ids = new Set(assignees.map((a) => a.work_item_id));
     return workItems.filter(
       (w) =>
-        w.status !== "Cancelled" &&
-        (ids.has(w.id) || (!!userId && w.owner_user_id === userId)),
+        w.status !== "Cancelled" && (ids.has(w.id) || (!!userId && w.owner_user_id === userId)),
     );
   }, [assignees, workItems, userId]);
 
@@ -348,6 +348,41 @@ function TimesheetsPage() {
       return (data ?? []) as unknown as Entry[];
     },
     enabled: !!sheet?.id,
+  });
+
+  const monthWeeks = useMemo(() => {
+    const [y, mo] = weekStart.split("-").map(Number);
+    return mondaysOverlappingMonth(y, mo - 1);
+  }, [weekStart]);
+
+  const { data: monthSheets = [] } = useQuery({
+    queryKey: ["timesheets", orgId, userId, "month", monthWeeks.join(",")],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("timesheets" as any)
+        .select("*")
+        .eq("user_id", userId!)
+        .in("week_start", monthWeeks);
+      if (error) throw error;
+      return (data ?? []) as unknown as Timesheet[];
+    },
+    enabled: !!orgId && !!userId && hoursView === "month",
+  });
+
+  const monthSheetIds = useMemo(() => monthSheets.map((s) => s.id), [monthSheets]);
+
+  const { data: monthEntries = [] } = useQuery({
+    queryKey: ["timesheet_entries", "month", monthSheetIds.join(",")],
+    queryFn: async () => {
+      if (!monthSheetIds.length) return [] as Entry[];
+      const { data, error } = await supabase
+        .from("timesheet_entries" as any)
+        .select("*")
+        .in("timesheet_id", monthSheetIds);
+      if (error) throw error;
+      return (data ?? []) as unknown as Entry[];
+    },
+    enabled: hoursView === "month",
   });
 
   const { data: myApprovals = [] } = useQuery({
@@ -522,19 +557,19 @@ function TimesheetsPage() {
     window.dispatchEvent(new CustomEvent("pmo:data-changed"));
   };
 
-  const ensureSheet = async (): Promise<string> => {
+  const ensureSheetForWeek = async (ws: string): Promise<string> => {
     if (!orgId || !userId) throw new Error("Not signed in");
 
     // Prefer cached row, then re-fetch — avoids duplicate insert when the
     // unique (org_id, user_id, week_start) row already exists but cache was empty.
-    if (sheet?.id) return sheet.id;
+    if (ws === weekStart && sheet?.id) return sheet.id;
 
     const existing = await supabase
       .from("timesheets" as any)
       .select("id")
       .eq("org_id", orgId)
       .eq("user_id", userId)
-      .eq("week_start", weekStart)
+      .eq("week_start", ws)
       .maybeSingle();
     if (existing.error) throw existing.error;
     if (existing.data?.id) return (existing.data as { id: string }).id;
@@ -545,7 +580,7 @@ function TimesheetsPage() {
         org_id: orgId,
         user_id: userId,
         resource_id: myResource?.id || null,
-        week_start: weekStart,
+        week_start: ws,
         status: "draft",
         manager_user_id: myResource?.manager_user_id || null,
       } as never)
@@ -561,7 +596,7 @@ function TimesheetsPage() {
           .select("id")
           .eq("org_id", orgId)
           .eq("user_id", userId)
-          .eq("week_start", weekStart)
+          .eq("week_start", ws)
           .maybeSingle();
         if (again.data?.id) return (again.data as { id: string }).id;
       }
@@ -569,6 +604,8 @@ function TimesheetsPage() {
     }
     return (data as unknown as { id: string }).id;
   };
+
+  const ensureSheet = async (): Promise<string> => ensureSheetForWeek(weekStart);
 
   const saveDraft = useMutation({
     mutationFn: async () => {
@@ -600,13 +637,95 @@ function TimesheetsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const saveMonth = useMutation({
+    mutationFn: async (hoursByItemWeek: Record<string, Record<string, number>>) => {
+      if (!orgId || !userId) throw new Error("Not signed in");
+      if (!myResource) {
+        throw new Error(
+          "Link your login to a resource record (Setup tab / Resources) before saving timesheets.",
+        );
+      }
+      let saved = 0;
+      let skipped = 0;
+      for (const ws of monthWeeks) {
+        const existingSheet = monthSheets.find((s) => s.week_start === ws);
+        if (existingSheet && !canEditTimesheet(existingSheet.status)) {
+          skipped += 1;
+          continue;
+        }
+        const weekRows: Record<string, unknown>[] = [];
+        for (const wi of assignedWorkItems) {
+          const hours = Number(hoursByItemWeek[wi.id]?.[ws] || 0);
+          if (!(hours > 0)) continue;
+          const perDay = spreadHoursAcrossWeekdays(hours);
+          weekRows.push({
+            org_id: orgId,
+            billable: true,
+            project_id: wi.project_id,
+            work_item_id: wi.id,
+            custom_task: null,
+            notes: null,
+            ...perDay,
+          });
+        }
+        if (!weekRows.length && !existingSheet) continue;
+        const sheetId = await ensureSheetForWeek(ws);
+        const existing = await supabase
+          .from("timesheet_entries" as any)
+          .select("*")
+          .eq("timesheet_id", sheetId);
+        if (existing.error) throw existing.error;
+        const keep = ((existing.data ?? []) as Entry[]).filter((e) => e.billable === false);
+        const { error: delErr } = await supabase
+          .from("timesheet_entries" as any)
+          .delete()
+          .eq("timesheet_id", sheetId);
+        if (delErr) throw delErr;
+        const payload = [
+          ...weekRows.map((r) => ({ ...r, timesheet_id: sheetId })),
+          ...keep.map((e) => ({
+            org_id: orgId,
+            timesheet_id: sheetId,
+            billable: false,
+            project_id: null,
+            work_item_id: null,
+            custom_task: e.custom_task,
+            hours_mon: e.hours_mon || 0,
+            hours_tue: e.hours_tue || 0,
+            hours_wed: e.hours_wed || 0,
+            hours_thu: e.hours_thu || 0,
+            hours_fri: e.hours_fri || 0,
+            hours_sat: e.hours_sat || 0,
+            hours_sun: e.hours_sun || 0,
+            notes: e.notes || null,
+          })),
+        ];
+        if (payload.length) {
+          const { error } = await supabase
+            .from("timesheet_entries" as any)
+            .insert(payload as never);
+          if (error) throw error;
+        }
+        saved += 1;
+      }
+      return { saved, skipped };
+    },
+    onSuccess: ({ saved, skipped }) => {
+      invalidate();
+      toast.success(
+        skipped
+          ? `Saved ${saved} week${saved === 1 ? "" : "s"}; ${skipped} locked week${skipped === 1 ? "" : "s"} skipped`
+          : `Saved timesheet for ${saved} week${saved === 1 ? "" : "s"}`,
+      );
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const submit = useMutation({
     mutationFn: async () => {
       if (!orgId || !userId) throw new Error("Not signed in");
       if (!myResource) {
-        throw new Error(
-          "Link your login to a resource record before submitting timesheets.",
-        );
+        throw new Error("Link your login to a resource record before submitting timesheets.");
       }
       if (!myResource.manager_user_id) {
         throw new Error("Resource Manager must be configured before submit.");
@@ -623,9 +742,12 @@ function TimesheetsPage() {
         .from("timesheet_entries" as any)
         .insert(rows as never);
       if (insErr) throw insErr;
-      const { data, error } = await supabase.rpc("submit_timesheet" as any, {
-        _timesheet_id: sheetId,
-      } as never);
+      const { data, error } = await supabase.rpc(
+        "submit_timesheet" as any,
+        {
+          _timesheet_id: sheetId,
+        } as never,
+      );
       if (error) throw error;
       return data;
     },
@@ -639,9 +761,12 @@ function TimesheetsPage() {
   const withdraw = useMutation({
     mutationFn: async () => {
       if (!sheet?.id) throw new Error("No timesheet");
-      const { error } = await supabase.rpc("withdraw_timesheet" as any, {
-        _timesheet_id: sheet.id,
-      } as never);
+      const { error } = await supabase.rpc(
+        "withdraw_timesheet" as any,
+        {
+          _timesheet_id: sheet.id,
+        } as never,
+      );
       if (error) throw error;
     },
     onSuccess: () => {
@@ -846,7 +971,8 @@ function TimesheetsPage() {
             )}
             {myResource && !myResource.manager_user_id && (
               <p className="mt-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-                No Resource Manager on your profile — submission will be blocked until an admin assigns one.
+                No Resource Manager on your profile — submission will be blocked until an admin
+                assigns one.
               </p>
             )}
             {status === "rejected" && sheet?.rejection_reason && (
@@ -865,11 +991,13 @@ function TimesheetsPage() {
                 label="Manager"
                 value={
                   myResource?.manager_user_id
-                    ? memberLabel(memberById.get(myResource.manager_user_id) || {
-                        id: myResource.manager_user_id,
-                        full_name: null,
-                        email: null,
-                      })
+                    ? memberLabel(
+                        memberById.get(myResource.manager_user_id) || {
+                          id: myResource.manager_user_id,
+                          full_name: null,
+                          email: null,
+                        },
+                      )
                     : "—"
                 }
               />
@@ -915,6 +1043,17 @@ function TimesheetsPage() {
                   >
                     Grid
                   </button>
+                  <button
+                    type="button"
+                    className={`rounded px-2.5 py-1 text-[11px] font-semibold ${
+                      hoursView === "month"
+                        ? "bg-sky-100 text-sky-800"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                    onClick={() => setHoursView("month")}
+                  >
+                    Month
+                  </button>
                 </div>
                 {editable ? (
                   <>
@@ -943,13 +1082,32 @@ function TimesheetsPage() {
                 No assigned work items yet. Ask a PM to assign you on Work Items for billable
                 placeholders, or add a non-billable task below.
               </div>
+            ) : hoursView === "month" ? (
+              <TimesheetMonthPanel
+                weekStart={weekStart}
+                setWeekStart={setWeekStart}
+                workItems={assignedWorkItems}
+                monthSheets={monthSheets}
+                monthEntries={monthEntries}
+                saving={saveMonth.isPending}
+                onOpenWeek={(ws) => {
+                  setWeekStart(ws);
+                  setHoursView("grid");
+                }}
+                onSaveMonth={(hours) => saveMonth.mutate(hours)}
+              />
             ) : hoursView === "calendar" ? (
               <TimesheetWeekCalendar
                 weekStart={weekStart}
                 editable={editable}
                 draftRows={draftRows}
                 workById={workById}
-                projectById={projectById as Map<string, { id: string; name?: string | null; project_code?: string | null }>}
+                projectById={
+                  projectById as Map<
+                    string,
+                    { id: string; name?: string | null; project_code?: string | null }
+                  >
+                }
                 onChangeHours={setRowHours}
                 onChangeCustomTask={(rowKey, value) =>
                   setDraftRows((prev) => ({
@@ -982,12 +1140,13 @@ function TimesheetsPage() {
                       const plannedTotal = Number(wi?.estimate_hours) || 0;
                       const actualToDate = Number(wi?.actual_hours) || 0;
                       const weekHrs = entryWeekTotal(row);
-                      const weekInActuals =
-                        normalizeTimesheetStatus(sheet?.status) === "approved";
+                      const weekInActuals = normalizeTimesheetStatus(sheet?.status) === "approved";
                       // Pending: planned − approved actuals − this week's draft (until approved)
                       const left = Math.max(
                         0,
-                        plannedTotal - actualToDate - (row.billable && !weekInActuals ? weekHrs : 0),
+                        plannedTotal -
+                          actualToDate -
+                          (row.billable && !weekInActuals ? weekHrs : 0),
                       );
                       const { weekHours: weekPlan, perDay: dayPlan } = row.billable
                         ? workItemWeekdayPlan({
@@ -1122,7 +1281,9 @@ function TimesheetsPage() {
             {editable && (
               <div className="mt-3 flex flex-wrap items-end gap-2">
                 <div className="min-w-[14rem] flex-1">
-                  <div className="mb-1 text-[11px] text-muted-foreground">Add non-billable task</div>
+                  <div className="mb-1 text-[11px] text-muted-foreground">
+                    Add non-billable task
+                  </div>
                   <input
                     className="st-input !text-xs"
                     placeholder="e.g. Internal training"
@@ -1192,11 +1353,7 @@ function TimesheetsPage() {
                   className="st-btn-secondary"
                   disabled={withdraw.isPending}
                   onClick={() => {
-                    if (
-                      !confirm(
-                        "Withdraw this timesheet from approval and return it to draft?",
-                      )
-                    ) {
+                    if (!confirm("Withdraw this timesheet from approval and return it to draft?")) {
                       return;
                     }
                     withdraw.mutate();
@@ -1212,7 +1369,8 @@ function TimesheetsPage() {
             {sheet?.reopen_reason && status === "draft" && (
               <p className="mt-3 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
                 Reopened by an approver
-                {sheet.reopen_reason ? `: ${sheet.reopen_reason}` : "."} Edit and resubmit when ready.
+                {sheet.reopen_reason ? `: ${sheet.reopen_reason}` : "."} Edit and resubmit when
+                ready.
               </p>
             )}
           </SectionFrame>
@@ -1238,9 +1396,7 @@ function TimesheetsPage() {
         />
       )}
 
-      {tab === "cost" && canViewCost && orgId && (
-        <TimesheetCostQuickView />
-      )}
+      {tab === "cost" && canViewCost && orgId && <TimesheetCostQuickView />}
 
       {tab === "reports" && canViewCost && orgId && (
         <TimesheetReportsPanel
@@ -1263,16 +1419,16 @@ function TimesheetsPage() {
           <p className="mb-3 text-sm text-muted-foreground">
             {canEditAllResources ? (
               <>
-                Each org member is the same person as their resource (auto-synced). Set hourly cost and
-                Resource Manager here. Billable timesheet hours × rate add to{" "}
-                <strong>OPEX Labor / FTE</strong> and total OpEx actual for the work item&apos;s project
-                / stream (other OpEx can still be entered separately).
+                Each org member is the same person as their resource (auto-synced). Set hourly cost
+                and Resource Manager here. Billable timesheet hours × rate add to{" "}
+                <strong>OPEX Labor / FTE</strong> and total OpEx actual for the work item&apos;s
+                project / stream (other OpEx can still be entered separately).
               </>
             ) : (
               <>
                 Project Managers can set hourly cost and Resource Manager for people allocated to
-                projects they manage. Org-wide sync and user linking stay with Org Admins. Cost figures
-                respect project visibility / permissions.
+                projects they manage. Org-wide sync and user linking stay with Org Admins. Cost
+                figures respect project visibility / permissions.
               </>
             )}
           </p>
@@ -1368,7 +1524,8 @@ const TIMESHEET_HOURS_GLOSSARY: ColumnGlossaryItem[] = [
   },
   {
     name: "Day strip",
-    description: "Mon–Sun totals at a glance. Tap a day to focus that card; totals over 8h highlight amber.",
+    description:
+      "Mon–Sun totals at a glance. Tap a day to focus that card; totals over 8h highlight amber.",
   },
   {
     name: "Type",
@@ -1376,7 +1533,8 @@ const TIMESHEET_HOURS_GLOSSARY: ColumnGlossaryItem[] = [
   },
   {
     name: "Project / task",
-    description: "Project code and work-item title (billable), or the free-text non-billable task name.",
+    description:
+      "Project code and work-item title (billable), or the free-text non-billable task name.",
   },
   {
     name: "Week plan",
@@ -1401,7 +1559,8 @@ const TIMESHEET_HOURS_GLOSSARY: ColumnGlossaryItem[] = [
 const TIMESHEET_COST_GLOSSARY: ColumnGlossaryItem[] = [
   {
     name: "Dimension",
-    description: "Grouping row label (project, stream, resource, stage gate, or month — based on view).",
+    description:
+      "Grouping row label (project, stream, resource, stage gate, or month — based on view).",
   },
   {
     name: "Alloc h",
@@ -1413,7 +1572,8 @@ const TIMESHEET_COST_GLOSSARY: ColumnGlossaryItem[] = [
   },
   {
     name: "Gap h",
-    description: "Alloc h − Demand h (positive = spare allocation; negative = over-planned demand).",
+    description:
+      "Alloc h − Demand h (positive = spare allocation; negative = over-planned demand).",
   },
   {
     name: "Actual h",
@@ -1452,7 +1612,8 @@ const TIMESHEET_SETUP_GLOSSARY: ColumnGlossaryItem[] = [
   },
   {
     name: "Resource Manager",
-    description: "Approver for the second approval step (after Project Manager on billable sheets).",
+    description:
+      "Approver for the second approval step (after Project Manager on billable sheets).",
   },
   {
     name: "Hourly cost",
@@ -1482,10 +1643,8 @@ function TimesheetCostQuickView() {
   const { data: allocations = [] } = useQuery({
     queryKey: ["resource_allocations", organization?.id, "ts-cost"],
     queryFn: async () =>
-      (
-        (await supabase.from("resource_allocations").select(RESOURCE_ALLOCATIONS_SELECT as "*"))
-          .data as any[]
-      ) ?? [],
+      ((await supabase.from("resource_allocations").select(RESOURCE_ALLOCATIONS_SELECT as "*"))
+        .data as any[]) ?? [],
     enabled: !!organization,
   });
 
@@ -1532,7 +1691,13 @@ function ResourceSetupRow({
     (nextRate ?? null) !== (resource.cost_rate ?? null);
 
   const linkedLabel = resource.user_id
-    ? memberLabel(members.find((m) => m.id === resource.user_id) || { id: resource.user_id, full_name: null, email: null })
+    ? memberLabel(
+        members.find((m) => m.id === resource.user_id) || {
+          id: resource.user_id,
+          full_name: null,
+          email: null,
+        },
+      )
     : "— None —";
 
   return (
@@ -1601,5 +1766,206 @@ function ResourceSetupRow({
         </button>
       </td>
     </tr>
+  );
+}
+
+function TimesheetMonthPanel({
+  weekStart,
+  setWeekStart,
+  workItems,
+  monthSheets,
+  monthEntries,
+  saving,
+  onOpenWeek,
+  onSaveMonth,
+}: {
+  weekStart: string;
+  setWeekStart: (w: string) => void;
+  workItems: WorkItem[];
+  monthSheets: Timesheet[];
+  monthEntries: Entry[];
+  saving: boolean;
+  onOpenWeek: (weekStart: string) => void;
+  onSaveMonth: (hours: Record<string, Record<string, number>>) => void;
+}) {
+  const [y, m] = weekStart.split("-").map(Number);
+  const monthIndex = m - 1;
+  const weeks = mondaysOverlappingMonth(y, monthIndex);
+  const label = new Date(y, monthIndex, 1).toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric",
+  });
+  const sheetByWeek = useMemo(
+    () => new Map(monthSheets.map((s) => [s.week_start, s])),
+    [monthSheets],
+  );
+  const [hours, setHours] = useState<Record<string, Record<string, number>>>({});
+
+  useEffect(() => {
+    const next: Record<string, Record<string, number>> = {};
+    for (const wi of workItems) next[wi.id] = {};
+    const sheetWeek = new Map(monthSheets.map((s) => [s.id, s.week_start]));
+    for (const e of monthEntries) {
+      if (e.billable === false || !e.work_item_id) continue;
+      const ws = sheetWeek.get(e.timesheet_id);
+      if (!ws) continue;
+      if (!next[e.work_item_id]) next[e.work_item_id] = {};
+      next[e.work_item_id][ws] = entryWeekTotal(e);
+    }
+    setHours(next);
+  }, [workItems, monthSheets, monthEntries]);
+
+  const applyMonthPlan = () => {
+    let filled = 0;
+    setHours((prev) => {
+      const next = { ...prev };
+      for (const wi of workItems) {
+        const plan = workItemMonthPlan({
+          estimateHours: Number(wi.estimate_hours) || 0,
+          actualHours: Number(wi.actual_hours) || 0,
+          plannedStart: wi.planned_start,
+          plannedEnd: wi.planned_end,
+          year: y,
+          monthIndex,
+        });
+        const row = { ...(next[wi.id] || {}) };
+        for (const w of weeks) {
+          const sheet = sheetByWeek.get(w);
+          if (sheet && !canEditTimesheet(sheet.status)) continue;
+          if ((plan.byWeek[w] || 0) > 0) {
+            row[w] = plan.byWeek[w];
+            filled += 1;
+          }
+        }
+        next[wi.id] = row;
+      }
+      return next;
+    });
+    if (filled === 0) {
+      toast.message("No month plan available — set planned hours/dates on work items first");
+    } else {
+      toast.success("Applied planned hours across the month");
+    }
+  };
+
+  return (
+    <div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="st-btn-secondary !px-2 !py-1 !text-xs"
+            onClick={() => setWeekStart(weekStartMonday(new Date(y, monthIndex - 1, 1)))}
+          >
+            Prev month
+          </button>
+          <strong className="text-sm">{label}</strong>
+          <button
+            type="button"
+            className="st-btn-secondary !px-2 !py-1 !text-xs"
+            onClick={() => setWeekStart(weekStartMonday(new Date(y, monthIndex + 1, 1)))}
+          >
+            Next month
+          </button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Enter hours for every week in the month. Planned hours come from each work item. Submitted
+          weeks stay locked.
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="st-table text-xs">
+          <thead>
+            <tr>
+              <th>Work item</th>
+              <th className="text-right">Month plan</th>
+              {weeks.map((w) => {
+                const sheet = sheetByWeek.get(w);
+                const locked = sheet ? !canEditTimesheet(sheet.status) : false;
+                return (
+                  <th key={w} className="text-right whitespace-nowrap">
+                    <button type="button" className="underline" onClick={() => onOpenWeek(w)}>
+                      Wk {w.slice(5)}
+                    </button>
+                    {locked && (
+                      <div className="text-[10px] font-normal text-muted-foreground">
+                        {TIMESHEET_STATUS_LABEL[normalizeTimesheetStatus(sheet?.status)]}
+                      </div>
+                    )}
+                  </th>
+                );
+              })}
+              <th className="text-right">Entered</th>
+            </tr>
+          </thead>
+          <tbody>
+            {workItems.map((wi) => {
+              const plan = workItemMonthPlan({
+                estimateHours: Number(wi.estimate_hours) || 0,
+                actualHours: Number(wi.actual_hours) || 0,
+                plannedStart: wi.planned_start,
+                plannedEnd: wi.planned_end,
+                year: y,
+                monthIndex,
+              });
+              const entered = weeks.reduce((s, w) => s + (Number(hours[wi.id]?.[w]) || 0), 0);
+              return (
+                <tr key={wi.id}>
+                  <td className="font-medium">{wi.title}</td>
+                  <td className="text-right tabular-nums font-semibold">{plan.monthHours}</td>
+                  {weeks.map((w) => {
+                    const sheet = sheetByWeek.get(w);
+                    const locked = sheet ? !canEditTimesheet(sheet.status) : false;
+                    return (
+                      <td key={w} className="text-right">
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.25}
+                          className="st-input !w-16 !py-0.5 text-right"
+                          disabled={locked}
+                          value={hours[wi.id]?.[w] ?? ""}
+                          placeholder={String(plan.byWeek[w] || "")}
+                          onChange={(e) => {
+                            const v = e.target.value === "" ? 0 : Number(e.target.value);
+                            setHours((prev) => ({
+                              ...prev,
+                              [wi.id]: { ...(prev[wi.id] || {}), [w]: Number.isFinite(v) ? v : 0 },
+                            }));
+                          }}
+                        />
+                      </td>
+                    );
+                  })}
+                  <td className="text-right tabular-nums font-semibold">
+                    {Math.round(entered * 100) / 100}
+                  </td>
+                </tr>
+              );
+            })}
+            {workItems.length === 0 && (
+              <tr>
+                <td colSpan={weeks.length + 3} className="py-4 text-center text-muted-foreground">
+                  No assigned work items for this month.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" className="st-btn-secondary !text-xs" onClick={applyMonthPlan}>
+          Apply month plan
+        </button>
+        <button
+          type="button"
+          className="st-btn-primary !text-xs"
+          disabled={saving || workItems.length === 0}
+          onClick={() => onSaveMonth(hours)}
+        >
+          {saving ? "Saving…" : "Save entire month"}
+        </button>
+      </div>
+    </div>
   );
 }

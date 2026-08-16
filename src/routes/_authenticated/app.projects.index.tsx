@@ -44,6 +44,8 @@ import {
 } from "@/lib/portfolio.functions";
 import { DEFAULT_PAGE_SIZE } from "@/lib/portfolio-paging";
 import { explainRag } from "@/lib/explain-metric";
+import { FUNCTIONAL_AREAS } from "@/lib/ops-enhancements";
+import { PROJECT_OPS_EXTRAS } from "@/lib/project-selects";
 
 export const Route = createFileRoute("/_authenticated/app/projects/")({
   component: ProjectsList,
@@ -106,8 +108,34 @@ function ProjectsList() {
     staleTime: 60_000,
   });
 
-  const projects = (pageData?.rows ?? []) as any[];
+  const pageRows = (pageData?.rows ?? []) as any[];
   const pageTotal = pageData?.total ?? 0;
+  const pageIds = useMemo(() => pageRows.map((p) => p.id).filter(Boolean), [pageRows]);
+
+  const { data: opsExtras = [] } = useQuery({
+    queryKey: ["projects", orgId, "ops-extras", pageIds.join(",")],
+    queryFn: async () => {
+      if (!pageIds.length) return [];
+      const { data, error } = await supabase
+        .from("projects")
+        .select(`id,${PROJECT_OPS_EXTRAS}` as "*")
+        .in("id", pageIds);
+      if (error) return [];
+      return data ?? [];
+    },
+    enabled: !!orgId && pageIds.length > 0,
+    staleTime: 60_000,
+  });
+
+  const extrasById = useMemo(
+    () => new Map((opsExtras as any[]).map((r) => [r.id, r])),
+    [opsExtras],
+  );
+
+  const projects = useMemo(
+    () => pageRows.map((p) => ({ ...p, ...(extrasById.get(p.id) || {}) })),
+    [pageRows, extrasById],
+  );
 
   const { data: kpis } = useQuery({
     queryKey: ["portfolio-kpis", orgId],
@@ -126,10 +154,12 @@ function ProjectsList() {
   const { data: stakeholders = [] } = useQuery({
     queryKey: ["stakeholders", orgId, "projects-sponsor"],
     queryFn: async () =>
-      ((await (supabase as any)
-        .from("stakeholders")
-        .select("id,project_id,name,is_sponsor")
-        .order("name")).data as any[]) ?? [],
+      ((
+        await (supabase as any)
+          .from("stakeholders")
+          .select("id,project_id,name,is_sponsor")
+          .order("name")
+      ).data as any[]) ?? [],
     enabled: !!orgId,
     staleTime: 60_000,
   });
@@ -152,9 +182,7 @@ function ProjectsList() {
   }, [stakeholders]);
 
   const setPrimarySponsor = async (projectId: string, stakeholderId: string) => {
-    const st = stakeholderId
-      ? stakeholders.find((s: any) => s.id === stakeholderId)
-      : null;
+    const st = stakeholderId ? stakeholders.find((s: any) => s.id === stakeholderId) : null;
     const patch: Record<string, unknown> = {
       sponsor_stakeholder_id: stakeholderId || null,
     };
@@ -195,8 +223,9 @@ function ProjectsList() {
     () => [
       { key: "project_code", label: "Project ID" },
       { key: "name", label: "Project Name" },
-      { key: "portfolio", label: "Portfolio" },
+      { key: "portfolio", label: "Strategic Alignment" },
       { key: "program", label: "Program" },
+      { key: "functional_area", label: "Functional Area" },
       { key: "sponsor", label: "Sponsor" },
       { key: "priority", label: "Priority" },
       { key: "status", label: "Status" },
@@ -509,7 +538,7 @@ function ProjectsList() {
 
       <SectionFrame>
         <SectionTitle>
-          Portfolio Register ({pageTotal.toLocaleString()} total
+          Project Register ({pageTotal.toLocaleString()} total
           {pageTotal > pageSize
             ? ` · showing ${offset + 1}–${Math.min(offset + projects.length, pageTotal)}`
             : ""}
@@ -550,7 +579,9 @@ function ProjectsList() {
                       sortKey={table.sortKey}
                       sortDir={table.sortDir}
                       onToggleSort={table.toggleSort}
-                      align={col.key === "budget" || col.key === "capex_incurred" ? "right" : "left"}
+                      align={
+                        col.key === "budget" || col.key === "capex_incurred" ? "right" : "left"
+                      }
                     />
                   ))}
                 </tr>
@@ -606,6 +637,17 @@ function ProjectsList() {
                         rowId={p.id}
                         field="program"
                         value={p.program}
+                        invalidateKeys={["projects"]}
+                      />
+                    </td>
+                    <td>
+                      <EditableCell
+                        table="projects"
+                        rowId={p.id}
+                        field="functional_area"
+                        value={p.functional_area}
+                        type="select"
+                        options={FUNCTIONAL_AREAS.map((a) => ({ label: a, value: a }))}
                         invalidateKeys={["projects"]}
                       />
                     </td>
@@ -743,7 +785,8 @@ function ProjectsList() {
         {pageTotal > pageSize ? (
           <div className="mt-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <span>
-              Page {Math.floor(offset / pageSize) + 1} of {Math.max(1, Math.ceil(pageTotal / pageSize))}
+              Page {Math.floor(offset / pageSize) + 1} of{" "}
+              {Math.max(1, Math.ceil(pageTotal / pageSize))}
             </span>
             <div className="flex gap-2">
               <Button

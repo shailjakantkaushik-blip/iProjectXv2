@@ -56,6 +56,46 @@ export function addDays(isoDate: string, days: number): string {
   return x.toISOString().slice(0, 10);
 }
 
+/** Mondays (YYYY-MM-DD) whose week overlaps the calendar month. */
+export function mondaysOverlappingMonth(year: number, monthIndex: number): string[] {
+  const first = new Date(Date.UTC(year, monthIndex, 1));
+  const last = new Date(Date.UTC(year, monthIndex + 1, 0));
+  const start = weekStartMonday(first);
+  const endMonday = weekStartMonday(last);
+  const out: string[] = [];
+  for (let d = start; d <= endMonday; d = addDays(d, 7)) {
+    out.push(d);
+    if (out.length > 8) break;
+  }
+  return out;
+}
+
+/** Planned hours for a work item across every weekday in a calendar month. */
+export function workItemMonthPlan(opts: {
+  estimateHours: number;
+  actualHours?: number | null;
+  plannedStart?: string | null;
+  plannedEnd?: string | null;
+  year: number;
+  monthIndex: number;
+}): { monthHours: number; byWeek: Record<string, number> } {
+  const weeks = mondaysOverlappingMonth(opts.year, opts.monthIndex);
+  const byWeek: Record<string, number> = {};
+  let monthHours = 0;
+  for (const weekStart of weeks) {
+    const { weekHours } = workItemWeekdayPlan({
+      estimateHours: opts.estimateHours,
+      actualHours: opts.actualHours,
+      plannedStart: opts.plannedStart,
+      plannedEnd: opts.plannedEnd,
+      weekStart,
+    });
+    byWeek[weekStart] = weekHours;
+    monthHours += weekHours;
+  }
+  return { monthHours: Math.round(monthHours * 100) / 100, byWeek };
+}
+
 export function formatWeekRange(weekStart: string): string {
   const end = addDays(weekStart, 6);
   const fmt = (iso: string) => {
@@ -86,6 +126,10 @@ function emptyDayHours(): Record<DayKey, number> {
 }
 
 /** Evenly split hours across Mon–Fri (weekends 0). */
+export function spreadHoursAcrossWeekdays(hours: number): Record<DayKey, number> {
+  return distributeAcrossWeekdays(hours).perDay;
+}
+
 function distributeAcrossWeekdays(hours: number): {
   weekHours: number;
   perDay: Record<DayKey, number>;

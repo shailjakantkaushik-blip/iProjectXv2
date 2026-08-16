@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PROJECT_PORTFOLIO_SELECT, BENEFITS_SELECT } from "@/lib/query-selects";
+import { PROJECT_OPS_EXTRAS } from "@/lib/project-selects";
+import { projectPaybackMonths } from "@/lib/ops-enhancements";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -24,16 +26,28 @@ function BenefitsPage() {
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*");
+      const wide = await supabase
+        .from("projects")
+        .select(`${PROJECT_PORTFOLIO_SELECT},${PROJECT_OPS_EXTRAS}` as "*");
+      if (!wide.error) return wide.data ?? [];
+      const { data, error } = await supabase
+        .from("projects")
+        .select(PROJECT_PORTFOLIO_SELECT as "*");
       if (error) throw error;
-      return data;
+      return data ?? [];
     },
     enabled: !!organization,
   });
 
   const { data: benefits = [] } = useQuery({
     queryKey: ["benefits", organization?.id],
-    queryFn: async () => (await supabase.from("benefits").select(BENEFITS_SELECT as "*")).data ?? [],
+    queryFn: async () => {
+      const wide = await supabase
+        .from("benefits")
+        .select(`${BENEFITS_SELECT},payback_months` as "*");
+      if (!wide.error) return wide.data ?? [];
+      return (await supabase.from("benefits").select(BENEFITS_SELECT as "*")).data ?? [];
+    },
     enabled: !!organization,
   });
 
@@ -51,6 +65,7 @@ function BenefitsPage() {
             realised,
             gap: target - realised,
             rate: target > 0 ? (realised / target) * 100 : 0,
+            payback: projectPaybackMonths(p, benefits as any[], p.id),
           };
         })
         .filter((r) => r.target > 0 || r.realised > 0)
@@ -66,6 +81,7 @@ function BenefitsPage() {
       { key: "realised", label: "Realised" },
       { key: "gap", label: "Gap" },
       { key: "rate", label: "Rate" },
+      { key: "payback", label: "Payback (mo)" },
     ],
     [],
   );
@@ -146,9 +162,15 @@ function BenefitsPage() {
                       sortKey={table.sortKey}
                       sortDir={table.sortDir}
                       onToggleSort={table.toggleSort}
-                      align={["target", "realised", "gap", "rate"].includes(col.key) ? "right" : "left"}
+                      align={
+                        ["target", "realised", "gap", "rate", "payback"].includes(col.key)
+                          ? "right"
+                          : "left"
+                      }
                       className={
-                        ["target", "realised", "gap", "rate"].includes(col.key) ? "text-right" : ""
+                        ["target", "realised", "gap", "rate", "payback"].includes(col.key)
+                          ? "text-right"
+                          : ""
                       }
                     />
                   ))}
@@ -170,6 +192,7 @@ function BenefitsPage() {
                       <td className="text-right tabular-nums">{fmt(r.realised)}</td>
                       <td className="text-right tabular-nums">{fmt(r.gap)}</td>
                       <td className="text-right tabular-nums">{r.rate.toFixed(1)}%</td>
+                      <td className="text-right tabular-nums">{r.payback ?? "—"}</td>
                     </tr>
                   ))
                 )}

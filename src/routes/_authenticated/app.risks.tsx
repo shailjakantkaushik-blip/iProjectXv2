@@ -85,11 +85,11 @@ function RisksPage() {
       { key: "title", label: "Title" },
       { key: "category", label: "Category" },
       { key: "owner", label: "Owner" },
-      { key: "probability", label: "P" },
-      { key: "impact", label: "I" },
+      { key: "probability", label: "Probability" },
+      { key: "impact", label: "Impact" },
       {
         key: "severity",
-        label: "Sev",
+        label: "Severity",
         getValue: (r) =>
           r.severity ?? (r.probability && r.impact ? r.probability * r.impact : null),
       },
@@ -291,7 +291,7 @@ function RisksPage() {
             ))}
           </select>
           <label className="flex items-center gap-1 text-xs">
-            P
+            Probability
             <input
               className="st-input"
               type="number"
@@ -302,7 +302,7 @@ function RisksPage() {
             />
           </label>
           <label className="flex items-center gap-1 text-xs">
-            I
+            Impact
             <input
               className="st-input"
               type="number"

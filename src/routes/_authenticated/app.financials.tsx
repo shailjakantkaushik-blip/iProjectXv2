@@ -796,8 +796,8 @@ function FinancialsPage() {
               </ComposedChart>
             </ExpandableChart>
             <div className="mt-3 max-h-64 overflow-auto">
-              <table className="st-table !w-max min-w-full text-xs">
-                <thead className="sticky top-0 z-[1] bg-[#f1f3f6]">
+              <table className="st-table st-table-finance !w-max min-w-full text-xs">
+                <thead className="sticky top-0 z-[1]">
                   <tr>
                     <th className="whitespace-nowrap">Month</th>
                     <th className="st-num whitespace-nowrap">Planned</th>
@@ -892,8 +892,8 @@ function FinancialsPage() {
           placeholder="Search project funding…"
         />
         <div className="max-h-[500px] overflow-auto">
-          <table className="st-table">
-            <thead className="sticky top-0 bg-white">
+          <table className="st-table st-table-finance">
+            <thead className="sticky top-0">
               <tr>
                 {financeColumns.map((col) => (
                   <ColumnarTh

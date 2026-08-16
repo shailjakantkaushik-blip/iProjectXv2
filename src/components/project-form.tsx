@@ -12,11 +12,16 @@ import {
   deliveryMethodsQueryKey,
   fetchDeliveryMethods,
 } from "@/lib/delivery-methods";
+import { FUNCTIONAL_AREAS } from "@/lib/ops-enhancements";
+import { PORTFOLIO_CATEGORIES } from "@/lib/project-health";
 
 export interface ProjectFormValues {
   project_code?: string | null;
   name: string;
   program?: string | null;
+  portfolio?: string | null;
+  functional_area?: string | null;
+  payback_months?: number | null;
   sponsor?: string | null;
   bu_id?: string | null;
   priority?: string;
@@ -136,7 +141,7 @@ export function ProjectForm({
     for (const k of ["start_date","end_date","target_go_live","planned_start_date","planned_end_date","actual_start_date","actual_end_date"]) {
       if (!clean[k]) clean[k] = null;
     }
-    for (const k of ["budget","capex_approved","capex_incurred","opex_approved","opex_incurred","benefits_target","benefits_realised","roi_percent"]) {
+    for (const k of ["budget","capex_approved","capex_incurred","opex_approved","opex_incurred","benefits_target","benefits_realised","roi_percent","payback_months"]) {
       const val = clean[k];
       clean[k] = val === undefined || val === null || val === "" ? 0 : Number(val);
     }
@@ -166,6 +171,9 @@ export function ProjectForm({
               <Field label="Project code *"><Input {...register("project_code", { required: true })} placeholder="PRJ-001" /></Field>
               <Field label="Name *"><Input {...register("name", { required: true })} /></Field>
               <Field label="Program"><Input {...register("program")} placeholder="Growth / Transformation…" /></Field>
+              <Sel label="Strategic Alignment" reg={register("portfolio")} opts={[...PORTFOLIO_CATEGORIES]} />
+              <Sel label="Functional Area" reg={register("functional_area")} opts={[...FUNCTIONAL_AREAS]} />
+              <Field label="Payback (months)"><Input type="number" min={0} step={1} {...register("payback_months")} /></Field>
               <Field label="Business Unit">
                 <select {...register("bu_id")} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
                   <option value="none">— None —</option>

@@ -29,7 +29,7 @@ export type NavigationConfig = {
 
 export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
   {
-    heading: "Command",
+    heading: "Command Center",
     items: [
       { to: "/app/", label: "Home", icon: "Home", exact: true },
       { to: "/app/my-work", label: "My Work", icon: "Briefcase" },
@@ -44,16 +44,17 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
     ],
   },
   {
-    heading: "Portfolio",
+    heading: "Strategic Alignment",
     items: [
       { to: "/app/projects", label: "Projects", icon: "FolderKanban" },
       { to: "/app/programs", label: "Programs", icon: "Layers" },
       { to: "/app/project-infographic", label: "Project Infographic", icon: "Image" },
+      { to: "/app/project-forecast", label: "Project Forecast", icon: "GanttChart" },
       { to: "/app/portfolio-segmentation", label: "Segmentation", icon: "PieChart" },
       { to: "/app/prioritisation", label: "Prioritisation", icon: "Trophy" },
       { to: "/app/portfolio-movements", label: "Movements", icon: "ArrowLeftRight" },
       { to: "/app/demand-pipeline", label: "Demand Pipeline", icon: "Inbox" },
-      { to: "/app/scenarios", label: "Portfolio Scenarios", icon: "Scale" },
+      { to: "/app/scenarios", label: "Alignment Scenarios", icon: "Scale" },
     ],
   },
   {
@@ -259,12 +260,43 @@ export function defaultAppNavigationConfig(): NavigationConfig {
   return defaultNavigationConfig(APP_NAV_GROUPS);
 }
 
+/** Rename a persisted section heading without dropping its item order. */
+function renamePersistedHeading(partial: any, from: string, to: string) {
+  if (!partial || typeof partial !== "object" || from === to) return partial;
+  const next = { ...partial };
+  if (Array.isArray(next.group_order)) {
+    next.group_order = next.group_order.map((h: unknown) => (String(h) === from ? to : h));
+  }
+  if (next.item_order && typeof next.item_order === "object") {
+    const io = { ...next.item_order };
+    if (io[from] && !io[to]) {
+      io[to] = io[from];
+      delete io[from];
+    } else if (io[from] && io[to]) {
+      const seen = new Set((io[to] as unknown[]).map(String));
+      io[to] = [
+        ...(io[to] as unknown[]),
+        ...((io[from] as unknown[]) || []).filter((p) => {
+          const s = String(p);
+          if (seen.has(s)) return false;
+          seen.add(s);
+          return true;
+        }),
+      ];
+      delete io[from];
+    }
+    next.item_order = io;
+  }
+  return next;
+}
+
 export function mergeNavigationConfig(
   partial: any,
   catalog: NavGroupDef[] = DEFAULT_NAV_GROUPS,
 ): NavigationConfig {
   const base = defaultNavigationConfig(catalog);
   if (!partial || typeof partial !== "object") return base;
+  partial = renamePersistedHeading(partial, "Command", "Command Center");
 
   const catalogHeadings = new Set(catalog.map((g) => g.heading));
   const allPaths = new Set(flattenNavItems(catalog).keys());

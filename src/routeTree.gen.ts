@@ -61,6 +61,7 @@ import { Route as AuthenticatedAppPortfolioSegmentationRouteImport } from './rou
 import { Route as AuthenticatedAppPrioritisationRouteImport } from './routes/_authenticated/app.prioritisation'
 import { Route as AuthenticatedAppProgramsRouteImport } from './routes/_authenticated/app.programs'
 import { Route as AuthenticatedAppProjectAccessRouteImport } from './routes/_authenticated/app.project-access'
+import { Route as AuthenticatedAppProjectForecastRouteImport } from './routes/_authenticated/app.project-forecast'
 import { Route as AuthenticatedAppProjectInfographicRouteImport } from './routes/_authenticated/app.project-infographic'
 import { Route as AuthenticatedAppProjectPurgeRouteImport } from './routes/_authenticated/app.project-purge'
 import { Route as AuthenticatedAppProjectsRouteImport } from './routes/_authenticated/app.projects'
@@ -401,6 +402,12 @@ const AuthenticatedAppProjectAccessRoute =
   AuthenticatedAppProjectAccessRouteImport.update({
     id: '/project-access',
     path: '/project-access',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
+const AuthenticatedAppProjectForecastRoute =
+  AuthenticatedAppProjectForecastRouteImport.update({
+    id: '/project-forecast',
+    path: '/project-forecast',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
 const AuthenticatedAppProjectInfographicRoute =
@@ -757,6 +764,7 @@ export interface FileRoutesByFullPath {
   '/app/prioritisation': typeof AuthenticatedAppPrioritisationRoute
   '/app/programs': typeof AuthenticatedAppProgramsRoute
   '/app/project-access': typeof AuthenticatedAppProjectAccessRoute
+  '/app/project-forecast': typeof AuthenticatedAppProjectForecastRoute
   '/app/project-infographic': typeof AuthenticatedAppProjectInfographicRoute
   '/app/project-purge': typeof AuthenticatedAppProjectPurgeRoute
   '/app/projects': typeof AuthenticatedAppProjectsRouteWithChildren
@@ -860,6 +868,7 @@ export interface FileRoutesByTo {
   '/app/prioritisation': typeof AuthenticatedAppPrioritisationRoute
   '/app/programs': typeof AuthenticatedAppProgramsRoute
   '/app/project-access': typeof AuthenticatedAppProjectAccessRoute
+  '/app/project-forecast': typeof AuthenticatedAppProjectForecastRoute
   '/app/project-infographic': typeof AuthenticatedAppProjectInfographicRoute
   '/app/project-purge': typeof AuthenticatedAppProjectPurgeRoute
   '/app/release-register': typeof AuthenticatedAppReleaseRegisterRoute
@@ -965,6 +974,7 @@ export interface FileRoutesById {
   '/_authenticated/app/prioritisation': typeof AuthenticatedAppPrioritisationRoute
   '/_authenticated/app/programs': typeof AuthenticatedAppProgramsRoute
   '/_authenticated/app/project-access': typeof AuthenticatedAppProjectAccessRoute
+  '/_authenticated/app/project-forecast': typeof AuthenticatedAppProjectForecastRoute
   '/_authenticated/app/project-infographic': typeof AuthenticatedAppProjectInfographicRoute
   '/_authenticated/app/project-purge': typeof AuthenticatedAppProjectPurgeRoute
   '/_authenticated/app/projects': typeof AuthenticatedAppProjectsRouteWithChildren
@@ -1069,6 +1079,7 @@ export interface FileRouteTypes {
     | '/app/portfolio-pulse'
     | '/app/portfolio-segmentation'
     | '/app/prioritisation'
+    | '/app/project-forecast'
     | '/app/programs'
     | '/app/project-access'
     | '/app/project-infographic'
@@ -1172,6 +1183,7 @@ export interface FileRouteTypes {
     | '/app/portfolio-pulse'
     | '/app/portfolio-segmentation'
     | '/app/prioritisation'
+    | '/app/project-forecast'
     | '/app/programs'
     | '/app/project-access'
     | '/app/project-infographic'
@@ -1276,6 +1288,7 @@ export interface FileRouteTypes {
     | '/_authenticated/app/portfolio-pulse'
     | '/_authenticated/app/portfolio-segmentation'
     | '/_authenticated/app/prioritisation'
+    | '/_authenticated/app/project-forecast'
     | '/_authenticated/app/programs'
     | '/_authenticated/app/project-access'
     | '/_authenticated/app/project-infographic'
@@ -1697,6 +1710,13 @@ declare module '@tanstack/react-router' {
       path: '/prioritisation'
       fullPath: '/app/prioritisation'
       preLoaderRoute: typeof AuthenticatedAppPrioritisationRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/app/project-forecast': {
+      id: '/_authenticated/app/project-forecast'
+      path: '/project-forecast'
+      fullPath: '/app/project-forecast'
+      preLoaderRoute: typeof AuthenticatedAppProjectForecastRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
     '/_authenticated/app/programs': {
@@ -2130,6 +2150,7 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppPortfolioPulseRoute: typeof AuthenticatedAppPortfolioPulseRoute
   AuthenticatedAppPortfolioSegmentationRoute: typeof AuthenticatedAppPortfolioSegmentationRoute
   AuthenticatedAppPrioritisationRoute: typeof AuthenticatedAppPrioritisationRoute
+  AuthenticatedAppProjectForecastRoute: typeof AuthenticatedAppProjectForecastRoute
   AuthenticatedAppProgramsRoute: typeof AuthenticatedAppProgramsRoute
   AuthenticatedAppProjectAccessRoute: typeof AuthenticatedAppProjectAccessRoute
   AuthenticatedAppProjectInfographicRoute: typeof AuthenticatedAppProjectInfographicRoute
@@ -2202,6 +2223,7 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppPortfolioSegmentationRoute:
     AuthenticatedAppPortfolioSegmentationRoute,
   AuthenticatedAppPrioritisationRoute: AuthenticatedAppPrioritisationRoute,
+  AuthenticatedAppProjectForecastRoute: AuthenticatedAppProjectForecastRoute,
   AuthenticatedAppProgramsRoute: AuthenticatedAppProgramsRoute,
   AuthenticatedAppProjectAccessRoute: AuthenticatedAppProjectAccessRoute,
   AuthenticatedAppProjectInfographicRoute:
