@@ -249,6 +249,33 @@ export function ExecutiveQuickView({
     staleTime: 60_000,
   });
 
+  const benefitsQ = useQuery({
+    queryKey: ["benefits", orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("benefits")
+        .select("id,project_id,target_value,realised_value")
+        .eq("org_id", orgId!);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+
+  const changeRequestsQ = useQuery({
+    queryKey: ["change_requests", orgId, "cockpit-health"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("change_requests" as never)
+        .select("id,project_id,status,change_type,impact_cost,impact_schedule_days");
+      if (error) return [];
+      return data ?? [];
+    },
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+
   const briefing = useMemo(
     () =>
       buildExecutiveBriefing({
@@ -260,6 +287,8 @@ export function ExecutiveQuickView({
         workItems: (workItemsQ.data ?? []) as HealthEngineInput["workItems"],
         dependencies: (depsQ.data ?? []) as HealthEngineInput["dependencies"],
         allocations: (allocationsQ.data ?? []) as HealthEngineInput["allocations"],
+        changeRequests: (changeRequestsQ.data ?? []) as HealthEngineInput["changeRequests"],
+        benefitLines: (benefitsQ.data ?? []) as HealthEngineInput["benefitLines"],
       }),
     [
       filtered,
@@ -270,6 +299,8 @@ export function ExecutiveQuickView({
       workItemsQ.data,
       depsQ.data,
       allocationsQ.data,
+      changeRequestsQ.data,
+      benefitsQ.data,
       ids,
     ],
   );

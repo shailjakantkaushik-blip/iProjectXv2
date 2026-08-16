@@ -8,6 +8,7 @@ import { Activity, ArrowRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/project-selects";
+import { FINANCIALS_MONTHLY_SELECT } from "@/lib/query-selects";
 import { MAX_PAGE_SIZE } from "@/lib/portfolio-paging";
 import { SectionFrame, SectionTitle, RagChip } from "@/components/streamlit";
 import { explainRag } from "@/lib/explain-metric";
@@ -85,7 +86,8 @@ export function PortfolioPulsePanel({
       const { data, error } = await supabase
         .from("work_items" as any)
         .select("id,project_id,status,percent_complete,estimate_hours")
-        .eq("org_id", orgId!);
+        .eq("org_id", orgId!)
+        .limit(10000);
       if (error) throw error;
       return (data ?? []) as any[];
     },
@@ -126,8 +128,9 @@ export function PortfolioPulsePanel({
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("dependencies")
-        .select("id,project_id,status,rag,due_date,dependency_type")
-        .eq("org_id", orgId!);
+        .select("id,project_id,status,dep_type,needed_by")
+        .eq("org_id", orgId!)
+        .limit(10000);
       if (error) throw error;
       return (data ?? []) as any[];
     },
@@ -168,12 +171,38 @@ export function PortfolioPulsePanel({
     queryFn: async () => {
       const { data, error } = await supabase
         .from("financials_monthly")
-        .select(
-          "project_id,period_month,opex_labor_planned,opex_labor_actual,capex_planned,opex_planned",
-        )
-        .eq("org_id", orgId!);
+        .select(FINANCIALS_MONTHLY_SELECT as "*")
+        .eq("org_id", orgId!)
+        .limit(10000);
       if (error) throw error;
       return (data ?? []) as any[];
+    },
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+
+  const benefitsQ = useQuery({
+    queryKey: ["benefits", orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("benefits")
+        .select("id,project_id,target_value,realised_value")
+        .eq("org_id", orgId!);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+
+  const changeRequestsQ = useQuery({
+    queryKey: ["change_requests", orgId, "cockpit-health"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("change_requests" as never)
+        .select("id,project_id,status,change_type,impact_cost,impact_schedule_days");
+      if (error) return [];
+      return data ?? [];
     },
     enabled: !!orgId,
     staleTime: 60_000,
@@ -202,6 +231,8 @@ export function PortfolioPulsePanel({
     const depsBy = groupByProjectId(depsQ.data ?? []);
     const allocBy = groupByProjectId(allocationsQ.data ?? []);
     const monthlyBy = groupByProjectId(monthlyQ.data ?? []);
+    const benefitsBy = groupByProjectId(benefitsQ.data ?? []);
+    const crsBy = groupByProjectId(changeRequestsQ.data ?? []);
     const idSet = new Set(filteredProjects.map((p) => p.id as string));
 
     const projects = filteredProjects.map((p) => ({
@@ -212,6 +243,8 @@ export function PortfolioPulsePanel({
       dependencies: depsBy.get(p.id) || [],
       allocations: allocBy.get(p.id) || [],
       monthly: monthlyBy.get(p.id) || [],
+      benefitLines: benefitsBy.get(p.id) || [],
+      changeRequests: crsBy.get(p.id) || [],
     }));
 
     const allRisks = (risksQ.data ?? []).filter((r) => idSet.has(r.project_id));
@@ -234,6 +267,8 @@ export function PortfolioPulsePanel({
     depsQ.data,
     allocationsQ.data,
     monthlyQ.data,
+    benefitsQ.data,
+    changeRequestsQ.data,
     decisionsQ.data,
     snapshotScope,
   ]);
