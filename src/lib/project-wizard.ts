@@ -40,7 +40,7 @@ export const WIZARD_STEPS: WizardStepDef[] = [
     n: 3,
     title: "Stage gates",
     description:
-      "Same as Data Editor → Stage Gates. Instantiate org gate definitions (Initiate → Close) with planned dates for Waterfall/Hybrid. Skip or light-touch for pure Agile.",
+      "Same as Data Editor → Stage Gates. Instantiate org gate definitions (Initiate → Close) with planned dates on every stream (Core and extras) so Forecast can show phases per lane. Skip or light-touch for pure Agile.",
     dataEditorSheet: "Stage Gates",
   },
   {
@@ -72,7 +72,7 @@ export const WIZARD_STEPS: WizardStepDef[] = [
     n: 7,
     title: "Review & open",
     description:
-      "Confirm what will be written, then finish. You can always extend data later in Data Editor or each register page.",
+      "Confirm what will be written, then finish. Planned stage gates are created on every stream so Forecast shows those phases immediately.",
     dataEditorSheet: "Summary",
   },
 ];
@@ -111,7 +111,8 @@ export const FIELD_HELP: Record<string, string> = {
   description: "Free-text project summary for briefs and AI assist.",
   stream_name: "Stream display name. Core is created automatically; add more lanes if needed.",
   stream_code: "Short code for the stream (e.g. WS1). Used in Excel as stream_code.",
-  gate_planned: "Planned review / decision date for this stage gate instance.",
+  gate_planned:
+    "Planned review / decision date. Copied onto every stream so Forecast phases appear per lane after setup.",
   fy: "Financial year label (e.g. FY26 or 2025/26) matching your org convention.",
   fy_budget: "Budget $ allocated to this FY (drives portfolio FY charts).",
   fy_forecast: "Forecast $ for this FY.",

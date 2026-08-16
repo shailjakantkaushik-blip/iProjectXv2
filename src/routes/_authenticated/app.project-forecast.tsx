@@ -14,6 +14,7 @@ import { fetchOrgStreams, formatStreamLabel } from "@/lib/project-streams";
 import {
   applyForecastToProjectPlan,
   daysToMonths,
+  ensureStageGatesForStreams,
   FORECAST_COST_CATEGORIES,
   forecastPhaseKey,
   isForecastableProjectStatus,
@@ -25,6 +26,7 @@ import {
   persistForecastPhases,
   phasesForDeliveryMethod,
   type ForecastPhaseRow,
+  type PlannedGateLike,
 } from "@/lib/project-forecast";
 import { ForecastPhaseGantt } from "@/components/forecast-phase-gantt";
 import { Button } from "@/components/ui/button";
@@ -212,21 +214,49 @@ function ProjectForecastPage() {
   const canEdit = !locked;
   const unlockRequested = Boolean(forecast?.unlock_requested_at);
 
+  const plannedGates = useMemo(
+    () =>
+      (gates as PlannedGateLike[]).map((g) => ({
+        stream_id: g.stream_id || null,
+        gate_name: g.gate_name || null,
+        planned_date: g.planned_date || null,
+      })),
+    [gates],
+  );
+
   useEffect(() => {
     const fromProject = (project?.planned_start_date || project?.start_date || "").slice(0, 10);
     const fromForecast = (forecast?.plan_start_date || "").slice(0, 10);
-    setPlanStart(fromProject || fromForecast || "");
-  }, [projectId, project?.planned_start_date, project?.start_date, forecast?.plan_start_date]);
+    const fromGates = plannedGates
+      .map((g) => (g.planned_date || "").slice(0, 10))
+      .filter(Boolean)
+      .sort()[0] || "";
+    setPlanStart(fromProject || fromForecast || fromGates || "");
+  }, [projectId, project?.planned_start_date, project?.start_date, forecast?.plan_start_date, plannedGates]);
 
   useEffect(() => {
     const stored =
       storedPhases.length > 0 ? storedPhases : parseForecastPhaseNotes(forecast?.notes);
-    setPhaseDraft(mergeForecastPhases(templateNames, projectStreams, stored));
-  }, [templateNames, storedPhases, forecast?.notes, forecast?.id, projectStreams]);
+    setPhaseDraft(
+      mergeForecastPhases(templateNames, projectStreams, stored, {
+        gates: plannedGates,
+        projectStart: project?.planned_start_date || project?.start_date || null,
+      }),
+    );
+  }, [
+    templateNames,
+    storedPhases,
+    forecast?.notes,
+    forecast?.id,
+    projectStreams,
+    plannedGates,
+    project?.planned_start_date,
+    project?.start_date,
+  ]);
 
   const phases = useMemo(
-    () => layoutForecastPhases(phaseDraft, planStart || null),
-    [phaseDraft, planStart],
+    () => layoutForecastPhases(phaseDraft, planStart || null, projectStreams),
+    [phaseDraft, planStart, projectStreams],
   );
 
   const ensure = useMutation({
@@ -244,9 +274,22 @@ function ProjectForecastPage() {
         .select("*")
         .single();
       if (error) throw error;
+      if (orgId && templateNames.length) {
+        await ensureStageGatesForStreams({
+          orgId,
+          projectId,
+          streams: projectStreams,
+          templateNames,
+          existingGates: plannedGates,
+        });
+      }
       const laid = layoutForecastPhases(
-        mergeForecastPhases(templateNames, projectStreams, []),
+        mergeForecastPhases(templateNames, projectStreams, [], {
+          gates: plannedGates,
+          projectStart: planStart || null,
+        }),
         planStart || null,
+        projectStreams,
       );
       await persistForecastPhases({
         orgId: orgId!,
@@ -259,6 +302,7 @@ function ProjectForecastPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["project_forecasts", orgId, projectId] });
       qc.invalidateQueries({ queryKey: ["project_forecast_phases"] });
+      qc.invalidateQueries({ queryKey: ["stage_gates", orgId, projectId, "forecast"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -542,7 +586,7 @@ function ProjectForecastPage() {
     mutationFn: async (rows: ForecastPhaseRow[]) => {
       let fid = forecast?.id;
       if (!fid) fid = (await ensure.mutateAsync()).id;
-      const laid = layoutForecastPhases(rows, planStart || null);
+      const laid = layoutForecastPhases(rows, planStart || null, projectStreams);
       return persistForecastPhases({
         orgId: orgId!,
         projectId,
@@ -564,7 +608,16 @@ function ProjectForecastPage() {
       if (!planStart) throw new Error("Set the project start date first");
       let fid = forecast?.id;
       if (!fid) fid = (await ensure.mutateAsync()).id;
-      const laid = layoutForecastPhases(phaseDraft, planStart);
+      if (orgId && templateNames.length) {
+        await ensureStageGatesForStreams({
+          orgId,
+          projectId,
+          streams: projectStreams,
+          templateNames,
+          existingGates: plannedGates,
+        });
+      }
+      const laid = layoutForecastPhases(phaseDraft, planStart, projectStreams);
       await persistForecastPhases({
         orgId,
         projectId,
@@ -763,8 +816,10 @@ function ProjectForecastPage() {
             <SectionTitle>Advanced estimate — phases, resources, cost</SectionTitle>
             <p className="mb-3 text-xs text-muted-foreground">
               Each stream from the project setup is listed with the{" "}
-              {method?.name || "delivery method"} stage-gate phases. Duration is calendar days
-              (months ≈ 30 days) and lays out sequentially per stream from the planned start.
+              {method?.name || "delivery method"} stage-gate phases. Planned gate dates from
+              new-project setup fill the timeline automatically (per stream). Duration is
+              calendar days (months ≈ 30 days) and lays out sequentially per stream from the
+              planned start.
             </p>
             <div className="overflow-x-auto">
               <table className="st-table text-xs">
