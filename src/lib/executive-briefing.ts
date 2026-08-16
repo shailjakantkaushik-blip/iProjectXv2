@@ -2,7 +2,7 @@
  * Ranked steering-pack items for the Executive Dashboard Quick view.
  * Uses the health engine plus RAID / gates / decisions already in the org.
  */
-import { displayRag } from "@/lib/ops-enhancements";
+import { displayRag, worstSteeringRag } from "@/lib/ops-enhancements";
 import {
   projectApprovedFunding,
   projectForecast,
@@ -13,6 +13,8 @@ import { isGateScheduleDelayed } from "@/lib/finance-lifecycle";
 import { decisionOutcome, isDecisionAwaiting } from "@/lib/decision-approval";
 import {
   evaluateProjectHealth,
+  scoreToRag,
+  type HealthEngineInput,
   type HealthEngineResult,
   type RagTone,
 } from "@/lib/project-health-engine";
@@ -86,6 +88,7 @@ export type BriefingAction = {
 
 export type ProjectWatchRow = {
   project: BriefingProject;
+  /** Steering RAG — register, or rag_override when set. */
   rag: string;
   engine: HealthEngineResult;
   budget: number;
@@ -135,9 +138,18 @@ export function buildExecutiveBriefing(opts: {
   monthly: EvmMonthlyLike[];
   risks: BriefingRisk[];
   decisions: BriefingDecision[];
+  workItems?: HealthEngineInput["workItems"];
+  dependencies?: HealthEngineInput["dependencies"];
+  allocations?: HealthEngineInput["allocations"];
+  changeRequests?: HealthEngineInput["changeRequests"];
   now?: Date;
 }): {
   overallRag: RagTone;
+  /** Same number Pulse uses: average Health Engine score → RAG bands. */
+  calculatedRag: RagTone;
+  healthPct: number;
+  /** Worst steering RAG (override, else register) across the filter. */
+  steeringRag: RagTone;
   headline: string;
   moneyAtRisk: number;
   lateGateCount: number;
@@ -171,6 +183,16 @@ export function buildExecutiveBriefing(opts: {
       gates: pg,
       risks: pr,
       monthly: pm,
+      workItems: (opts.workItems ?? []).filter((w) => w.project_id === p.id),
+      dependencies: (opts.dependencies ?? []).filter(
+        (d) => (d as { project_id?: string }).project_id === p.id,
+      ),
+      allocations: (opts.allocations ?? []).filter(
+        (a) => (a as { project_id?: string }).project_id === p.id,
+      ),
+      changeRequests: (opts.changeRequests ?? []).filter(
+        (c) => (c as { project_id?: string }).project_id === p.id,
+      ),
     });
     healthByProject.set(p.id, engine);
     const money = projectOverrun(p);
@@ -291,16 +313,21 @@ export function buildExecutiveBriefing(opts: {
 
   watch.sort((a, b) => {
     const ragW = (r: string) => (r === "Red" ? 0 : r === "Amber" ? 1 : 2);
-    const ar = ragW(a.rag);
-    const br = ragW(b.rag);
+    const ar = Math.min(ragW(a.rag), ragW(a.engine.rag));
+    const br = Math.min(ragW(b.rag), ragW(b.engine.rag));
     if (ar !== br) return ar - br;
     if (a.engine.score !== b.engine.score) return a.engine.score - b.engine.score;
     return b.overrun - a.overrun;
   });
 
-  const redN = watch.filter((w) => w.rag === "Red").length;
-  const amberN = watch.filter((w) => w.rag === "Amber").length;
-  const overallRag: RagTone = redN > 0 ? "Red" : amberN > 0 ? "Amber" : "Green";
+  const healthPct = healthByProject.size
+    ? Math.round(
+        [...healthByProject.values()].reduce((s, e) => s + e.score, 0) / healthByProject.size,
+      )
+    : 0;
+  const calculatedRag: RagTone = opts.projects.length ? scoreToRag(healthPct) : "Green";
+  const steeringRag: RagTone = worstSteeringRag(opts.projects);
+  const overallRag: RagTone = calculatedRag;
   const moneyAtRisk = watch.reduce((s, w) => s + Math.max(0, w.overrun), 0);
   const lateGateCount = gates.filter((g) => isGateScheduleDelayed(g, now)).length;
   const overdueCount = watch.filter((w) => w.isOverdue).length;
@@ -443,6 +470,9 @@ export function buildExecutiveBriefing(opts: {
 
   return {
     overallRag,
+    calculatedRag,
+    healthPct,
+    steeringRag,
     headline,
     moneyAtRisk,
     lateGateCount,
@@ -451,7 +481,15 @@ export function buildExecutiveBriefing(opts: {
     overdueCount,
     actions: unique,
     watch: watch
-      .filter((w) => w.rag === "Red" || w.rag === "Amber" || w.isOverdue || w.overrun > 0)
+      .filter(
+        (w) =>
+          w.rag === "Red" ||
+          w.rag === "Amber" ||
+          w.engine.rag === "Red" ||
+          w.engine.rag === "Amber" ||
+          w.isOverdue ||
+          w.overrun > 0,
+      )
       .slice(0, 6),
     healthByProject,
     questionExplains,

@@ -64,6 +64,19 @@ export function displayRag(project: { rag?: string | null; rag_override?: string
   return project.rag || null;
 }
 
+/** Worst colour among steering RAGs (override, else register). */
+export function worstSteeringRag(
+  projects: Array<{ rag?: string | null; rag_override?: string | null }>,
+): "Green" | "Amber" | "Red" {
+  let amber = false;
+  for (const p of projects) {
+    const r = displayRag(p);
+    if (r === "Red") return "Red";
+    if (r === "Amber") amber = true;
+  }
+  return amber ? "Amber" : "Green";
+}
+
 export function workItemScheduleRag(item: {
   status?: string | null;
   planned_end?: string | null;

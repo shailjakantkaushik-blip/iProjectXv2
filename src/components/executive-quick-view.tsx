@@ -19,6 +19,7 @@ import { ExpandableChart } from "@/components/expandable-chart";
 import { CHART_SERIES } from "@/lib/chart-theme";
 import { PageLoading } from "@/components/page-loading";
 import { projectApprovedFunding } from "@/lib/project-finance";
+import { explainRag } from "@/lib/explain-metric";
 import {
   buildExecutiveBriefing,
   type BriefingDecision,
@@ -26,6 +27,7 @@ import {
   type BriefingProject,
   type BriefingRisk,
 } from "@/lib/executive-briefing";
+import type { HealthEngineInput } from "@/lib/project-health-engine";
 import type { MonthlyFinanceRow } from "@/lib/finance-lifecycle";
 
 type SpendPoint = { month: string; actual: number; forecast: number };
@@ -165,6 +167,48 @@ export function ExecutiveQuickView({
     staleTime: 60_000,
   });
 
+  const workItemsQ = useQuery({
+    queryKey: ["work_items", orgId, "portfolio-pulse"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("work_items" as never)
+        .select("id,project_id,status,percent_complete,estimate_hours")
+        .eq("org_id", orgId!);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+
+  const depsQ = useQuery({
+    queryKey: ["dependencies", orgId, "portfolio-pulse"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("dependencies")
+        .select("id,project_id,status,rag,due_date,dependency_type")
+        .eq("org_id", orgId!);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+
+  const allocationsQ = useQuery({
+    queryKey: ["resource_allocations", orgId, "portfolio-pulse"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("resource_allocations")
+        .select("id,project_id,allocation_percent,allocated_hours")
+        .eq("org_id", orgId!);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+
   const briefing = useMemo(
     () =>
       buildExecutiveBriefing({
@@ -173,8 +217,21 @@ export function ExecutiveQuickView({
         monthly: monthly.filter((m) => m.project_id && m.period_month),
         risks: (risksQ.data ?? []).filter((r) => ids.includes(r.project_id)),
         decisions: (decisionsQ.data ?? []).filter((d) => ids.includes(d.project_id)),
+        workItems: (workItemsQ.data ?? []) as HealthEngineInput["workItems"],
+        dependencies: (depsQ.data ?? []) as HealthEngineInput["dependencies"],
+        allocations: (allocationsQ.data ?? []) as HealthEngineInput["allocations"],
       }),
-    [filtered, gates, monthly, risksQ.data, decisionsQ.data, ids],
+    [
+      filtered,
+      gates,
+      monthly,
+      risksQ.data,
+      decisionsQ.data,
+      workItemsQ.data,
+      depsQ.data,
+      allocationsQ.data,
+      ids,
+    ],
   );
 
   const alignmentDollars = useMemo(() => {
@@ -215,7 +272,37 @@ export function ExecutiveQuickView({
               {facVsBudget}% vs envelope.
             </p>
           </div>
-          <RagChip rag={briefing.overallRag} label={briefing.overallRag} />
+          <div className="flex flex-col items-end gap-2">
+            <RagChip
+              rag={briefing.calculatedRag}
+              label={`${briefing.calculatedRag} · ${briefing.healthPct}%`}
+              explain={explainRag({
+                rag: briefing.calculatedRag,
+                source: "pulse",
+                score: briefing.healthPct,
+                extraBullets: [
+                  "Same calculated health as Portfolio Pulse: average Health Engine score across these projects (Green ≥80, Amber ≥65, else Red).",
+                  briefing.steeringRag !== briefing.calculatedRag
+                    ? `Steering RAG (register / override) is ${briefing.steeringRag} — that is the colour PMs set for the pack, not this score.`
+                    : "Steering RAG (register / override) matches this calculated colour.",
+                ],
+              })}
+            />
+            {briefing.steeringRag !== briefing.calculatedRag && (
+              <RagChip
+                rag={briefing.steeringRag}
+                label={`Steering ${briefing.steeringRag}`}
+                explain={explainRag({
+                  rag: briefing.steeringRag,
+                  source: "register",
+                  extraBullets: [
+                    "Worst project register RAG in this filter, using rag_override when a sponsor has set one.",
+                    `Calculated health is ${briefing.calculatedRag} (${briefing.healthPct}%). Pulse uses that number.`,
+                  ],
+                })}
+              />
+            )}
+          </div>
         </div>
       </div>
 
@@ -380,7 +467,8 @@ export function ExecutiveQuickView({
           <div>
             <SectionTitle>Watch list — why it is on the pack</SectionTitle>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Health score is the engine (schedule, money, gates, risk). RAG chip is the register.
+              Health score is the engine (same as Portfolio Pulse). Steering RAG is the register, or
+              the sponsor override when one is set.
             </p>
           </div>
           <Link
@@ -401,8 +489,8 @@ export function ExecutiveQuickView({
               <thead>
                 <tr>
                   <th className="text-left">Project</th>
-                  <th className="text-left">RAG</th>
-                  <th className="text-right">Score</th>
+                  <th className="text-left">Steering RAG</th>
+                  <th className="text-left">Health</th>
                   <th className="text-right">Forecast vs budget</th>
                   <th className="text-left">Why it is here</th>
                 </tr>
@@ -420,9 +508,17 @@ export function ExecutiveQuickView({
                       </Link>
                     </td>
                     <td className="text-left">
-                      <RagChip rag={w.rag} />
+                      <RagChip
+                        rag={w.rag}
+                        label={w.project.rag_override ? `${w.rag} (override)` : w.rag}
+                      />
                     </td>
-                    <td className="text-right tabular-nums">{w.engine.score}</td>
+                    <td className="text-left">
+                      <span className="inline-flex items-center gap-2">
+                        <RagChip rag={w.engine.rag} />
+                        <span className="tabular-nums text-muted-foreground">{w.engine.score}</span>
+                      </span>
+                    </td>
                     <td className="text-right tabular-nums">
                       <span className={w.overrun > 0 ? "font-semibold text-red-600" : ""}>
                         {w.overrun > 0 ? `+${money(w.overrun)}` : money(0)}

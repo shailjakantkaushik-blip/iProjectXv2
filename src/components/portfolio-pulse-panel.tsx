@@ -40,7 +40,11 @@ function groupByProjectId<T extends { project_id?: string | null }>(rows: T[]): 
 
 function TrendCell({ trend }: { trend: PulseTrend }) {
   const color =
-    trend === "up" ? "text-emerald-600" : trend === "down" ? "text-rose-600" : "text-muted-foreground";
+    trend === "up"
+      ? "text-emerald-600"
+      : trend === "down"
+        ? "text-rose-600"
+        : "text-muted-foreground";
   return <span className={`text-base font-semibold ${color}`}>{pulseTrendGlyph(trend)}</span>;
 }
 
@@ -164,7 +168,9 @@ export function PortfolioPulsePanel({
     queryFn: async () => {
       const { data, error } = await supabase
         .from("financials_monthly")
-        .select("project_id,period_month,opex_labor_planned,opex_labor_actual,capex_planned,opex_planned")
+        .select(
+          "project_id,period_month,opex_labor_planned,opex_labor_actual,capex_planned,opex_planned",
+        )
         .eq("org_id", orgId!);
       if (error) throw error;
       return (data ?? []) as any[];
@@ -261,148 +267,160 @@ export function PortfolioPulsePanel({
         </SectionFrame>
       ) : null}
 
-    <SectionFrame exportName="portfolio-pulse" exportTitle="Portfolio Pulse">
-      {showTitle ? (
-        <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <SectionTitle>
-              <span className="inline-flex items-center gap-2">
-                <Activity className="h-4 w-4 text-sky-600" />
-                Portfolio Pulse
+      <SectionFrame exportName="portfolio-pulse" exportTitle="Portfolio Pulse">
+        {showTitle ? (
+          <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <SectionTitle>
+                <span className="inline-flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-sky-600" />
+                  Portfolio Pulse
+                </span>
+              </SectionTitle>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Event-driven portfolio health — not a static register. Across {pulse.projectCount}{" "}
+                project{pulse.projectCount === 1 ? "" : "s"}
+                {filteredProjects.length !== (projectsQ.data?.length ?? 0)
+                  ? ` (filtered from ${projectsQ.data?.length ?? 0})`
+                  : ""}
+                .
+              </p>
+            </div>
+            {!compact ? (
+              <Link
+                to="/app/executive-cockpit"
+                className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+              >
+                Open cockpit <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            ) : (
+              <Link
+                to="/app/portfolio-pulse"
+                className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+              >
+                Full pulse <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            )}
+          </div>
+        ) : null}
+
+        <div
+          className={`grid gap-4 ${compact ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)_minmax(0,1fr)]"}`}
+        >
+          <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-muted/20 px-4 py-5">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Portfolio Health
+            </div>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span className="text-4xl font-bold tabular-nums">{pulse.healthPct}%</span>
+              <span className="text-2xl" aria-hidden>
+                {pulseRagEmoji(pulse.rag)}
               </span>
-            </SectionTitle>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Event-driven portfolio health — not a static register. Across {pulse.projectCount}{" "}
-              project{pulse.projectCount === 1 ? "" : "s"}
-              {filteredProjects.length !== (projectsQ.data?.length ?? 0)
-                ? ` (filtered from ${projectsQ.data?.length ?? 0})`
-                : ""}
-              .
-            </p>
+            </div>
+            <div className="mt-2">
+              <RagChip
+                rag={pulse.rag}
+                label={pulse.rag}
+                explain={explainRag({
+                  rag: pulse.rag,
+                  source: "pulse",
+                  score: pulse.healthPct,
+                  extraBullets: pulse.areas
+                    .map((a) => `${a.label} ${a.score}/100 (${a.status})`)
+                    .concat(
+                      pulse.steeringRag !== pulse.rag
+                        ? [
+                            `Steering RAG (register / override) is ${pulse.steeringRag}. Pulse is calculated health, not that colour.`,
+                          ]
+                        : [],
+                    ),
+                })}
+              />
+            </div>
+            <p className="mt-2 text-center text-[11px] text-muted-foreground">{comparedLabel}</p>
+            {pulse.steeringRag !== pulse.rag ? (
+              <p className="mt-1 text-center text-[11px] text-muted-foreground">
+                Steering RAG is {pulse.steeringRag} (register / override). This pulse is calculated
+                health.
+              </p>
+            ) : null}
           </div>
-          {!compact ? (
-            <Link
-              to="/app/executive-cockpit"
-              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-            >
-              Open cockpit <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          ) : (
-            <Link
-              to="/app/portfolio-pulse"
-              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-            >
-              Full pulse <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          )}
-        </div>
-      ) : null}
 
-      <div
-        className={`grid gap-4 ${compact ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)_minmax(0,1fr)]"}`}
-      >
-        <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-muted/20 px-4 py-5">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Portfolio Health
-          </div>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-4xl font-bold tabular-nums">{pulse.healthPct}%</span>
-            <span className="text-2xl" aria-hidden>
-              {pulseRagEmoji(pulse.rag)}
-            </span>
-          </div>
-          <div className="mt-2">
-            <RagChip
-              rag={pulse.rag}
-              label={pulse.rag}
-              explain={explainRag({
-                rag: pulse.rag,
-                source: "pulse",
-                score: pulse.healthPct,
-                extraBullets: pulse.areas.map(
-                  (a) => `${a.label} ${a.score}/100 (${a.status})`,
-                ),
-              })}
-            />
-          </div>
-          <p className="mt-2 text-center text-[11px] text-muted-foreground">{comparedLabel}</p>
-        </div>
-
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-[11px] uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2 text-left">Area</th>
-                <th className="px-3 py-2 text-left">Status</th>
-                <th className="px-3 py-2 text-center">Trend</th>
-                {!compact ? <th className="px-3 py-2 text-right">Score</th> : null}
-              </tr>
-            </thead>
-            <tbody>
-              {pulse.areas.map((a) => (
-                <tr key={a.key} className="border-t">
-                  <td className="px-3 py-2 font-medium">{a.label}</td>
-                  <td className="px-3 py-2">
-                    <span className="mr-1.5" aria-hidden>
-                      {pulseRagEmoji(a.status)}
-                    </span>
-                    <RagChip
-                      rag={a.status}
-                      explain={explainRag({
-                        rag: a.status,
-                        source: "pulse",
-                        score: a.score,
-                        extraBullets: [
-                          `${a.label} is the average Health Engine ${a.label.toLowerCase()} dimension across in-scope projects.`,
-                          a.delta
-                            ? `Week-on-week change: ${a.delta > 0 ? "+" : ""}${a.delta} points.`
-                            : "No week-on-week change recorded.",
-                        ],
-                      })}
-                    />
-                  </td>
-                  <td className="px-3 py-2 text-center">
-                    <TrendCell trend={a.trend} />
-                  </td>
-                  {!compact ? (
-                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
-                      {a.score}
-                    </td>
-                  ) : null}
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-[11px] uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 text-left">Area</th>
+                  <th className="px-3 py-2 text-left">Status</th>
+                  <th className="px-3 py-2 text-center">Trend</th>
+                  {!compact ? <th className="px-3 py-2 text-right">Score</th> : null}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {pulse.areas.map((a) => (
+                  <tr key={a.key} className="border-t">
+                    <td className="px-3 py-2 font-medium">{a.label}</td>
+                    <td className="px-3 py-2">
+                      <span className="mr-1.5" aria-hidden>
+                        {pulseRagEmoji(a.status)}
+                      </span>
+                      <RagChip
+                        rag={a.status}
+                        explain={explainRag({
+                          rag: a.status,
+                          source: "pulse",
+                          score: a.score,
+                          extraBullets: [
+                            `${a.label} is the average Health Engine ${a.label.toLowerCase()} dimension across in-scope projects.`,
+                            a.delta
+                              ? `Week-on-week change: ${a.delta > 0 ? "+" : ""}${a.delta} points.`
+                              : "No week-on-week change recorded.",
+                          ],
+                        })}
+                      />
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <TrendCell trend={a.trend} />
+                    </td>
+                    {!compact ? (
+                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                        {a.score}
+                      </td>
+                    ) : null}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-        <div className="rounded-lg border border-border p-3">
-          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            What changed this week?
-          </div>
-          <ul className="mt-2 space-y-1.5">
-            {pulse.week.bullets.map((b) => (
-              <li key={b} className="flex gap-2 text-sm">
-                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-sky-500" />
-                <span>{b}</span>
-              </li>
-            ))}
-          </ul>
-          <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
-            <Link to="/app/risks" className="text-primary hover:underline">
-              Risks
-            </Link>
-            <span className="text-muted-foreground">·</span>
-            <Link to="/app/decisions" className="text-primary hover:underline">
-              Decisions
-            </Link>
-            <span className="text-muted-foreground">·</span>
-            <Link to="/app/project-infographic" className="text-primary hover:underline">
-              Project health
-            </Link>
+          <div className="rounded-lg border border-border p-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              What changed this week?
+            </div>
+            <ul className="mt-2 space-y-1.5">
+              {pulse.week.bullets.map((b) => (
+                <li key={b} className="flex gap-2 text-sm">
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-sky-500" />
+                  <span>{b}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+              <Link to="/app/risks" className="text-primary hover:underline">
+                Risks
+              </Link>
+              <span className="text-muted-foreground">·</span>
+              <Link to="/app/decisions" className="text-primary hover:underline">
+                Decisions
+              </Link>
+              <span className="text-muted-foreground">·</span>
+              <Link to="/app/project-infographic" className="text-primary hover:underline">
+                Project health
+              </Link>
+            </div>
           </div>
         </div>
-      </div>
-    </SectionFrame>
+      </SectionFrame>
     </>
   );
 }
