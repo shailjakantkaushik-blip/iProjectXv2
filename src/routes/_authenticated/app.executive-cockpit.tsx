@@ -864,7 +864,13 @@ function ExecutiveCockpit() {
           {fyData.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">No FY envelope yet</p>
           ) : (
-            <ExpandableChart title="Budget vs Forecast by FY" heightClass="h-64">
+            <ExpandableChart
+              title="Budget vs Forecast by FY"
+              heightClass="h-64"
+              collapsible
+              defaultCollapsed
+              collapsedSummary="Chart hidden. Money KPIs stay visible above."
+            >
               <BarChart data={fyData} margin={{ top: 20, right: 12, left: 0, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="fy" fontSize={11} />
