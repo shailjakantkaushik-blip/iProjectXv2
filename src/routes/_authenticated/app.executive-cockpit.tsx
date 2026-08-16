@@ -12,7 +12,7 @@ import { ExpandablePanel } from "@/components/expandable-panel";
 import { ExecutiveQuickView } from "@/components/executive-quick-view";
 import { ProjectMeetingSummary } from "@/components/project-meeting-summary";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LabelList, Legend } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LabelList, Legend, ResponsiveContainer } from "recharts";
 import { fyLabel } from "@/lib/fiscal-year";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { CategoryTick } from "@/components/chart-category-tick";
@@ -1119,77 +1119,90 @@ function ExecutiveCockpit() {
         {benefitChart.length === 0 ? (
           <p className="py-6 text-sm text-muted-foreground">No benefit target or realised value in this filter.</p>
         ) : (
-          <div className="space-y-3">
-            <ExpandableChart title="Benefits — Target vs Realised" heightClass="h-56">
-              <BarChart data={benefitChart} margin={{ top: 24, right: 12, left: 4, bottom: 40 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" interval={0} minTickGap={0} tick={<CategoryTick />} height={44} />
-                <YAxis fontSize={10} tickFormatter={(v: number) => money(v)} />
-                <Tooltip formatter={(v: number, n: string) => [money(v), n]} />
-                <Legend verticalAlign="top" />
-                <Bar dataKey="Target" name="Target" fill="#1d4ed8" radius={[4, 4, 0, 0]}>
-                  <LabelList
-                    dataKey="Target"
-                    position="top"
-                    style={{ fontSize: 10 }}
-                    formatter={(v: number) => money(v)}
-                  />
-                </Bar>
-                <Bar dataKey="Realised" name="Realised" fill="#10b981" radius={[4, 4, 0, 0]}>
-                  <LabelList
-                    dataKey="Realised"
-                    position="top"
-                    style={{ fontSize: 10 }}
-                    formatter={(v: number) => money(v)}
-                  />
-                </Bar>
-              </BarChart>
-            </ExpandableChart>
-            <div className="st-table-wrap overflow-x-auto">
-              <table className="w-full min-w-[640px] text-sm">
-                <thead className="text-xs uppercase text-muted-foreground">
-                  <tr>
-                    <th className="px-2 py-1.5 text-left">Project</th>
-                    <th className="px-2 py-1.5 text-right">Target</th>
-                    <th className="px-2 py-1.5 text-right">Realised</th>
-                    <th className="px-2 py-1.5 text-right">Gap</th>
-                    <th className="px-2 py-1.5 text-right">Rate</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {benefitRows.map((r) => (
-                    <tr key={r.id} className="border-t border-border">
-                      <td className="px-2 py-2">
-                        <Link
-                          to="/app/projects/$id"
-                          params={{ id: r.id }}
-                          search={{ tab: "summary" }}
-                          className="font-medium text-primary hover:underline"
-                        >
-                          {r.code ? `${r.code} · ${r.name}` : r.name}
-                        </Link>
-                      </td>
-                      <td className="px-2 py-2 text-right tabular-nums">{money(r.target)}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{money(r.realised)}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">
-                        <span className={r.gap > 0 ? "text-amber-700" : r.gap < 0 ? "text-emerald-700" : ""}>
-                          {money(Math.abs(r.gap))}
-                          {r.gap < 0 ? " ahead" : ""}
-                        </span>
-                      </td>
-                      <td className="px-2 py-2 text-right tabular-nums">{r.rate}%</td>
+          <ExpandablePanel
+            title="Benefits — Target vs Realised"
+            collapsible
+            defaultCollapsed
+            collapsedSummary={`${benefitRows.length} project${benefitRows.length === 1 ? "" : "s"} · ${money(benefitsRealisedK)} of ${money(benefitsForecastK)} · ${benefitsPct}% realised. Click Show or Expand.`}
+          >
+            <div className="space-y-3">
+              <div className="h-56 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={benefitChart}
+                    isAnimationActive={false}
+                    margin={{ top: 24, right: 12, left: 4, bottom: 40 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" interval={0} minTickGap={0} tick={<CategoryTick />} height={44} />
+                    <YAxis fontSize={10} tickFormatter={(v: number) => money(v)} />
+                    <Tooltip formatter={(v: number, n: string) => [money(v), n]} />
+                    <Legend verticalAlign="top" />
+                    <Bar dataKey="Target" name="Target" fill="#1d4ed8" radius={[4, 4, 0, 0]}>
+                      <LabelList
+                        dataKey="Target"
+                        position="top"
+                        style={{ fontSize: 10 }}
+                        formatter={(v: number) => money(v)}
+                      />
+                    </Bar>
+                    <Bar dataKey="Realised" name="Realised" fill="#10b981" radius={[4, 4, 0, 0]}>
+                      <LabelList
+                        dataKey="Realised"
+                        position="top"
+                        style={{ fontSize: 10 }}
+                        formatter={(v: number) => money(v)}
+                      />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="st-table-wrap overflow-x-auto">
+                <table className="w-full min-w-[640px] text-sm">
+                  <thead className="text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="px-2 py-1.5 text-left">Project</th>
+                      <th className="px-2 py-1.5 text-right">Target</th>
+                      <th className="px-2 py-1.5 text-right">Realised</th>
+                      <th className="px-2 py-1.5 text-right">Gap</th>
+                      <th className="px-2 py-1.5 text-right">Rate</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {benefitRows.map((r) => (
+                      <tr key={r.id} className="border-t border-border">
+                        <td className="px-2 py-2">
+                          <Link
+                            to="/app/projects/$id"
+                            params={{ id: r.id }}
+                            search={{ tab: "summary" }}
+                            className="font-medium text-primary hover:underline"
+                          >
+                            {r.code ? `${r.code} · ${r.name}` : r.name}
+                          </Link>
+                        </td>
+                        <td className="px-2 py-2 text-right tabular-nums">{money(r.target)}</td>
+                        <td className="px-2 py-2 text-right tabular-nums">{money(r.realised)}</td>
+                        <td className="px-2 py-2 text-right tabular-nums">
+                          <span className={r.gap > 0 ? "text-amber-700" : r.gap < 0 ? "text-emerald-700" : ""}>
+                            {money(Math.abs(r.gap))}
+                            {r.gap < 0 ? " ahead" : ""}
+                          </span>
+                        </td>
+                        <td className="px-2 py-2 text-right tabular-nums">{r.rate}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {benefitRows.length > 10 ? (
+                <p className="text-[11px] text-muted-foreground">
+                  Chart shows the top 10 by target. Table lists all {benefitRows.length} projects with
+                  benefits.
+                </p>
+              ) : null}
             </div>
-            {benefitRows.length > 10 ? (
-              <p className="text-[11px] text-muted-foreground">
-                Chart shows the top 10 by target. Table lists all {benefitRows.length} projects with
-                benefits.
-              </p>
-            ) : null}
-          </div>
+          </ExpandablePanel>
         )}
       </SectionFrame>
 
@@ -1199,7 +1212,13 @@ function ExecutiveCockpit() {
           <p className="py-6 text-sm text-muted-foreground">No alignment mix yet.</p>
         ) : (
           <div className="space-y-4">
-            <ExpandableChart title="Budget, incurred, and forecast by Strategic Alignment" heightClass="h-72">
+            <ExpandableChart
+              title="Budget, incurred, and forecast by Strategic Alignment"
+              heightClass="h-72"
+              collapsible
+              defaultCollapsed
+              collapsedSummary="Chart hidden. Mix table stays visible below."
+            >
               <BarChart data={segRows} margin={{ top: 28, right: 16, left: 8, bottom: 40 }}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" interval={0} minTickGap={0} tick={<CategoryTick />} height={44} />
