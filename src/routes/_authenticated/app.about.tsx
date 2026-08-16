@@ -21,7 +21,7 @@ function AboutPage() {
       <PageHeading
         icon="ℹ️"
         title="How this app works"
-        subtitle="A plain-language tour: building blocks, money, people, and gates."
+        subtitle="A plain-language tour: process flow, building blocks, money, people, and gates."
       />
       <AppFlowGuide
         tab={tab}
