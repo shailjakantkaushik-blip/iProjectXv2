@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { GitBranch, ListChecks, Shield } from "lucide-react";
+import { AlertTriangle, CircleAlert, Gavel, GitBranch, ListChecks, ListTodo } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -178,7 +178,7 @@ function SteeringQuickLinks({
   openIssues: number;
   demandPending: number;
 }) {
-  const items = [
+  const leads = [
     {
       to: "/app/demand-pipeline" as const,
       icon: GitBranch,
@@ -189,13 +189,6 @@ function SteeringQuickLinks({
       tone: demandPending ? "text-amber-800" : "text-muted-foreground",
     },
     {
-      to: "/app/risks" as const,
-      icon: Shield,
-      label: "RAID Registers",
-      detail: `${countLabel(openRisks, "risk", "risks")} · ${countLabel(openIssues, "issue", "issues")} open`,
-      tone: openRisks || openIssues ? "text-rose-800" : "text-muted-foreground",
-    },
-    {
       to: "/app/prioritisation" as const,
       icon: ListChecks,
       label: "Prioritisation",
@@ -204,20 +197,53 @@ function SteeringQuickLinks({
     },
   ];
 
+  const raid = [
+    {
+      to: "/app/risks" as const,
+      icon: AlertTriangle,
+      label: "Risk",
+      detail: openRisks ? `${countLabel(openRisks, "open", "open")}` : "None open",
+      tone: openRisks ? "text-rose-800" : "text-muted-foreground",
+    },
+    {
+      to: "/app/actions" as const,
+      icon: ListTodo,
+      label: "Action",
+      detail: actionsOpen ? `${countLabel(actionsOpen, "pending", "pending")}` : "None pending",
+      tone: actionsOpen ? "text-sky-800" : "text-muted-foreground",
+    },
+    {
+      to: "/app/issues" as const,
+      icon: CircleAlert,
+      label: "Issue",
+      detail: openIssues ? `${countLabel(openIssues, "open", "open")}` : "None open",
+      tone: openIssues ? "text-amber-800" : "text-muted-foreground",
+    },
+    {
+      to: "/app/decisions" as const,
+      icon: Gavel,
+      label: "Decision",
+      detail: decisionsPending
+        ? `${countLabel(decisionsPending, "awaiting", "awaiting")}`
+        : "None awaiting",
+      tone: decisionsPending ? "text-violet-800" : "text-muted-foreground",
+    },
+  ];
+
   const summary = [
-    countLabel(decisionsPending, "decision", "decisions"),
-    countLabel(actionsOpen, "action", "actions"),
     countLabel(openRisks, "risk", "risks"),
+    countLabel(actionsOpen, "action", "actions"),
     countLabel(openIssues, "issue", "issues"),
+    countLabel(decisionsPending, "decision", "decisions"),
     demandPending
       ? `${countLabel(demandPending, "demand item", "demand items")} awaiting approval`
       : "no demand awaiting approval",
   ].join(" · ");
 
   return (
-    <div className="mt-4">
-      <div className="grid gap-2 sm:grid-cols-3">
-        {items.map((item) => {
+    <div className="mt-4 space-y-2">
+      <div className="grid gap-2 sm:grid-cols-2">
+        {leads.map((item) => {
           const Icon = item.icon;
           return (
             <Link
@@ -236,7 +262,30 @@ function SteeringQuickLinks({
           );
         })}
       </div>
-      <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">{summary}</p>
+      <div className="rounded-lg border border-border/80 bg-muted/20 px-2.5 py-2">
+        <p className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          RAID registers
+        </p>
+        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+          {raid.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                className="group rounded-md border border-transparent bg-background px-2.5 py-2 transition-colors hover:border-primary/35 hover:bg-primary/[0.03]"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-primary" />
+                  <p className="text-[12px] font-semibold tracking-tight text-foreground">{item.label}</p>
+                </div>
+                <p className={`mt-1 text-[11px] tabular-nums leading-snug ${item.tone}`}>{item.detail}</p>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+      <p className="text-[11px] leading-relaxed text-muted-foreground">{summary}</p>
     </div>
   );
 }
