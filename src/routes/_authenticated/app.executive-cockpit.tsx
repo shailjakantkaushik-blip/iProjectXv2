@@ -745,134 +745,6 @@ function ExecutiveCockpit() {
         monthly={(monthly as MonthlyFinanceRow[]).filter((m) => inScope((m as any).project_id))}
       />
 
-      <SectionFrame exportName="cockpit-money" exportTitle="Financials" id="pack-money">
-        <div className="mb-2 flex items-center gap-2">
-          <SectionTitle>Financials</SectionTitle>
-          {explains.budget ? <ExplainThis explanation={explains.budget} size="xs" /> : null}
-        </div>
-        <div className="space-y-3">
-          <EnvelopeBullet
-            budget={approvedFundingK}
-            incurred={actualSpendK}
-            forecast={facK}
-          />
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-            <ScoreStat
-              label="Budget"
-              value={money(approvedFundingK)}
-              hint="Approved envelope"
-              explain={explains.budget}
-              to="/app/financials"
-            />
-            <ScoreStat
-              label="Plan"
-              value={money(planTotal)}
-              hint={planTotal ? "Monthly CapEx + OpEx plan" : "No monthly plan yet"}
-            />
-            <ScoreStat
-              label="Incurred"
-              value={money(actualSpendK)}
-              hint={`${pct(actualSpendK, approvedFundingK)} of envelope`}
-              explain={explains.actual}
-            />
-            <ScoreStat
-              label="Forecast"
-              value={money(facK)}
-              hint="At completion"
-              explain={explains.forecast}
-            />
-            <ScoreStat
-              label="Remaining"
-              value={money(remainingK)}
-              hint={`${pct(remainingK, approvedFundingK)} of envelope`}
-              explain={explains.remaining}
-            />
-            <ScoreStat
-              label="FAC vs envelope"
-              value={`${facDelta > 0 ? "+" : facDelta < 0 ? "−" : ""}${money(Math.abs(facDelta))}`}
-              hint={facDelta > 0 ? "over budget" : facDelta < 0 ? "under budget" : "on envelope"}
-              accent={facDelta > 0 ? "#dc2626" : facDelta < 0 ? "#15803d" : undefined}
-            />
-            <ScoreStat
-              label="CapEx approved"
-              value={money(capexApproved)}
-              hint={totalValue ? `of ${money(totalValue)} value` : undefined}
-            />
-            <ScoreStat
-              label="CapEx incurred"
-              value={money(capexIncurred)}
-              hint={`${pct(capexIncurred, capexApproved)} of CapEx`}
-            />
-            <ScoreStat
-              label="OpEx approved"
-              value={money(opexApproved)}
-            />
-            <ScoreStat
-              label="OpEx incurred"
-              value={money(opexIncurred)}
-              hint={`${pct(opexIncurred, opexApproved)} of OpEx`}
-            />
-            <ScoreStat
-              label="Benefits target"
-              value={money(benefitsForecastK)}
-              explain={explains.benefits}
-              to="/app/benefits"
-            />
-            <ScoreStat
-              label="Benefits realised"
-              value={money(benefitsRealisedK)}
-              hint={`${pct(benefitsRealisedK, benefitsForecastK)} of target`}
-              to="/app/benefits"
-            />
-            <ScoreStat
-              label="FY coverage"
-              value={`${allocationCoverage}%`}
-              hint={`${projectsWithFY}/${projects.length} projects have an FY split`}
-              to="/app/fy-allocation"
-              accent={coverageWeak ? (allocationCoverage < 50 ? "#dc2626" : "#d97706") : undefined}
-            />
-          </div>
-          {fyData.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">No FY envelope yet</p>
-          ) : (
-            <ExpandableChart
-              title="Budget vs Forecast by FY"
-              heightClass="h-64"
-              collapsible
-              defaultCollapsed
-              collapsedSummary="Chart hidden. Financials KPIs stay visible above."
-            >
-              <BarChart data={fyData} margin={{ top: 20, right: 12, left: 0, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="fy" fontSize={11} />
-                <YAxis
-                  fontSize={10}
-                  tickFormatter={(v: number) => money(v)}
-                />
-                <Tooltip formatter={(v: number) => money(v)} />
-                <Legend verticalAlign="top" />
-                <Bar dataKey="budget" name="Budget" fill="#3b82f6">
-                  <LabelList
-                    dataKey="budget"
-                    position="top"
-                    style={{ fontSize: 10 }}
-                    formatter={(v: number) => money(v)}
-                  />
-                </Bar>
-                <Bar dataKey="forecast" name="Forecast" fill="#f59e0b">
-                  <LabelList
-                    dataKey="forecast"
-                    position="top"
-                    style={{ fontSize: 10 }}
-                    formatter={(v: number) => money(v)}
-                  />
-                </Bar>
-              </BarChart>
-            </ExpandableChart>
-          )}
-        </div>
-      </SectionFrame>
-
       <SectionFrame
         exportName="cockpit-health"
         exportTitle="Portfolio Health Snapshot"
@@ -898,7 +770,7 @@ function ExecutiveCockpit() {
             </div>
           </div>
           <p className="mb-2 text-[11px] text-muted-foreground">
-            All in-scope projects, sorted worst steering RAG then lowest health score. Click a row
+            All in-scope projects, sorted by project code. Click a row
             for the infographic. The mix bar is Health Engine colour (same as the Health score).
             The RAG column uses a manual override when set (M). Financials live in Mix by Strategic
             Alignment.
@@ -1038,6 +910,134 @@ function ExecutiveCockpit() {
             Resource 10% · Risk 10% · Dependencies 10% · Benefits 5%). {healthRows.length} row(s).
           </div>
         </ExpandablePanel>
+      </SectionFrame>
+
+      <SectionFrame exportName="cockpit-money" exportTitle="Financials" id="pack-money">
+        <div className="mb-2 flex items-center gap-2">
+          <SectionTitle>Financials</SectionTitle>
+          {explains.budget ? <ExplainThis explanation={explains.budget} size="xs" /> : null}
+        </div>
+        <div className="space-y-3">
+          <EnvelopeBullet
+            budget={approvedFundingK}
+            incurred={actualSpendK}
+            forecast={facK}
+          />
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+            <ScoreStat
+              label="Budget"
+              value={money(approvedFundingK)}
+              hint="Approved envelope"
+              explain={explains.budget}
+              to="/app/financials"
+            />
+            <ScoreStat
+              label="Plan"
+              value={money(planTotal)}
+              hint={planTotal ? "Monthly CapEx + OpEx plan" : "No monthly plan yet"}
+            />
+            <ScoreStat
+              label="Incurred"
+              value={money(actualSpendK)}
+              hint={`${pct(actualSpendK, approvedFundingK)} of envelope`}
+              explain={explains.actual}
+            />
+            <ScoreStat
+              label="Forecast"
+              value={money(facK)}
+              hint="At completion"
+              explain={explains.forecast}
+            />
+            <ScoreStat
+              label="Remaining"
+              value={money(remainingK)}
+              hint={`${pct(remainingK, approvedFundingK)} of envelope`}
+              explain={explains.remaining}
+            />
+            <ScoreStat
+              label="FAC vs envelope"
+              value={`${facDelta > 0 ? "+" : facDelta < 0 ? "−" : ""}${money(Math.abs(facDelta))}`}
+              hint={facDelta > 0 ? "over budget" : facDelta < 0 ? "under budget" : "on envelope"}
+              accent={facDelta > 0 ? "#dc2626" : facDelta < 0 ? "#15803d" : undefined}
+            />
+            <ScoreStat
+              label="CapEx approved"
+              value={money(capexApproved)}
+              hint={totalValue ? `of ${money(totalValue)} value` : undefined}
+            />
+            <ScoreStat
+              label="CapEx incurred"
+              value={money(capexIncurred)}
+              hint={`${pct(capexIncurred, capexApproved)} of CapEx`}
+            />
+            <ScoreStat
+              label="OpEx approved"
+              value={money(opexApproved)}
+            />
+            <ScoreStat
+              label="OpEx incurred"
+              value={money(opexIncurred)}
+              hint={`${pct(opexIncurred, opexApproved)} of OpEx`}
+            />
+            <ScoreStat
+              label="Benefits target"
+              value={money(benefitsForecastK)}
+              explain={explains.benefits}
+              to="/app/benefits"
+            />
+            <ScoreStat
+              label="Benefits realised"
+              value={money(benefitsRealisedK)}
+              hint={`${pct(benefitsRealisedK, benefitsForecastK)} of target`}
+              to="/app/benefits"
+            />
+            <ScoreStat
+              label="FY coverage"
+              value={`${allocationCoverage}%`}
+              hint={`${projectsWithFY}/${projects.length} projects have an FY split`}
+              to="/app/fy-allocation"
+              accent={coverageWeak ? (allocationCoverage < 50 ? "#dc2626" : "#d97706") : undefined}
+            />
+          </div>
+          {fyData.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">No FY envelope yet</p>
+          ) : (
+            <ExpandableChart
+              title="Budget vs Forecast by FY"
+              heightClass="h-64"
+              collapsible
+              defaultCollapsed
+              collapsedSummary="Chart hidden. Financials KPIs stay visible above."
+            >
+              <BarChart data={fyData} margin={{ top: 20, right: 12, left: 0, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="fy" fontSize={11} />
+                <YAxis
+                  fontSize={10}
+                  tickFormatter={(v: number) => money(v)}
+                />
+                <Tooltip formatter={(v: number) => money(v)} />
+                <Legend verticalAlign="top" />
+                <Bar dataKey="budget" name="Budget" fill="#3b82f6">
+                  <LabelList
+                    dataKey="budget"
+                    position="top"
+                    style={{ fontSize: 10 }}
+                    formatter={(v: number) => money(v)}
+                  />
+                </Bar>
+                <Bar dataKey="forecast" name="Forecast" fill="#f59e0b">
+                  <LabelList
+                    dataKey="forecast"
+                    position="top"
+                    style={{ fontSize: 10 }}
+                    formatter={(v: number) => money(v)}
+                  />
+                </Bar>
+              </BarChart>
+            </ExpandableChart>
+          )}
+        </div>
       </SectionFrame>
 
       <SectionFrame exportName="cockpit-benefits" exportTitle="Benefits">

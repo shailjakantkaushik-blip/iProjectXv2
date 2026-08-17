@@ -33,7 +33,6 @@ import { explainRag } from "@/lib/explain-metric";
 import { isRagOverridden } from "@/lib/ops-enhancements";
 import { isDecisionAwaiting } from "@/lib/decision-approval";
 import { EnvelopeBullet } from "@/components/envelope-bullet";
-import { ExplainThis } from "@/components/explain-this";
 import {
   buildExecutiveBriefing,
   type BriefingAction,
@@ -45,7 +44,6 @@ import {
 } from "@/lib/executive-briefing";
 import type { HealthEngineInput } from "@/lib/project-health-engine";
 import type { MonthlyFinanceRow } from "@/lib/finance-lifecycle";
-import type { MetricExplanation } from "@/lib/explain-metric";
 
 type SpendPoint = { month: string; actual: number; forecast: number };
 type NamedCount = { name: string; value: number };
@@ -122,41 +120,6 @@ function SteeringSignalCard({ signal }: { signal: SteeringSignal }) {
           <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{signal.hint}</p>
         </div>
       </div>
-    </Link>
-  );
-}
-
-function QuestionPanel({
-  question,
-  answer,
-  detail,
-  explain,
-  to,
-}: {
-  question: string;
-  answer: string;
-  detail: string;
-  explain?: MetricExplanation | null;
-  to: "/app/decisions" | "/app/financials" | "/app/stage-gates" | "/app/risks";
-}) {
-  return (
-    <Link
-      to={to}
-      className="rounded-lg border border-border bg-background px-3 py-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/[0.03]"
-    >
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-semibold leading-snug text-foreground">{question}</p>
-        {explain ? (
-          <span
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-          >
-            <ExplainThis explanation={explain} size="xs" />
-          </span>
-        ) : null}
-      </div>
-      <p className="mt-2 text-2xl font-semibold tabular-nums tracking-tight text-foreground">{answer}</p>
-      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{detail}</p>
     </Link>
   );
 }
@@ -732,43 +695,6 @@ export function ExecutiveQuickView({
             })}
           />
         </div>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <QuestionPanel
-          question="Do you need to decide?"
-          answer={String(briefing.decisionsWaiting)}
-          detail={
-            briefing.decisionsWaiting ? "Waiting on steering" : "Nothing in the queue in this filter."
-          }
-          explain={briefing.questionExplains.decisions}
-          to="/app/decisions"
-        />
-        <QuestionPanel
-          question="Is the money still inside the envelope?"
-          answer={money(totalForecast)}
-          detail={
-            briefing.moneyAtRisk > 0
-              ? `${money(briefing.moneyAtRisk)} above budget`
-              : `${money(remaining)} still unspent`
-          }
-          explain={briefing.questionExplains.money}
-          to="/app/financials"
-        />
-        <QuestionPanel
-          question="Are we on time?"
-          answer={String(briefing.lateGateCount + briefing.overdueCount)}
-          detail={`${briefing.lateGateCount} late gates · ${briefing.overdueCount} overdue`}
-          explain={briefing.questionExplains.time}
-          to="/app/stage-gates"
-        />
-        <QuestionPanel
-          question="What could still hurt us?"
-          answer={String(briefing.criticalRisks)}
-          detail={briefing.criticalRisks ? "Open critical risks" : "No critical risks open in this filter."}
-          explain={briefing.questionExplains.risk}
-          to="/app/risks"
-        />
       </div>
 
       {mode === "full" ? (
