@@ -432,9 +432,6 @@ function ExecutiveCockpit() {
     actualSpend,
     remaining,
     fac,
-    strategicPrograms,
-    capexPrograms,
-    unfundedInitiatives,
     benefitsForecast,
     benefitsRealised,
     segRows,
@@ -463,24 +460,6 @@ function ExecutiveCockpit() {
     const fac = projects.reduce((s: number, p: any) => s + projectForecast(p), 0);
 
     const total = projects.length;
-    const strategicPrograms = new Set(
-      projects
-        .filter((p: any) => {
-          const cat = projectPortfolio(p);
-          return cat === "Business Strategic" || cat === "IT Strategic";
-        })
-        .map((p: any) => p.program)
-        .filter(Boolean),
-    ).size;
-    const capexPrograms = new Set(
-      projects
-        .filter((p: any) => projectPortfolio(p) === "CAPEX")
-        .map((p: any) => p.program)
-        .filter(Boolean),
-    ).size;
-    const unfundedInitiatives = projects.filter(
-      (p: any) => projectPortfolio(p).toLowerCase() === "unfunded",
-    ).length;
 
     const benefitsForecast = benefitsScoped.reduce((s: number, b: any) => s + num(b.target_value), 0);
     const benefitsRealised = benefitsScoped.reduce((s: number, b: any) => s + num(b.realised_value), 0);
@@ -518,9 +497,6 @@ function ExecutiveCockpit() {
       remaining,
       fac,
       total,
-      strategicPrograms,
-      capexPrograms,
-      unfundedInitiatives,
       benefitsForecast,
       benefitsRealised,
       segRows,
@@ -754,20 +730,13 @@ function ExecutiveCockpit() {
           title="Portfolio health matrix"
           compactMaxHeightClass="max-h-[min(520px,70dvh)]"
         >
-          <div className="mb-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)]">
-            <div>
-              <MixBar green={matrixRag.green} amber={matrixRag.amber} red={matrixRag.red} />
-              <p className="mt-2 text-xs text-muted-foreground">
-                Health Engine RAG · {healthRows.length} project
-                {healthRows.length === 1 ? "" : "s"} · {pct(matrixRag.green, healthRows.length || 1)}{" "}
-                Green
-              </p>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <ScoreStat label="Strategic programs" value={strategicPrograms} />
-              <ScoreStat label="CapEx programs" value={capexPrograms} />
-              <ScoreStat label="Unfunded" value={unfundedInitiatives} />
-            </div>
+          <div className="mb-3">
+            <MixBar green={matrixRag.green} amber={matrixRag.amber} red={matrixRag.red} />
+            <p className="mt-2 text-xs text-muted-foreground">
+              Health Engine RAG · {healthRows.length} project
+              {healthRows.length === 1 ? "" : "s"} · {pct(matrixRag.green, healthRows.length || 1)}{" "}
+              Green
+            </p>
           </div>
           <p className="mb-2 text-[11px] text-muted-foreground">
             All in-scope projects, sorted by project code. Click a row
