@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { GitBranch, ListChecks, Shield } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -30,6 +31,7 @@ import {
 import { projectPortfolio } from "@/lib/project-health";
 import { explainRag } from "@/lib/explain-metric";
 import { isRagOverridden } from "@/lib/ops-enhancements";
+import { isDecisionAwaiting } from "@/lib/decision-approval";
 import { EnvelopeBullet } from "@/components/envelope-bullet";
 import { ExplainThis } from "@/components/explain-this";
 import {
@@ -48,6 +50,21 @@ import type { MetricExplanation } from "@/lib/explain-metric";
 type SpendPoint = { month: string; actual: number; forecast: number };
 type NamedCount = { name: string; value: number };
 type QuestionKind = BriefingAction["kind"];
+
+const SIGNAL_HREF: Record<
+  SteeringSignal["key"],
+  "/app/financials" | "/app/stage-gates" | "/app/risks" | "/app/timeline"
+> = {
+  money: "/app/financials",
+  gates: "/app/stage-gates",
+  risks: "/app/risks",
+  overdue: "/app/timeline",
+};
+
+function isOpenRaid(status?: string | null) {
+  const s = String(status || "").toLowerCase();
+  return !/closed|mitigated|accepted|resolved|done|completed/.test(s);
+}
 
 function money(n: number) {
   return (
@@ -82,23 +99,12 @@ function signalTone(tone: SteeringSignal["tone"]) {
   return { bar: "#15803d", value: "text-emerald-800" };
 }
 
-function SteeringSignalCard({
-  signal,
-  active,
-  onSelect,
-}: {
-  signal: SteeringSignal;
-  active: boolean;
-  onSelect: () => void;
-}) {
+function SteeringSignalCard({ signal }: { signal: SteeringSignal }) {
   const tone = signalTone(signal.tone);
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={`rounded-lg border px-3 py-2.5 text-left transition-colors ${
-        active ? "border-primary/40 bg-primary/5" : "border-border bg-background hover:border-primary/30"
-      }`}
+    <Link
+      to={SIGNAL_HREF[signal.key]}
+      className="rounded-lg border border-border bg-background px-3 py-2.5 text-left transition-colors hover:border-primary/30 hover:bg-primary/[0.03]"
     >
       <div className="flex items-start gap-2.5">
         <span
@@ -116,7 +122,7 @@ function SteeringSignalCard({
           <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{signal.hint}</p>
         </div>
       </div>
-    </button>
+    </Link>
   );
 }
 
@@ -124,44 +130,113 @@ function QuestionPanel({
   question,
   answer,
   detail,
-  active,
   explain,
-  onSelect,
+  to,
 }: {
   question: string;
   answer: string;
   detail: string;
-  active: boolean;
   explain?: MetricExplanation | null;
-  onSelect: () => void;
+  to: "/app/decisions" | "/app/financials" | "/app/stage-gates" | "/app/risks";
 }) {
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onSelect}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onSelect();
-        }
-      }}
-      className={`cursor-pointer rounded-lg border px-3 py-3 text-left transition-colors ${
-        active
-          ? "border-primary/40 bg-primary/5"
-          : "border-border bg-background hover:border-primary/30"
-      }`}
+    <Link
+      to={to}
+      className="rounded-lg border border-border bg-background px-3 py-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/[0.03]"
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-medium leading-snug text-foreground">{question}</p>
+        <p className="text-sm font-semibold leading-snug text-foreground">{question}</p>
         {explain ? (
-          <span onClick={(e) => e.stopPropagation()}>
+          <span
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
             <ExplainThis explanation={explain} size="xs" />
           </span>
         ) : null}
       </div>
       <p className="mt-2 text-2xl font-semibold tabular-nums tracking-tight text-foreground">{answer}</p>
       <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{detail}</p>
+    </Link>
+  );
+}
+
+function countLabel(n: number, one: string, many: string) {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+function SteeringQuickLinks({
+  decisionsPending,
+  actionsOpen,
+  openRisks,
+  openIssues,
+  demandPending,
+}: {
+  decisionsPending: number;
+  actionsOpen: number;
+  openRisks: number;
+  openIssues: number;
+  demandPending: number;
+}) {
+  const items = [
+    {
+      to: "/app/demand-pipeline" as const,
+      icon: GitBranch,
+      label: "Demand Pipeline",
+      detail: demandPending
+        ? `${countLabel(demandPending, "item", "items")} awaiting approval`
+        : "Nothing waiting on approval",
+      tone: demandPending ? "text-amber-800" : "text-muted-foreground",
+    },
+    {
+      to: "/app/risks" as const,
+      icon: Shield,
+      label: "RAID Registers",
+      detail: `${countLabel(openRisks, "risk", "risks")} · ${countLabel(openIssues, "issue", "issues")} open`,
+      tone: openRisks || openIssues ? "text-rose-800" : "text-muted-foreground",
+    },
+    {
+      to: "/app/prioritisation" as const,
+      icon: ListChecks,
+      label: "Prioritisation",
+      detail: "Full ranking with payback",
+      tone: "text-muted-foreground",
+    },
+  ];
+
+  const summary = [
+    countLabel(decisionsPending, "decision", "decisions"),
+    countLabel(actionsOpen, "action", "actions"),
+    countLabel(openRisks, "risk", "risks"),
+    countLabel(openIssues, "issue", "issues"),
+    demandPending
+      ? `${countLabel(demandPending, "demand item", "demand items")} awaiting approval`
+      : "no demand awaiting approval",
+  ].join(" · ");
+
+  return (
+    <div className="mt-4">
+      <div className="grid gap-2 sm:grid-cols-3">
+        {items.map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.to}
+              to={item.to}
+              className="group rounded-lg border border-border bg-background px-3 py-2.5 transition-colors hover:border-primary/35 hover:bg-primary/[0.03]"
+            >
+              <div className="flex items-center gap-2">
+                <span className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary">
+                  <Icon className="h-3.5 w-3.5" />
+                </span>
+                <p className="text-[12px] font-semibold tracking-tight text-foreground">{item.label}</p>
+              </div>
+              <p className={`mt-1.5 text-[11px] leading-snug ${item.tone}`}>{item.detail}</p>
+            </Link>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">{summary}</p>
     </div>
   );
 }
@@ -321,6 +396,48 @@ export function ExecutiveQuickView({
     staleTime: 60_000,
   });
 
+  const actionsQ = useQuery({
+    queryKey: ["actions", orgId, "exec-brief"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("actions")
+        .select("id,project_id,status")
+        .eq("org_id", orgId!);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+
+  const issuesQ = useQuery({
+    queryKey: ["issues", orgId, "exec-brief"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("issues")
+        .select("id,project_id,status")
+        .eq("org_id", orgId!);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+
+  const demandQ = useQuery({
+    queryKey: ["demand_pipeline", orgId, "exec-brief"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("demand_pipeline")
+        .select("id,status")
+        .eq("org_id", orgId!);
+      if (error) return [];
+      return data ?? [];
+    },
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+
   const briefing = useMemo(
     () =>
       buildExecutiveBriefing({
@@ -367,25 +484,26 @@ export function ExecutiveQuickView({
     ? Math.round(((totalForecast - approvedFunding) / approvedFunding) * 100)
     : 0;
 
+  const inFilter = (projectId?: string | null) => !projectId || ids.includes(projectId);
+  const decisionsPending = (decisionsQ.data ?? []).filter(
+    (d) => inFilter(d.project_id) && isDecisionAwaiting(d),
+  ).length;
+  const actionsOpen = (actionsQ.data ?? []).filter(
+    (a: { project_id?: string; status?: string | null }) => inFilter(a.project_id) && isOpenRaid(a.status),
+  ).length;
+  const openRisks = (risksQ.data ?? []).filter((r) => inFilter(r.project_id) && isOpenRaid(r.status)).length;
+  const openIssues = (issuesQ.data ?? []).filter(
+    (i: { project_id?: string; status?: string | null }) => inFilter(i.project_id) && isOpenRaid(i.status),
+  ).length;
+  const demandPending = (demandQ.data ?? []).filter((d: { status?: string | null }) =>
+    /^(idea|screening|business case|under review)$/i.test(String(d.status || "")),
+  ).length;
+
   const shownAsks = askKind
     ? briefing.actions.filter((a) => a.kind === askKind)
     : briefing.actions;
   const primaryAsk = shownAsks[0];
   const restAsks = shownAsks.slice(1);
-
-  const selectQuestion = (kind: QuestionKind) => {
-    setAskKind((prev) => (prev === kind ? null : kind));
-    if (kind === "money") {
-      requestAnimationFrame(() => {
-        document.getElementById("pack-money")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-      return;
-    }
-    setAsksCollapsed(false);
-    requestAnimationFrame(() => {
-      document.getElementById("pack-asks")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  };
 
   if (loading) {
     return <PageLoading label="Loading executive snapshot…" fullScreen={false} />;
@@ -532,15 +650,17 @@ export function ExecutiveQuickView({
             ) : (
               <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
                 {briefing.headlineSignals.map((signal) => (
-                  <SteeringSignalCard
-                    key={signal.key}
-                    signal={signal}
-                    active={askKind === signal.kind}
-                    onSelect={() => selectQuestion(signal.kind)}
-                  />
+                  <SteeringSignalCard key={signal.key} signal={signal} />
                 ))}
               </div>
             )}
+            <SteeringQuickLinks
+              decisionsPending={decisionsPending}
+              actionsOpen={actionsOpen}
+              openRisks={openRisks}
+              openIssues={openIssues}
+              demandPending={demandPending}
+            />
             <p className="mt-3 text-sm text-muted-foreground">
               {filtered.length} project{filtered.length === 1 ? "" : "s"} · spend {spendOfBudget} of
               budget · FAC {facVsBudget >= 0 ? "+" : ""}
@@ -572,9 +692,8 @@ export function ExecutiveQuickView({
           detail={
             briefing.decisionsWaiting ? "Waiting on steering" : "Nothing in the queue in this filter."
           }
-          active={askKind === "decision"}
           explain={briefing.questionExplains.decisions}
-          onSelect={() => selectQuestion("decision")}
+          to="/app/decisions"
         />
         <QuestionPanel
           question="Is the money still inside the envelope?"
@@ -584,25 +703,22 @@ export function ExecutiveQuickView({
               ? `${money(briefing.moneyAtRisk)} above budget`
               : `${money(remaining)} still unspent`
           }
-          active={askKind === "money"}
           explain={briefing.questionExplains.money}
-          onSelect={() => selectQuestion("money")}
+          to="/app/financials"
         />
         <QuestionPanel
           question="Are we on time?"
           answer={String(briefing.lateGateCount + briefing.overdueCount)}
           detail={`${briefing.lateGateCount} late gates · ${briefing.overdueCount} overdue`}
-          active={askKind === "schedule"}
           explain={briefing.questionExplains.time}
-          onSelect={() => selectQuestion("schedule")}
+          to="/app/stage-gates"
         />
         <QuestionPanel
           question="What could still hurt us?"
           answer={String(briefing.criticalRisks)}
           detail={briefing.criticalRisks ? "Open critical risks" : "No critical risks open in this filter."}
-          active={askKind === "risk"}
           explain={briefing.questionExplains.risk}
-          onSelect={() => selectQuestion("risk")}
+          to="/app/risks"
         />
       </div>
 

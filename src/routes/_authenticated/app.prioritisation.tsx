@@ -6,17 +6,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/query-selects";
 import { PROJECT_OPS_EXTRAS } from "@/lib/project-selects";
 import { useAuth } from "@/lib/auth-context";
-import { SectionFrame, SectionTitle, PageHeading, KpiCard, RagChip } from "@/components/streamlit";
-import { explainRag } from "@/lib/explain-metric";
-import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LabelList, Cell } from "recharts";
+import { SectionFrame, SectionTitle, PageHeading, KpiCard } from "@/components/streamlit";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LabelList } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
+import { rankPortfolioInvestments } from "@/lib/executive-intelligence";
 import {
   projectApprovedFunding,
   projectBenefitsTarget,
   projectRoiPercent,
 } from "@/lib/project-finance";
-import { paybackScore, projectPaybackMonths } from "@/lib/ops-enhancements";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
@@ -31,21 +29,6 @@ function money(n: number) {
     new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n || 0)
   );
 }
-
-const PRI_WEIGHT: Record<string, number> = {
-  "P1 - Critical": 100,
-  P1: 100,
-  Critical: 100,
-  "P2 - High": 75,
-  P2: 75,
-  High: 75,
-  "P3 - Medium": 50,
-  P3: 50,
-  Medium: 50,
-  "P4 - Low": 25,
-  P4: 25,
-  Low: 25,
-};
 
 function Prioritisation() {
   const { organization } = useAuth();
@@ -88,29 +71,24 @@ function Prioritisation() {
   });
 
   const ranked = useMemo(() => {
+    const scored = rankPortfolioInvestments({
+      projects,
+      benefits: benefits as Array<{ project_id?: string; payback_months?: number | null }>,
+    });
+    const byId = new Map(scored.map((r) => [r.projectId, r]));
     return projects
       .map((p: any) => {
-        const funding = projectApprovedFunding(p);
-        const roi = projectRoiPercent(p);
-        const benTgt = projectBenefitsTarget(p);
-        const priScore = PRI_WEIGHT[p.priority || ""] || 25;
-        const months = projectPaybackMonths(p, benefits as any[], p.id);
-        const pb = paybackScore(months);
-        const score =
-          roi * 0.5 +
-          priScore * 0.3 +
-          (benTgt / 1_000_000) * 5 -
-          (funding / 1_000_000) * 2 +
-          pb;
+        const r = byId.get(p.id);
         return {
           ...p,
-          _score: Math.round(score * 10) / 10,
-          _pri: priScore,
-          _roi: roi,
-          _funding: funding,
-          _benTgt: benTgt,
-          _payback: months,
-          _pb: pb,
+          _score: r?.score ?? 0,
+          _roi: r?.roi ?? projectRoiPercent(p),
+          _funding: r?.investment ?? projectApprovedFunding(p),
+          _benTgt: r?.expectedBenefit ?? projectBenefitsTarget(p),
+          _payback: r?.paybackMonths ?? null,
+          _strategic: r?.strategicAlignment ?? 0,
+          _risk: r?.risk ?? "—",
+          _confidence: r?.confidence ?? 0,
         };
       })
       .sort((a: any, b: any) => {
@@ -152,15 +130,15 @@ function Prioritisation() {
 
   const rankColumns: ColumnarColumn<any>[] = useMemo(
     () => [
-      { key: "_rank", label: "Rank" },
+      { key: "_rank", label: "Rank", filterable: false },
       { key: "name", label: "Project" },
-      { key: "program", label: "Program" },
-      { key: "priority", label: "Priority" },
-      { key: "rag", label: "RAG" },
-      { key: "_funding", label: "Approved Funding" },
-      { key: "_benTgt", label: "Benefits Tgt" },
-      { key: "_roi", label: "ROI %" },
-      { key: "_payback", label: "Payback mo" },
+      { key: "_funding", label: "Investment" },
+      { key: "_strategic", label: "Strategic" },
+      { key: "_benTgt", label: "Benefit" },
+      { key: "_risk", label: "Risk" },
+      { key: "_confidence", label: "Confidence" },
+      { key: "_roi", label: "ROI" },
+      { key: "_payback", label: "Payback" },
       { key: "_score", label: "Score" },
       { key: "manual_rank", label: "Manual rank" },
     ],
@@ -168,12 +146,15 @@ function Prioritisation() {
   );
   const rankTable = useColumnarTable(rankedWithRank, rankColumns);
 
+  const rankMedal = (rank: number) =>
+    rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : String(rank);
+
   return (
     <div>
       <PageHeading
         icon="🏆"
         title="Prioritisation"
-        subtitle="Score = (ROI% × 0.5) + (Priority weight × 0.3) + (Benefits ÷ $1M × 5) − (Funding ÷ $1M × 2) + early-payback bonus (up to 15). Manual rank overrides sort when set. Clear the box to return to computed order."
+        subtitle="Same ranking as Investment decision engine: Strategic 20% · ROI 14% · Payback 14% · Risk 12% · Urgency 12% · Regulatory 8% · Dependency 8% · Customer 6% · Resource 6%. Faster payback scores higher. Manual rank overrides sort when set."
       />
 
       <SectionFrame>
@@ -184,6 +165,94 @@ function Prioritisation() {
           <KpiCard label="Avg ROI" value={`${avgROI.toFixed(1)}%`} accent="#22c55e" />
           <KpiCard label="Total Score" value={totalScore.toFixed(0)} accent="#8b5cf6" />
         </div>
+      </SectionFrame>
+
+      <SectionFrame>
+        <SectionTitle>Full Ranking</SectionTitle>
+        <ColumnarToolbar
+          globalQ={rankTable.globalQ}
+          onGlobalQ={rankTable.setGlobalQ}
+          shown={rankTable.rows.length}
+          total={rankTable.total}
+          dirty={rankTable.isDirty}
+          onClear={rankTable.clearAll}
+          placeholder="Search ranking…"
+        />
+        <div className="st-table-wrap overflow-x-auto">
+          <table className="st-table min-w-[860px]">
+            <thead>
+              <tr>
+                {rankColumns.map((col) => (
+                  <ColumnarTh
+                    key={col.key}
+                    column={col}
+                    filter={rankTable.filters[col.key]}
+                    onFilter={(v) => rankTable.setColumnFilter(col.key, v)}
+                    sortKey={rankTable.sortKey}
+                    sortDir={rankTable.sortDir}
+                    onToggleSort={rankTable.toggleSort}
+                    align={
+                      [
+                        "_rank",
+                        "_funding",
+                        "_strategic",
+                        "_benTgt",
+                        "_confidence",
+                        "_roi",
+                        "_payback",
+                        "_score",
+                        "manual_rank",
+                      ].includes(col.key)
+                        ? "right"
+                        : "left"
+                    }
+                  />
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rankTable.rows.map((p: any) => (
+                <tr key={p.id}>
+                  <td className="text-right tabular-nums">{rankMedal(p._rank)}</td>
+                  <td className="font-medium">{p.project_code ? `${p.project_code} · ${p.name}` : p.name}</td>
+                  <td className="text-right tabular-nums">{money(p._funding)}</td>
+                  <td className="text-right tabular-nums">{p._strategic}%</td>
+                  <td className="text-right tabular-nums">{money(p._benTgt)}</td>
+                  <td>{p._risk}</td>
+                  <td className="text-right tabular-nums">{p._confidence}%</td>
+                  <td className="text-right tabular-nums">{Number(p._roi || 0).toFixed(0)}%</td>
+                  <td className="text-right tabular-nums">
+                    {p._payback == null ? "—" : `${p._payback} mo`}
+                  </td>
+                  <td className="text-right tabular-nums font-bold">{p._score}</td>
+                  <td className="text-right">
+                    <input
+                      className="st-input !w-16 !py-0.5 text-right"
+                      type="number"
+                      min={1}
+                      placeholder="—"
+                      defaultValue={p.manual_rank ?? ""}
+                      onBlur={(e) => {
+                        const raw = e.target.value.trim();
+                        const next = raw === "" ? null : Number(raw);
+                        const prev = p.manual_rank == null ? null : Number(p.manual_rank);
+                        if (next === prev) return;
+                        saveRank.mutate({
+                          id: p.id,
+                          manual_rank: Number.isFinite(next as number) ? (next as number) : null,
+                        });
+                      }}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Payback uses the shortest benefit-line months, else implied months from investment ÷ annual
+          benefit. Unknown payback is treated as neutral so missing data does not collapse the rank.
+        </p>
       </SectionFrame>
 
       <SectionFrame>
@@ -250,7 +319,7 @@ function Prioritisation() {
           onClear={bottomTable.clearAll}
             placeholder="Search bottom 5…"
           />
-          <div className="overflow-x-auto">
+          <div className="st-table-wrap overflow-x-auto">
             <table className="st-table">
               <thead>
                 <tr>
@@ -284,89 +353,6 @@ function Prioritisation() {
           </div>
         </SectionFrame>
       </div>
-
-      <SectionFrame>
-        <SectionTitle>Full Ranking</SectionTitle>
-        <ColumnarToolbar
-          globalQ={rankTable.globalQ}
-          onGlobalQ={rankTable.setGlobalQ}
-          shown={rankTable.rows.length}
-          total={rankTable.total}
-          dirty={rankTable.isDirty}
-          onClear={rankTable.clearAll}
-          placeholder="Search ranking…"
-        />
-        <div className="overflow-x-auto">
-          <table className="st-table">
-            <thead>
-              <tr>
-                {rankColumns.map((col) => (
-                  <ColumnarTh
-                    key={col.key}
-                    column={col}
-                    filter={rankTable.filters[col.key]}
-                    onFilter={(v) => rankTable.setColumnFilter(col.key, v)}
-                    sortKey={rankTable.sortKey}
-                    sortDir={rankTable.sortDir}
-                    onToggleSort={rankTable.toggleSort}
-                    align={
-                      ["_rank", "_funding", "_benTgt", "_roi", "_payback", "_score", "manual_rank"].includes(col.key)
-                        ? "right"
-                        : "left"
-                    }
-                  />
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rankTable.rows.map((p: any) => (
-                <tr key={p.id}>
-                  <td className="text-right font-mono">{p._rank}</td>
-                  <td className="font-medium">{p.name}</td>
-                  <td>{p.program || "—"}</td>
-                  <td>{p.priority || "—"}</td>
-                  <td>
-                    <RagChip
-                      rag={displayRag(p)}
-                      manual={isRagOverridden(p)}
-                      explain={explainRag({
-                        rag: displayRag(p),
-                        source: "register",
-                        overridden: isRagOverridden(p),
-                      })}
-                    />
-                  </td>
-                  <td className="text-right tabular-nums">{money(p._funding)}</td>
-                  <td className="text-right tabular-nums">
-                    {money(p._benTgt)}
-                  </td>
-                  <td className="text-right tabular-nums">
-                    {Number(p._roi || 0).toFixed(1)}%
-                  </td>
-                  <td className="text-right tabular-nums">{p._payback ?? "—"}</td>
-                  <td className="text-right tabular-nums font-semibold">{p._score}</td>
-                  <td className="text-right">
-                    <input
-                      className="st-input !w-16 !py-0.5 text-right"
-                      type="number"
-                      min={1}
-                      placeholder="—"
-                      defaultValue={p.manual_rank ?? ""}
-                      onBlur={(e) => {
-                        const raw = e.target.value.trim();
-                        const next = raw === "" ? null : Number(raw);
-                        const prev = p.manual_rank == null ? null : Number(p.manual_rank);
-                        if (next === prev) return;
-                        saveRank.mutate({ id: p.id, manual_rank: Number.isFinite(next as number) ? (next as number) : null });
-                      }}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </SectionFrame>
     </div>
   );
 }

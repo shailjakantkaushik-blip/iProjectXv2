@@ -16,6 +16,7 @@ import {
   selectWithRaidCodeFallback,
 } from "@/lib/query-selects";
 import { fetchStageGates } from "@/lib/stage-gates";
+import { sortProjectsByCodeName } from "@/lib/project-sort";
 import { useAuth } from "@/lib/auth-context";
 import { SectionFrame, SectionTitle, PageHeading, RagChip, KpiCard } from "@/components/streamlit";
 import {
@@ -393,7 +394,9 @@ function InfographicPage() {
     // Dedicated key — wider detail select must not overwrite portfolio cache rows.
     queryKey: ["projects", organization?.id, "detail"],
     queryFn: async () =>
-      (await supabase.from("projects").select(PROJECT_DETAIL_SELECT as "*")).data ?? [],
+      sortProjectsByCodeName(
+        (await supabase.from("projects").select(PROJECT_DETAIL_SELECT as "*")).data ?? [],
+      ),
     enabled: !!organization,
   });
 

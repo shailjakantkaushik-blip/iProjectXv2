@@ -45,6 +45,13 @@ const STAGE_COLORS: Record<string, string> = {
   "On Hold": "#f59e0b",
 };
 
+function demandPaybackMonths(idea: { estimated_cost?: number | null; estimated_benefit?: number | null }) {
+  const cost = Number(idea.estimated_cost || 0);
+  const benefit = Number(idea.estimated_benefit || 0);
+  if (!(cost > 0) || !(benefit > 0)) return null;
+  return Math.round((cost / benefit) * 12 * 10) / 10;
+}
+
 function money(n: number) {
   return (
     "$" +
@@ -149,12 +156,17 @@ function DemandPipeline() {
       { key: "estimated_cost", label: "Est Cost" },
       { key: "estimated_benefit", label: "Est Benefit" },
       { key: "estimated_roi", label: "ROI %" },
+      {
+        key: "_payback",
+        label: "Payback",
+        getValue: (i) => demandPaybackMonths(i),
+      },
       { key: "strategic_alignment", label: "Align" },
       { key: "complexity", label: "Complex" },
       { key: "submitted_date", label: "Submitted" },
       {
         key: "project",
-        label: "Project",
+        label: "Create Project Link",
         getValue: (i) => (i.project_id ? "linked" : ""),
       },
     ],
@@ -241,6 +253,128 @@ function DemandPipeline() {
             sub={money(totalBenefit)}
             accent="#ec4899"
           />
+        </div>
+      </SectionFrame>
+
+      <SectionFrame>
+        <SectionTitle>Pipeline Register</SectionTitle>
+        <ColumnarToolbar
+          globalQ={table.globalQ}
+          onGlobalQ={table.setGlobalQ}
+          shown={table.rows.length}
+          total={table.total}
+          dirty={table.isDirty}
+          onClear={table.clearAll}
+          placeholder="Search pipeline register…"
+        />
+        <div className="st-table-wrap overflow-x-auto">
+          <table className="st-table min-w-[960px]">
+            <thead>
+              <tr>
+                {columns.map((col) => (
+                  <ColumnarTh
+                    key={col.key}
+                    column={col}
+                    filter={table.filters[col.key]}
+                    onFilter={(v) => table.setColumnFilter(col.key, v)}
+                    sortKey={table.sortKey}
+                    sortDir={table.sortDir}
+                    onToggleSort={table.toggleSort}
+                    align={
+                      [
+                        "estimated_cost",
+                        "estimated_benefit",
+                        "estimated_roi",
+                        "_payback",
+                        "strategic_alignment",
+                        "complexity",
+                      ].includes(col.key)
+                        ? "right"
+                        : "left"
+                    }
+                  />
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {table.rows.length === 0 ? (
+                <tr>
+                  <td colSpan={columns.length} className="py-4 text-center text-muted-foreground">
+                    {table.total === 0 ? "No ideas in the pipeline." : "No rows match filters"}
+                  </td>
+                </tr>
+              ) : (
+                table.rows.map((i: any) => {
+                  const payback = demandPaybackMonths(i);
+                  return (
+                    <tr key={i.id}>
+                      <td className="font-medium">{i.idea_name}</td>
+                      <td>{i.sponsor || "—"}</td>
+                      <td>
+                        <span
+                          className="rounded px-2 py-0.5 text-[11px] font-semibold"
+                          style={{
+                            background: `${STAGE_COLORS[i.status || "Idea"]}22`,
+                            color: STAGE_COLORS[i.status || "Idea"],
+                          }}
+                        >
+                          {i.status || "Idea"}
+                        </span>
+                      </td>
+                      <td className="text-right tabular-nums">
+                        {money(Number(i.estimated_cost || 0))}
+                      </td>
+                      <td className="text-right tabular-nums">
+                        {money(Number(i.estimated_benefit || 0))}
+                      </td>
+                      <td className="text-right tabular-nums">
+                        {Number(i.estimated_roi || 0).toFixed(1)}%
+                      </td>
+                      <td className="text-right tabular-nums">
+                        {payback == null ? "—" : `${payback} mo`}
+                      </td>
+                      <td className="text-right tabular-nums">{i.strategic_alignment || "—"}/5</td>
+                      <td className="text-right tabular-nums">{i.complexity || "—"}/5</td>
+                      <td>
+                        {i.submitted_date ? new Date(i.submitted_date).toLocaleDateString() : "—"}
+                      </td>
+                      <td className="whitespace-nowrap">
+                        {i.project_id ? (
+                          <Link
+                            to="/app/projects/$id"
+                            params={{ id: i.project_id }}
+                            className="text-xs font-semibold text-sky-700 hover:underline"
+                          >
+                            Open project
+                          </Link>
+                        ) : canConvert ? (
+                          <button
+                            type="button"
+                            className="text-xs font-semibold text-emerald-700 hover:underline disabled:opacity-50"
+                            disabled={busyId === i.id || convert.isPending}
+                            onClick={() => {
+                              if (
+                                !confirm(
+                                  `Create a project from “${i.idea_name}” and mark this idea Approved?`,
+                                )
+                              ) {
+                                return;
+                              }
+                              convert.mutate(i);
+                            }}
+                          >
+                            {busyId === i.id ? "Converting…" : "Create Project Link"}
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground">Ask admin</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
       </SectionFrame>
 
@@ -342,132 +476,6 @@ function DemandPipeline() {
             ))}
           </ScatterChart>
         </ExpandableChart>
-      </SectionFrame>
-
-      <SectionFrame>
-        <SectionTitle>Pipeline Register</SectionTitle>
-        <ColumnarToolbar
-          globalQ={table.globalQ}
-          onGlobalQ={table.setGlobalQ}
-          shown={table.rows.length}
-          total={table.total}
-          dirty={table.isDirty}
-          onClear={table.clearAll}
-          placeholder="Search pipeline register…"
-        />
-        <div className="overflow-x-auto">
-          <table className="st-table">
-            <thead>
-              <tr>
-                {columns.map((col) => (
-                  <ColumnarTh
-                    key={col.key}
-                    column={col}
-                    filter={table.filters[col.key]}
-                    onFilter={(v) => table.setColumnFilter(col.key, v)}
-                    sortKey={table.sortKey}
-                    sortDir={table.sortDir}
-                    onToggleSort={table.toggleSort}
-                    align={
-                      [
-                        "estimated_cost",
-                        "estimated_benefit",
-                        "estimated_roi",
-                        "strategic_alignment",
-                        "complexity",
-                      ].includes(col.key)
-                        ? "right"
-                        : "left"
-                    }
-                    className={
-                      [
-                        "estimated_cost",
-                        "estimated_benefit",
-                        "estimated_roi",
-                        "strategic_alignment",
-                        "complexity",
-                      ].includes(col.key)
-                        ? "text-right"
-                        : ""
-                    }
-                  />
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {table.rows.length === 0 ? (
-                <tr>
-                  <td colSpan={columns.length} className="text-center text-muted-foreground py-4">
-                    {table.total === 0 ? "No ideas in the pipeline." : "No rows match filters"}
-                  </td>
-                </tr>
-              ) : (
-                table.rows.map((i: any) => (
-                  <tr key={i.id}>
-                    <td className="font-medium">{i.idea_name}</td>
-                    <td>{i.sponsor || "—"}</td>
-                    <td>
-                      <span
-                        className="rounded px-2 py-0.5 text-[11px] font-semibold"
-                        style={{
-                          background: `${STAGE_COLORS[i.status || "Idea"]}22`,
-                          color: STAGE_COLORS[i.status || "Idea"],
-                        }}
-                      >
-                        {i.status || "Idea"}
-                      </span>
-                    </td>
-                    <td className="text-right tabular-nums">
-                      {money(Number(i.estimated_cost || 0))}
-                    </td>
-                    <td className="text-right tabular-nums">
-                      {money(Number(i.estimated_benefit || 0))}
-                    </td>
-                    <td className="text-right tabular-nums">
-                      {Number(i.estimated_roi || 0).toFixed(1)}%
-                    </td>
-                    <td className="text-right tabular-nums">{i.strategic_alignment || "—"}/5</td>
-                    <td className="text-right tabular-nums">{i.complexity || "—"}/5</td>
-                    <td>
-                      {i.submitted_date ? new Date(i.submitted_date).toLocaleDateString() : "—"}
-                    </td>
-                    <td className="whitespace-nowrap">
-                      {i.project_id ? (
-                        <Link
-                          to="/app/projects/$id"
-                          params={{ id: i.project_id }}
-                          className="text-xs font-semibold text-sky-700 hover:underline"
-                        >
-                          Open project
-                        </Link>
-                      ) : canConvert ? (
-                        <button
-                          type="button"
-                          className="text-xs font-semibold text-emerald-700 hover:underline disabled:opacity-50"
-                          disabled={busyId === i.id || convert.isPending}
-                          onClick={() => {
-                            if (
-                              !confirm(
-                                `Create a project from “${i.idea_name}” and mark this idea Approved?`,
-                              )
-                            ) {
-                              return;
-                            }
-                            convert.mutate(i);
-                          }}
-                        >
-                          {busyId === i.id ? "Converting…" : "→ Project"}
-                        </button>
-                      ) : (
-                        <span className="text-[11px] text-muted-foreground">Ask admin</span>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
       </SectionFrame>
     </div>
   );

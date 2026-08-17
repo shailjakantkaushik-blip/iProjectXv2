@@ -36,6 +36,7 @@ import {
 } from "@/lib/project-finance";
 import { projectPortfolio } from "@/lib/project-health";
 import { displayRag } from "@/lib/ops-enhancements";
+import { sortProjectsByCodeName } from "@/lib/project-sort";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/project-selects";
 
 export const Route = createFileRoute("/_authenticated/app/portfolio-segmentation")({
@@ -70,7 +71,9 @@ function Segmentation() {
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
     queryFn: async () =>
-      (await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*")).data ?? [],
+      sortProjectsByCodeName(
+        (await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*")).data ?? [],
+      ),
     enabled: !!organization,
   });
 

@@ -1002,7 +1002,7 @@ function ExecutiveDashboard() {
       {/* Portfolio Timelines — collapsible Gantt swim-lanes (expandable + scrollable) */}
       <SectionFrame>
         <ExpandablePanel
-          title="Strategic Alignment Timelines"
+          title="Timeline and Roadmap"
           compactMaxHeightClass="max-h-[min(68vh,760px)]"
           toolbar={
             <div className="flex items-center gap-2">

@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/project-selects";
+import { sortProjectsByCodeName } from "@/lib/project-sort";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
 import { explainRag } from "@/lib/explain-metric";
 import { PageExport } from "@/components/page-export";
@@ -69,7 +70,20 @@ function ExecutiveIntelligencePage() {
         .select(PROJECT_PORTFOLIO_SELECT as "*")
         .eq("org_id", orgId!);
       if (error) throw error;
-      return (data ?? []) as any[];
+      return sortProjectsByCodeName((data ?? []) as any[]);
+    },
+    enabled: !!orgId,
+  });
+
+  const benefitsQ = useQuery({
+    queryKey: ["benefits", orgId, "exec-intel-payback"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("benefits")
+        .select("project_id,payback_months")
+        .eq("org_id", orgId!);
+      if (error) return [];
+      return data ?? [];
     },
     enabled: !!orgId,
   });
@@ -189,8 +203,13 @@ function ExecutiveIntelligencePage() {
   );
 
   const ranked = useMemo(
-    () => rankPortfolioInvestments({ projects, dependencies }),
-    [projects, dependencies],
+    () =>
+      rankPortfolioInvestments({
+        projects,
+        dependencies,
+        benefits: (benefitsQ.data ?? []) as any[],
+      }),
+    [projects, dependencies, benefitsQ.data],
   );
 
   const funding = useMemo(
@@ -474,45 +493,45 @@ function ExecutiveIntelligencePage() {
       {/* Investment + funding */}
       <SectionFrame>
         <SectionTitle>Investment decision engine & prioritisation</SectionTitle>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
-            <thead className="bg-muted/50 text-[11px] uppercase text-muted-foreground">
+        <div className="st-table-wrap overflow-x-auto">
+          <table className="st-table min-w-[800px]">
+            <thead>
               <tr>
-                <th className="px-2 py-2 text-left">Rank</th>
-                <th className="px-2 py-2 text-left">Project</th>
-                <th className="px-2 py-2 text-right">Investment</th>
-                <th className="px-2 py-2 text-right">Strategic</th>
-                <th className="px-2 py-2 text-right">Benefit</th>
-                <th className="px-2 py-2 text-left">Risk</th>
-                <th className="px-2 py-2 text-right">Confidence</th>
-                <th className="px-2 py-2 text-right">ROI</th>
-                <th className="px-2 py-2 text-right">Score</th>
+                <th>Rank</th>
+                <th>Project</th>
+                <th className="text-right">Investment</th>
+                <th className="text-right">Strategic</th>
+                <th className="text-right">Benefit</th>
+                <th>Risk</th>
+                <th className="text-right">Confidence</th>
+                <th className="text-right">ROI</th>
+                <th className="text-right">Payback</th>
+                <th className="text-right">Score</th>
               </tr>
             </thead>
             <tbody>
               {ranked.slice(0, 12).map((r, i) => (
-                <tr key={r.projectId} className="border-t">
-                  <td className="px-2 py-1.5">
-                    {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
+                <tr key={r.projectId}>
+                  <td>{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}</td>
+                  <td className="font-medium">{r.label}</td>
+                  <td className="text-right tabular-nums">{money(r.investment)}</td>
+                  <td className="text-right tabular-nums">{r.strategicAlignment}%</td>
+                  <td className="text-right tabular-nums">{money(r.expectedBenefit)}</td>
+                  <td>{r.risk}</td>
+                  <td className="text-right tabular-nums">{r.confidence}%</td>
+                  <td className="text-right tabular-nums">{r.roi}%</td>
+                  <td className="text-right tabular-nums">
+                    {r.paybackMonths == null ? "—" : `${r.paybackMonths} mo`}
                   </td>
-                  <td className="px-2 py-1.5 font-medium">{r.label}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{money(r.investment)}</td>
-                  <td className="px-2 py-1.5 text-right">{r.strategicAlignment}%</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">
-                    {money(r.expectedBenefit)}
-                  </td>
-                  <td className="px-2 py-1.5">{r.risk}</td>
-                  <td className="px-2 py-1.5 text-right">{r.confidence}%</td>
-                  <td className="px-2 py-1.5 text-right">{r.roi}%</td>
-                  <td className="px-2 py-1.5 text-right font-bold">{r.score}</td>
+                  <td className="text-right font-bold tabular-nums">{r.score}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
         <p className="mt-2 text-[11px] text-muted-foreground">
-          Score = Strategic 22% · ROI 18% · Urgency 14% · Risk 12% · Regulatory 10% · Dependency 10%
-          · Customer 8% · Resource demand 6%.
+          Score = Strategic 20% · ROI 14% · Payback 14% · Urgency 12% · Risk 12% · Regulatory 8% ·
+          Dependency 8% · Customer 6% · Resource demand 6%. Faster payback scores higher.
         </p>
       </SectionFrame>
 

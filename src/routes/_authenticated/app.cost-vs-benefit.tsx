@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PROJECT_PORTFOLIO_SELECT, STAGE_GATE_DEFINITIONS_SELECT } from "@/lib/query-selects";
 import { displayRag } from "@/lib/ops-enhancements";
+import { sortProjectsByCodeName } from "@/lib/project-sort";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -52,11 +53,13 @@ function CostVsBenefitPage() {
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
     queryFn: async () =>
-      (await supabase
-        .from("projects")
-        .select(PROJECT_PORTFOLIO_SELECT as "*")
-        .order("project_code")
-        .order("name")).data ?? [],
+      sortProjectsByCodeName(
+        (await supabase
+          .from("projects")
+          .select(PROJECT_PORTFOLIO_SELECT as "*")
+          .order("project_code")
+          .order("name")).data ?? [],
+      ),
     enabled: !!organization,
   });
   const { data: gateDefs = [] } = useQuery({

@@ -8,6 +8,7 @@ import {
   STAGE_GATES_SELECT,
   STAGE_GATE_DEFINITIONS_SELECT,
 } from "@/lib/query-selects";
+import { sortProjectsByCodeName } from "@/lib/project-sort";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
 import { explainRag } from "@/lib/explain-metric";
@@ -55,7 +56,9 @@ function StageGatesPage() {
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
     queryFn: async () =>
-      (await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*")).data ?? [],
+      sortProjectsByCodeName(
+        (await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*")).data ?? [],
+      ),
     enabled: !!organization,
   });
 
