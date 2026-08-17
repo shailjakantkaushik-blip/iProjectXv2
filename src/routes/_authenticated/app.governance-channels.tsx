@@ -48,11 +48,11 @@ import {
   loadGovernanceChannels,
   orgWideForums,
   projectOptionsLabel,
-  resolveCadenceWindow,
   resolveMyProjectIds,
   scopeLabel,
   withCadenceWindowDates,
-  expandCadenceMeetings,
+  withEditedMeetingDates,
+  expandCadenceMeetingsForChannel,
 } from "@/lib/governance-forums";
 
 export const Route = createFileRoute("/_authenticated/app/governance-channels")({
@@ -348,7 +348,7 @@ function GovernanceChannelsPage() {
         ...next,
         cadence,
         cadence_end: proj?.planned_end_date || next.cadence_end || null,
-      });
+      }, { resetMeetings: true });
     } else {
       next = withCadenceWindowDates(next);
     }
@@ -371,7 +371,7 @@ function GovernanceChannelsPage() {
             program: first?.program || null,
             portfolio: first?.portfolio || null,
             cadence_end: first?.planned_end_date || next.cadence_end || null,
-          }),
+          }, { resetMeetings: true }),
         );
       }
     }
@@ -744,9 +744,9 @@ function GovernanceChannelsPage() {
           <SectionFrame>
             <SectionTitle>Cadence calendar</SectionTitle>
             <p className="mb-2 text-xs text-muted-foreground">
-              Meetings are generated from cadence start through placeholder end. Weekly stays on the
-              start weekday; next meeting is the next date on that series (previous is the one
-              before it). Child forums escalate to their parent.
+              Meetings follow cadence start through placeholder end. Edit previous or next when a
+              meeting moves in real life — future dates then continue from the new next date. Child
+              forums escalate to their parent.
             </p>
             <CadenceMonthCalendar channels={visible} allChannels={channels} />
             <div className="mt-4">
@@ -770,9 +770,9 @@ function GovernanceChannelsPage() {
               )}
             </div>
             <p className="mt-2 mb-1 text-xs text-muted-foreground">
-              Cadence start and placeholder end drive the calendar. Meetings are generated on
-              weekdays from the start date through the end date using the forum cadence (Weekly,
-              Monthly, and so on). Extend the end date to keep the series going.
+              Cadence start and placeholder end plan the series. Previous and next meeting can be
+              edited when a date changes in real life; later calendar dates follow cadence from the
+              new next date. Use Reset on the forum form to put dates back on the planned series.
             </p>
             <div className="mt-3">
               <ColumnarToolbar
@@ -1089,7 +1089,10 @@ function ChannelForm({
 }) {
   const set = (k: keyof Channel, v: unknown) => onChange({ ...value, [k]: v });
   const applyWindow = (patch: Partial<Channel>) => {
-    onChange(withCadenceWindowDates({ ...value, ...patch }));
+    onChange(withCadenceWindowDates({ ...value, ...patch }, { resetMeetings: true }));
+  };
+  const applyMeetings = (patch: Partial<Channel>) => {
+    onChange(withEditedMeetingDates({ ...value, ...patch }));
   };
   const scope = (value.scope_level || "strategic_alignment") as GovernanceScopeLevel;
   const editableProjects = admin
@@ -1270,15 +1273,38 @@ function ChannelForm({
             meetings on the calendar.
           </p>
         </div>
-        <div className="col-span-2 text-[11px] text-muted-foreground">
-          Previous meeting:{" "}
-          <span className="font-medium text-foreground">{value.last_meeting || "—"}</span>
-          {" · "}
-          Next meeting:{" "}
-          <span className="font-medium text-foreground">{value.next_meeting || "—"}</span>
-          {value.cadence === "Ad-hoc"
-            ? " · Ad-hoc is the start date only."
-            : " · Next is the next date on this series (from start, by cadence, through end). Previous is the one before it."}
+        <div>
+          <Label>Previous meeting</Label>
+          <Input
+            type="date"
+            value={value.last_meeting || ""}
+            onChange={(e) => applyMeetings({ last_meeting: e.target.value || null })}
+          />
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Date the last meeting actually happened. Change it when real life differs from plan.
+          </p>
+        </div>
+        <div>
+          <Label>Next meeting</Label>
+          <Input
+            type="date"
+            value={value.next_meeting || ""}
+            onChange={(e) => applyMeetings({ next_meeting: e.target.value || null })}
+          />
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Reschedule here. Later calendar dates follow cadence from this new next date.
+          </p>
+        </div>
+        <div className="col-span-2">
+          <button
+            type="button"
+            className="text-xs font-medium text-primary hover:underline"
+            onClick={() =>
+              onChange(withCadenceWindowDates(value, { resetMeetings: true }))
+            }
+          >
+            Reset previous & next to cadence
+          </button>
         </div>
       </div>
       <div>
@@ -1549,8 +1575,7 @@ function CadenceMonthCalendar({
   for (const c of channels) {
     if (c.status === "Retired") continue;
     if (!c.cadence_start && !c.last_meeting && !c.next_meeting) continue;
-    const window = resolveCadenceWindow(c);
-    const dates = expandCadenceMeetings(window.cadence_start, window.cadence_end, c.cadence, {
+    const dates = expandCadenceMeetingsForChannel(c, {
       rangeStart: monthStart,
       rangeEnd: monthEnd,
     });
