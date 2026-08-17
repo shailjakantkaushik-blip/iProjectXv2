@@ -69,15 +69,23 @@ export interface Organization {
     project_visibility?: {
       rules?: Array<{
         role: string;
-        mode: "all" | "programs" | "projects";
+        mode: "all" | "programs" | "projects" | "scoped";
+        strategic_alignments?: string[];
         programs?: string[];
+        functional_areas?: string[];
+        program_areas?: Array<{ program: string; functional_area: string }>;
         project_ids?: string[];
+        stream_ids?: string[];
       }>;
       user_rules?: Array<{
         user_id: string;
-        mode: "all" | "programs" | "projects";
+        mode: "all" | "programs" | "projects" | "scoped";
+        strategic_alignments?: string[];
         programs?: string[];
+        functional_areas?: string[];
+        program_areas?: Array<{ program: string; functional_area: string }>;
         project_ids?: string[];
+        stream_ids?: string[];
       }>;
     };
     /** Platform → org outbound alert email config (digests + RAID escalation). */

@@ -126,7 +126,8 @@ function PermissionsPage() {
       <p className="mb-3 text-sm text-muted-foreground">
         Configure who can view and edit each data table, Data Editor tools, and pages. Add custom
         roles for your organisation — the matrices below update automatically. To limit which
-        projects each role can see, use{" "}
+        projects each role or user can see (Strategic Alignment, program, functional area, project,
+        stream), use{" "}
         <Link to="/app/project-access" className="text-primary underline-offset-2 hover:underline">
           Project data access
         </Link>

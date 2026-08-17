@@ -1827,6 +1827,7 @@ export type Database = {
           description: string | null
           end_date: string | null
           forecast_at_completion: number | null
+          functional_area: string | null
           id: string
           name: string
           opex_approved: number | null
@@ -1872,6 +1873,7 @@ export type Database = {
           description?: string | null
           end_date?: string | null
           forecast_at_completion?: number | null
+          functional_area?: string | null
           id?: string
           name: string
           opex_approved?: number | null
@@ -1917,6 +1919,7 @@ export type Database = {
           description?: string | null
           end_date?: string | null
           forecast_at_completion?: number | null
+          functional_area?: string | null
           id?: string
           name?: string
           opex_approved?: number | null
