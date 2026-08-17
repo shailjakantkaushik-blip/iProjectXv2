@@ -1538,6 +1538,8 @@ function InfographicPage() {
           monthly={monthly as any[]}
           allocations={projectAllocations as any[]}
           benefits={benefits as any[]}
+          workItems={workItems as any[]}
+          changeRequests={changeRequests as any[]}
         />
 
         {/* Stage Gates & Phase $ header */}

@@ -107,6 +107,10 @@ export const RISKS_SELECT = [
   "escalation_reason",
 ].join(",");
 
+/** Columns the Health Engine reads — must exist on `risks` or the query returns no rows. */
+export const HEALTH_ENGINE_RISKS_SELECT =
+  "id,project_id,status,severity,probability,impact" as const;
+
 export const ISSUES_SELECT = [
   "id",
   "raid_code",
