@@ -2764,6 +2764,10 @@ export type Database = {
         Args: { p_date: string; p_months: number }
         Returns: string
       }
+      governance_occurrence_at: {
+        Args: { p_start: string; p_cadence: string; p_n: number }
+        Returns: string
+      }
       governance_suggest_next_meeting: {
         Args: { p_last: string; p_cadence: string }
         Returns: string

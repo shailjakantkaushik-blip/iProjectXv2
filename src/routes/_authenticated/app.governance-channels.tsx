@@ -574,7 +574,8 @@ function GovernanceChannelsPage() {
             members: memberViews.filter((m) => m.channel_id === c.id),
           }),
       },
-      { key: "next_meeting", label: "Next Meeting" },
+      { key: "last_meeting", label: "Previous meeting" },
+      { key: "next_meeting", label: "Next meeting" },
       { key: "status", label: "Status", getValue: (c) => c.status || "Active" },
     ],
     [projects, memberViews],
@@ -743,8 +744,9 @@ function GovernanceChannelsPage() {
           <SectionFrame>
             <SectionTitle>Cadence calendar</SectionTitle>
             <p className="mb-2 text-xs text-muted-foreground">
-              Meetings are generated automatically from each forum&apos;s cadence start through its
-              placeholder end (weekdays only). Child forums escalate to their parent.
+              Meetings are generated from cadence start through placeholder end. Weekly stays on the
+              start weekday; next meeting is the next date on that series (previous is the one
+              before it). Child forums escalate to their parent.
             </p>
             <CadenceMonthCalendar channels={visible} allChannels={channels} />
             <div className="mt-4">
@@ -848,7 +850,8 @@ function GovernanceChannelsPage() {
                               members: memberViews.filter((m) => m.channel_id === c.id),
                             })}
                           </td>
-                          <td>{c.next_meeting || "—"}</td>
+                          <td className="whitespace-nowrap">{c.last_meeting || "—"}</td>
+                          <td className="whitespace-nowrap">{c.next_meeting || "—"}</td>
                           <td>
                             <span
                               className={`text-xs px-2 py-0.5 rounded ${
@@ -1251,7 +1254,8 @@ function ChannelForm({
             onChange={(e) => applyWindow({ cadence_start: e.target.value || null })}
           />
           <p className="mt-1 text-[11px] text-muted-foreground">
-            First meeting of the series. Later dates follow this cadence on weekdays.
+            First meeting of the series. Weekly keeps this weekday every 7 days; monthly keeps this
+            day of month (weekdays only).
           </p>
         </div>
         <div>
@@ -1267,12 +1271,14 @@ function ChannelForm({
           </p>
         </div>
         <div className="col-span-2 text-[11px] text-muted-foreground">
-          Last meeting: <span className="font-medium text-foreground">{value.last_meeting || "—"}</span>
+          Previous meeting:{" "}
+          <span className="font-medium text-foreground">{value.last_meeting || "—"}</span>
           {" · "}
-          Next meeting: <span className="font-medium text-foreground">{value.next_meeting || "—"}</span>
+          Next meeting:{" "}
+          <span className="font-medium text-foreground">{value.next_meeting || "—"}</span>
           {value.cadence === "Ad-hoc"
-            ? " · Ad-hoc shows the start date only."
-            : " · Derived from the series vs today."}
+            ? " · Ad-hoc is the start date only."
+            : " · Next is the next date on this series (from start, by cadence, through end). Previous is the one before it."}
         </div>
       </div>
       <div>

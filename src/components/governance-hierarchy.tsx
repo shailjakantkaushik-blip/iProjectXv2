@@ -23,6 +23,7 @@ function ForumCard({ node }: { node: ForumNode }) {
         <span className="text-[11px] text-muted-foreground">
           {c.cadence || "—"}
           {c.next_meeting ? ` · next ${c.next_meeting}` : ""}
+          {c.last_meeting ? ` · prev ${c.last_meeting}` : ""}
         </span>
       </div>
       <p className="mt-1 text-[12px] text-muted-foreground">
