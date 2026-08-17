@@ -27,6 +27,7 @@ import { canActOnDecision } from "@/lib/decision-approval";
 import { useAllowedPages } from "@/lib/permissions";
 import { PROJECT_HOME_SELECT, projectHomeQueryKey } from "@/lib/project-selects";
 import { displayRag } from "@/lib/ops-enhancements";
+import { sortProjectsByCodeName } from "@/lib/project-sort";
 
 export const Route = createFileRoute("/_authenticated/app/")({
   component: Home,
@@ -204,7 +205,9 @@ function Home() {
     queryFn: async () => {
       const { data, error } = await supabase.from("projects").select(PROJECT_HOME_SELECT);
       if (error) throw error;
-      return data;
+      if (error) throw error;
+      if (error) throw error;
+      return sortProjectsByCodeName((data ?? []) as any[]);
     },
     enabled: !!organization,
   });

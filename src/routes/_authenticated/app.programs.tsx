@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/query-selects";
 import { PROJECT_OPS_EXTRAS } from "@/lib/project-selects";
+import { sortProjectsByCodeName } from "@/lib/project-sort";
 import { useAuth } from "@/lib/auth-context";
 import { SectionFrame, SectionTitle, PageHeading, KpiCard, RagChip } from "@/components/streamlit";
 import { explainRag } from "@/lib/explain-metric";
@@ -79,12 +80,12 @@ function ProgramsPage() {
       const wide = await supabase
         .from("projects")
         .select(`${PROJECT_PORTFOLIO_SELECT},${PROJECT_OPS_EXTRAS}` as "*");
-      if (!wide.error) return wide.data ?? [];
+      if (!wide.error) return sortProjectsByCodeName(wide.data ?? []);
       const { data, error: qErr } = await supabase
         .from("projects")
         .select(PROJECT_PORTFOLIO_SELECT as "*");
       if (qErr) throw qErr;
-      return data ?? [];
+      return sortProjectsByCodeName(data ?? []);
     },
     enabled: !!orgId,
     retry: 2,

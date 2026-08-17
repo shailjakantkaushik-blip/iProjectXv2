@@ -17,7 +17,7 @@ import {
   projectIncurred,
   projectRoiPercent,
 } from "@/lib/project-finance";
-import { displayRag } from "@/lib/ops-enhancements";
+import { displayRag, projectPaybackMonths } from "@/lib/ops-enhancements";
 
 const num = (v: unknown) => {
   const n = Number(v);
@@ -528,6 +528,10 @@ export type RankedInvestment = {
   risk: "Low" | "Medium" | "High";
   confidence: number;
   roi: number;
+  /** Months to recover investment. Lower is better. */
+  paybackMonths: number | null;
+  /** 0–100 factor used in the score (faster payback scores higher). */
+  payback: number;
   score: number;
   factors: PriorityFactors;
 };
@@ -547,6 +551,12 @@ const PRI_WEIGHT: Record<string, number> = {
   Low: 25,
 };
 
+function paybackFactor(months: number | null | undefined) {
+  const m = Number(months);
+  if (!Number.isFinite(m) || m <= 0) return 45;
+  return clamp(((36 - m) / 36) * 100);
+}
+
 export function rankPortfolioInvestments(opts: {
   projects: (WhatIfProject & {
     rag?: string | null;
@@ -555,9 +565,11 @@ export function rankPortfolioInvestments(opts: {
     benefits_realised?: number | null;
     roi_percent?: number | null;
     portfolio?: string | null;
+    payback_months?: number | null;
   })[];
   dependencies?: WhatIfDependency[];
   strategicByProject?: Record<string, number>;
+  benefits?: Array<{ project_id?: string; payback_months?: number | null }>;
 }): RankedInvestment[] {
   const depIntel = analyzeDependencyCriticality({
     projects: opts.projects,
@@ -589,6 +601,11 @@ export function rankPortfolioInvestments(opts: {
       const dependencyCriticality =
         dep?.criticality === "High" ? 90 : dep?.criticality === "Medium" ? 65 : 40;
       const resourceDemand = clamp(100 - Math.min(80, investment / 50_000));
+      const fromBenefits = projectPaybackMonths(p, opts.benefits, p.id);
+      const implied =
+        investment > 0 && expectedBenefit > 0 ? (investment / expectedBenefit) * 12 : null;
+      const paybackMonths = fromBenefits ?? implied;
+      const payback = paybackFactor(paybackMonths);
 
       const factors: PriorityFactors = {
         strategic: strategicAlignment,
@@ -602,14 +619,15 @@ export function rankPortfolioInvestments(opts: {
       };
 
       const score = Math.round(
-        factors.strategic * 0.22 +
-          factors.roi * 0.18 +
+        factors.strategic * 0.2 +
+          factors.roi * 0.14 +
+          payback * 0.14 +
           factors.risk * 0.12 +
-          factors.urgency * 0.14 +
-          factors.regulatory * 0.1 +
-          factors.customer * 0.08 +
+          factors.urgency * 0.12 +
+          factors.regulatory * 0.08 +
+          factors.customer * 0.06 +
           factors.resourceDemand * 0.06 +
-          factors.dependencyCriticality * 0.1,
+          factors.dependencyCriticality * 0.08,
       );
 
       const confidence = clamp(
@@ -629,6 +647,8 @@ export function rankPortfolioInvestments(opts: {
         risk,
         confidence,
         roi: Math.round(roi),
+        paybackMonths: paybackMonths == null ? null : Math.round(paybackMonths * 10) / 10,
+        payback: Math.round(payback),
         score,
         factors,
       };

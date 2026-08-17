@@ -18,6 +18,7 @@ import {
   applyFilters,
   type PortfolioFilterState,
 } from "@/components/portfolio-filters";
+import { sortProjectsByCodeName } from "@/lib/project-sort";
 import {
   BarChart,
   Bar,
@@ -94,11 +95,13 @@ function FinancialsPage() {
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
     queryFn: async () =>
-      (await supabase
-        .from("projects")
-        .select(PROJECT_PORTFOLIO_SELECT as "*")
-        .order("project_code")
-        .order("name")).data ?? [],
+      sortProjectsByCodeName(
+        (await supabase
+          .from("projects")
+          .select(PROJECT_PORTFOLIO_SELECT as "*")
+          .order("project_code")
+          .order("name")).data ?? [],
+      ),
     enabled: !!organization,
   });
   const { data: monthly = [] } = useQuery({

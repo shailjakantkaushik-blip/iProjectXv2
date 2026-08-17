@@ -13,6 +13,7 @@ import {
   type JsonRow,
   type PageResult,
 } from "@/lib/portfolio-paging";
+import { sortProjectsByCodeName } from "@/lib/project-sort";
 
 export type PortfolioProjectFilters = {
   program?: string | null;
@@ -90,7 +91,8 @@ export async function listPortfolioProjectsPage(opts: {
     .from("projects")
     .select(PROJECT_PORTFOLIO_SELECT, { count: "exact" })
     .eq("org_id", opts.orgId)
-    .order("created_at", { ascending: false })
+    .order("project_code", { ascending: true })
+    .order("name", { ascending: true })
     .range(offset, offset + limit - 1);
 
   const f = opts.filters ?? {};
@@ -109,7 +111,8 @@ export async function listPortfolioProjectsPage(opts: {
 
   const { data, error, count } = await q;
   if (error) throw new Error(error.message);
-  const page = toPageResult((data ?? []) as JsonRow[], count ?? 0, offset, limit);
+  const rows = sortProjectsByCodeName((data ?? []) as any) as JsonRow[];
+  const page = toPageResult(rows, count ?? 0, offset, limit);
   return { ...page, mode };
 }
 

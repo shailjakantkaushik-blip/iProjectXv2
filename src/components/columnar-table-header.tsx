@@ -53,10 +53,10 @@ export function ColumnarTh<T>({
         )}
         {filterable ? (
           <input
-            className={`st-input !h-8 !min-h-8 !w-full !min-w-0 !max-w-full !px-1.5 !py-1 !text-[11px] font-normal [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!min-h-9 ${
+            className={`st-input !h-7 !min-h-7 !w-full !min-w-0 !max-w-full !rounded-md !border-border/70 !bg-background !px-1.5 !py-0.5 !text-[11px] font-normal placeholder:text-muted-foreground/80 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!min-h-9 ${
               right ? "!text-right tabular-nums" : ""
             }`}
-            placeholder="Filter…"
+            placeholder="Filter"
             value={filter ?? ""}
             onChange={(e) => onFilter?.(e.target.value)}
             onClick={(e) => e.stopPropagation()}

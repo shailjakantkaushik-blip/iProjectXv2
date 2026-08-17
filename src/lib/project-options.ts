@@ -8,6 +8,9 @@
 
 import { supabase } from "@/integrations/supabase/client";
 import { methodUsesSprints, methodUsesStageGates } from "@/lib/delivery-methods";
+import { sortProjectsByCodeName } from "@/lib/project-sort";
+
+export { compareProjectsByCodeName, sortProjectsByCodeName } from "@/lib/project-sort";
 
 export const PROJECT_OPTIONS_SELECT =
   "id,name,project_code,program,portfolio,sponsor,sponsor_stakeholder_id,rag,rag_override,status,delivery_method,updated_at" as const;
@@ -29,20 +32,6 @@ export function projectUsesStageGates(deliveryMethod?: string | null) {
 /** Agile / Hybrid use sprints. Prefer {@link methodUsesSprints} with a method row. */
 export function projectUsesSprints(deliveryMethod?: string | null) {
   return methodUsesSprints(null, deliveryMethod);
-}
-
-/** Stable project dropdown order: code (numeric-aware), then name. */
-export function compareProjectsByCodeName(a: ProjectOptionLike, b: ProjectOptionLike) {
-  const code = String(a.project_code || "").localeCompare(String(b.project_code || ""), undefined, {
-    numeric: true,
-    sensitivity: "base",
-  });
-  if (code !== 0) return code;
-  return String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base" });
-}
-
-export function sortProjectsByCodeName<T extends ProjectOptionLike>(projects: T[]): T[] {
-  return [...projects].sort(compareProjectsByCodeName);
 }
 
 export function projectOptionsQueryKey(orgId: string | null | undefined) {
@@ -91,5 +80,5 @@ export async function fetchProjectOptions() {
     .order("project_code")
     .order("name");
   if (error) throw error;
-  return data ?? [];
+  return sortProjectsByCodeName((data ?? []) as any[]) as NonNullable<typeof data>;
 }

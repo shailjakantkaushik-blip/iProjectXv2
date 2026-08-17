@@ -38,7 +38,7 @@ import { FINANCIALS_MONTHLY_SELECT, HEALTH_ENGINE_RISKS_SELECT } from "@/lib/que
 import { explainPortfolioSnapshot, explainRag, type MetricExplanation } from "@/lib/explain-metric";
 import { displayRag, effectiveRag, isRagOverridden } from "@/lib/ops-enhancements";
 import type { MonthlyFinanceRow } from "@/lib/finance-lifecycle";
-import { isDecisionAwaiting } from "@/lib/decision-approval";
+import { compareProjectsByCodeName } from "@/lib/project-sort";
 import { isColdLoading } from "@/lib/query-ui";
 import { PageLoading } from "@/components/page-loading";
 import {
@@ -84,14 +84,6 @@ function byProjectId<T extends { project_id?: string | null }>(rows: T[]) {
     m.set(id, list);
   }
   return m;
-}
-
-function ragRank(rag?: string | null) {
-  const r = String(rag || "").trim();
-  if (r === "Red") return 0;
-  if (r === "Amber") return 1;
-  if (r === "Green") return 2;
-  return 3;
 }
 
 function healthHeat(score: number) {
@@ -272,18 +264,6 @@ function ExecutiveCockpit() {
       ).data ?? [],
     enabled: !!orgId,
   });
-  const { data: decisions = [] } = useQuery({
-    queryKey: ["decisions", orgId],
-    queryFn: async () =>
-      (await supabase.from("decisions").select("id,project_id,outcome,status")).data ?? [],
-    enabled: !!orgId,
-  });
-  const { data: actions = [] } = useQuery({
-    queryKey: ["actions", orgId],
-    queryFn: async () =>
-      (await supabase.from("actions").select("id,project_id,status,due_date")).data ?? [],
-    enabled: !!orgId,
-  });
   const { data: benefits = [] } = useQuery({
     queryKey: ["benefits", orgId],
     queryFn: async () =>
@@ -457,9 +437,6 @@ function ExecutiveCockpit() {
     unfundedInitiatives,
     benefitsForecast,
     benefitsRealised,
-    decisionsPending,
-    overdueActions,
-    upcomingGates,
     segRows,
   } = useMemo(() => {
     const benefitsByProject = new Map<string, any[]>();
@@ -508,25 +485,6 @@ function ExecutiveCockpit() {
     const benefitsForecast = benefitsScoped.reduce((s: number, b: any) => s + num(b.target_value), 0);
     const benefitsRealised = benefitsScoped.reduce((s: number, b: any) => s + num(b.realised_value), 0);
 
-    const decisionsPending = (decisions as any[]).filter((d) => {
-      if (!inScope(d.project_id)) return false;
-      return isDecisionAwaiting(d);
-    }).length;
-    const today = new Date();
-    const overdueActions = (actions as any[]).filter((a) => {
-      if (!inScope(a.project_id)) return false;
-      const s = String(a.status || "").toLowerCase();
-      if (s === "closed" || s === "done" || s === "completed") return false;
-      if (!a.due_date) return false;
-      return new Date(a.due_date) < today;
-    }).length;
-    const upcomingGates = gatesScoped.filter((g: any) => {
-      if (!g.planned_date) return false;
-      const d = new Date(g.planned_date);
-      const diff = (d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
-      return diff >= 0 && diff <= 30;
-    }).length;
-
     const segLabels = portfolioSegmentLabels(projects as any[]);
     const segRows = segLabels.map((cat) => {
       const rows = projects.filter((p: any) => projectPortfolio(p) === cat);
@@ -565,12 +523,9 @@ function ExecutiveCockpit() {
       unfundedInitiatives,
       benefitsForecast,
       benefitsRealised,
-      decisionsPending,
-      overdueActions,
-      upcomingGates,
       segRows,
     };
-  }, [projects, benefitsScoped, decisions, actions, gatesScoped, filtersOn, filteredIds]);
+  }, [projects, benefitsScoped, filtersOn, filteredIds]);
 
   const useCache = Boolean(kpis?.from_cache) && !filtersOn;
   const approvedFundingK = useCache ? kpis!.approved_funding : approvedFunding;
@@ -675,11 +630,7 @@ function ExecutiveCockpit() {
         const shown = effectiveRag(p, health.overall_rag);
         return { ...p, ...health, delivery_lead: deliveryLead, shown_rag: shown };
       })
-      .sort((a: any, b: any) => {
-        const rr = ragRank(a.shown_rag) - ragRank(b.shown_rag);
-        if (rr !== 0) return rr;
-        return (num(a.health_score) || 999) - (num(b.health_score) || 999);
-      });
+      .sort(compareProjectsByCodeName);
   }, [
     projects,
     benefitsScoped,
@@ -1089,30 +1040,7 @@ function ExecutiveCockpit() {
         </ExpandablePanel>
       </SectionFrame>
 
-      <SectionFrame exportName="cockpit-governance" exportTitle="Governance">
-        <SectionTitle>Governance</SectionTitle>
-        <div className="mb-4 grid grid-cols-3 gap-2">
-          <ScoreStat
-            label="Decisions"
-            value={decisionsPending}
-            hint="Awaiting outcome"
-            to="/app/decisions"
-            accent={decisionsPending ? "#2563eb" : undefined}
-          />
-          <ScoreStat
-            label="Overdue actions"
-            value={overdueActions}
-            to="/app/actions"
-            accent={overdueActions ? "#dc2626" : undefined}
-          />
-          <ScoreStat
-            label="Gates (30d)"
-            value={upcomingGates}
-            hint="Planned in 30 days"
-            to="/app/stage-gates"
-            accent={upcomingGates ? "#7c3aed" : undefined}
-          />
-        </div>
+      <SectionFrame exportName="cockpit-benefits" exportTitle="Benefits">
         <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
           <SectionTitle>Benefits</SectionTitle>
           <Link
