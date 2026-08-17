@@ -6,14 +6,10 @@ import {
   type AlignmentGovernanceBucket,
   type ForumMemberView,
   type ForumNode,
-  type GovernanceChannel,
   type GovernanceProject,
-  GOVERNANCE_CHANNELS_SELECT,
-  GOVERNANCE_CHANNELS_SELECT_MIN,
   buildGovernanceHierarchy,
   forumPeopleLine,
-  isMissingGovernanceScopeColumn,
-  normalizeChannel,
+  loadGovernanceChannels,
   projectOptionsLabel,
   scopeLabel,
 } from "@/lib/governance-forums";
@@ -206,22 +202,7 @@ export function ProjectGovernanceForums({
 }) {
   const { data: channels = [] } = useQuery({
     queryKey: ["governance_channels", orgId],
-    queryFn: async () => {
-      const full = await supabase
-        .from("governance_channels")
-        .select(GOVERNANCE_CHANNELS_SELECT as "*")
-        .order("name");
-      if (!full.error) {
-        return ((full.data || []) as unknown as GovernanceChannel[]).map(normalizeChannel);
-      }
-      if (!isMissingGovernanceScopeColumn(full.error)) throw full.error;
-      const min = await supabase
-        .from("governance_channels")
-        .select(GOVERNANCE_CHANNELS_SELECT_MIN as "*")
-        .order("name");
-      if (min.error) throw min.error;
-      return ((min.data || []) as unknown as GovernanceChannel[]).map(normalizeChannel);
-    },
+    queryFn: async () => (await loadGovernanceChannels()).channels,
     enabled: !!orgId,
   });
 
