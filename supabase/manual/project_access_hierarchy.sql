@@ -154,15 +154,6 @@ BEGIN
     RETURN false;
   END IF;
 
-  -- Within own org, platform_admin and org admins see the full portfolio.
-  IF public.is_platform_admin(p_user_id) OR public.has_any_admin(p_user_id) THEN
-    RETURN true;
-  END IF;
-
-  IF public.can_edit_project(p_user_id, p_project_id) THEN
-    RETURN true;
-  END IF;
-
   SELECT coalesce(o.ui_config->'project_visibility', '{}'::jsonb)
   INTO v_cfg
   FROM public.organizations o
@@ -179,6 +170,7 @@ BEGIN
   WHERE r->>'user_id' = p_user_id::text
   LIMIT 1;
 
+  -- Explicit per-user override applies to everyone, including admins.
   IF v_user_rule IS NOT NULL THEN
     RETURN public.project_visibility_rule_matches(
       v_user_rule,
@@ -187,6 +179,15 @@ BEGIN
       v_portfolio,
       v_functional_area
     );
+  END IF;
+
+  -- No user override: platform_admin and org admins see the full portfolio.
+  IF public.is_platform_admin(p_user_id) OR public.has_any_admin(p_user_id) THEN
+    RETURN true;
+  END IF;
+
+  IF public.can_edit_project(p_user_id, p_project_id) THEN
+    RETURN true;
   END IF;
 
   IF v_rules IS NULL OR jsonb_typeof(v_rules) <> 'array' OR jsonb_array_length(v_rules) = 0 THEN
@@ -239,4 +240,43 @@ COMMENT ON FUNCTION public.project_visibility_rule_matches(jsonb, uuid, text, te
   'Project access: OR of Strategic Alignment, program, functional area, program×area, project, and stream grants. Parent includes children.';
 
 COMMENT ON FUNCTION public.user_can_view_project(uuid, uuid) IS
-  'Org-tenant project visibility. Admins see all in their org. Role and user rules grant Strategic Alignment, program, functional area, project, and stream (stream unlocks the parent project). User overrides replace role rules.';
+  'Org-tenant project visibility. User overrides apply even to admins. Admins with no override see all in their org.';
+
+-- Full org project list for the Project data access page (admins only).
+CREATE OR REPLACE FUNCTION public.org_admin_list_access_projects()
+RETURNS TABLE (
+  id uuid,
+  name text,
+  project_code text,
+  program text,
+  portfolio text,
+  functional_area text
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org uuid;
+BEGIN
+  v_org := public.get_user_org(auth.uid());
+  IF v_org IS NULL THEN
+    RETURN;
+  END IF;
+  IF NOT (public.has_any_admin(auth.uid()) OR public.is_platform_admin(auth.uid())) THEN
+    RAISE EXCEPTION 'not allowed' USING ERRCODE = '42501';
+  END IF;
+  RETURN QUERY
+  SELECT p.id, p.name, p.project_code, p.program, p.portfolio, p.functional_area
+  FROM public.projects p
+  WHERE p.org_id = v_org
+  ORDER BY p.name;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.org_admin_list_access_projects() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.org_admin_list_access_projects() TO authenticated;
+
+COMMENT ON FUNCTION public.org_admin_list_access_projects() IS
+  'Project data access UI: org admins list every project in their org even if they have a user visibility override.';

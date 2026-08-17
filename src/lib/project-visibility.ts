@@ -90,6 +90,10 @@ function cloneScopeLists(
   };
 }
 
+export function hasAdminAccessRole(roles: readonly string[]): boolean {
+  return roles.some((r) => r === "admin" || r === "org_admin" || r === "platform_admin");
+}
+
 export function isLimitedVisibilityMode(mode: ProjectVisibilityMode): boolean {
   return mode !== "all";
 }
@@ -527,10 +531,6 @@ export function filterStreamsByVisibility<T extends VisibilityStream>(
   userRoles: AppRole[],
   cfg: ProjectVisibilityConfig,
 ): T[] {
-  if (userRoles.some((r) => r === "admin" || r === "org_admin" || r === "platform_admin")) {
-    return streams;
-  }
-
   const scope = effectiveVisibilityScope(cfg, userId, userRoles);
   if (!scope || !isLimitedVisibilityMode(scope.mode)) return streams;
 
@@ -549,12 +549,13 @@ export function effectiveVisibilityScope(
   userId: string | null | undefined,
   userRoles: AppRole[],
 ): ProjectVisibilityScope | null {
-  if (userRoles.some((r) => r === "admin" || r === "org_admin" || r === "platform_admin")) {
-    return emptyVisibilityScope("all");
-  }
   if (userId) {
     const userRule = cfg.user_rules.find((r) => r.user_id === userId);
     if (userRule) return userRule;
+  }
+  // Admins see all unless a user override was set above.
+  if (hasAdminAccessRole(userRoles)) {
+    return emptyVisibilityScope("all");
   }
   if (!cfg.rules.length) return emptyVisibilityScope("all");
   const applicable = cfg.rules.filter((r) => userRoles.includes(r.role));
@@ -570,17 +571,17 @@ export function filterProjectsByVisibility<T extends VisibilityProject>(
   cfg: ProjectVisibilityConfig,
   streams?: VisibilityStream[],
 ): T[] {
-  // platform_admin is org-scoped by RLS; within the fetched org set they see all
-  // (same as org admins). Cross-org leakage is prevented at the database.
-  if (userRoles.some((r) => r === "admin" || r === "org_admin" || r === "platform_admin")) {
-    return projects;
-  }
-
   if (userId) {
     const userRule = cfg.user_rules.find((r) => r.user_id === userId);
     if (userRule) {
       return projects.filter((p) => projectMatchesScope(p, userRule, streams));
     }
+  }
+
+  // platform_admin is org-scoped by RLS; within the fetched org set they see all
+  // (same as org admins) unless a user override exists.
+  if (hasAdminAccessRole(userRoles)) {
+    return projects;
   }
 
   if (!cfg.rules.length) return projects;

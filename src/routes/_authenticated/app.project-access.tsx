@@ -29,6 +29,7 @@ import {
   dimensionValue,
   emptyVisibilityScope,
   effectiveVisibilityScope,
+  hasAdminAccessRole,
   isLimitedVisibilityMode,
   mergeProjectVisibility,
   programAreaListHas,
@@ -621,13 +622,15 @@ function ProjectAccessPage() {
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects_access_admin", organization?.id],
-    queryFn: async () =>
-      (
-        await supabase
-          .from("projects")
-          .select("id,name,project_code,program,portfolio,functional_area")
-          .order("name")
-      ).data ?? [],
+    queryFn: async () => {
+      const rpc = await supabase.rpc("org_admin_list_access_projects");
+      if (!rpc.error) return rpc.data ?? [];
+      const fallback = await supabase
+        .from("projects")
+        .select("id,name,project_code,program,portfolio,functional_area")
+        .order("name");
+      return fallback.data ?? [];
+    },
     enabled: !!organization?.id && canEdit,
   });
 
@@ -664,13 +667,7 @@ function ProjectAccessPage() {
     enabled: !!organization?.id && canEdit,
   });
 
-  const configurableMembers = useMemo(
-    () =>
-      members.filter(
-        (m) => !m.roles.some((r) => r === "admin" || r === "org_admin" || r === "platform_admin"),
-      ),
-    [members],
-  );
+  const configurableMembers = members;
 
   useEffect(() => {
     void load();
@@ -774,7 +771,7 @@ function ProjectAccessPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeading
           title="Project data access"
-          subtitle={`Control project visibility by role and by user in ${organization.name}. Admins always see all.`}
+          subtitle={`Control project visibility by role and by user in ${organization.name}. Admins see all unless you set a user override — they can still change it here.`}
         />
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
@@ -801,7 +798,8 @@ function ProjectAccessPage() {
           <li>
             Set defaults by <strong className="text-foreground">role</strong> (Executive, BU Lead,
             PM), then optionally override a <strong className="text-foreground">direct user</strong>
-            . User rules replace that person&apos;s role grants (they do not widen past Admin).
+            — including Admin / Org Admin. User rules replace that person&apos;s role (or admin)
+            grants. Admins can always reopen this page and change the override.
           </li>
           <li>
             Hierarchy: <strong className="text-foreground">{STRATEGIC_ALIGNMENT_LABEL}</strong> →{" "}
@@ -812,8 +810,8 @@ function ProjectAccessPage() {
             child. Filter the tree, then tick the level that person or role should use.
           </li>
           <li>
-            Stream grants unlock the parent project in the database (RLS is project-level). Org
-            Admin / Admin always see everything in this organisation.
+            Stream grants unlock the parent project in the database (RLS is project-level). Admins
+            with no user override still see everything in this organisation.
           </li>
           <li>
             Also see{" "}
@@ -881,7 +879,7 @@ function ProjectAccessPage() {
             <TabsContent value="user" className="space-y-4">
               {configurableMembers.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  No non-admin users in this organisation yet. Invite people from{" "}
+                  No users in this organisation yet. Invite people from{" "}
                   <Link to="/app/team" className="text-primary underline-offset-2 hover:underline">
                     Team & Roles
                   </Link>
@@ -918,7 +916,9 @@ function ProjectAccessPage() {
                       </Button>
                     ) : (
                       <p className="pb-2 text-xs text-muted-foreground">
-                        No user override — inherits role rules
+                        {activeMember && hasAdminAccessRole(activeMember.roles)
+                          ? "No user override — this admin sees all projects"
+                          : "No user override — inherits role rules"}
                       </p>
                     )}
                     <Button
@@ -931,6 +931,12 @@ function ProjectAccessPage() {
                       Copy role grants
                     </Button>
                   </div>
+                  {activeMember && hasAdminAccessRole(activeMember.roles) && (
+                    <p className="text-sm text-muted-foreground">
+                      {memberLabel} is an admin. A user override limits what they see in the
+                      workspace. They can still open this page and change or clear it.
+                    </p>
+                  )}
                   {userRule && (
                     <ScopeEditor
                       disabled={!canEdit}
