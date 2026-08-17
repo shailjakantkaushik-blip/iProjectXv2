@@ -7,6 +7,12 @@ import {
   workItemWeekdayPlan,
   type DayKey,
 } from "@/lib/timesheet";
+import {
+  DEFAULT_HOURS_PER_DAY,
+  hoursLoadStatus,
+  hoursLoadTextClass,
+  type HoursLoadStatus,
+} from "@/lib/resource-capacity";
 
 export type TimesheetCalendarRow = Record<DayKey, number> & {
   billable: boolean;
@@ -66,6 +72,7 @@ type Props = {
   draftRows: Record<string, TimesheetCalendarRow>;
   workById: Map<string, WorkItemLite>;
   projectById: Map<string, ProjectLite>;
+  hoursPerDay?: number | null;
   onChangeHours: (rowKey: string, dayKey: DayKey, hours: number) => void;
   onChangeCustomTask?: (rowKey: string, value: string) => void;
 };
@@ -77,11 +84,13 @@ export function TimesheetWeekCalendar({
   draftRows,
   workById,
   projectById,
+  hoursPerDay,
   onChangeHours,
   onChangeCustomTask,
 }: Props) {
   const entries = useMemo(() => Object.entries(draftRows), [draftRows]);
   const [focusDay, setFocusDay] = useState<number | null>(null);
+  const dayCap = Number(hoursPerDay) > 0 ? Number(hoursPerDay) : DEFAULT_HOURS_PER_DAY;
 
   const dayMeta = useMemo(() => {
     return DAY_KEYS.map((dk, idx) => {
@@ -119,7 +128,10 @@ export function TimesheetWeekCalendar({
       {/* Week strip — day totals at a glance */}
       <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
         {dayMeta.map((d) => {
-          const over = d.total > 8.01;
+          const load: HoursLoadStatus | "Empty" =
+            d.total > 0 ? hoursLoadStatus(d.total, dayCap) : "Empty";
+          const over = load === "Over";
+          const under = load === "Under";
           const active = focusDay === d.idx;
           return (
             <button
@@ -144,7 +156,7 @@ export function TimesheetWeekCalendar({
               </div>
               <div
                 className={`mt-1 text-sm font-semibold tabular-nums ${
-                  over ? "text-amber-700" : "text-foreground"
+                  over || under ? hoursLoadTextClass(load) : "text-foreground"
                 }`}
               >
                 {d.total > 0 ? d.total.toFixed(1) : "—"}
@@ -164,7 +176,10 @@ export function TimesheetWeekCalendar({
         {dayMeta
           .filter((d) => focusDay == null || d.idx === focusDay)
           .map((d) => {
-            const over = d.total > 8.01;
+            const load: HoursLoadStatus | "Empty" =
+              d.total > 0 ? hoursLoadStatus(d.total, dayCap) : "Empty";
+            const over = load === "Over";
+            const under = load === "Under";
             return (
               <div
                 key={d.dk}
@@ -186,13 +201,17 @@ export function TimesheetWeekCalendar({
                   <div className="text-right">
                     <div
                       className={`text-lg font-semibold tabular-nums ${
-                        over ? "text-amber-700" : "text-foreground"
+                        over || under ? hoursLoadTextClass(load) : "text-foreground"
                       }`}
                     >
                       {d.total.toFixed(1)}h
                     </div>
                     <div className="text-[10px] text-muted-foreground">
-                      {over ? "Over 8h" : d.plan > 0 ? `Plan ${d.plan.toFixed(1)}h` : "Day total"}
+                      {load !== "Empty"
+                        ? `${load} vs ${dayCap}h`
+                        : d.plan > 0
+                          ? `Plan ${d.plan.toFixed(1)}h`
+                          : "Day total"}
                     </div>
                   </div>
                 </div>

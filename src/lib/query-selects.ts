@@ -66,6 +66,7 @@ export const RESOURCES_SELECT = [
   "skills",
   "bu_id",
   "capacity_hours_week",
+  "hours_per_day",
   "cost_rate",
   "location",
   "status",

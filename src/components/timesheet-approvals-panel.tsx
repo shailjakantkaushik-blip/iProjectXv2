@@ -22,6 +22,15 @@ import {
   type TimesheetStatus,
 } from "@/lib/timesheet";
 import { downloadCsv } from "@/lib/timesheet-reports";
+import {
+  dayLoadLines,
+  formatDayLoadNote,
+  hoursLoadChipClass,
+  hoursLoadTextClass,
+  resourceHoursPerDay,
+  sumHoursByDay,
+  weekLoadStatus,
+} from "@/lib/resource-capacity";
 
 type ApprovalRow = {
   id: string;
@@ -62,7 +71,13 @@ type EntryRow = {
   labor_cost?: number | null;
 };
 
-type ResourceRow = { id: string; name: string; user_id: string | null };
+type ResourceRow = {
+  id: string;
+  name: string;
+  user_id: string | null;
+  hours_per_day?: number | null;
+  capacity_hours_week?: number | null;
+};
 
 type Props = {
   orgId: string;
@@ -395,6 +410,16 @@ export function TimesheetApprovalsPanel({
     const st = s ? normalizeTimesheetStatus(s.status) : ("draft" as TimesheetStatus);
     const open = expandedId === a.id;
     const checked = selectedPending.has(a.id);
+    const res = s
+      ? s.resource_id
+        ? resourceById.get(s.resource_id)
+        : resourceByUser.get(s.user_id)
+      : undefined;
+    const dayCap = resourceHoursPerDay(res);
+    const loadLines = dayLoadLines(sumHoursByDay(lines), dayCap);
+    const loadNote = formatDayLoadNote(loadLines);
+    const weekStatus = weekLoadStatus(total, dayCap);
+    const overDays = loadLines.filter((l) => l.status === "Over");
 
     return (
       <div key={a.id} className="rounded-lg border border-border bg-surface/60 p-4 space-y-3">
@@ -431,6 +456,12 @@ export function TimesheetApprovalsPanel({
                   : "Resource Manager"}
               </span>
               <span>· {total.toFixed(1)}h</span>
+              <span
+                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${hoursLoadChipClass(weekStatus)}`}
+                title={loadNote}
+              >
+                {weekStatus} vs {dayCap}h/day
+              </span>
               {s && (
                 <span
                   className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${TIMESHEET_STATUS_CLASS[st]}`}
@@ -447,6 +478,13 @@ export function TimesheetApprovalsPanel({
             </div>
             {a.comment && (
               <p className="mt-1 text-xs text-muted-foreground">Comment: {a.comment}</p>
+            )}
+            {overDays.length > 0 ? (
+              <p className="mt-1 text-xs text-red-700">
+                Over cap: {overDays.map((d) => `${d.label} ${d.hours.toFixed(1)}/${dayCap}h`).join(", ")}
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-muted-foreground">{loadNote}</p>
             )}
           </div>
           <div className="flex flex-wrap gap-2">
@@ -543,6 +581,33 @@ export function TimesheetApprovalsPanel({
                   ))
                 )}
               </tbody>
+              {lines.length > 0 ? (
+                <tfoot>
+                  <tr>
+                    <td className="font-semibold">vs {dayCap}h/day</td>
+                    {loadLines.map((l) => (
+                      <td
+                        key={l.key}
+                        className={`st-center text-[10px] font-semibold tabular-nums ${
+                          l.status !== "Empty" ? hoursLoadTextClass(l.status) : "text-muted-foreground"
+                        }`}
+                      >
+                        {l.hours > 0 ? (
+                          <>
+                            {l.hours.toFixed(1)}
+                            <div>{l.status}</div>
+                          </>
+                        ) : (
+                          "·"
+                        )}
+                      </td>
+                    ))}
+                    <td className={`st-num font-semibold ${hoursLoadTextClass(weekStatus)}`}>
+                      {total.toFixed(1)}
+                    </td>
+                  </tr>
+                </tfoot>
+              ) : null}
             </table>
           </div>
         )}

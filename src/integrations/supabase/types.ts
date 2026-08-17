@@ -2045,6 +2045,7 @@ export type Database = {
           cost_rate: number | null
           created_at: string
           email: string | null
+          hours_per_day: number
           id: string
           location: string | null
           manager_user_id: string | null
@@ -2062,6 +2063,7 @@ export type Database = {
           cost_rate?: number | null
           created_at?: string
           email?: string | null
+          hours_per_day?: number
           id?: string
           location?: string | null
           manager_user_id?: string | null
@@ -2079,6 +2081,7 @@ export type Database = {
           cost_rate?: number | null
           created_at?: string
           email?: string | null
+          hours_per_day?: number
           id?: string
           location?: string | null
           manager_user_id?: string | null

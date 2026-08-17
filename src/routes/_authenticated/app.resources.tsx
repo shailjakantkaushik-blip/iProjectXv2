@@ -25,6 +25,7 @@ import {
   hoursFromAllocation,
   type TimesheetEffortRow,
 } from "@/lib/resource-allocation-analytics";
+import { resourceHoursPerWeek } from "@/lib/resource-capacity";
 import {
   buildResourceUtilisationExport,
   exportResourceReportsExcel,
@@ -44,6 +45,7 @@ type Resource = {
   role?: string | null;
   skills?: string | null;
   capacity_hours_week?: number | null;
+  hours_per_day?: number | null;
   cost_rate?: number | null;
   user_id?: string | null;
 };
@@ -310,7 +312,7 @@ function ResourcesPage() {
         const rows = allocationsAll.filter(
           (a) => a.resource_id === r.id && monthsInRange.includes(normMonth(a.period_month)),
         );
-        const cap = Number(r.capacity_hours_week) || 40;
+        const cap = resourceHoursPerWeek(r);
         const planHours = rows.reduce((s, a) => s + hoursFromAllocation(a, cap), 0);
         const monthCap = cap * 4.33;
         const avg =
@@ -416,7 +418,7 @@ function ResourcesPage() {
     return resources
       .map((r) => {
         const rows = allocations.filter((a) => a.resource_id === r.id);
-        const cap = Number(r.capacity_hours_week) || 40;
+        const cap = resourceHoursPerWeek(r);
         const planHours = rows.reduce((s, a) => s + hoursFromAllocation(a, cap), 0);
         let actualHours = 0;
         let billableHours = 0;
@@ -456,7 +458,7 @@ function ResourcesPage() {
     const planByResource = new Map<string, { percent: number; hours: number }>();
     for (const a of allocations) {
       const r = resById.get(a.resource_id);
-      const cap = Number(r?.capacity_hours_week) || 40;
+      const cap = resourceHoursPerWeek(r);
       const cur = planByResource.get(a.resource_id) ?? { percent: 0, hours: 0 };
       cur.percent += Number(a.allocation_percent) || 0;
       cur.hours += hoursFromAllocation(a, cap);
@@ -496,7 +498,7 @@ function ResourcesPage() {
   // Resource × Month heatmap — plan hours (estimation) vs timesheet actual hours
   const heatGrid = useMemo(() => {
     return resources.map((r) => {
-      const cap = Number(r.capacity_hours_week) || 40;
+      const cap = resourceHoursPerWeek(r);
       const row: {
         name: string;
         cells: { month: string; planHours: number; actualHours: number; peakPct: number }[];
@@ -527,7 +529,7 @@ function ResourcesPage() {
       for (const a of allocations) {
         if (a.period_month !== m) continue;
         const r = resById.get(a.resource_id);
-        planHours += hoursFromAllocation(a, Number(r?.capacity_hours_week) || 40);
+        planHours += hoursFromAllocation(a, resourceHoursPerWeek(r));
       }
       for (const a of filteredActuals) {
         if (normMonth(a.period_month || a.week_start) !== m) continue;
@@ -551,7 +553,7 @@ function ResourcesPage() {
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-      const hours = hoursFromAllocation(a, Number(r?.capacity_hours_week) || 40);
+      const hours = hoursFromAllocation(a, resourceHoursPerWeek(r));
       const share = hours / (skills.length || 1);
       skills.forEach((s) => planMap.set(s, (planMap.get(s) || 0) + share));
     });
@@ -582,7 +584,7 @@ function ResourcesPage() {
     const actualBy = new Map<string, Map<string, number>>();
     allocations.forEach((a) => {
       const r = resById.get(a.resource_id);
-      const hours = hoursFromAllocation(a, Number(r?.capacity_hours_week) || 40);
+      const hours = hoursFromAllocation(a, resourceHoursPerWeek(r));
       const row = planBy.get(a.resource_id) || new Map();
       row.set(a.project_id, (row.get(a.project_id) || 0) + hours);
       planBy.set(a.resource_id, row);
@@ -616,7 +618,7 @@ function ResourcesPage() {
       });
     }
     const rows = resources.map((r) => {
-      const cap = Number(r.capacity_hours_week) || 40;
+      const cap = resourceHoursPerWeek(r);
       const monthCount = Math.max(1, months.length);
       return {
         name: r.name,
@@ -653,7 +655,7 @@ function ResourcesPage() {
     };
     for (const a of allocations) {
       const r = resById.get(a.resource_id);
-      const hours = hoursFromAllocation(a, Number(r?.capacity_hours_week) || 40);
+      const hours = hoursFromAllocation(a, resourceHoursPerWeek(r));
       const stream = a.stream_id ? streamLabels.get(a.stream_id) || "Stream" : "Project";
       const phase = a.stage_gate_id
         ? gateLabels.get(a.stage_gate_id) || "Phase"
@@ -688,7 +690,8 @@ function ResourcesPage() {
       <p className="mb-3 max-w-3xl text-sm text-muted-foreground">
         <strong>Alloc h</strong> (Plan) come from Project Estimation Planning, applied per stream
         and phase. <strong>Demand h</strong> come from work-item resource effort.{" "}
-        <strong>Actual h</strong> come from approved timesheets. Allocation % is only load vs
+        <strong>Actual h</strong> come from approved timesheets. Daily hours/day (Timesheets →
+        Resource setup) set weekly FTE capacity (hours/day × 5). Allocation % is only load vs
         monthly FTE capacity — it is not Plan. The first tab compares all three layers; Utilisation
         compares Alloc vs Actual for capacity.
       </p>

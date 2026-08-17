@@ -4,6 +4,7 @@
  */
 import { writeObjectSheets } from "@/lib/excel-io";
 import type { AllocationPvaRow } from "@/lib/resource-allocation-analytics";
+import { resourceHoursPerWeek } from "@/lib/resource-capacity";
 
 export type ResourceUtilisationExportRow = {
   resource: string;
@@ -54,6 +55,7 @@ export function buildResourceUtilisationExport(opts: {
     name: string;
     role?: string | null;
     capacity_hours_week?: number | null;
+    hours_per_day?: number | null;
   }>;
   /** Plan % / hours by resource for the selected period. */
   planByResource: Map<string, { percent: number; hours: number }>;
@@ -76,7 +78,7 @@ export function buildResourceUtilisationExport(opts: {
       return {
         resource: r.name,
         role: r.role || "",
-        capacity_hours_week: Number(r.capacity_hours_week) || 40,
+        capacity_hours_week: resourceHoursPerWeek(r),
         plan_percent: Math.round(plan.percent * 10) / 10,
         plan_hours: Math.round(plan.hours * 100) / 100,
         actual_hours: Math.round(act.hours * 100) / 100,
