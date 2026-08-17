@@ -593,14 +593,87 @@ export function lastAndNextFromCadence(
   return { last_meeting, next_meeting };
 }
 
-/** Fill start/end (with defaults) and derive last/next from the series. */
+export function snapMeetingIso(
+  iso: string | null | undefined,
+  direction: "back" | "forward" = "forward",
+): string | null {
+  const v = String(iso || "").slice(0, 10);
+  if (!v) return null;
+  return isWeekdayIso(v) ? v : snapToWeekdayIso(v, direction);
+}
+
+/**
+ * Fill start/end. Last/next default from the series, but stored/edited dates are
+ * kept unless `resetMeetings` is set (cadence/start/end changed).
+ */
 export function withCadenceWindowDates<T extends Partial<GovernanceChannel>>(
   row: T,
-  today = localTodayIso(),
+  opts?: { resetMeetings?: boolean; today?: string },
 ): T {
+  const today = opts?.today || localTodayIso();
   const window = resolveCadenceWindow(row);
-  const ln = lastAndNextFromCadence(window.cadence_start, window.cadence_end, row.cadence, today);
-  return { ...row, ...window, ...ln };
+  const derived = lastAndNextFromCadence(window.cadence_start, window.cadence_end, row.cadence, today);
+  if (opts?.resetMeetings) {
+    return { ...row, ...window, ...derived };
+  }
+  return {
+    ...row,
+    ...window,
+    last_meeting: snapMeetingIso(row.last_meeting, "back") || derived.last_meeting,
+    next_meeting: snapMeetingIso(row.next_meeting, "forward") || derived.next_meeting,
+  };
+}
+
+/** Apply a real-life previous/next change; extend the placeholder end if needed. */
+export function withEditedMeetingDates<T extends Partial<GovernanceChannel>>(row: T): T {
+  const window = resolveCadenceWindow(row);
+  let cadence_start = window.cadence_start;
+  let cadence_end = window.cadence_end;
+  let last_meeting = snapMeetingIso(row.last_meeting, "back");
+  let next_meeting = snapMeetingIso(row.next_meeting, "forward");
+  const derived = lastAndNextFromCadence(cadence_start, cadence_end, row.cadence);
+  if (!last_meeting) last_meeting = derived.last_meeting;
+  if (!next_meeting) next_meeting = derived.next_meeting;
+  if (next_meeting && next_meeting < cadence_start) cadence_start = next_meeting;
+  if (next_meeting && next_meeting > cadence_end) cadence_end = next_meeting;
+  if (last_meeting && last_meeting > cadence_end) cadence_end = last_meeting;
+  if (last_meeting && next_meeting && last_meeting > next_meeting) {
+    next_meeting = last_meeting;
+  }
+  return { ...row, cadence_start, cadence_end, last_meeting, next_meeting };
+}
+
+/**
+ * Calendar dates: planned series from start, with future meetings re-anchored
+ * from an edited next-meeting date so reschedules flow through cadence.
+ */
+export function expandCadenceMeetingsForChannel(
+  c: {
+    cadence?: string | null;
+    cadence_start?: string | null;
+    cadence_end?: string | null;
+    last_meeting?: string | null;
+    next_meeting?: string | null;
+  },
+  opts?: { rangeStart?: string; rangeEnd?: string; max?: number },
+): string[] {
+  const window = resolveCadenceWindow(c);
+  const next = String(c.next_meeting || "").slice(0, 10);
+  const last = String(c.last_meeting || "").slice(0, 10);
+  const rangeStart = opts?.rangeStart ? String(opts.rangeStart).slice(0, 10) : "";
+  const rangeEnd = opts?.rangeEnd ? String(opts.rangeEnd).slice(0, 10) : "";
+  const inRange = (iso: string) =>
+    (!rangeStart || iso >= rangeStart) && (!rangeEnd || iso <= rangeEnd);
+
+  const past = expandCadenceMeetings(window.cadence_start, window.cadence_end, c.cadence, opts).filter(
+    (d) => !next || d < next,
+  );
+  const futureOrigin = next || window.cadence_start;
+  const future = expandCadenceMeetings(futureOrigin, window.cadence_end, c.cadence, opts);
+  const set = new Set<string>([...past, ...future]);
+  if (last && inRange(last)) set.add(last);
+  if (next && inRange(next)) set.add(next);
+  return [...set].sort();
 }
 
 export async function loadGovernanceChannels(): Promise<{
