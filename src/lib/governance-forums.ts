@@ -1,3 +1,5 @@
+import { supabase } from "@/integrations/supabase/client";
+
 /** Governance forum scope: project, program, or Strategic Alignment (DB key `portfolio`). */
 
 export const GOVERNANCE_SCOPE_LEVELS = ["project", "program", "strategic_alignment"] as const;
@@ -26,6 +28,8 @@ export type GovernanceChannel = {
   chair: string | null;
   next_meeting: string | null;
   last_meeting: string | null;
+  cadence_start: string | null;
+  cadence_end: string | null;
   parent_channel_id: string | null;
   status: string | null;
   scope_level?: string | null;
@@ -41,6 +45,7 @@ export type GovernanceProject = {
   program?: string | null;
   portfolio?: string | null;
   pm_user_id?: string | null;
+  planned_end_date?: string | null;
 };
 
 export type GovernanceStream = {
@@ -48,24 +53,6 @@ export type GovernanceStream = {
   project_id: string;
   name: string;
 };
-
-export const GOVERNANCE_CHANNELS_SELECT = [
-  "id",
-  "org_id",
-  "name",
-  "cadence",
-  "audience",
-  "purpose",
-  "chair",
-  "next_meeting",
-  "last_meeting",
-  "parent_channel_id",
-  "status",
-  "scope_level",
-  "project_id",
-  "program",
-  "portfolio",
-].join(",");
 
 export const GOVERNANCE_CHANNELS_SELECT_MIN = [
   "id",
@@ -81,14 +68,36 @@ export const GOVERNANCE_CHANNELS_SELECT_MIN = [
   "status",
 ].join(",");
 
+/** Scoped forums, without cadence start/end (older DBs). */
+export const GOVERNANCE_CHANNELS_SELECT_SCOPED = [
+  GOVERNANCE_CHANNELS_SELECT_MIN,
+  "scope_level",
+  "project_id",
+  "program",
+  "portfolio",
+].join(",");
+
+export const GOVERNANCE_CHANNELS_SELECT = [
+  GOVERNANCE_CHANNELS_SELECT_SCOPED,
+  "cadence_start",
+  "cadence_end",
+].join(",");
+
 export function isMissingGovernanceScopeColumn(error: { message?: string } | null | undefined) {
   const msg = String(error?.message || "");
   return /scope_level/i.test(msg) || /Could not find the 'scope_level'/i.test(msg);
 }
 
+export function isMissingCadenceWindowColumn(error: { message?: string } | null | undefined) {
+  const msg = String(error?.message || "");
+  return /cadence_start|cadence_end/i.test(msg);
+}
+
 export function normalizeChannel(row: GovernanceChannel): GovernanceChannel {
   return {
     ...row,
+    cadence_start: row.cadence_start ?? null,
+    cadence_end: row.cadence_end ?? null,
     scope_level: row.scope_level || "strategic_alignment",
     project_id: row.project_id ?? null,
     program: row.program ?? null,
@@ -488,4 +497,138 @@ export function defaultGovernanceMeetingDates(
 ): { last_meeting: string; next_meeting: string | null } {
   const last_meeting = defaultLastMeetingDate(cadence, today);
   return { last_meeting, next_meeting: suggestNextMeetingDate(last_meeting, cadence) };
+}
+
+const MAX_CADENCE_OCCURRENCES = 400;
+
+/** First weekday of a new series (today, snapped forward). */
+export function defaultCadenceStart(today = localTodayIso()): string {
+  return snapToWeekdayIso(today, "forward");
+}
+
+/** Placeholder series end: 12 months after start, on a weekday. */
+export function defaultCadenceEnd(start: string | null | undefined): string {
+  const from = String(start || "").slice(0, 10) || defaultCadenceStart();
+  return addCalendarMonthsWeekday(from, 12);
+}
+
+export function resolveCadenceWindow(c: {
+  cadence_start?: string | null;
+  cadence_end?: string | null;
+  last_meeting?: string | null;
+  next_meeting?: string | null;
+}): { cadence_start: string; cadence_end: string } {
+  const rawStart = String(c.cadence_start || c.last_meeting || c.next_meeting || defaultCadenceStart()).slice(
+    0,
+    10,
+  );
+  const cadence_start = isWeekdayIso(rawStart) ? rawStart : snapToWeekdayIso(rawStart, "forward");
+  const rawEnd = String(c.cadence_end || "").slice(0, 10) || defaultCadenceEnd(cadence_start);
+  let cadence_end = isWeekdayIso(rawEnd) ? rawEnd : snapToWeekdayIso(rawEnd, "forward");
+  if (cadence_end < cadence_start) cadence_end = defaultCadenceEnd(cadence_start);
+  return { cadence_start, cadence_end };
+}
+
+/**
+ * Expand weekday meetings from cadence start through placeholder end.
+ * Ad-hoc is a single meeting on the start date.
+ */
+export function expandCadenceMeetings(
+  start: string | null | undefined,
+  end: string | null | undefined,
+  cadence: string | null | undefined,
+  opts?: { rangeStart?: string; rangeEnd?: string; max?: number },
+): string[] {
+  const from = String(start || "").slice(0, 10);
+  if (!from) return [];
+  const stop = String(end || defaultCadenceEnd(from)).slice(0, 10);
+  const rangeStart = opts?.rangeStart ? String(opts.rangeStart).slice(0, 10) : "";
+  const rangeEnd = opts?.rangeEnd ? String(opts.rangeEnd).slice(0, 10) : "";
+  const max = opts?.max ?? MAX_CADENCE_OCCURRENCES;
+  const inRange = (iso: string) =>
+    (!rangeStart || iso >= rangeStart) && (!rangeEnd || iso <= rangeEnd);
+
+  let cur = isWeekdayIso(from) ? from : snapToWeekdayIso(from, "forward");
+  if (!cadence || cadence === "Ad-hoc") {
+    return cur && cur <= stop && inRange(cur) ? [cur] : [];
+  }
+
+  const out: string[] = [];
+  for (let n = 0; n < max && cur && cur <= stop; n++) {
+    if (rangeEnd && cur > rangeEnd) break;
+    if (inRange(cur)) out.push(cur);
+    const next = suggestNextMeetingDate(cur, cadence);
+    if (!next || next <= cur) break;
+    cur = next;
+  }
+  return out;
+}
+
+export function lastAndNextFromCadence(
+  start: string | null | undefined,
+  end: string | null | undefined,
+  cadence: string | null | undefined,
+  today = localTodayIso(),
+): { last_meeting: string | null; next_meeting: string | null } {
+  const dates = expandCadenceMeetings(start, end, cadence);
+  let last_meeting: string | null = null;
+  let next_meeting: string | null = null;
+  for (const d of dates) {
+    if (d <= today) last_meeting = d;
+    else {
+      next_meeting = d;
+      break;
+    }
+  }
+  return { last_meeting, next_meeting };
+}
+
+/** Fill start/end (with defaults) and derive last/next from the series. */
+export function withCadenceWindowDates<T extends Partial<GovernanceChannel>>(
+  row: T,
+  today = localTodayIso(),
+): T {
+  const window = resolveCadenceWindow(row);
+  const ln = lastAndNextFromCadence(window.cadence_start, window.cadence_end, row.cadence, today);
+  return { ...row, ...window, ...ln };
+}
+
+export async function loadGovernanceChannels(): Promise<{
+  scoped: boolean;
+  channels: GovernanceChannel[];
+}> {
+  const full = await supabase
+    .from("governance_channels")
+    .select(GOVERNANCE_CHANNELS_SELECT as "*")
+    .order("name");
+  if (!full.error) {
+    return {
+      scoped: true,
+      channels: ((full.data || []) as unknown as GovernanceChannel[]).map(normalizeChannel),
+    };
+  }
+  if (isMissingCadenceWindowColumn(full.error)) {
+    const scoped = await supabase
+      .from("governance_channels")
+      .select(GOVERNANCE_CHANNELS_SELECT_SCOPED as "*")
+      .order("name");
+    if (!scoped.error) {
+      return {
+        scoped: true,
+        channels: ((scoped.data || []) as unknown as GovernanceChannel[]).map(normalizeChannel),
+      };
+    }
+    if (!isMissingGovernanceScopeColumn(scoped.error)) throw scoped.error;
+  } else if (!isMissingGovernanceScopeColumn(full.error)) {
+    throw full.error;
+  }
+  const min = await supabase
+    .from("governance_channels")
+    .select(GOVERNANCE_CHANNELS_SELECT_MIN as "*")
+    .order("name");
+  if (min.error) throw min.error;
+  return {
+    scoped: false,
+    channels: ((min.data || []) as unknown as GovernanceChannel[]).map(normalizeChannel),
+  };
 }

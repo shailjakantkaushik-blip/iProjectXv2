@@ -877,6 +877,8 @@ export type Database = {
         Row: {
           audience: string | null
           cadence: string | null
+          cadence_end: string | null
+          cadence_start: string | null
           chair: string | null
           created_at: string
           id: string
@@ -896,6 +898,8 @@ export type Database = {
         Insert: {
           audience?: string | null
           cadence?: string | null
+          cadence_end?: string | null
+          cadence_start?: string | null
           chair?: string | null
           created_at?: string
           id?: string
@@ -915,6 +919,8 @@ export type Database = {
         Update: {
           audience?: string | null
           cadence?: string | null
+          cadence_end?: string | null
+          cadence_start?: string | null
           chair?: string | null
           created_at?: string
           id?: string
@@ -2765,6 +2771,14 @@ export type Database = {
       governance_default_last_meeting: {
         Args: { p_cadence: string; p_today?: string }
         Returns: string
+      }
+      governance_default_cadence_end: {
+        Args: { p_start: string }
+        Returns: string
+      }
+      governance_sync_meeting_dates: {
+        Args: { p_start: string; p_end: string; p_cadence: string; p_today?: string }
+        Returns: { last_meeting: string; next_meeting: string }[]
       }
       ensure_org_delivery_methods: {
         Args: { p_org_id: string }

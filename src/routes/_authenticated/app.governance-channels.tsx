@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { useAuth, isAdmin } from "@/lib/auth-context";
@@ -37,26 +37,22 @@ import {
   type GovernanceChannel,
   type GovernanceProject,
   type GovernanceScopeLevel,
-  GOVERNANCE_CHANNELS_SELECT,
-  GOVERNANCE_CHANNELS_SELECT_MIN,
   GOVERNANCE_SCOPE_LABEL,
   GOVERNANCE_SCOPE_LEVELS,
   buildGovernanceHierarchy,
   canManageGovernanceChannel,
   channelsForProjects,
-  defaultGovernanceMeetingDates,
-  defaultLastMeetingDate,
   filterGovernanceChannels,
   forumPeopleLine,
-  isMissingGovernanceScopeColumn,
-  isWeekdayIso,
-  normalizeChannel,
+  isMissingCadenceWindowColumn,
+  loadGovernanceChannels,
   orgWideForums,
   projectOptionsLabel,
+  resolveCadenceWindow,
   resolveMyProjectIds,
   scopeLabel,
-  snapToWeekdayIso,
-  suggestNextMeetingDate,
+  withCadenceWindowDates,
+  expandCadenceMeetings,
 } from "@/lib/governance-forums";
 
 export const Route = createFileRoute("/_authenticated/app/governance-channels")({
@@ -120,28 +116,7 @@ function GovernanceChannelsPage() {
     refetch,
   } = useQuery({
     queryKey: ["governance_channels", organization?.id],
-    queryFn: async () => {
-      const full = await supabase
-        .from("governance_channels")
-        .select(GOVERNANCE_CHANNELS_SELECT as "*")
-        .order("name");
-      if (!full.error) {
-        return {
-          scoped: true,
-          channels: ((full.data || []) as unknown as Channel[]).map(normalizeChannel),
-        };
-      }
-      if (!isMissingGovernanceScopeColumn(full.error)) throw full.error;
-      const min = await supabase
-        .from("governance_channels")
-        .select(GOVERNANCE_CHANNELS_SELECT_MIN as "*")
-        .order("name");
-      if (min.error) throw min.error;
-      return {
-        scoped: false,
-        channels: ((min.data || []) as unknown as Channel[]).map(normalizeChannel),
-      };
-    },
+    queryFn: async () => loadGovernanceChannels(),
     enabled: !!organization,
     retry: 1,
   });
@@ -154,7 +129,7 @@ function GovernanceChannelsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("projects")
-        .select("id,name,project_code,program,portfolio,pm_user_id")
+        .select("id,name,project_code,program,portfolio,pm_user_id,planned_end_date")
         .order("project_code");
       if (error) throw error;
       return (data || []) as GovernanceProject[];
@@ -368,13 +343,14 @@ function GovernanceChannelsPage() {
     let next = { ...c };
     if (!next.id) {
       const cadence = next.cadence || "Monthly";
-      const dates = defaultGovernanceMeetingDates(cadence);
-      next = {
+      const proj = next.project_id ? projects.find((p) => p.id === next.project_id) : undefined;
+      next = withCadenceWindowDates({
         ...next,
         cadence,
-        last_meeting: next.last_meeting || dates.last_meeting,
-        next_meeting: next.next_meeting ?? dates.next_meeting,
-      };
+        cadence_end: proj?.planned_end_date || next.cadence_end || null,
+      });
+    } else {
+      next = withCadenceWindowDates(next);
     }
     setEditing(next);
     if (next.id) {
@@ -387,13 +363,16 @@ function GovernanceChannelsPage() {
       if (!admin) {
         const mine = projects.filter((p) => p.pm_user_id === user?.id);
         const first = mine[0];
-        setEditing({
-          ...next,
-          scope_level: "project",
-          project_id: first?.id || "",
-          program: first?.program || null,
-          portfolio: first?.portfolio || null,
-        });
+        setEditing(
+          withCadenceWindowDates({
+            ...next,
+            scope_level: "project",
+            project_id: first?.id || "",
+            program: first?.program || null,
+            portfolio: first?.portfolio || null,
+            cadence_end: first?.planned_end_date || next.cadence_end || null,
+          }),
+        );
       }
     }
   };
@@ -429,48 +408,72 @@ function GovernanceChannelsPage() {
       const scope = (v.scope_level || "strategic_alignment") as GovernanceScopeLevel;
       const proj = projects.find((p) => p.id === v.project_id);
       const chairFromResource = resources.find((r) => r.id === chairResourceId)?.name;
+      const synced = withCadenceWindowDates(v);
       const payload: Database["public"]["Tables"]["governance_channels"]["Update"] = {
-        name: v.name!,
-        cadence: v.cadence || null,
-        audience: v.audience || null,
-        purpose: v.purpose || null,
-        chair: chairFromResource || v.chair || null,
-        next_meeting: v.next_meeting || null,
-        last_meeting: v.last_meeting || null,
-        parent_channel_id: v.parent_channel_id || null,
-        status: v.status || "Active",
+        name: synced.name!,
+        cadence: synced.cadence || null,
+        audience: synced.audience || null,
+        purpose: synced.purpose || null,
+        chair: chairFromResource || synced.chair || null,
+        next_meeting: synced.next_meeting || null,
+        last_meeting: synced.last_meeting || null,
+        cadence_start: synced.cadence_start || null,
+        cadence_end: synced.cadence_end || null,
+        parent_channel_id: synced.parent_channel_id || null,
+        status: synced.status || "Active",
       };
       if (scoped) {
         payload.scope_level = scope;
-        payload.project_id = scope === "project" ? v.project_id || null : null;
+        payload.project_id = scope === "project" ? synced.project_id || null : null;
         payload.program =
           scope === "program"
-            ? v.program || null
+            ? synced.program || null
             : scope === "project"
               ? proj?.program || null
               : null;
         payload.portfolio =
           scope === "strategic_alignment"
-            ? v.portfolio || null
+            ? synced.portfolio || null
             : scope === "project"
               ? proj?.portfolio || null
               : null;
       }
-      let channelId = v.id;
-      if (v.id) {
-        const { error } = await supabase.from("governance_channels").update(payload).eq("id", v.id);
+      const withoutWindow = { ...payload };
+      delete withoutWindow.cadence_start;
+      delete withoutWindow.cadence_end;
+      let channelId = synced.id;
+      if (synced.id) {
+        let { error } = await supabase.from("governance_channels").update(payload).eq("id", synced.id);
+        if (error && isMissingCadenceWindowColumn(error)) {
+          ({ error } = await supabase
+            .from("governance_channels")
+            .update(withoutWindow)
+            .eq("id", synced.id));
+        }
         if (error) throw error;
       } else {
-        const { data, error } = await supabase
+        const insertFull = {
+          ...payload,
+          org_id: organization!.id,
+          name: synced.name!,
+        } as Database["public"]["Tables"]["governance_channels"]["Insert"];
+        let { data, error } = await supabase
           .from("governance_channels")
-          .insert({
-            ...payload,
-            org_id: organization!.id,
-            name: v.name!,
-          } as Database["public"]["Tables"]["governance_channels"]["Insert"])
+          .insert(insertFull)
           .select("id")
           .single();
+        if (error && isMissingCadenceWindowColumn(error)) {
+          const insertMin = { ...insertFull };
+          delete insertMin.cadence_start;
+          delete insertMin.cadence_end;
+          ({ data, error } = await supabase
+            .from("governance_channels")
+            .insert(insertMin)
+            .select("id")
+            .single());
+        }
         if (error) throw error;
+        if (!data?.id) throw new Error("Forum was not created");
         channelId = data.id;
       }
       if (scoped && channelId) {
@@ -558,6 +561,8 @@ function GovernanceChannelsPage() {
         getValue: (c) => channelAppliesTo(c, projects),
       },
       { key: "cadence", label: "Cadence" },
+      { key: "cadence_start", label: "Cadence start" },
+      { key: "cadence_end", label: "Cadence end" },
       { key: "parent_channel_id", label: "Escalates to" },
       { key: "chair", label: "Chair" },
       {
@@ -738,7 +743,8 @@ function GovernanceChannelsPage() {
           <SectionFrame>
             <SectionTitle>Cadence calendar</SectionTitle>
             <p className="mb-2 text-xs text-muted-foreground">
-              Next and last meeting dates (weekdays). Child forums escalate to their parent.
+              Meetings are generated automatically from each forum&apos;s cadence start through its
+              placeholder end (weekdays only). Child forums escalate to their parent.
             </p>
             <CadenceMonthCalendar channels={visible} allChannels={channels} />
             <div className="mt-4">
@@ -761,6 +767,11 @@ function GovernanceChannelsPage() {
                 </Button>
               )}
             </div>
+            <p className="mt-2 mb-1 text-xs text-muted-foreground">
+              Cadence start and placeholder end drive the calendar. Meetings are generated on
+              weekdays from the start date through the end date using the forum cadence (Weekly,
+              Monthly, and so on). Extend the end date to keep the series going.
+            </p>
             <div className="mt-3">
               <ColumnarToolbar
                 globalQ={table.globalQ}
@@ -792,21 +803,21 @@ function GovernanceChannelsPage() {
                   <tbody>
                     {isLoading && (
                       <tr>
-                        <td colSpan={10} className="text-center text-muted-foreground p-4">
+                        <td colSpan={columns.length + 1} className="text-center text-muted-foreground p-4">
                           Loading…
                         </td>
                       </tr>
                     )}
                     {!isLoading && table.total === 0 && (
                       <tr>
-                        <td colSpan={10} className="text-center text-muted-foreground p-4">
+                        <td colSpan={columns.length + 1} className="text-center text-muted-foreground p-4">
                           No forums match the current filters.
                         </td>
                       </tr>
                     )}
                     {!isLoading && table.total > 0 && table.rows.length === 0 && (
                       <tr>
-                        <td colSpan={10} className="text-center text-muted-foreground p-4">
+                        <td colSpan={columns.length + 1} className="text-center text-muted-foreground p-4">
                           No forums match search.
                         </td>
                       </tr>
@@ -827,6 +838,8 @@ function GovernanceChannelsPage() {
                           <td>{scopeLabel(c.scope_level)}</td>
                           <td>{channelAppliesTo(c, projects)}</td>
                           <td>{c.cadence || "—"}</td>
+                          <td className="whitespace-nowrap">{c.cadence_start || "—"}</td>
+                          <td className="whitespace-nowrap">{c.cadence_end || "—"}</td>
                           <td>{channels.find((p) => p.id === c.parent_channel_id)?.name || "—"}</td>
                           <td>{c.chair || "—"}</td>
                           <td className="max-w-xs text-xs">
@@ -1072,35 +1085,8 @@ function ChannelForm({
   submitting: boolean;
 }) {
   const set = (k: keyof Channel, v: unknown) => onChange({ ...value, [k]: v });
-  const [nextLocked, setNextLocked] = useState(false);
-  const [lastLocked, setLastLocked] = useState(false);
-  useEffect(() => {
-    const suggested = suggestNextMeetingDate(value.last_meeting, value.cadence);
-    const next = value.next_meeting || "";
-    const defaultLast = defaultLastMeetingDate(value.cadence);
-    setNextLocked(Boolean(next && suggested && next !== suggested));
-    setLastLocked(Boolean(value.id && value.last_meeting && value.last_meeting !== defaultLast));
-    // Only when opening a different forum.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value.id]);
-
-  const applyCadenceOrLast = (patch: Partial<Channel>) => {
-    const merged = { ...value, ...patch };
-    let lastIsLocked = lastLocked;
-    if (patch.last_meeting !== undefined) {
-      lastIsLocked = Boolean(merged.last_meeting);
-      setLastLocked(lastIsLocked);
-    }
-    if ((patch.cadence !== undefined && !lastIsLocked) || !merged.last_meeting) {
-      merged.last_meeting = defaultLastMeetingDate(merged.cadence);
-    }
-    if (merged.last_meeting && !isWeekdayIso(merged.last_meeting)) {
-      merged.last_meeting = snapToWeekdayIso(merged.last_meeting, "back");
-    }
-    if (!nextLocked) {
-      merged.next_meeting = suggestNextMeetingDate(merged.last_meeting, merged.cadence);
-    }
-    onChange(merged);
+  const applyWindow = (patch: Partial<Channel>) => {
+    onChange(withCadenceWindowDates({ ...value, ...patch }));
   };
   const scope = (value.scope_level || "strategic_alignment") as GovernanceScopeLevel;
   const editableProjects = admin
@@ -1155,11 +1141,11 @@ function ChannelForm({
                   value={value.project_id || ""}
                   onValueChange={(v) => {
                     const p = projects.find((x) => x.id === v);
-                    onChange({
-                      ...value,
+                    applyWindow({
                       project_id: v,
                       program: p?.program || null,
                       portfolio: p?.portfolio || null,
+                      cadence_end: p?.planned_end_date || value.cadence_end || null,
                     });
                   }}
                 >
@@ -1220,7 +1206,7 @@ function ChannelForm({
           <Label>Cadence</Label>
           <Select
             value={value.cadence || ""}
-            onValueChange={(v) => applyCadenceOrLast({ cadence: v })}
+            onValueChange={(v) => applyWindow({ cadence: v })}
           >
             <SelectTrigger>
               <SelectValue placeholder="Select" />
@@ -1258,39 +1244,35 @@ function ChannelForm({
           <Input value={value.chair || ""} onChange={(e) => set("chair", e.target.value)} />
         </div>
         <div>
-          <Label>Last meeting (previous)</Label>
+          <Label>Cadence start</Label>
           <Input
             type="date"
-            value={value.last_meeting || ""}
-            onChange={(e) => applyCadenceOrLast({ last_meeting: e.target.value || null })}
+            value={value.cadence_start || ""}
+            onChange={(e) => applyWindow({ cadence_start: e.target.value || null })}
           />
           <p className="mt-1 text-[11px] text-muted-foreground">
-            Defaults to the previous weekday occurrence of this cadence.
+            First meeting of the series. Later dates follow this cadence on weekdays.
           </p>
         </div>
         <div>
-          <Label>Next meeting</Label>
+          <Label>Cadence end (placeholder)</Label>
           <Input
             type="date"
-            value={value.next_meeting || ""}
-            onChange={(e) => {
-              const v = e.target.value;
-              if (!v) {
-                setNextLocked(false);
-                onChange({
-                  ...value,
-                  next_meeting: suggestNextMeetingDate(value.last_meeting, value.cadence),
-                });
-                return;
-              }
-              const snapped = isWeekdayIso(v) ? v : snapToWeekdayIso(v, "forward");
-              setNextLocked(true);
-              set("next_meeting", snapped);
-            }}
+            value={value.cadence_end || ""}
+            onChange={(e) => applyWindow({ cadence_end: e.target.value || null })}
           />
           <p className="mt-1 text-[11px] text-muted-foreground">
-            Suggested from last meeting + cadence (weekdays only). Edit to keep a custom date.
+            Planning horizon (defaults to 12 months, or the project planned end). Extend it to keep
+            meetings on the calendar.
           </p>
+        </div>
+        <div className="col-span-2 text-[11px] text-muted-foreground">
+          Last meeting: <span className="font-medium text-foreground">{value.last_meeting || "—"}</span>
+          {" · "}
+          Next meeting: <span className="font-medium text-foreground">{value.next_meeting || "—"}</span>
+          {value.cadence === "Ad-hoc"
+            ? " · Ad-hoc shows the start date only."
+            : " · Derived from the series vs today."}
         </div>
       </div>
       <div>
@@ -1555,13 +1537,18 @@ function CadenceMonthCalendar({
   ];
   while (cells.length % 7) cells.push(null);
 
+  const monthStart = `${y}-${String(m + 1).padStart(2, "0")}-01`;
+  const monthEnd = `${y}-${String(m + 1).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
   const byDay = new Map<string, Channel[]>();
   for (const c of channels) {
-    for (const key of [c.next_meeting, c.last_meeting]) {
-      if (!key) continue;
-      const iso = String(key).slice(0, 10);
-      const prefix = `${y}-${String(m + 1).padStart(2, "0")}`;
-      if (!iso.startsWith(prefix)) continue;
+    if (c.status === "Retired") continue;
+    if (!c.cadence_start && !c.last_meeting && !c.next_meeting) continue;
+    const window = resolveCadenceWindow(c);
+    const dates = expandCadenceMeetings(window.cadence_start, window.cadence_end, c.cadence, {
+      rangeStart: monthStart,
+      rangeEnd: monthEnd,
+    });
+    for (const iso of dates) {
       const list = byDay.get(iso) || [];
       if (!list.some((x) => x.id === c.id)) list.push(c);
       byDay.set(iso, list);
@@ -1619,7 +1606,7 @@ function CadenceMonthCalendar({
                   <div
                     key={c.id}
                     className={`mb-0.5 truncate rounded px-1 py-0.5 ${CADENCE_COLORS[c.cadence || ""] || "bg-muted"}`}
-                    title={`${c.name} · ${scopeLabel(c.scope_level)} · ${c.cadence || "—"}${parent ? ` · escalates to ${parent.name}` : ""}`}
+                    title={`${c.name} · ${scopeLabel(c.scope_level)} · ${c.cadence || "—"}${parent ? ` · escalates to ${parent.name}` : ""} · ${iso === c.next_meeting ? "next" : iso === c.last_meeting ? "last" : "series"}`}
                   >
                     {c.name}
                     {parent ? ` ↑ ${parent.name}` : ""}
