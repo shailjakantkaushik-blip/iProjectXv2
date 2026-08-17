@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth, isAdmin } from "@/lib/auth-context";
+import { useAuth, canEditProjects } from "@/lib/auth-context";
 import { SectionFrame, SectionTitle, PageHeading, KpiCard } from "@/components/streamlit";
 import {
   BarChart,
@@ -60,10 +60,9 @@ function money(n: number) {
 }
 
 function DemandPipeline() {
-  const { organization, session, roles } = useAuth();
+  const { organization, roles } = useAuth();
   const orgId = organization?.id;
-  const userId = session?.user?.id;
-  const canConvert = isAdmin(roles);
+  const canConvert = canEditProjects(roles);
   const qc = useQueryClient();
   const [statusF, setStatusF] = useState("All");
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -84,54 +83,14 @@ function DemandPipeline() {
     mutationFn: async (idea: any) => {
       if (!orgId) throw new Error("No organisation");
       if (idea.project_id) throw new Error("Already converted to a project");
-      const baseCode = String(idea.idea_name || "IDEA")
-        .toUpperCase()
-        .replace(/[^A-Z0-9]+/g, "")
-        .slice(0, 8);
-      const code = `DM-${baseCode || "NEW"}-${String(idea.id).slice(0, 4).toUpperCase()}`;
-      const cost = Number(idea.estimated_cost) || 0;
-      const benefit = Number(idea.estimated_benefit) || 0;
-      const { data: proj, error } = await supabase
-        .from("projects")
-        .insert({
-          org_id: orgId,
-          project_code: code,
-          name: idea.idea_name || "Converted demand",
-          sponsor: idea.sponsor || null,
-          status: "Not Started",
-          rag: "Green",
-          priority: "Medium",
-          delivery_method: "Hybrid",
-          budget: cost || null,
-          capex_approved: cost ? Math.round(cost * 0.6) : null,
-          opex_approved: cost ? Math.round(cost * 0.4) : null,
-          benefits_target: benefit || null,
-          roi_percent: Number(idea.estimated_roi) || null,
-          portfolio: "Business Strategic",
-        } as never)
-        .select("id,project_code")
-        .single();
+      const { data, error } = await supabase.rpc("convert_demand_idea_to_project" as never, {
+        _idea_id: idea.id,
+      } as never);
       if (error) throw error;
-      const projectId = (proj as any).id as string;
-      const { error: uErr } = await supabase
-        .from("demand_pipeline")
-        .update({
-          project_id: projectId,
-          status: "Approved",
-          converted_at: new Date().toISOString(),
-          converted_by: userId || null,
-        } as never)
-        .eq("id", idea.id);
-      if (uErr) {
-        // Column may not exist yet — still leave project created; surface SQL hint
-        if (/converted_at|project_id|schema cache|does not exist/i.test(uErr.message)) {
-          throw new Error(
-            `Project ${ (proj as any).project_code } created, but demand link failed — run ppm_platform_depth.sql then retry link. (${uErr.message})`,
-          );
-        }
-        throw uErr;
-      }
-      return proj as { id: string; project_code: string };
+      const row = Array.isArray(data) ? data[0] : data;
+      const proj = row as { id?: string; project_code?: string } | null;
+      if (!proj?.id) throw new Error("Project was not created");
+      return { id: proj.id, project_code: proj.project_code || "project" };
     },
     onMutate: (idea) => setBusyId(idea.id),
     onSettled: () => setBusyId(null),
