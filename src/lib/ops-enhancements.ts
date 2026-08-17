@@ -26,6 +26,7 @@ export const GOVERNANCE_CADENCES = [
   "Ad-hoc",
 ] as const;
 
+/** Default day length when a resource has no hours_per_day. Prefer resourceHoursPerDay(). */
 export const HOURS_PER_DAY = 8;
 
 /** Earlier payback (fewer months) scores higher. 0–15 points. */

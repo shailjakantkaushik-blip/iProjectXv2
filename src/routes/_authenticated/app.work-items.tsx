@@ -20,6 +20,15 @@ import { fetchOrgStreams, formatProjectStreamRef, formatStreamLabel } from "@/li
 import { fetchStageGates } from "@/lib/stage-gates";
 import { sortGatesByOrgOrder } from "@/lib/project-phase";
 import { RESOURCE_ALLOCATIONS_SELECT } from "@/lib/query-selects";
+import {
+  accumulateDailyDemandByResource,
+  hoursLoadChipClass,
+  hoursLoadStatus,
+  resourceHoursPerDay,
+  workItemDailyHoursPerAssignee,
+  worstHoursLoadStatus,
+  type HoursLoadStatus,
+} from "@/lib/resource-capacity";
 import { sumLaneAllocatedHours, type AllocationPlanRow } from "@/lib/resource-allocation-analytics";
 import {
   buildWorkItemDemandSlices,
@@ -82,6 +91,8 @@ type ResourceRow = {
   user_id: string | null;
   status: string | null;
   cost_rate?: number | null;
+  hours_per_day?: number | null;
+  capacity_hours_week?: number | null;
 };
 
 function WorkItemsPage() {
@@ -214,7 +225,7 @@ function WorkItemsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("resources")
-        .select("id,name,email,role,user_id,status,cost_rate")
+        .select("id,name,email,role,user_id,status,cost_rate,hours_per_day,capacity_hours_week")
         .order("name");
       if (error) throw error;
       return (data ?? []) as unknown as ResourceRow[];
@@ -433,6 +444,51 @@ function WorkItemsPage() {
     };
   }, [form.project_id, form.stream_id, form.stage_gate_id, allocations, demandSlices]);
 
+  const demandDailyByResource = useMemo(
+    () => accumulateDailyDemandByResource(items, assigneesByWorkItem),
+    [items, assigneesByWorkItem],
+  );
+
+  const formAssigneeLoad = useMemo(() => {
+    const team = [...new Set(form.assignee_ids.filter(Boolean))];
+    const hours = Number(form.estimate_hours) || 0;
+    if (!team.length || !(hours > 0)) return [] as Array<{
+      id: string;
+      name: string;
+      perDay: number;
+      totalDay: number;
+      cap: number;
+      status: HoursLoadStatus;
+    }>;
+    const thisItem = workItemDailyHoursPerAssignee({
+      estimateHours: hours,
+      plannedStart: form.planned_start,
+      plannedEnd: form.planned_end,
+      assigneeCount: team.length,
+    });
+    return team.map((id) => {
+      const r = resourceById.get(id);
+      const cap = resourceHoursPerDay(r);
+      const existing = demandDailyByResource.get(id) || 0;
+      const totalDay = Math.round((existing + thisItem) * 100) / 100;
+      return {
+        id,
+        name: r?.name || "Resource",
+        perDay: thisItem,
+        totalDay,
+        cap,
+        status: hoursLoadStatus(totalDay, cap),
+      };
+    });
+  }, [
+    form.assignee_ids,
+    form.estimate_hours,
+    form.planned_start,
+    form.planned_end,
+    resourceById,
+    demandDailyByResource,
+  ]);
+
   const programs = useMemo(
     () =>
       Array.from(
@@ -578,6 +634,18 @@ function WorkItemsPage() {
         getValue: (i) => String(numH(i.estimate_hours) || ""),
       },
       {
+        key: "demand_load",
+        label: "Load",
+        getValue: (i) => {
+          const ids = assigneesByWorkItem.get(i.id) || [];
+          const statuses = ids.map((rid) => {
+            const cap = resourceHoursPerDay(resourceById.get(rid));
+            return hoursLoadStatus(demandDailyByResource.get(rid) || 0, cap);
+          });
+          return worstHoursLoadStatus(statuses) || "";
+        },
+      },
+      {
         key: "actual_hours",
         label: "Actual h",
         getValue: (i) => String(numH(i.actual_hours) || ""),
@@ -610,6 +678,7 @@ function WorkItemsPage() {
       allocations,
       predecessorsByItem,
       itemById,
+      demandDailyByResource,
     ],
   );
 
@@ -1053,10 +1122,25 @@ function WorkItemsPage() {
             setting demand hours.
           </p>
         )}
+        {formAssigneeLoad.length > 0 ? (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {formAssigneeLoad.map((row) => (
+              <span
+                key={row.id}
+                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${hoursLoadChipClass(row.status)}`}
+                title={`${row.name}: this item ${row.perDay.toFixed(1)}h/day; all demand ${row.totalDay.toFixed(1)}h vs ${row.cap}h/day cap`}
+              >
+                {row.name}: {row.status} {row.totalDay.toFixed(1)}/{row.cap}h/day
+              </span>
+            ))}
+          </div>
+        ) : null}
         <p className="mt-2 text-[11px] text-muted-foreground">
           Reverse planning flow: set work-item demand hours against the lane&apos;s
           resource allocation (pending = allocated − demand). Demand FTE $ is hours ×
-          assignee cost rates. Actual hours come from approved timesheets. Assign resources so
+          assignee cost rates. Assigned people are flagged Over / Optimal / Under against
+          their hours/day cap (Timesheets → Resource setup). Actual hours come from approved
+          timesheets. Assign resources so
           timesheet placeholders appear for their linked logins; stream defaults to Core. Use{" "}
           <span className="font-medium text-foreground">Stage gate</span> for Waterfall/Hybrid phase
           attribution, and <span className="font-medium text-foreground">Sprint</span> for
@@ -1582,6 +1666,41 @@ function WorkItemsPage() {
                                 />
                               </td>
                             );
+                          case "demand_load": {
+                            const ids = assigneesByWorkItem.get(i.id) || [];
+                            const rows = ids.map((rid) => {
+                              const r = resourceById.get(rid);
+                              const cap = resourceHoursPerDay(r);
+                              const totalDay = demandDailyByResource.get(rid) || 0;
+                              return {
+                                rid,
+                                name: r?.name || "Resource",
+                                cap,
+                                totalDay,
+                                status: hoursLoadStatus(totalDay, cap),
+                              };
+                            });
+                            const worst = worstHoursLoadStatus(rows.map((r) => r.status));
+                            return (
+                              <td key={col.key} className="whitespace-nowrap">
+                                {worst ? (
+                                  <span
+                                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${hoursLoadChipClass(worst)}`}
+                                    title={rows
+                                      .map(
+                                        (r) =>
+                                          `${r.name}: ${r.totalDay.toFixed(1)}h/day vs ${r.cap}h cap (${r.status})`,
+                                      )
+                                      .join("\n")}
+                                  >
+                                    {worst}
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
+                              </td>
+                            );
+                          }
                           case "actual_hours":
                             return (
                               <td
@@ -1752,6 +1871,11 @@ function WorkItemsPage() {
             name: "Demand h",
             description:
               "Work-item estimate hours (demand). Compare to Lane allocated (Plan). Does not write Planned FTE.",
+          },
+          {
+            name: "Load",
+            description:
+              "Load uses demand on this register page. Over / Optimal / Under for assigned people vs their hours/day cap (Timesheets → Resource setup). Demand hours are paced across weekdays in the planned date window (or a 5-day week). Optimal is ≥ 60% of the cap; Over is above the cap. Hover for each person.",
           },
           {
             name: "Actual h",

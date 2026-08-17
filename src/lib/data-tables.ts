@@ -584,6 +584,7 @@ export const TABLES: TableDef[] = [
       { key: "role", label: "Role", type: "text" },
       { key: "skills", label: "Skills", type: "text" },
       { key: "bu_id", label: "Business Unit", type: "text", fk: "bu" },
+      { key: "hours_per_day", label: "Hours / day", type: "number" },
       { key: "capacity_hours_week", label: "Capacity (h/wk)", type: "number" },
       { key: "cost_rate", label: "Cost Rate", type: "number" },
       { key: "location", label: "Location", type: "text" },

@@ -36,6 +36,17 @@ import {
   type DayKey,
   type TimesheetStatus,
 } from "@/lib/timesheet";
+import {
+  clampHoursPerDay,
+  dayLoadLines,
+  DEFAULT_HOURS_PER_DAY,
+  formatDayLoadNote,
+  hoursLoadTextClass,
+  resourceHoursPerDay,
+  resourceHoursPerWeek,
+  sumHoursByDay,
+  weekLoadStatus,
+} from "@/lib/resource-capacity";
 
 type TimesheetTab = "mine" | "approvals" | "cost" | "reports" | "setup";
 type TimesheetsSearch = { tab?: TimesheetTab };
@@ -123,6 +134,8 @@ type ResourceRow = {
   manager_user_id: string | null;
   cost_rate: number | null;
   status: string | null;
+  hours_per_day?: number | null;
+  capacity_hours_week?: number | null;
 };
 
 function emptyHours(): Record<DayKey, number> {
@@ -237,7 +250,7 @@ function TimesheetsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("resources")
-        .select("id,name,email,user_id,manager_user_id,cost_rate,status")
+        .select("id,name,email,user_id,manager_user_id,cost_rate,status,hours_per_day,capacity_hours_week")
         .order("name");
       if (error) throw error;
       return (data ?? []) as unknown as ResourceRow[];
@@ -782,15 +795,24 @@ function TimesheetsPage() {
       user_id,
       manager_user_id,
       cost_rate,
+      hours_per_day,
     }: {
       id: string;
       user_id: string | null;
       manager_user_id: string | null;
       cost_rate: number | null;
+      hours_per_day: number;
     }) => {
+      const day = clampHoursPerDay(hours_per_day);
       const { error } = await supabase
         .from("resources")
-        .update({ user_id, manager_user_id, cost_rate } as never)
+        .update({
+          user_id,
+          manager_user_id,
+          cost_rate,
+          hours_per_day: day,
+          capacity_hours_week: resourceHoursPerWeek({ hours_per_day: day }),
+        } as never)
         .eq("id", id);
       if (error) throw error;
     },
@@ -821,6 +843,14 @@ function TimesheetsPage() {
   const weekTotal = useMemo(() => {
     return Object.values(draftRows).reduce((sum, r) => sum + entryWeekTotal(r), 0);
   }, [draftRows]);
+
+  const myHoursPerDay = resourceHoursPerDay(myResource);
+  const dayLoads = useMemo(
+    () => dayLoadLines(sumHoursByDay(Object.values(draftRows)), myHoursPerDay),
+    [draftRows, myHoursPerDay],
+  );
+  const weekStatus = weekLoadStatus(weekTotal, myHoursPerDay);
+  const dayLoadNote = useMemo(() => formatDayLoadNote(dayLoads), [dayLoads]);
 
   const setRowHours = (rowKey: string, dayKey: DayKey, hours: number) => {
     setDraftRows((prev) => {
@@ -984,9 +1014,13 @@ function TimesheetsPage() {
 
           <SectionFrame>
             <SectionTitle>Summary</SectionTitle>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
               <KpiCard label="Assigned work items" value={assignedWorkItems.length} />
               <KpiCard label="Hours this week" value={Math.round(weekTotal * 10) / 10} />
+              <KpiCard
+                label={`vs ${myHoursPerDay}h/day`}
+                value={weekStatus}
+              />
               <KpiCard
                 label="Manager"
                 value={
@@ -1075,6 +1109,19 @@ function TimesheetsPage() {
                 ) : null}
               </div>
             </div>
+            {Object.keys(draftRows).length > 0 && hoursView !== "month" ? (
+              <p
+                className={`mb-3 rounded-md border px-3 py-2 text-xs ${
+                  weekStatus === "Over"
+                    ? "border-red-200 bg-red-50 text-red-800"
+                    : weekStatus === "Under"
+                      ? "border-amber-200 bg-amber-50 text-amber-900"
+                      : "border-emerald-200 bg-emerald-50 text-emerald-800"
+                }`}
+              >
+                Daily cap {myHoursPerDay}h (Resource setup). {dayLoadNote}
+              </p>
+            ) : null}
             {sheetLoading || resourcesLoading ? (
               <PageLoading label="Loading timesheet…" fullScreen={false} />
             ) : Object.keys(draftRows).length === 0 ? (
@@ -1101,6 +1148,7 @@ function TimesheetsPage() {
                 weekStart={weekStart}
                 editable={editable}
                 draftRows={draftRows}
+                hoursPerDay={myHoursPerDay}
                 workById={workById}
                 projectById={
                   projectById as Map<
@@ -1265,10 +1313,32 @@ function TimesheetsPage() {
                   <tfoot>
                     <tr>
                       <td colSpan={3} className="font-semibold">
-                        Week total
+                        Day total vs {myHoursPerDay}h
                       </td>
-                      <td colSpan={7} />
-                      <td className="text-right font-semibold tabular-nums">
+                      {DAY_KEYS.map((dk) => {
+                        const line = dayLoads.find((l) => l.key === dk);
+                        const st = line?.status === "Empty" ? null : line?.status;
+                        return (
+                          <td
+                            key={dk}
+                            className={`text-center text-[10px] font-semibold tabular-nums ${
+                              st ? hoursLoadTextClass(st) : "text-muted-foreground"
+                            }`}
+                          >
+                            {line && line.hours > 0 ? (
+                              <>
+                                {line.hours.toFixed(1)}
+                                <div>{st}</div>
+                              </>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                        );
+                      })}
+                      <td
+                        className={`text-right font-semibold tabular-nums ${hoursLoadTextClass(weekStatus)}`}
+                      >
                         {weekTotal.toFixed(1)}
                       </td>
                       <td />
@@ -1387,6 +1457,8 @@ function TimesheetsPage() {
             id: r.id,
             name: r.name,
             user_id: r.user_id,
+            hours_per_day: r.hours_per_day,
+            capacity_hours_week: r.capacity_hours_week,
           }))}
           workItems={workItems.map((w) => ({
             id: w.id,
@@ -1419,16 +1491,18 @@ function TimesheetsPage() {
           <p className="mb-3 text-sm text-muted-foreground">
             {canEditAllResources ? (
               <>
-                Each org member is the same person as their resource (auto-synced). Set hourly cost
-                and Resource Manager here. Billable timesheet hours × rate add to{" "}
+                Each org member is the same person as their resource (auto-synced). Set hours per
+                day, hourly cost, and Resource Manager here. Daily hours flag Over / Optimal /
+                Under on timesheets, work-item demand, and estimation planning (weekly capacity is
+                hours/day × 5). Billable timesheet hours × rate add to{" "}
                 <strong>OPEX Labor / FTE</strong> and total OpEx actual for the work item&apos;s
                 project / stream (other OpEx can still be entered separately).
               </>
             ) : (
               <>
-                Project Managers can set hourly cost and Resource Manager for people allocated to
-                projects they manage. Org-wide sync and user linking stay with Org Admins. Cost
-                figures respect project visibility / permissions.
+                Project Managers can set hours per day, hourly cost, and Resource Manager for
+                people allocated to projects they manage. Org-wide sync and user linking stay with
+                Org Admins. Cost figures respect project visibility / permissions.
               </>
             )}
           </p>
@@ -1460,6 +1534,7 @@ function TimesheetsPage() {
                     <th>Resource</th>
                     <th>Linked user</th>
                     <th>Resource Manager</th>
+                    <th>Hours / day</th>
                     <th>Hourly cost</th>
                     <th></th>
                   </tr>
@@ -1472,12 +1547,13 @@ function TimesheetsPage() {
                       members={members}
                       saving={patchResource.isPending}
                       allowLinkUser={canEditAllResources}
-                      onSave={(user_id, manager_user_id, cost_rate) =>
+                      onSave={(user_id, manager_user_id, cost_rate, hours_per_day) =>
                         patchResource.mutate({
                           id: r.id,
                           user_id: canEditAllResources ? user_id : r.user_id,
                           manager_user_id,
                           cost_rate,
+                          hours_per_day,
                         })
                       }
                     />
@@ -1525,7 +1601,7 @@ const TIMESHEET_HOURS_GLOSSARY: ColumnGlossaryItem[] = [
   {
     name: "Day strip",
     description:
-      "Mon–Sun totals at a glance. Tap a day to focus that card; totals over 8h highlight amber.",
+      "Mon–Sun totals at a glance. Tap a day to focus that card. Totals are flagged Over / Optimal / Under against the resource’s hours/day cap (Timesheets → Resource setup).",
   },
   {
     name: "Type",
@@ -1616,6 +1692,11 @@ const TIMESHEET_SETUP_GLOSSARY: ColumnGlossaryItem[] = [
       "Approver for the second approval step (after Project Manager on billable sheets).",
   },
   {
+    name: "Hours / day",
+    description:
+      "Max hours this person can work in a day (1–24). Timesheets, work-item demand, and estimation planning flag Over (> cap), Optimal (≥ 60% of cap), or Under. Saving also sets weekly capacity to hours/day × 5.",
+  },
+  {
     name: "Hourly cost",
     description: "Cost rate ($/h) used for Plan/Actual FTE $ and OPEX labor roll-ups.",
   },
@@ -1670,25 +1751,34 @@ function ResourceSetupRow({
   saving: boolean;
   /** Org admins can re-link login users; PMs keep the existing link. */
   allowLinkUser?: boolean;
-  onSave: (userId: string | null, managerId: string | null, costRate: number | null) => void;
+  onSave: (
+    userId: string | null,
+    managerId: string | null,
+    costRate: number | null,
+    hoursPerDay: number,
+  ) => void;
 }) {
   const [userId, setUserId] = useState(resource.user_id || "");
   const [managerId, setManagerId] = useState(resource.manager_user_id || "");
   const [costRate, setCostRate] = useState(
     resource.cost_rate != null ? String(resource.cost_rate) : "",
   );
+  const [hoursPerDay, setHoursPerDay] = useState(String(resourceHoursPerDay(resource)));
 
   useEffect(() => {
     setUserId(resource.user_id || "");
     setManagerId(resource.manager_user_id || "");
     setCostRate(resource.cost_rate != null ? String(resource.cost_rate) : "");
-  }, [resource.user_id, resource.manager_user_id, resource.cost_rate]);
+    setHoursPerDay(String(resourceHoursPerDay(resource)));
+  }, [resource.user_id, resource.manager_user_id, resource.cost_rate, resource.hours_per_day, resource.capacity_hours_week]);
 
   const nextRate = costRate === "" ? null : Number(costRate);
+  const nextDay = clampHoursPerDay(hoursPerDay === "" ? DEFAULT_HOURS_PER_DAY : Number(hoursPerDay));
   const dirty =
     (allowLinkUser && (userId || null) !== (resource.user_id || null)) ||
     (managerId || null) !== (resource.manager_user_id || null) ||
-    (nextRate ?? null) !== (resource.cost_rate ?? null);
+    (nextRate ?? null) !== (resource.cost_rate ?? null) ||
+    nextDay !== resourceHoursPerDay(resource);
 
   const linkedLabel = resource.user_id
     ? memberLabel(
@@ -1741,6 +1831,18 @@ function ResourceSetupRow({
       <td>
         <input
           type="number"
+          min={1}
+          max={24}
+          step={0.25}
+          className="st-input !w-20 !py-0.5 !text-xs"
+          title="Hours this person can work in a day"
+          value={hoursPerDay}
+          onChange={(e) => setHoursPerDay(e.target.value)}
+        />
+      </td>
+      <td>
+        <input
+          type="number"
           min={0}
           step={0.01}
           className="st-input !w-24 !py-0.5 !text-xs"
@@ -1759,6 +1861,7 @@ function ResourceSetupRow({
               allowLinkUser ? userId || null : resource.user_id,
               managerId || null,
               nextRate != null && Number.isFinite(nextRate) ? nextRate : null,
+              nextDay,
             )
           }
         >

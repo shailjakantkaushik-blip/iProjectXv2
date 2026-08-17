@@ -1,6 +1,14 @@
 import { useMemo, useState } from "react";
 import { dailyRateFromHourly } from "@/lib/ops-enhancements";
 import {
+  countWeekdaysInclusive,
+  hoursLoadChipClass,
+  hoursLoadStatus,
+  hoursLoadTextClass,
+  resourceHoursPerDay,
+  resourceHoursPerWeek,
+} from "@/lib/resource-capacity";
+import {
   daysToEffortAmount,
   effortAmountToDays,
   effortDaysToHours,
@@ -34,6 +42,7 @@ type ResourceLike = {
   role?: string | null;
   cost_rate?: number | null;
   capacity_hours_week?: number | null;
+  hours_per_day?: number | null;
 };
 
 type AllocationLike = {
@@ -198,13 +207,20 @@ export function ForecastResourceBoard({
   const pendingResource = resources.find((r) => r.id === pending?.resourceId);
   const pendingDays = effortAmountToDays(Number(amount) || 0, unit);
   const pendingCost = Math.round(dailyRateFromHourly(pendingResource?.cost_rate) * pendingDays);
+  const pendingPhaseDays =
+    countWeekdaysInclusive(pending?.phase.start_date, pending?.phase.end_date) || 5;
+  const pendingDaily =
+    pendingPhaseDays > 0 ? effortDaysToHours(pendingDays) / pendingPhaseDays : effortDaysToHours(pendingDays);
+  const pendingDayCap = resourceHoursPerDay(pendingResource);
+  const pendingPace = hoursLoadStatus(pendingDaily, pendingDayCap);
 
   return (
     <div>
       <p className="mb-3 text-xs text-muted-foreground">
         Select a role, then drag a person onto a stream phase — or click the person, then the
         phase. Available hours are total capacity through the plan window minus hours already
-        allocated or assigned here.
+        allocated or assigned here. Load is Over / Optimal / Under vs each person&apos;s
+        hours/day cap (Timesheets → Resource setup; weekly = hours/day × 5).
       </p>
       <div className="overflow-x-auto">
         <div
@@ -235,18 +251,15 @@ export function ForecastResourceBoard({
             </label>
             <div className="space-y-2">
               {shownResources.map((r) => {
-                const weekly = Number(r.capacity_hours_week || 0) || 40;
+                const weekly = resourceHoursPerWeek(r);
+                const dayCap = resourceHoursPerDay(r);
                 const total = Math.round(weekly * weeks);
                 const used =
                   (allocatedHoursByResource.get(r.id) || 0) +
                   (forecastHoursByResource.get(r.id) || 0);
                 const available = Math.round((total - used) * 10) / 10;
-                const tone =
-                  available < 0
-                    ? "text-red-600"
-                    : available < total * 0.2
-                      ? "text-amber-700"
-                      : "text-emerald-700";
+                const status = hoursLoadStatus(used, total);
+                const tone = hoursLoadTextClass(status);
                 return (
                   <button
                     key={r.id}
@@ -268,10 +281,15 @@ export function ForecastResourceBoard({
                   >
                     <div className="font-semibold text-foreground">{r.name || "Resource"}</div>
                     <div className="text-muted-foreground">
-                      {r.role || "—"} · {money(dailyRateFromHourly(r.cost_rate))}/day
+                      {r.role || "—"} · {money(dailyRateFromHourly(r.cost_rate))}/day · {dayCap}h/day
                     </div>
-                    <div className={`mt-1 tabular-nums ${tone}`}>
-                      Available {available}h
+                    <div className="mt-1 flex flex-wrap items-center gap-1">
+                      <span
+                        className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${hoursLoadChipClass(status)}`}
+                      >
+                        {status}
+                      </span>
+                      <span className={`tabular-nums ${tone}`}>Available {available}h</span>
                     </div>
                     <div className="tabular-nums text-muted-foreground">
                       Total {total}h through plan
@@ -321,6 +339,12 @@ export function ForecastResourceBoard({
                         <div className="space-y-1">
                           {rows.map((row) => {
                             const res = resources.find((x) => x.id === row.resource_id);
+                            const phaseDays =
+                              countWeekdaysInclusive(ph.start_date, ph.end_date) || 5;
+                            const assignedH = effortDaysToHours(Number(row.effort_days || 0));
+                            const daily = phaseDays > 0 ? assignedH / phaseDays : assignedH;
+                            const cap = resourceHoursPerDay(res);
+                            const pace = hoursLoadStatus(daily, cap);
                             return (
                               <div
                                 key={row.id}
@@ -329,9 +353,14 @@ export function ForecastResourceBoard({
                                 <div>
                                   <div className="font-medium">{res?.name || "Resource"}</div>
                                   <div className="text-muted-foreground">
-                                    {effortDaysToHours(Number(row.effort_days || 0))}h ·{" "}
-                                    {money(Number(row.labor_cost || 0))}
+                                    {assignedH}h · {money(Number(row.labor_cost || 0))}
                                   </div>
+                                  <span
+                                    className={`mt-0.5 inline-block rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${hoursLoadChipClass(pace)}`}
+                                    title={`${daily.toFixed(1)}h/day over ${phaseDays} weekdays vs ${cap}h/day cap`}
+                                  >
+                                    {pace} {daily.toFixed(1)}/{cap}h/day
+                                  </span>
                                 </div>
                                 {canEdit && (
                                   <div className="flex shrink-0 gap-2">
@@ -426,6 +455,12 @@ export function ForecastResourceBoard({
             <p className="text-xs text-muted-foreground">
               {effortDaysToHours(pendingDays)} hours · {pendingDays} days · {money(pendingCost)}{" "}
               labor
+            </p>
+            <p
+              className={`text-xs font-medium ${hoursLoadTextClass(pendingPace)}`}
+            >
+              {pendingPace} vs {pendingDayCap}h/day ({pendingDaily.toFixed(1)}h/day over{" "}
+              {pendingPhaseDays} weekdays in this phase).
             </p>
           </div>
           <DialogFooter>
