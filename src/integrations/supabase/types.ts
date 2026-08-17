@@ -2726,6 +2726,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      convert_demand_idea_to_project: {
+        Args: { _idea_id: string }
+        Returns: {
+          id: string
+          project_code: string
+        }[]
+      }
+      can_promote_demand: { Args: { _user_id: string }; Returns: boolean }
       can_edit_project: {
         Args: { _project_id: string; _user_id: string }
         Returns: boolean
