@@ -428,16 +428,56 @@ export function addWorkingDaysIso(iso: string, n: number): string {
   return cur;
 }
 
-function addCalendarMonthsWeekday(iso: string, months: number): string {
+function addCalendarMonthsClamped(iso: string, months: number): string {
   const [y, m, d] = String(iso).slice(0, 10).split("-").map(Number);
-  const dt = new Date(y, m - 1 + months, d);
-  const next = formatIsoYmd(dt.getFullYear(), dt.getMonth() + 1, dt.getDate());
+  const idx = y * 12 + (m - 1) + months;
+  const ny = Math.floor(idx / 12);
+  const nm = ((idx % 12) + 12) % 12;
+  const lastDay = new Date(ny, nm + 1, 0).getDate();
+  return formatIsoYmd(ny, nm + 1, Math.min(d, lastDay));
+}
+
+function addCalendarMonthsWeekday(iso: string, months: number): string {
+  const next = addCalendarMonthsClamped(iso, months);
   return snapToWeekdayIso(next, months >= 0 ? "forward" : "back");
 }
 
 /**
- * Daily / Weekly / Fortnightly count working days only.
- * Longer cadences add calendar months, then land on a weekday.
+ * Nth meeting of a series that starts on `start` (already a weekday).
+ * Weekly / Fortnightly keep the same weekday as start (+7 / +14 calendar days).
+ * Monthly+ add months from start (clamp to month-end) then snap to a weekday.
+ */
+export function cadenceOccurrenceAt(
+  start: string | null | undefined,
+  cadence: string | null | undefined,
+  n: number,
+): string | null {
+  const from = String(start || "").slice(0, 10);
+  if (!from) return null;
+  const origin = isWeekdayIso(from) ? from : snapToWeekdayIso(from, n >= 0 ? "forward" : "back");
+  switch (cadence) {
+    case "Daily":
+      return addWorkingDaysIso(origin, n);
+    case "Weekly":
+      return addCalendarDaysIso(origin, 7 * n);
+    case "Fortnightly":
+      return addCalendarDaysIso(origin, 14 * n);
+    case "Monthly":
+      return addCalendarMonthsWeekday(origin, n);
+    case "Quarterly":
+      return addCalendarMonthsWeekday(origin, 3 * n);
+    case "Half-yearly":
+      return addCalendarMonthsWeekday(origin, 6 * n);
+    case "Annual":
+      return addCalendarMonthsWeekday(origin, 12 * n);
+    default:
+      return n === 0 ? origin : null;
+  }
+}
+
+/**
+ * Daily / Weekly / Fortnightly stay on the same weekday as the given date.
+ * Longer cadences add calendar months from that date, then land on a weekday.
  */
 export function suggestNextMeetingDate(
   lastMeeting: string | null | undefined,
@@ -445,24 +485,7 @@ export function suggestNextMeetingDate(
 ): string | null {
   const last = String(lastMeeting || "").slice(0, 10);
   if (!last) return null;
-  switch (cadence) {
-    case "Daily":
-      return addWorkingDaysIso(last, 1);
-    case "Weekly":
-      return addWorkingDaysIso(last, 5);
-    case "Fortnightly":
-      return addWorkingDaysIso(last, 10);
-    case "Monthly":
-      return addCalendarMonthsWeekday(last, 1);
-    case "Quarterly":
-      return addCalendarMonthsWeekday(last, 3);
-    case "Half-yearly":
-      return addCalendarMonthsWeekday(last, 6);
-    case "Annual":
-      return addCalendarMonthsWeekday(last, 12);
-    default:
-      return null;
-  }
+  return cadenceOccurrenceAt(last, cadence, 1);
 }
 
 /** Previous occurrence of this cadence, always a weekday. */
@@ -471,24 +494,7 @@ export function defaultLastMeetingDate(
   today = localTodayIso(),
 ): string {
   const anchor = snapToWeekdayIso(today, "back");
-  switch (cadence) {
-    case "Daily":
-      return addWorkingDaysIso(anchor, -1);
-    case "Weekly":
-      return addWorkingDaysIso(anchor, -5);
-    case "Fortnightly":
-      return addWorkingDaysIso(anchor, -10);
-    case "Monthly":
-      return addCalendarMonthsWeekday(anchor, -1);
-    case "Quarterly":
-      return addCalendarMonthsWeekday(anchor, -3);
-    case "Half-yearly":
-      return addCalendarMonthsWeekday(anchor, -6);
-    case "Annual":
-      return addCalendarMonthsWeekday(anchor, -12);
-    default:
-      return addWorkingDaysIso(anchor, -1);
-  }
+  return cadenceOccurrenceAt(anchor, cadence, -1) || addWorkingDaysIso(anchor, -1);
 }
 
 export function defaultGovernanceMeetingDates(
@@ -518,10 +524,9 @@ export function resolveCadenceWindow(c: {
   last_meeting?: string | null;
   next_meeting?: string | null;
 }): { cadence_start: string; cadence_end: string } {
-  const rawStart = String(c.cadence_start || c.last_meeting || c.next_meeting || defaultCadenceStart()).slice(
-    0,
-    10,
-  );
+  const rawStart = String(
+    c.cadence_start || c.last_meeting || c.next_meeting || defaultCadenceStart(),
+  ).slice(0, 10);
   const cadence_start = isWeekdayIso(rawStart) ? rawStart : snapToWeekdayIso(rawStart, "forward");
   const rawEnd = String(c.cadence_end || "").slice(0, 10) || defaultCadenceEnd(cadence_start);
   let cadence_end = isWeekdayIso(rawEnd) ? rawEnd : snapToWeekdayIso(rawEnd, "forward");
@@ -531,7 +536,8 @@ export function resolveCadenceWindow(c: {
 
 /**
  * Expand weekday meetings from cadence start through placeholder end.
- * Ad-hoc is a single meeting on the start date.
+ * Dates are counted from start (not chained from last), so next always matches
+ * cadence type + start. Ad-hoc is a single meeting on the start date.
  */
 export function expandCadenceMeetings(
   start: string | null | undefined,
@@ -541,29 +547,32 @@ export function expandCadenceMeetings(
 ): string[] {
   const from = String(start || "").slice(0, 10);
   if (!from) return [];
-  const stop = String(end || defaultCadenceEnd(from)).slice(0, 10);
+  const origin = isWeekdayIso(from) ? from : snapToWeekdayIso(from, "forward");
+  const stop = String(end || defaultCadenceEnd(origin)).slice(0, 10);
   const rangeStart = opts?.rangeStart ? String(opts.rangeStart).slice(0, 10) : "";
   const rangeEnd = opts?.rangeEnd ? String(opts.rangeEnd).slice(0, 10) : "";
   const max = opts?.max ?? MAX_CADENCE_OCCURRENCES;
   const inRange = (iso: string) =>
     (!rangeStart || iso >= rangeStart) && (!rangeEnd || iso <= rangeEnd);
 
-  let cur = isWeekdayIso(from) ? from : snapToWeekdayIso(from, "forward");
   if (!cadence || cadence === "Ad-hoc") {
-    return cur && cur <= stop && inRange(cur) ? [cur] : [];
+    return origin && origin <= stop && inRange(origin) ? [origin] : [];
   }
 
   const out: string[] = [];
-  for (let n = 0; n < max && cur && cur <= stop; n++) {
+  for (let n = 0; n < max; n++) {
+    const cur = cadenceOccurrenceAt(origin, cadence, n);
+    if (!cur || cur > stop) break;
     if (rangeEnd && cur > rangeEnd) break;
     if (inRange(cur)) out.push(cur);
-    const next = suggestNextMeetingDate(cur, cadence);
-    if (!next || next <= cur) break;
-    cur = next;
   }
   return out;
 }
 
+/**
+ * Next = first series date on or after today (still <= end).
+ * Previous = the occurrence immediately before next (never after start).
+ */
 export function lastAndNextFromCadence(
   start: string | null | undefined,
   end: string | null | undefined,
@@ -574,12 +583,13 @@ export function lastAndNextFromCadence(
   let last_meeting: string | null = null;
   let next_meeting: string | null = null;
   for (const d of dates) {
-    if (d <= today) last_meeting = d;
-    else {
+    if (d >= today) {
       next_meeting = d;
       break;
     }
+    last_meeting = d;
   }
+  if (!next_meeting && dates.length) last_meeting = dates[dates.length - 1];
   return { last_meeting, next_meeting };
 }
 
@@ -604,7 +614,9 @@ export async function loadGovernanceChannels(): Promise<{
   if (!full.error) {
     return {
       scoped: true,
-      channels: ((full.data || []) as unknown as GovernanceChannel[]).map(normalizeChannel),
+      channels: ((full.data || []) as unknown as GovernanceChannel[])
+        .map(normalizeChannel)
+        .map((c) => withCadenceWindowDates(c)),
     };
   }
   if (isMissingCadenceWindowColumn(full.error)) {
@@ -615,7 +627,9 @@ export async function loadGovernanceChannels(): Promise<{
     if (!scoped.error) {
       return {
         scoped: true,
-        channels: ((scoped.data || []) as unknown as GovernanceChannel[]).map(normalizeChannel),
+        channels: ((scoped.data || []) as unknown as GovernanceChannel[])
+          .map(normalizeChannel)
+          .map((c) => withCadenceWindowDates(c)),
       };
     }
     if (!isMissingGovernanceScopeColumn(scoped.error)) throw scoped.error;
@@ -629,6 +643,8 @@ export async function loadGovernanceChannels(): Promise<{
   if (min.error) throw min.error;
   return {
     scoped: false,
-    channels: ((min.data || []) as unknown as GovernanceChannel[]).map(normalizeChannel),
+    channels: ((min.data || []) as unknown as GovernanceChannel[])
+      .map(normalizeChannel)
+      .map((c) => withCadenceWindowDates(c)),
   };
 }
