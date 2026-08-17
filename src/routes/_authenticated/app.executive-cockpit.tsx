@@ -1037,19 +1037,20 @@ function ExecutiveCockpit() {
               </BarChart>
             </ExpandableChart>
           )}
-        </div>
-      </SectionFrame>
-
-      <SectionFrame exportName="cockpit-benefits" exportTitle="Benefits">
-        <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
-          <SectionTitle>Benefits</SectionTitle>
-          <Link
-            to="/app/benefits"
-            className="text-xs font-medium text-primary hover:underline"
+          <ExpandablePanel
+            title="Benefits"
+            collapsible
+            defaultCollapsed
+            collapsedSummary={`${benefitRows.length} project${benefitRows.length === 1 ? "" : "s"} · ${money(benefitsRealisedK)} of ${money(benefitsForecastK)} · ${benefitsPct}% realised. Click Show or Expand.`}
+            toolbar={
+              <Link
+                to="/app/benefits"
+                className="text-[10px] font-medium text-primary hover:underline"
+              >
+                Open benefits register
+              </Link>
+            }
           >
-            Open benefits register
-          </Link>
-        </div>
         <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
           <ScoreStat
             label="Target"
@@ -1076,12 +1077,6 @@ function ExecutiveCockpit() {
         {benefitChart.length === 0 ? (
           <p className="py-6 text-sm text-muted-foreground">No benefit target or realised value in this filter.</p>
         ) : (
-          <ExpandablePanel
-            title="Benefits — Target vs Realised"
-            collapsible
-            defaultCollapsed
-            collapsedSummary={`${benefitRows.length} project${benefitRows.length === 1 ? "" : "s"} · ${money(benefitsRealisedK)} of ${money(benefitsForecastK)} · ${benefitsPct}% realised. Click Show or Expand.`}
-          >
             <div className="space-y-3">
               <div className="h-56 w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -1159,12 +1154,18 @@ function ExecutiveCockpit() {
                 </p>
               ) : null}
             </div>
-          </ExpandablePanel>
         )}
-      </SectionFrame>
-
-      <SectionFrame exportName="cockpit-segmentation" exportTitle="Mix by Strategic Alignment">
-        <SectionTitle>Mix by Strategic Alignment</SectionTitle>
+          </ExpandablePanel>
+          <ExpandablePanel
+            title="Mix by Strategic Alignment"
+            collapsible
+            defaultCollapsed
+            collapsedSummary={
+              segRows.length
+                ? `${segRows.length} alignment${segRows.length === 1 ? "" : "s"} · Budget ${money(approvedFundingK)}. Click Show or Expand.`
+                : "No alignment mix yet. Click Show or Expand."
+            }
+          >
         {segRows.length === 0 ? (
           <p className="py-6 text-sm text-muted-foreground">No alignment mix yet.</p>
         ) : (
@@ -1172,9 +1173,6 @@ function ExecutiveCockpit() {
             <ExpandableChart
               title="Budget, incurred, and forecast by Strategic Alignment"
               heightClass="h-72"
-              collapsible
-              defaultCollapsed
-              collapsedSummary="Chart hidden. Mix table stays visible below."
             >
               <BarChart data={segRows} margin={{ top: 28, right: 16, left: 8, bottom: 40 }}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -1260,6 +1258,8 @@ function ExecutiveCockpit() {
             </p>
           </div>
         )}
+          </ExpandablePanel>
+        </div>
       </SectionFrame>
 
       <SectionFrame exportName="cockpit-summaries" exportTitle="Project summaries">
