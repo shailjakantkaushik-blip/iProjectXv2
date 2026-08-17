@@ -125,6 +125,8 @@ export function ProjectHealthEnginePanel({
   monthly = [],
   allocations = [],
   benefits = [],
+  workItems: workItemsProp,
+  changeRequests: changeRequestsProp,
 }: {
   project: any;
   gates?: any[];
@@ -133,6 +135,8 @@ export function ProjectHealthEnginePanel({
   monthly?: any[];
   allocations?: any[];
   benefits?: any[];
+  workItems?: any[];
+  changeRequests?: any[];
 }) {
   const { organization, profile } = useAuth();
   const orgId = organization?.id;
@@ -140,7 +144,7 @@ export function ProjectHealthEnginePanel({
   const qc = useQueryClient();
   const [prevScore, setPrevScore] = useState<number | null>(null);
 
-  const { data: workItems = [] } = useQuery({
+  const { data: workItemsFetched = [] } = useQuery({
     queryKey: ["work_items", orgId, "health-engine", projectId],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -151,11 +155,11 @@ export function ProjectHealthEnginePanel({
       if (error) throw error;
       return (data ?? []) as any[];
     },
-    enabled: !!orgId && !!projectId,
+    enabled: workItemsProp == null && !!orgId && !!projectId,
     staleTime: 30_000,
   });
 
-  const { data: changeRequests = [] } = useQuery({
+  const { data: changeRequestsFetched = [] } = useQuery({
     queryKey: ["change_requests", orgId, "health-engine", projectId],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -166,9 +170,11 @@ export function ProjectHealthEnginePanel({
       if (error) throw error;
       return data ?? [];
     },
-    enabled: !!orgId && !!projectId,
+    enabled: changeRequestsProp == null && !!orgId && !!projectId,
     staleTime: 30_000,
   });
+  const workItems = workItemsProp ?? workItemsFetched;
+  const changeRequests = changeRequestsProp ?? changeRequestsFetched;
 
   useEffect(() => {
     if (!projectId) return;

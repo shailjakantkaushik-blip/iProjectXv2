@@ -39,6 +39,7 @@ import {
   type BriefingGate,
   type BriefingProject,
   type BriefingRisk,
+  type SteeringSignal,
 } from "@/lib/executive-briefing";
 import type { HealthEngineInput } from "@/lib/project-health-engine";
 import type { MonthlyFinanceRow } from "@/lib/finance-lifecycle";
@@ -73,6 +74,50 @@ function kindLabel(kind: string) {
   if (kind === "schedule") return "Time";
   if (kind === "risk") return "Risk";
   return "Health";
+}
+
+function signalTone(tone: SteeringSignal["tone"]) {
+  if (tone === "red") return { bar: "#dc2626", value: "text-rose-700" };
+  if (tone === "amber") return { bar: "#d97706", value: "text-amber-800" };
+  return { bar: "#15803d", value: "text-emerald-800" };
+}
+
+function SteeringSignalCard({
+  signal,
+  active,
+  onSelect,
+}: {
+  signal: SteeringSignal;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  const tone = signalTone(signal.tone);
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`rounded-lg border px-3 py-2.5 text-left transition-colors ${
+        active ? "border-primary/40 bg-primary/5" : "border-border bg-background hover:border-primary/30"
+      }`}
+    >
+      <div className="flex items-start gap-2.5">
+        <span
+          className="mt-0.5 h-8 w-1 shrink-0 rounded-full"
+          style={{ backgroundColor: tone.bar }}
+          aria-hidden
+        />
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {signal.label}
+          </p>
+          <p className={`mt-0.5 text-lg font-semibold tabular-nums tracking-tight ${tone.value}`}>
+            {signal.value}
+          </p>
+          <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{signal.hint}</p>
+        </div>
+      </div>
+    </button>
+  );
 }
 
 function QuestionPanel({
@@ -480,10 +525,23 @@ export function ExecutiveQuickView({
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               Steering pack · as of {asOf}
             </p>
-            <p className="mt-2 text-xl font-semibold leading-snug text-foreground sm:text-2xl">
-              {briefing.headline}
-            </p>
-            <p className="mt-2 text-sm text-muted-foreground">
+            {briefing.headlineSignals.length === 0 ? (
+              <p className="mt-2 text-xl font-semibold leading-snug text-foreground sm:text-2xl">
+                {briefing.headline}
+              </p>
+            ) : (
+              <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
+                {briefing.headlineSignals.map((signal) => (
+                  <SteeringSignalCard
+                    key={signal.key}
+                    signal={signal}
+                    active={askKind === signal.kind}
+                    onSelect={() => selectQuestion(signal.kind)}
+                  />
+                ))}
+              </div>
+            )}
+            <p className="mt-3 text-sm text-muted-foreground">
               {filtered.length} project{filtered.length === 1 ? "" : "s"} · spend {spendOfBudget} of
               budget · FAC {facVsBudget >= 0 ? "+" : ""}
               {facVsBudget}% vs envelope.

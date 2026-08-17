@@ -86,6 +86,15 @@ export type BriefingAction = {
   rank: number;
 };
 
+export type SteeringSignal = {
+  key: "money" | "gates" | "risks" | "overdue";
+  kind: "money" | "schedule" | "risk";
+  label: string;
+  value: string;
+  hint: string;
+  tone: "red" | "amber" | "green";
+};
+
 export type ProjectWatchRow = {
   project: BriefingProject;
   /** Steering RAG — register, or rag_override when set. */
@@ -154,6 +163,7 @@ export function buildExecutiveBriefing(opts: {
   /** True when any in-scope project has rag_override set. */
   ragManual: boolean;
   headline: string;
+  headlineSignals: SteeringSignal[];
   moneyAtRisk: number;
   lateGateCount: number;
   decisionsWaiting: number;
@@ -362,6 +372,44 @@ export function buildExecutiveBriefing(opts: {
         ? bits.join(" · ") + "."
         : `Portfolio is steady — ${watch.length} project${watch.length === 1 ? "" : "s"}, none flagged.`;
 
+  const headlineSignals: SteeringSignal[] =
+    opts.projects.length === 0
+      ? []
+      : [
+          {
+            key: "money",
+            kind: "money",
+            label: "Forecast vs envelope",
+            value: moneyAtRisk > 0 ? money(moneyAtRisk) : "Inside",
+            hint: moneyAtRisk > 0 ? "above envelope" : "FAC within budget",
+            tone: moneyAtRisk > 0 ? "red" : "green",
+          },
+          {
+            key: "gates",
+            kind: "schedule",
+            label: "Late gates",
+            value: String(lateGateCount),
+            hint: lateGateCount ? "planned date passed" : "none late",
+            tone: lateGateCount ? "amber" : "green",
+          },
+          {
+            key: "risks",
+            kind: "risk",
+            label: "Critical risks",
+            value: String(criticalRisks),
+            hint: criticalRisks ? "still open" : "none open",
+            tone: criticalRisks ? "red" : "green",
+          },
+          {
+            key: "overdue",
+            kind: "schedule",
+            label: "Past planned end",
+            value: String(overdueCount),
+            hint: overdueCount === 1 ? "1 project overdue" : overdueCount ? "projects overdue" : "none overdue",
+            tone: overdueCount ? "amber" : "green",
+          },
+        ];
+
   const envelope = watch.reduce((s, w) => s + w.budget, 0);
   const facTotal = watch.reduce((s, w) => s + w.fac, 0);
   const incurredTotal = watch.reduce((s, w) => s + w.incurred, 0);
@@ -486,6 +534,7 @@ export function buildExecutiveBriefing(opts: {
     steeringRag,
     ragManual,
     headline,
+    headlineSignals,
     moneyAtRisk,
     lateGateCount,
     decisionsWaiting,

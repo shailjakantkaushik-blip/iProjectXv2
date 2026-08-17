@@ -34,7 +34,7 @@ import {
 } from "@/lib/project-health";
 import { getPortfolioKpis, listPortfolioProjects } from "@/lib/portfolio.functions";
 import { MAX_PAGE_SIZE } from "@/lib/portfolio-paging";
-import { FINANCIALS_MONTHLY_SELECT } from "@/lib/query-selects";
+import { FINANCIALS_MONTHLY_SELECT, HEALTH_ENGINE_RISKS_SELECT } from "@/lib/query-selects";
 import { explainPortfolioSnapshot, explainRag, type MetricExplanation } from "@/lib/explain-metric";
 import { displayRag, effectiveRag, isRagOverridden } from "@/lib/ops-enhancements";
 import type { MonthlyFinanceRow } from "@/lib/finance-lifecycle";
@@ -152,12 +152,12 @@ function ScoreStat({
   );
 }
 
-function countShownRag(rows: { shown_rag?: string | null }[]) {
+function countEngineRag(rows: { overall_rag?: string | null }[]) {
   let green = 0;
   let amber = 0;
   let red = 0;
   for (const r of rows) {
-    const v = String(r.shown_rag || "").toLowerCase();
+    const v = String(r.overall_rag || "").toLowerCase();
     if (v === "green") green += 1;
     else if (v === "amber") amber += 1;
     else if (v === "red") red += 1;
@@ -311,6 +311,8 @@ function ExecutiveCockpit() {
         await supabase
           .from("financials_monthly")
           .select(FINANCIALS_MONTHLY_SELECT as "*")
+          .eq("org_id", orgId!)
+          .limit(10000)
       ).data ?? [],
     enabled: !!orgId,
     staleTime: 60_000,
@@ -350,7 +352,9 @@ function ExecutiveCockpit() {
       (
         await supabase
           .from("risks")
-          .select("id,project_id,status,severity,probability,impact,priority,rating")
+          .select(HEALTH_ENGINE_RISKS_SELECT)
+          .eq("org_id", orgId!)
+          .limit(10000)
       ).data ?? [],
     enabled: !!orgId,
     staleTime: 60_000,
@@ -388,6 +392,8 @@ function ExecutiveCockpit() {
         await supabase
           .from("resource_allocations")
           .select("id,project_id,allocation_percent,allocated_hours")
+          .eq("org_id", orgId!)
+          .limit(10000)
       ).data ?? [],
     enabled: !!orgId,
     staleTime: 60_000,
@@ -397,7 +403,9 @@ function ExecutiveCockpit() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("change_requests" as never)
-        .select("id,project_id,status,change_type,impact_cost,impact_schedule_days");
+        .select("id,project_id,status,change_type,impact_cost,impact_schedule_days")
+        .eq("org_id", orgId!)
+        .limit(10000);
       if (error) return [];
       return data ?? [];
     },
@@ -685,13 +693,13 @@ function ExecutiveCockpit() {
     crsByProject,
   ]);
 
-  const matrixRag = useMemo(() => countShownRag(healthRows), [healthRows]);
+  const matrixRag = useMemo(() => countEngineRag(healthRows), [healthRows]);
   const mixRagByAlign = useMemo(() => {
     const m = new Map<string, { green: number; amber: number; red: number }>();
     for (const p of healthRows) {
       const cat = projectPortfolio(p);
       const cur = m.get(cat) || { green: 0, amber: 0, red: 0 };
-      const v = String(p.shown_rag || "").toLowerCase();
+      const v = String(p.overall_rag || "").toLowerCase();
       if (v === "green") cur.green += 1;
       else if (v === "amber") cur.amber += 1;
       else if (v === "red") cur.red += 1;
@@ -927,8 +935,9 @@ function ExecutiveCockpit() {
             <div>
               <MixBar green={matrixRag.green} amber={matrixRag.amber} red={matrixRag.red} />
               <p className="mt-2 text-xs text-muted-foreground">
-                {healthRows.length} project{healthRows.length === 1 ? "" : "s"} ·{" "}
-                {pct(matrixRag.green, healthRows.length || 1)} Green
+                Health Engine RAG · {healthRows.length} project
+                {healthRows.length === 1 ? "" : "s"} · {pct(matrixRag.green, healthRows.length || 1)}{" "}
+                Green
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2">
@@ -938,9 +947,10 @@ function ExecutiveCockpit() {
             </div>
           </div>
           <p className="mb-2 text-[11px] text-muted-foreground">
-            All in-scope projects, sorted worst RAG then lowest health score. Click a row for the
-            infographic. Health score stays calculated; RAG uses a manual override when set (M).
-            Financials live in Mix by Strategic Alignment.
+            All in-scope projects, sorted worst steering RAG then lowest health score. Click a row
+            for the infographic. The mix bar is Health Engine colour (same as the Health score).
+            The RAG column uses a manual override when set (M). Financials live in Mix by Strategic
+            Alignment.
           </p>
           <p className="mb-2 text-[11px] text-muted-foreground md:hidden">
             Swipe sideways to see all columns.
