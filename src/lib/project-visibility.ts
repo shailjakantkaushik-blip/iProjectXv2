@@ -1,4 +1,4 @@
-import type { AppRole } from "@/lib/auth-context";
+import { isPlatformOperatorOnly, type AppRole } from "@/lib/auth-context";
 
 /** Blank Strategic Alignment / program / functional area in the access tree. */
 export const UNASSIGNED_SCOPE = "(Unassigned)";
@@ -88,6 +88,10 @@ function cloneScopeLists(
     project_ids: [...lists.project_ids],
     stream_ids: [...lists.stream_ids],
   };
+}
+
+export function hasAdminAccessRole(roles: readonly string[]): boolean {
+  return roles.some((r) => r === "admin" || r === "org_admin");
 }
 
 export function isLimitedVisibilityMode(mode: ProjectVisibilityMode): boolean {
@@ -527,10 +531,6 @@ export function filterStreamsByVisibility<T extends VisibilityStream>(
   userRoles: AppRole[],
   cfg: ProjectVisibilityConfig,
 ): T[] {
-  if (userRoles.some((r) => r === "admin" || r === "org_admin" || r === "platform_admin")) {
-    return streams;
-  }
-
   const scope = effectiveVisibilityScope(cfg, userId, userRoles);
   if (!scope || !isLimitedVisibilityMode(scope.mode)) return streams;
 
@@ -549,12 +549,17 @@ export function effectiveVisibilityScope(
   userId: string | null | undefined,
   userRoles: AppRole[],
 ): ProjectVisibilityScope | null {
-  if (userRoles.some((r) => r === "admin" || r === "org_admin" || r === "platform_admin")) {
-    return emptyVisibilityScope("all");
+  if (isPlatformOperatorOnly(userRoles)) {
+    return emptyVisibilityScope("scoped");
   }
   if (userId) {
     const userRule = cfg.user_rules.find((r) => r.user_id === userId);
     if (userRule) return userRule;
+  }
+  // Org Admin / Admin see all unless a user override exists. platform_admin
+  // never unlocks tenant PMO data.
+  if (hasAdminAccessRole(userRoles)) {
+    return emptyVisibilityScope("all");
   }
   if (!cfg.rules.length) return emptyVisibilityScope("all");
   const applicable = cfg.rules.filter((r) => userRoles.includes(r.role));
@@ -570,10 +575,8 @@ export function filterProjectsByVisibility<T extends VisibilityProject>(
   cfg: ProjectVisibilityConfig,
   streams?: VisibilityStream[],
 ): T[] {
-  // platform_admin is org-scoped by RLS; within the fetched org set they see all
-  // (same as org admins). Cross-org leakage is prevented at the database.
-  if (userRoles.some((r) => r === "admin" || r === "org_admin" || r === "platform_admin")) {
-    return projects;
+  if (isPlatformOperatorOnly(userRoles)) {
+    return [];
   }
 
   if (userId) {
@@ -581,6 +584,15 @@ export function filterProjectsByVisibility<T extends VisibilityProject>(
     if (userRule) {
       return projects.filter((p) => projectMatchesScope(p, userRule, streams));
     }
+  }
+
+  if (isPlatformOperatorOnly(userRoles)) {
+    return [];
+  }
+
+  // Org admins see all unless a user override exists.
+  if (hasAdminAccessRole(userRoles)) {
+    return projects;
   }
 
   if (!cfg.rules.length) return projects;

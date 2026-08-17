@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { FileDown, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth, isAdmin, isPlatformAdmin } from "@/lib/auth-context";
+import { useAuth, isAdmin } from "@/lib/auth-context";
 import { exportOrgAuditEvidence } from "@/lib/compliance-export";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -29,7 +29,7 @@ export const Route = createFileRoute("/_authenticated/app/audit-log")({
 function AuditLogPage() {
   const { organization, roles } = useAuth();
   const orgId = organization?.id;
-  const allowed = isAdmin(roles) || isPlatformAdmin(roles);
+  const allowed = isAdmin(roles);
   const [entityType, setEntityType] = useState("All");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");

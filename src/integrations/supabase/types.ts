@@ -2735,6 +2735,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      org_admin_list_access_projects: {
+        Args: Record<string, never>
+        Returns: {
+          id: string
+          name: string
+          project_code: string | null
+          program: string | null
+          portfolio: string | null
+          functional_area: string | null
+        }[]
+      }
       convert_demand_idea_to_project: {
         Args: { _idea_id: string }
         Returns: {
