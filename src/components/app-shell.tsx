@@ -1,13 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import {
-  lazy,
-  Suspense,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   LayoutDashboard,
@@ -73,7 +65,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { useAuth, isAdmin, isPlatformAdmin } from "@/lib/auth-context";
+import { useAuth, isAdmin, isPlatformAdmin, isPlatformOperatorOnly } from "@/lib/auth-context";
 import { useAllowedPages } from "@/lib/permissions";
 import { useOrgSupportAccess } from "@/lib/support-tickets";
 import { Button } from "@/components/ui/button";
@@ -125,11 +117,7 @@ import {
   STYLE_THEME_CHANGE_EVENT,
   type StyleThemeId,
 } from "@/lib/style-theme";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Paintbrush } from "lucide-react";
 
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -199,7 +187,8 @@ function pageTitleFromPath(pathname: string, groups: NavGroupDef[]) {
   for (const group of groups) {
     for (const item of group.items) {
       const match = item.exact
-        ? pathname === item.to || (item.to === "/app/" && (pathname === "/app" || pathname === "/app/"))
+        ? pathname === item.to ||
+          (item.to === "/app/" && (pathname === "/app" || pathname === "/app/"))
         : pathname === item.to || pathname.startsWith(item.to + "/");
       if (match) return item.label;
     }
@@ -250,6 +239,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const admin = isAdmin(roles);
   const platform = isPlatformAdmin(roles);
+  const platformOnly = isPlatformOperatorOnly(roles);
   const { canView: canViewPage } = useAllowedPages();
   const { allowed: supportAllowed, isReady: supportReady } = useOrgSupportAccess();
   const orgStyle = normalizeOrgStyleTheme(organization?.ui_config?.style_theme);
@@ -377,13 +367,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         orgConfig: orgStyle,
         userThemeId: readUserStyleTheme(organization?.id),
       }),
-    [
-      landing?.style_theme_id,
-      cached?.style_theme_id,
-      orgStyle,
-      organization?.id,
-      styleTick,
-    ],
+    [landing?.style_theme_id, cached?.style_theme_id, orgStyle, organization?.id, styleTick],
   );
 
   const navGroups = useMemo(() => {
@@ -397,6 +381,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       .map((group) => ({
         ...group,
         items: group.items.filter((n) => {
+          if (platformOnly) return !!n.platformOnly;
           if (n.to === "/app/") return true;
           if (n.to === "/app/support") {
             // Hide until settings load; then only when org support is enabled for this role.
@@ -404,18 +389,14 @@ export function AppShell({ children }: { children: ReactNode }) {
             return supportAllowed;
           }
           if (n.platformOnly) return platform;
-          // Org audit is admin-only for tenants; platform admins may also open it for support.
-          if (n.adminOnly) return n.to === "/app/audit-log" ? admin || platform : admin;
+          if (n.adminOnly) return admin;
           return admin || canViewPage(n.to);
         }),
       }))
       .filter((g) => g.items.length > 0);
-  }, [navGroups, platform, admin, canViewPage, supportAllowed, supportReady]);
+  }, [navGroups, platform, admin, canViewPage, supportAllowed, supportReady, platformOnly]);
 
-  const visibleHeadings = useMemo(
-    () => visibleNavGroups.map((g) => g.heading),
-    [visibleNavGroups],
-  );
+  const visibleHeadings = useMemo(() => visibleNavGroups.map((g) => g.heading), [visibleNavGroups]);
 
   // Restore saved open sections (missing key => all collapsed).
   useEffect(() => {
@@ -470,8 +451,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         activeRect.top >= rootRect.top + pad && activeRect.bottom <= rootRect.bottom - pad;
       if (fullyVisible) return;
 
-      const offset =
-        activeRect.top - rootRect.top - rootRect.height / 2 + activeRect.height / 2;
+      const offset = activeRect.top - rootRect.top - rootRect.height / 2 + activeRect.height / 2;
       const nextTop = root.scrollTop + offset;
       const max = root.scrollHeight - root.clientHeight;
       const clamped = Math.max(0, Math.min(nextTop, max));
@@ -502,14 +482,12 @@ export function AppShell({ children }: { children: ReactNode }) {
     heightPx: 32,
     maxWidthPx: 160,
   }) as LogoCustomDims;
-  const brandForApp =
-    landing?.brand ?? peekLandingConfigMemory()?.brand ?? cached?.brand;
+  const brandForApp = landing?.brand ?? peekLandingConfigMemory()?.brand ?? cached?.brand;
   // Per-org white-label logo (Platform → Branding) when set.
   // Otherwise always the platform Landing App shell logo (logo_url_app) —
   // so Org B with no logo still shows iProjectX platform branding like Org A
   // would if it cleared its own mark.
-  const orgLogoUrl =
-    typeof organization?.logo_url === "string" ? organization.logo_url.trim() : "";
+  const orgLogoUrl = typeof organization?.logo_url === "string" ? organization.logo_url.trim() : "";
   const shellLogoUrl = resolveAppShellLogoUrl({
     orgLogoUrl,
     brand: brandForApp,
@@ -517,10 +495,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const usingOrgLogo = Boolean(orgLogoUrl);
   const appLogoDims = usingOrgLogo
     ? logoSizeDims(orgLogoSize, orgLogoCustom)
-    : logoSizeDims(
-        brandForApp?.logo_size_app ?? "md",
-        brandForApp?.logo_custom_app,
-      );
+    : logoSizeDims(brandForApp?.logo_size_app ?? "md", brandForApp?.logo_custom_app);
 
   const pageTitle = useMemo(() => pageTitleFromPath(pathname, navGroups), [pathname, navGroups]);
 
@@ -728,7 +703,12 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       {mobileOpen && (
-        <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label="Navigation menu">
+        <div
+          className="fixed inset-0 z-50 md:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Navigation menu"
+        >
           <div
             className="absolute inset-0 bg-black/35 backdrop-blur-[2px] transition-opacity"
             onClick={() => setMobileOpen(false)}
@@ -747,8 +727,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             className="shrink-0 border-b border-sky-200 bg-sky-50 px-3 py-1.5 text-[11px] text-sky-900 print:hidden sm:px-4 lg:px-6"
             role="status"
           >
-            Customer-hosted database is active for this organisation. Auth and platform
-            controls remain on iProjectX.
+            Customer-hosted database is active for this organisation. Auth and platform controls
+            remain on iProjectX.
           </div>
         ) : null}
         <header className="shell-header relative z-30 flex shrink-0 items-center gap-2 border-b border-border/50 bg-background px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] print:hidden sm:gap-3 sm:px-4 lg:px-6">
@@ -849,7 +829,13 @@ export function AppShell({ children }: { children: ReactNode }) {
             {deferChrome ? (
               <Suspense
                 fallback={
-                  <Button type="button" variant="ghost" size="icon" className="h-10 w-10 sm:h-8 sm:w-8" disabled>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-10 w-10 sm:h-8 sm:w-8"
+                    disabled
+                  >
                     <Bell className="h-4 w-4" />
                   </Button>
                 }
@@ -857,7 +843,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <NotificationsBell />
               </Suspense>
             ) : (
-              <Button type="button" variant="ghost" size="icon" className="h-10 w-10 sm:h-8 sm:w-8" disabled>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10 sm:h-8 sm:w-8"
+                disabled
+              >
                 <Bell className="h-4 w-4" />
               </Button>
             )}
@@ -883,7 +875,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {(cmdOpen || deferChrome) && (
         <Suspense fallback={null}>
-          <CommandPaletteLazy open={cmdOpen} onOpenChange={setCmdOpen} groups={visibleNavForPalette} />
+          <CommandPaletteLazy
+            open={cmdOpen}
+            onOpenChange={setCmdOpen}
+            groups={visibleNavForPalette}
+          />
         </Suspense>
       )}
       {/* Portal-like sibling: must stay out of theme stacking rules that set

@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth, isPlatformOperatorOnly } from "@/lib/auth-context";
 import { useLiveSync } from "@/lib/use-live-sync";
 import { usePageAccessGuard } from "@/lib/page-access-guard";
 import { PageLoading } from "@/components/page-loading";
@@ -13,7 +13,7 @@ export const Route = createFileRoute("/_authenticated/app")({
 });
 
 function AppLayout() {
-  const { profile, organization, loading, sessionChecked, refresh } = useAuth();
+  const { profile, organization, loading, sessionChecked, refresh, roles } = useAuth();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   useLiveSync(organization?.id, { pathname });
@@ -30,6 +30,13 @@ function AppLayout() {
       navigate({ to: "/onboarding", replace: true });
     }
   }, [needsOnboarding, navigate]);
+
+  useEffect(() => {
+    if (!sessionChecked || loading) return;
+    if (isPlatformOperatorOnly(roles) && pathname.startsWith("/app")) {
+      navigate({ to: "/platform", replace: true });
+    }
+  }, [sessionChecked, loading, roles, pathname, navigate]);
 
   // If profile has org_id but org chrome never arrives, don't spin forever.
   const waitingOnOrg = Boolean(profile?.org_id && !organization);
@@ -74,8 +81,8 @@ function AppLayout() {
         <div className="mx-auto max-w-md py-16 text-center space-y-3">
           <p className="text-sm font-semibold">Workspace is taking too long</p>
           <p className="text-xs text-muted-foreground">
-            Your profile loaded, but the organization record did not. After running SQL in
-            Supabase, open <strong>Project Settings → API → Reload schema</strong>, then retry.
+            Your profile loaded, but the organization record did not. After running SQL in Supabase,
+            open <strong>Project Settings → API → Reload schema</strong>, then retry.
           </p>
           <button type="button" className="st-btn-primary" onClick={() => void refresh()}>
             Retry

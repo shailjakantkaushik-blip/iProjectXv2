@@ -1,4 +1,4 @@
-import type { AppRole } from "@/lib/auth-context";
+import { isPlatformOperatorOnly, type AppRole } from "@/lib/auth-context";
 
 /** Blank Strategic Alignment / program / functional area in the access tree. */
 export const UNASSIGNED_SCOPE = "(Unassigned)";
@@ -91,7 +91,7 @@ function cloneScopeLists(
 }
 
 export function hasAdminAccessRole(roles: readonly string[]): boolean {
-  return roles.some((r) => r === "admin" || r === "org_admin" || r === "platform_admin");
+  return roles.some((r) => r === "admin" || r === "org_admin");
 }
 
 export function isLimitedVisibilityMode(mode: ProjectVisibilityMode): boolean {
@@ -549,11 +549,15 @@ export function effectiveVisibilityScope(
   userId: string | null | undefined,
   userRoles: AppRole[],
 ): ProjectVisibilityScope | null {
+  if (isPlatformOperatorOnly(userRoles)) {
+    return emptyVisibilityScope("scoped");
+  }
   if (userId) {
     const userRule = cfg.user_rules.find((r) => r.user_id === userId);
     if (userRule) return userRule;
   }
-  // Admins see all unless a user override was set above.
+  // Org Admin / Admin see all unless a user override exists. platform_admin
+  // never unlocks tenant PMO data.
   if (hasAdminAccessRole(userRoles)) {
     return emptyVisibilityScope("all");
   }
@@ -571,6 +575,10 @@ export function filterProjectsByVisibility<T extends VisibilityProject>(
   cfg: ProjectVisibilityConfig,
   streams?: VisibilityStream[],
 ): T[] {
+  if (isPlatformOperatorOnly(userRoles)) {
+    return [];
+  }
+
   if (userId) {
     const userRule = cfg.user_rules.find((r) => r.user_id === userId);
     if (userRule) {
@@ -578,8 +586,11 @@ export function filterProjectsByVisibility<T extends VisibilityProject>(
     }
   }
 
-  // platform_admin is org-scoped by RLS; within the fetched org set they see all
-  // (same as org admins) unless a user override exists.
+  if (isPlatformOperatorOnly(userRoles)) {
+    return [];
+  }
+
+  // Org admins see all unless a user override exists.
   if (hasAdminAccessRole(userRoles)) {
     return projects;
   }

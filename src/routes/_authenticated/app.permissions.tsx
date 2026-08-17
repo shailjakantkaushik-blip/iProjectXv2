@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth, isAdmin as checkIsAdmin, isPlatformAdmin } from "@/lib/auth-context";
+import { useAuth, isAdmin as checkIsAdmin } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
 import {
   CAPABILITIES,
@@ -30,7 +30,7 @@ function PermissionsPage() {
   const rolesQ = useOrgRoles(orgId);
   const qc = useQueryClient();
 
-  const canManage = checkIsAdmin(myRoles) || isPlatformAdmin(myRoles);
+  const canManage = checkIsAdmin(myRoles);
   const roles = assignableOrgRoles(rolesQ.data ?? []);
 
   const [newKey, setNewKey] = useState("");
@@ -39,7 +39,9 @@ function PermissionsPage() {
 
   const map = useMemo(() => {
     const m = new Map<string, { can_view: boolean; can_edit: boolean }>();
-    rows.forEach((r) => m.set(`${r.role}::${r.table_name}`, { can_view: r.can_view, can_edit: r.can_edit }));
+    rows.forEach((r) =>
+      m.set(`${r.role}::${r.table_name}`, { can_view: r.can_view, can_edit: r.can_edit }),
+    );
     return m;
   }, [rows]);
 
@@ -95,7 +97,10 @@ function PermissionsPage() {
   const deleteRole = useMutation({
     mutationFn: async (role: OrgRole) => {
       if (role.is_system) throw new Error("System roles cannot be deleted");
-      const { error } = await supabase.from("org_roles" as any).delete().eq("id", role.id);
+      const { error } = await supabase
+        .from("org_roles" as any)
+        .delete()
+        .eq("id", role.id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -105,9 +110,20 @@ function PermissionsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const flip = (role: string, table_name: string, field: "can_view" | "can_edit", next: boolean) => {
+  const flip = (
+    role: string,
+    table_name: string,
+    field: "can_view" | "can_edit",
+    next: boolean,
+  ) => {
     const cur = map.get(`${role}::${table_name}`) ?? { can_view: true, can_edit: false };
-    const payload = { role, table_name, can_view: cur.can_view, can_edit: cur.can_edit, [field]: next };
+    const payload = {
+      role,
+      table_name,
+      can_view: cur.can_view,
+      can_edit: cur.can_edit,
+      [field]: next,
+    };
     if (field === "can_edit" && next && !payload.can_view) payload.can_view = true;
     if (field === "can_view" && !next) payload.can_edit = false;
     mut.mutate(payload);

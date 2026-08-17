@@ -17,13 +17,7 @@ import {
 } from "@/lib/auth-chrome-cache";
 
 export type AppRole =
-  | "admin"
-  | "org_admin"
-  | "bu_lead"
-  | "pm"
-  | "executive"
-  | "platform_admin"
-  | (string & {});
+  "admin" | "org_admin" | "bu_lead" | "pm" | "executive" | "platform_admin" | (string & {});
 
 export interface Profile {
   id: string;
@@ -391,4 +385,18 @@ export function isAdmin(roles: AppRole[]) {
 
 export function isPlatformAdmin(roles: AppRole[]) {
   return roles.includes("platform_admin");
+}
+
+/** True when the user has at least one tenant role (not platform_admin alone). */
+export function hasTenantOrgRole(roles: AppRole[]) {
+  return roles.some((r) => r !== "platform_admin");
+}
+
+/** Platform operator with no tenant org role — must not see PMO data. */
+export function isPlatformOperatorOnly(roles: AppRole[]) {
+  return isPlatformAdmin(roles) && !hasTenantOrgRole(roles);
+}
+
+export function workspaceHomePath(roles: AppRole[]) {
+  return isPlatformOperatorOnly(roles) ? "/platform" : "/app";
 }

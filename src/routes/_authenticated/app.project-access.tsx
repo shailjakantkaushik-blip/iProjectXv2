@@ -667,7 +667,10 @@ function ProjectAccessPage() {
     enabled: !!organization?.id && canEdit,
   });
 
-  const configurableMembers = members;
+  const configurableMembers = useMemo(
+    () => members.filter((m) => m.roles.some((r) => r !== "platform_admin")),
+    [members],
+  );
 
   useEffect(() => {
     void load();
@@ -771,7 +774,7 @@ function ProjectAccessPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeading
           title="Project data access"
-          subtitle={`Control project visibility by role and by user in ${organization.name}. Admins see all unless you set a user override — they can still change it here.`}
+          subtitle={`Control project visibility by role and by user in ${organization.name}. Org admins see all unless you set a user override. Platform admin cannot view organisation PMO data.`}
         />
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
@@ -798,8 +801,9 @@ function ProjectAccessPage() {
           <li>
             Set defaults by <strong className="text-foreground">role</strong> (Executive, BU Lead,
             PM), then optionally override a <strong className="text-foreground">direct user</strong>
-            — including Admin / Org Admin. User rules replace that person&apos;s role (or admin)
-            grants. Admins can always reopen this page and change the override.
+            — including Org Admin / Admin. Platform operators are not given tenant PMO access. User
+            rules replace that person&apos;s role (or admin) grants. Org admins can always reopen
+            this page and change the override.
           </li>
           <li>
             Hierarchy: <strong className="text-foreground">{STRATEGIC_ALIGNMENT_LABEL}</strong> →{" "}
@@ -810,8 +814,9 @@ function ProjectAccessPage() {
             child. Filter the tree, then tick the level that person or role should use.
           </li>
           <li>
-            Stream grants unlock the parent project in the database (RLS is project-level). Admins
-            with no user override still see everything in this organisation.
+            Stream grants unlock the parent project in the database (RLS is project-level). Org
+            admins with no user override still see everything in this organisation. Platform admin
+            cannot view organisation PMO data.
           </li>
           <li>
             Also see{" "}
