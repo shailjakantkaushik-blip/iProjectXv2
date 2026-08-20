@@ -287,8 +287,8 @@ export function ProjectPhaseTimeline({
     <SectionFrame exportName="phase-timeline" exportTitle="Phase timeline">
       <SectionTitle>Phase timeline by stream</SectionTitle>
       <p className="mt-1 text-sm text-muted-foreground">
-        One lane per stream. Bars are delivery-method phases (plan dates from Estimation Planning
-        when set, otherwise stage-gate planned dates). Colour follows gate status when live.
+        One row per phase, grouped by stream. Bars use plan dates from Estimation Planning when set,
+        otherwise stage-gate planned dates. Colour follows gate status when live.
       </p>
       <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
@@ -328,7 +328,7 @@ export function ProjectPhaseTimeline({
         <div className="mt-4 overflow-x-auto">
           <div className="min-w-[720px]">
             <div className="flex text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              <div className="w-40 shrink-0" />
+              <div className="w-48 shrink-0" />
               <div
                 className="grid flex-1"
                 style={{ gridTemplateColumns: `repeat(${monthCount}, minmax(0, 1fr))` }}
@@ -345,7 +345,7 @@ export function ProjectPhaseTimeline({
               </div>
             </div>
             <div className="mb-2 flex text-[10px] text-muted-foreground">
-              <div className="w-40 shrink-0 pr-2">Stream</div>
+              <div className="w-48 shrink-0 pr-2">Phase</div>
               <div
                 className="grid flex-1"
                 style={{ gridTemplateColumns: `repeat(${monthCount}, minmax(0, 1fr))` }}
@@ -357,38 +357,75 @@ export function ProjectPhaseTimeline({
                 ))}
               </div>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-6">
               {lanes.map((lane) => (
-                <div key={lane.id} className="flex items-center gap-2">
-                  <div className="w-40 shrink-0">
-                    <div className="truncate text-xs font-semibold" title={lane.label}>
+                <div key={lane.id}>
+                  <div className="mb-2 flex items-baseline gap-2 border-b border-border/70 pb-1">
+                    <span className="text-xs font-semibold tracking-tight" title={lane.label}>
                       {lane.label}
-                    </div>
-                    <div className="font-mono text-[10px] text-muted-foreground">{lane.code}</div>
+                    </span>
+                    <span className="font-mono text-[10px] text-muted-foreground">{lane.code}</span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {lane.segs.length} phase{lane.segs.length === 1 ? "" : "s"}
+                    </span>
                   </div>
-                  <div className="relative h-9 flex-1 rounded bg-muted/50">
-                    {lane.segs.map((seg, i) => {
-                      if (!seg.start || !seg.end) return null;
-                      const left = pct(seg.start);
-                      const right = pct(seg.end);
-                      const width = Math.max(1.6, right - left);
-                      return (
-                        <div
-                          key={`${lane.id}-${seg.name}`}
-                          className="absolute top-1.5 h-6 overflow-hidden rounded-sm text-[9px] font-semibold text-white"
-                          style={{
-                            left: `${left}%`,
-                            width: `${width}%`,
-                            background: statusFill(seg, i),
-                            boxShadow: seg.current ? "inset 0 0 0 2px rgba(15,23,42,0.55)" : undefined,
-                            opacity: seg.done || seg.current || seg.rejected ? 1 : 0.82,
-                          }}
-                          title={`${seg.name}: ${seg.start} → ${seg.end}${seg.status ? ` · ${seg.status}` : ""}`}
-                        >
-                          <span className="block truncate px-1 leading-6">{seg.name}</span>
-                        </div>
-                      );
-                    })}
+                  <div className="space-y-1.5">
+                    {lane.segs.length ? (
+                      lane.segs.map((seg, i) => {
+                        const left = pct(seg.start);
+                        const right = pct(seg.end);
+                        const width = Math.max(1.6, right - left);
+                        const datedSeg = Boolean(seg.start && seg.end);
+                        return (
+                          <div key={`${lane.id}-${seg.name}`} className="flex items-center gap-2">
+                            <div className="w-48 shrink-0 pr-1">
+                              <div className="truncate text-[11px] font-medium" title={seg.name}>
+                                {seg.name}
+                              </div>
+                              <div className="truncate text-[10px] text-muted-foreground">
+                                {seg.status || "Pending"}
+                                {datedSeg ? ` · ${seg.start} → ${seg.end}` : ""}
+                              </div>
+                            </div>
+                            <div className="relative h-8 flex-1 overflow-hidden rounded-md bg-muted/45">
+                              <div
+                                className="pointer-events-none absolute inset-0 grid"
+                                style={{
+                                  gridTemplateColumns: `repeat(${monthCount}, minmax(0, 1fr))`,
+                                }}
+                              >
+                                {months.map((m) => (
+                                  <div key={m.key} className="border-l border-border/40 first:border-l-0" />
+                                ))}
+                              </div>
+                              {datedSeg ? (
+                                <div
+                                  className="absolute top-1.5 h-5 overflow-hidden rounded-sm text-[9px] font-semibold text-white"
+                                  style={{
+                                    left: `${left}%`,
+                                    width: `${width}%`,
+                                    background: statusFill(seg, i),
+                                    boxShadow: seg.current
+                                      ? "inset 0 0 0 2px rgba(15,23,42,0.55)"
+                                      : undefined,
+                                    opacity: seg.done || seg.current || seg.rejected ? 1 : 0.88,
+                                  }}
+                                  title={`${seg.name}: ${seg.start} → ${seg.end}${seg.status ? ` · ${seg.status}` : ""}`}
+                                >
+                                  <span className="block truncate px-1 leading-5">{seg.name}</span>
+                                </div>
+                              ) : (
+                                <span className="absolute inset-y-0 left-2 flex items-center text-[10px] text-muted-foreground">
+                                  No dates
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <p className="pl-1 text-[11px] text-muted-foreground">No phases on this stream.</p>
+                    )}
                   </div>
                 </div>
               ))}
