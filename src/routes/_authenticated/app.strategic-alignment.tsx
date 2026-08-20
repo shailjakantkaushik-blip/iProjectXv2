@@ -21,6 +21,11 @@ import {
 import { effectiveRag, isRagOverridden } from "@/lib/ops-enhancements";
 import { explainRag } from "@/lib/explain-metric";
 import { isDecisionAwaiting } from "@/lib/decision-approval";
+import { StageGateStatusFilter } from "@/components/stage-gate-status-filter";
+import {
+  projectMatchesGateStatusFilter,
+  type GateStatusFilter,
+} from "@/lib/stage-gate-approval";
 
 export const Route = createFileRoute("/_authenticated/app/strategic-alignment")({
   head: () => ({
@@ -155,6 +160,7 @@ function StrategicAlignmentPage() {
   const orgId = organization?.id;
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   const [openedOnce, setOpenedOnce] = useState(false);
+  const [gateStatusByName, setGateStatusByName] = useState<GateStatusFilter>({});
 
   const {
     data: projects = [],
@@ -206,6 +212,29 @@ function StrategicAlignmentPage() {
     enabled: !!orgId,
     staleTime: 15_000,
   });
+
+  const { data: gateDefs = [] } = useQuery({
+    queryKey: ["stage_gate_definitions", orgId],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("stage_gate_definitions")
+          .select("gate_name")
+          .eq("org_id", orgId!)
+          .eq("is_active", true)
+          .order("sort_order", { ascending: true })
+      ).data ?? [],
+    enabled: !!orgId,
+    staleTime: 15_000,
+  });
+
+  const orgPhases = useMemo(
+    () =>
+      (gateDefs as { gate_name?: string | null }[])
+        .map((d) => String(d.gate_name || "").trim())
+        .filter(Boolean),
+    [gateDefs],
+  );
 
   const { data: raidRows = { risks: [], actions: [], issues: [], decisions: [] } } = useQuery({
     queryKey: ["alignment-raid", orgId],
@@ -317,9 +346,10 @@ function StrategicAlignmentPage() {
 
     const alignmentMap = new Map<string, Map<string, ProjectNode[]>>();
     for (const p of projects as Array<Record<string, unknown>>) {
+      const id = String(p.id);
+      if (!projectMatchesGateStatusFilter(gates as never, id, gateStatusByName)) continue;
       const alignment = String(p.portfolio || "").trim() || "Unassigned";
       const program = String(p.program || "").trim() || "Unassigned";
-      const id = String(p.id);
       const health = computeProjectHealth(p as never, (gatesByProject.get(id) ?? []) as never, {
         risks: (risksByProject.get(id) ?? []) as never,
       });
@@ -375,7 +405,7 @@ function StrategicAlignmentPage() {
       };
     });
     return alignments;
-  }, [projects, streams, raidByProject, gatesByProject, risksByProject]);
+  }, [projects, streams, raidByProject, gatesByProject, risksByProject, gates, gateStatusByName]);
 
   const defaultOpen = useMemo(() => {
     const keys = new Set<string>();
@@ -441,6 +471,14 @@ function StrategicAlignmentPage() {
         }
       />
 
+      <div className="mb-3">
+        <StageGateStatusFilter
+          gateNames={orgPhases}
+          value={gateStatusByName}
+          onChange={setGateStatusByName}
+        />
+      </div>
+
       {isError ? (
         <SectionFrame>
           <p className="text-sm text-destructive">{(error as Error)?.message || "Could not load projects."}</p>
@@ -452,7 +490,11 @@ function StrategicAlignmentPage() {
 
       {!tree.length && !isError ? (
         <SectionFrame>
-          <p className="text-sm text-muted-foreground">No projects in this organisation yet.</p>
+          <p className="text-sm text-muted-foreground">
+            {projects.length
+              ? "No projects match the stage gate filter."
+              : "No projects in this organisation yet."}
+          </p>
         </SectionFrame>
       ) : null}
 

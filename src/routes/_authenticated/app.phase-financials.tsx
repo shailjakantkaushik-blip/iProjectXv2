@@ -114,8 +114,8 @@ function PhaseFinancialsPage() {
   });
 
   const filtered = useMemo(
-    () => applyFilters(projects, filters, { phaseMode: "ignore" }),
-    [projects, filters],
+    () => applyFilters(projects, filters, { phaseMode: "ignore", gates }),
+    [projects, filters, gates],
   );
   const filteredIds = useMemo(() => new Set(filtered.map((p: any) => p.id)), [filtered]);
 

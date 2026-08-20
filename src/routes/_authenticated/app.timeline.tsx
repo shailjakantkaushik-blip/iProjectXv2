@@ -19,6 +19,11 @@ import {
 } from "@/lib/project-streams";
 import { fetchStageGates } from "@/lib/stage-gates";
 import { displayRag } from "@/lib/ops-enhancements";
+import { StageGateStatusFilter } from "@/components/stage-gate-status-filter";
+import {
+  projectMatchesGateStatusFilter,
+  type GateStatusFilter,
+} from "@/lib/stage-gate-approval";
 
 export const Route = createFileRoute("/_authenticated/app/timeline")({
   component: TimelinePage,
@@ -130,6 +135,7 @@ function TimelinePage() {
   const [fSchedule, setFSchedule] = useState("All"); // On Track | Delayed | Ahead
   const [fSearch, setFSearch] = useState("");
   const [fPids, setFPids] = useState<string[]>([]);   // multi-select of project ids
+  const [gateStatusByName, setGateStatusByName] = useState<GateStatusFilter>({});
   const [showGates, setShowGates] = useState(true);
   const [showProjectTimeline, setShowProjectTimeline] = useState(false);
 
@@ -156,15 +162,17 @@ function TimelinePage() {
       if (fMethod !== "All" && (p.delivery_method || "") !== fMethod) return false;
       if (fSchedule !== "All" && scheduleStatus(p) !== fSchedule) return false;
       if (q && !(`${p.name || ""} ${p.project_code || ""}`.toLowerCase().includes(q))) return false;
+      if (!projectMatchesGateStatusFilter(gates as never, p.id, gateStatusByName)) return false;
       return true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects, fPids, fProgram, fSponsor, fPhase, fRag, fPriority, fMethod, fSchedule, fSearch, gatesByProject, orgPhases]);
+  }, [projects, fPids, fProgram, fSponsor, fPhase, fRag, fPriority, fMethod, fSchedule, fSearch, gatesByProject, orgPhases, gates, gateStatusByName]);
 
   const resetFilters = () => {
     setFFy("All"); setFProgram("All"); setFSponsor("All"); setFPhase("All");
     setFRag("All"); setFPriority("All"); setFMethod("All"); setFSchedule("All"); setFSearch("");
     setFPids([]);
+    setGateStatusByName({});
   };
 
   // ---------- Combined planned + actual dataset (stream lanes when enabled) ----------
@@ -310,6 +318,11 @@ function TimelinePage() {
             <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Projects</div>
             <ProjectPicker projects={projects} selected={fPids} onChange={setFPids} />
           </div>
+          <StageGateStatusFilter
+            gateNames={orgPhases}
+            value={gateStatusByName}
+            onChange={setGateStatusByName}
+          />
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">

@@ -79,8 +79,18 @@ function CostVsBenefitPage() {
     () => (gateDefs as { gate_name?: string }[]).map((g) => g.gate_name).filter(Boolean) as string[],
     [gateDefs],
   );
+  const { data: gates = [] } = useQuery({
+    queryKey: ["stage_gates", organization?.id],
+    queryFn: async () =>
+      (await supabase.from("stage_gates").select("id,project_id,stream_id,gate_name,status")).data ??
+      [],
+    enabled: !!organization,
+  });
 
-  const filtered = useMemo(() => applyFilters(projects, filters), [projects, filters]);
+  const filtered = useMemo(
+    () => applyFilters(projects, filters, { gates }),
+    [projects, filters, gates],
+  );
 
   const scored = useMemo(
     () =>

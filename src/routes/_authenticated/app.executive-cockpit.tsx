@@ -239,13 +239,6 @@ function ExecutiveCockpit() {
     staleTime: 60_000,
   });
   const allProjects = (projectsQ.data?.rows ?? []) as any[];
-  const projects = useMemo(
-    () => applyExecutivePortfolioFilters(allProjects, filters, fyStartMonth),
-    [allProjects, filters, fyStartMonth],
-  );
-  const filteredIds = useMemo(() => new Set(projects.map((p: any) => p.id)), [projects]);
-  const filtersOn = executiveFiltersActive(filters);
-
   const { data: kpis } = useQuery({
     queryKey: ["portfolio-kpis", orgId],
     queryFn: () => fetchKpis({ data: { orgId: orgId! } }),
@@ -262,6 +255,12 @@ function ExecutiveCockpit() {
       ).data ?? [],
     enabled: !!orgId,
   });
+  const projects = useMemo(
+    () => applyExecutivePortfolioFilters(allProjects, filters, fyStartMonth, { gates }),
+    [allProjects, filters, fyStartMonth, gates],
+  );
+  const filteredIds = useMemo(() => new Set(projects.map((p: any) => p.id)), [projects]);
+  const filtersOn = executiveFiltersActive(filters);
   const { data: benefits = [] } = useQuery({
     queryKey: ["benefits", orgId],
     queryFn: async () =>

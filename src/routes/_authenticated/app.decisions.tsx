@@ -8,7 +8,16 @@ import {
   projectOptionsQueryKey,
   compareProjectsByCodeName,
 } from "@/lib/project-options";
-import { sortGatesByOrgOrder } from "@/lib/project-phase";
+import {
+  ensureProjectLevelGates,
+  projectLevelGates,
+  setStageGateStatus,
+} from "@/lib/stage-gate-approval";
+import {
+  deliveryMethodsQueryKey,
+  fetchDeliveryMethods,
+} from "@/lib/delivery-methods";
+import { StageGateApprovalSelect } from "@/components/stage-gate-approval-select";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -101,6 +110,12 @@ function DecisionsPage() {
     enabled: !!orgId,
   });
 
+  const { data: methods = [] } = useQuery({
+    queryKey: deliveryMethodsQueryKey(orgId),
+    queryFn: () => fetchDeliveryMethods(orgId!),
+    enabled: !!orgId,
+  });
+
   const { data: decisions = [] } = useQuery({
     queryKey: ["decisions", orgId],
     queryFn: async () => {
@@ -141,6 +156,16 @@ function DecisionsPage() {
     onSuccess: () => {
       invalidate();
       toast.success("Decision updated");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const setGateStatus = useMutation({
+    mutationFn: (vars: { gateId: string; projectId: string; status: string }) =>
+      setStageGateStatus(vars),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Stage gate approval updated");
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -260,14 +285,27 @@ function DecisionsPage() {
     });
   };
 
-  const gatesForProject = useMemo(
-    () =>
-      sortGatesByOrgOrder(
-        (gates as any[]).filter((g) => g.project_id === form.project_id),
-        orgPhases,
-      ),
-    [gates, form.project_id, orgPhases],
-  );
+  const gatesForProject = useMemo(() => {
+    if (!form.project_id) return [];
+    return projectLevelGates(gates as never, form.project_id, orgPhases);
+  }, [gates, form.project_id, orgPhases]);
+
+  useEffect(() => {
+    if (!orgId || !form.project_id || !methods.length) return;
+    const proj = projectById.get(form.project_id) as { delivery_method?: string | null } | undefined;
+    void ensureProjectLevelGates({
+      orgId,
+      projectId: form.project_id,
+      deliveryMethodName: proj?.delivery_method,
+      methods,
+    })
+      .then(() => {
+        void qc.invalidateQueries({ queryKey: ["stage_gates"] });
+      })
+      .catch(() => {
+        /* insert may be denied */
+      });
+  }, [orgId, form.project_id, methods, projectById, qc]);
 
   const visibleDecisions = useMemo(() => {
     if (!awaitingOnly || !userId) return decisions;
@@ -296,7 +334,7 @@ function DecisionsPage() {
       },
       {
         key: "stage_gate",
-        label: "Stage Gate",
+        label: "Stage gate approval",
         getValue: (d) => {
           const gate = d.stage_gate_id ? (gateById.get(d.stage_gate_id) as any) : null;
           return gate ? `${gate.gate_name} (${gate.status || "Pending"})` : "";
@@ -417,19 +455,22 @@ function DecisionsPage() {
               </option>
             ))}
           </select>
-          <select
-            className="st-input"
-            value={form.stage_gate_id}
-            onChange={(e) => setForm((f) => ({ ...f, stage_gate_id: e.target.value }))}
-            disabled={!form.project_id}
-          >
-            <option value="">— Stage Gate (optional) —</option>
-            {gatesForProject.map((g: any) => (
-              <option key={g.id} value={g.id}>
-                {g.gate_name} · {g.status || "Pending"}
-              </option>
-            ))}
-          </select>
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-[11px] font-semibold text-muted-foreground">
+              Stage gate approval
+            </label>
+            <StageGateApprovalSelect
+              gates={gatesForProject}
+              gateId={form.stage_gate_id}
+              onGateId={(stage_gate_id) => setForm((f) => ({ ...f, stage_gate_id }))}
+              onStatus={(gateId, status) =>
+                form.project_id
+                  ? setGateStatus.mutate({ gateId, projectId: form.project_id, status })
+                  : undefined
+              }
+              disabled={!form.project_id || setGateStatus.isPending}
+            />
+          </div>
           <input
             className="st-input"
             placeholder="Forum"
@@ -688,7 +729,40 @@ function DecisionsPage() {
                             </div>
                           ) : null}
                         </td>
-                        <td>{gate ? `${gate.gate_name} (${gate.status || "Pending"})` : "—"}</td>
+                        <td className="min-w-[14rem]">
+                          <StageGateApprovalSelect
+                            compact
+                            gates={(() => {
+                              const list = projectLevelGates(
+                                gates as never,
+                                d.project_id,
+                                orgPhases,
+                              );
+                              if (
+                                d.stage_gate_id &&
+                                !list.some((g: any) => g.id === d.stage_gate_id)
+                              ) {
+                                if (gate) list.push(gate);
+                              }
+                              return list;
+                            })()}
+                            gateId={d.stage_gate_id || ""}
+                            onGateId={(id) =>
+                              updateDecision.mutate({
+                                id: d.id,
+                                patch: { stage_gate_id: id || null },
+                              })
+                            }
+                            onStatus={(gateId, status) =>
+                              setGateStatus.mutate({
+                                gateId,
+                                projectId: d.project_id,
+                                status,
+                              })
+                            }
+                            disabled={setGateStatus.isPending || updateDecision.isPending}
+                          />
+                        </td>
                         <td>
                           <select
                             className={`st-input !py-0.5 !text-xs ${

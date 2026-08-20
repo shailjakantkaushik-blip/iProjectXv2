@@ -91,6 +91,13 @@ function RiskRoadmapPage() {
       (gateDefs as { gate_name?: string }[]).map((g) => g.gate_name).filter(Boolean) as string[],
     [gateDefs],
   );
+  const { data: gates = [] } = useQuery({
+    queryKey: ["stage_gates", organization?.id],
+    queryFn: async () =>
+      (await supabase.from("stage_gates").select("id,project_id,stream_id,gate_name,status")).data ??
+      [],
+    enabled: !!organization,
+  });
   const { data: risks = [] } = useQuery({
     queryKey: ["risks", organization?.id],
     queryFn: async () =>
@@ -99,7 +106,10 @@ function RiskRoadmapPage() {
   });
 
   const projectMap = useMemo(() => new Map(projects.map((p: any) => [p.id, p])), [projects]);
-  const filteredProjects = useMemo(() => applyFilters(projects, filters), [projects, filters]);
+  const filteredProjects = useMemo(
+    () => applyFilters(projects, filters, { gates }),
+    [projects, filters, gates],
+  );
   const projectIds = useMemo(
     () => new Set(filteredProjects.map((p: any) => p.id)),
     [filteredProjects],

@@ -6,6 +6,7 @@ import { useAuth, isAdmin } from "@/lib/auth-context";
 import { useTablePermission } from "@/lib/permissions";
 import { ProjectForm, type ProjectFormValues } from "@/components/project-form";
 import { ProjectDecisionsPanel } from "@/components/project-decisions-panel";
+import { ProjectStageGateApproval } from "@/components/project-stage-gate-approval";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -16,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
 import { toast } from "sonner";
-import { Plus, Trash2 } from "lucide-react";
+import { List, Plus, Trash2 } from "lucide-react";
 import {
   fetchProjectOptions,
   projectOptionsQueryKey,
@@ -332,6 +333,15 @@ function ProjectDetail() {
     name?: string | null;
     project_code?: string | null;
   }[];
+  const allProjectsLink = (
+    <Button asChild size="sm" variant="outline">
+      <Link to="/app/projects/">
+        <List className="mr-2 h-4 w-4" />
+        All projects
+      </Link>
+    </Button>
+  );
+
   const projectPicker = (
     <Select value={id} onValueChange={switchProject}>
       <SelectTrigger className="w-72" aria-label="Switch project">
@@ -359,7 +369,10 @@ function ProjectDetail() {
   if (!project) {
     return (
       <div className="mx-auto max-w-5xl space-y-4">
-        <div className="flex flex-wrap items-center gap-2">{projectPicker}</div>
+        <div className="flex flex-wrap items-center gap-2">
+          {allProjectsLink}
+          {projectPicker}
+        </div>
         <p className="text-sm text-muted-foreground">
           Project not found or you don't have access. Choose another project from the list.
         </p>
@@ -402,6 +415,7 @@ function ProjectDetail() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {allProjectsLink}
           {projectPicker}
           {(admin || canEdit) && (
             <Button asChild size="sm" variant="outline">
@@ -484,6 +498,15 @@ function ProjectDetail() {
               ; setting Planned Start fills empty timeline dates from that estimate.
             </p>
           </SectionFrame>
+          {organization?.id ? (
+            <ProjectStageGateApproval
+              orgId={organization.id}
+              projectId={id}
+              deliveryMethodId={project.delivery_method_id}
+              deliveryMethodName={project.delivery_method}
+              canEdit={canEdit}
+            />
+          ) : null}
           <ProjectForm
             defaultValues={project as unknown as Partial<ProjectFormValues>}
             onSubmit={submit}
@@ -548,6 +571,8 @@ function ProjectDetail() {
           projectName={project.name}
           program={project.program}
           sponsor={project.sponsor}
+          deliveryMethodId={project.delivery_method_id}
+          deliveryMethodName={project.delivery_method}
           canEdit={decisionPerm.canEdit}
         />
       )}

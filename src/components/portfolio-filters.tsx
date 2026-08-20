@@ -1,8 +1,18 @@
 import { useMemo, useState, useRef, useEffect, useCallback, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
+import { useQuery } from "@tanstack/react-query";
 import { compareProjectsByCodeName } from "@/lib/project-options";
 import { fyOf, projectScheduleEnd, projectScheduleStart } from "@/lib/project-dates";
 import { STRATEGIC_ALIGNMENT_LABEL, displayRag } from "@/lib/ops-enhancements";
+import { StageGateStatusFilter } from "@/components/stage-gate-status-filter";
+import {
+  gateStatusFilterActive,
+  projectMatchesGateStatusFilter,
+  type GateStatusFilter,
+  type StageGateApprovalLike,
+} from "@/lib/stage-gate-approval";
+import { useAuth } from "@/lib/auth-context";
+import { supabase } from "@/integrations/supabase/client";
 
 export type PortfolioFilterState = {
   portfolio: string;
@@ -12,6 +22,8 @@ export type PortfolioFilterState = {
   phase: string;
   search: string;
   projectIds: string[]; // empty = all
+  /** Gate name → selected approval statuses (hover multi-select). */
+  gateStatusByName: GateStatusFilter;
 };
 
 export const emptyFilters: PortfolioFilterState = {
@@ -22,6 +34,7 @@ export const emptyFilters: PortfolioFilterState = {
   phase: "All",
   search: "",
   projectIds: [],
+  gateStatusByName: {},
 };
 
 export type ApplyFiltersOptions = {
@@ -30,6 +43,7 @@ export type ApplyFiltersOptions = {
    * `ignore`: leave phase filtering to the page (e.g. stage-gate spend windows).
    */
   phaseMode?: "current" | "ignore";
+  gates?: StageGateApprovalLike[];
 };
 
 export function applyFilters<T extends Record<string, any>>(
@@ -40,6 +54,8 @@ export function applyFilters<T extends Record<string, any>>(
   const q = f.search.trim().toLowerCase();
   const idSet = f.projectIds.length ? new Set(f.projectIds) : null;
   const phaseMode = opts?.phaseMode ?? "current";
+  const gates = opts?.gates ?? [];
+  const gateFilter = f.gateStatusByName || {};
   return rows.filter((p) => {
     if (idSet && !idSet.has(p.id)) return false;
     if (f.portfolio !== "All" && (p.portfolio || "Unassigned") !== f.portfolio) return false;
@@ -50,6 +66,12 @@ export function applyFilters<T extends Record<string, any>>(
       phaseMode === "current" &&
       f.phase !== "All" &&
       (p.current_phase || "—") !== f.phase
+    ) {
+      return false;
+    }
+    if (
+      gateStatusFilterActive(gateFilter) &&
+      !projectMatchesGateStatusFilter(gates, p.id, gateFilter)
     ) {
       return false;
     }
@@ -381,6 +403,21 @@ export function PortfolioFilters({
   phaseOptions?: string[];
   phaseAllLabel?: string;
 }) {
+  const { organization } = useAuth();
+  const orgId = organization?.id;
+  const { data: fetchedGateDefs = [] } = useQuery({
+    queryKey: ["stage_gate_definitions", orgId],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("stage_gate_definitions")
+          .select("gate_name")
+          .eq("org_id", orgId!)
+          .eq("is_active", true)
+          .order("sort_order", { ascending: true })
+      ).data ?? [],
+    enabled: !!orgId && !phaseOptions?.length,
+  });
   const portfolios = useMemo(
     () => Array.from(new Set(projects.map((p) => p.portfolio || "Unassigned"))).sort(),
     [projects],
@@ -411,6 +448,19 @@ export function PortfolioFilters({
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
   }, [projects, phaseOptions]);
 
+  const gateChipNames = useMemo(() => {
+    if (phaseOptions?.length) return phases.filter((p) => p && p !== "—");
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const d of fetchedGateDefs as { gate_name?: string | null }[]) {
+      const n = String(d.gate_name || "").trim();
+      if (!n || seen.has(n)) continue;
+      seen.add(n);
+      out.push(n);
+    }
+    return out.length ? out : phases.filter((p) => p && p !== "—");
+  }, [phaseOptions, phases, fetchedGateDefs]);
+
   const set = (k: keyof PortfolioFilterState, v: any) => onChange({ ...value, [k]: v });
 
   const box =
@@ -423,7 +473,8 @@ export function PortfolioFilters({
     value.rag !== "All" ||
     value.phase !== "All" ||
     !!value.search ||
-    value.projectIds.length > 0;
+    value.projectIds.length > 0 ||
+    gateStatusFilterActive(value.gateStatusByName);
 
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface/60 p-2">
@@ -473,6 +524,11 @@ export function PortfolioFilters({
           </option>
         ))}
       </select>
+      <StageGateStatusFilter
+        gateNames={gateChipNames}
+        value={value.gateStatusByName || {}}
+        onChange={(gateStatusByName) => onChange({ ...value, gateStatusByName })}
+      />
       {hasActive && (
         <button
           type="button"
@@ -499,6 +555,7 @@ export type ExecutivePortfolioFilterState = {
   projectIds: string[];
   /** Empty = all fiscal years. */
   fySelected: string[];
+  gateStatusByName: GateStatusFilter;
 };
 
 export const emptyExecutiveFilters: ExecutivePortfolioFilterState = {
@@ -509,6 +566,7 @@ export const emptyExecutiveFilters: ExecutivePortfolioFilterState = {
   status: "All",
   projectIds: [],
   fySelected: [],
+  gateStatusByName: {},
 };
 
 export function executiveFiltersActive(f: ExecutivePortfolioFilterState): boolean {
@@ -519,7 +577,8 @@ export function executiveFiltersActive(f: ExecutivePortfolioFilterState): boolea
     f.sponsor !== "All" ||
     f.priority !== "All" ||
     f.status !== "All" ||
-    f.fySelected.length > 0
+    f.fySelected.length > 0 ||
+    gateStatusFilterActive(f.gateStatusByName)
   );
 }
 
@@ -534,6 +593,7 @@ export function executiveFilterScopeKey(f: ExecutivePortfolioFilterState): strin
     f.status,
     [...f.projectIds].sort().join(","),
     [...f.fySelected].sort().join(","),
+    JSON.stringify(f.gateStatusByName || {}),
   ].join("|");
 }
 
@@ -541,9 +601,12 @@ export function applyExecutivePortfolioFilters<T extends Record<string, any>>(
   projects: T[],
   f: ExecutivePortfolioFilterState,
   fyStartMonth: number,
+  opts?: { gates?: StageGateApprovalLike[] },
 ): T[] {
   const idSet = f.projectIds.length ? new Set(f.projectIds) : null;
   const fySet = f.fySelected.length ? new Set(f.fySelected) : null;
+  const gates = opts?.gates ?? [];
+  const gateFilter = f.gateStatusByName || {};
   return projects.filter((p) => {
     if (idSet && !idSet.has(p.id)) return false;
     if (f.portfolio !== "All" && (p.portfolio || "Unassigned") !== f.portfolio) return false;
@@ -556,6 +619,12 @@ export function applyExecutivePortfolioFilters<T extends Record<string, any>>(
       const b = fyOf(projectScheduleEnd(p), fyStartMonth);
       if ((!a || !fySet.has(a)) && (!b || !fySet.has(b))) return false;
     }
+    if (
+      gateStatusFilterActive(gateFilter) &&
+      !projectMatchesGateStatusFilter(gates, p.id, gateFilter)
+    ) {
+      return false;
+    }
     return true;
   });
 }
@@ -566,13 +635,42 @@ export function ExecutivePortfolioFilters({
   onChange,
   fyStartMonth = 4,
   title = "Filters",
+  gateNames,
 }: {
   projects: any[];
   value: ExecutivePortfolioFilterState;
   onChange: (v: ExecutivePortfolioFilterState) => void;
   fyStartMonth?: number;
   title?: string;
+  gateNames?: string[];
 }) {
+  const { organization } = useAuth();
+  const orgId = organization?.id;
+  const { data: defs = [] } = useQuery({
+    queryKey: ["stage_gate_definitions", orgId],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("stage_gate_definitions")
+          .select("gate_name")
+          .eq("org_id", orgId!)
+          .eq("is_active", true)
+          .order("sort_order", { ascending: true })
+      ).data ?? [],
+    enabled: !!orgId && !gateNames?.length,
+  });
+  const resolvedGateNames = useMemo(() => {
+    if (gateNames?.length) return gateNames;
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const d of defs as { gate_name?: string | null }[]) {
+      const n = String(d.gate_name || "").trim();
+      if (!n || seen.has(n)) continue;
+      seen.add(n);
+      out.push(n);
+    }
+    return out;
+  }, [gateNames, defs]);
   const opts = useCallback(
     (col: string) =>
       Array.from(new Set(projects.map((p: any) => p[col]).filter(Boolean))).sort() as string[],
@@ -643,6 +741,11 @@ export function ExecutivePortfolioFilters({
           options={fyOptions}
           selected={value.fySelected}
           onChange={(v) => set("fySelected", v)}
+        />
+        <StageGateStatusFilter
+          gateNames={resolvedGateNames}
+          value={value.gateStatusByName || {}}
+          onChange={(gateStatusByName) => onChange({ ...value, gateStatusByName })}
         />
         {executiveFiltersActive(value) && (
           <button
