@@ -12,7 +12,12 @@ import {
   type ProjectFinanceLike,
 } from "@/lib/project-finance";
 import type { MonthlyFinanceRow } from "@/lib/finance-lifecycle";
-import { monthKey, sumMonthlyForecast, sumMonthlyActual, sumMonthlyPlanned } from "@/lib/finance-lifecycle";
+import {
+  monthKey,
+  sumMonthlyForecast,
+  sumMonthlyActual,
+  sumMonthlyPlanned,
+} from "@/lib/finance-lifecycle";
 import type { HealthDimensionKey, HealthEngineResult } from "@/lib/project-health-engine";
 
 const num = (v: unknown) => {
@@ -100,7 +105,10 @@ function groupByMonth(rows: MonthlyFinanceRow[]): Map<string, MonthlyFinanceRow[
 
 type SlipHit = { label: string; days: number };
 
-function collectSlips(items: (MilestoneLike | StageGateLike)[], kind: "milestone" | "gate"): SlipHit[] {
+function collectSlips(
+  items: (MilestoneLike | StageGateLike)[],
+  kind: "milestone" | "gate",
+): SlipHit[] {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const out: SlipHit[] = [];
@@ -274,12 +282,24 @@ export function explainForecast(opts: {
   if (gateSlips.length) {
     const text = `${gateSlips.length} stage gate${gateSlips.length === 1 ? "" : "s"} overdue/slipped (e.g. ${gateSlips[0].label}) — schedule risk, not a direct $ add`;
     bullets.push(text);
-    drivers.push({ label: text, detail: gateSlips.slice(0, 3).map((s) => s.label).join("; ") });
+    drivers.push({
+      label: text,
+      detail: gateSlips
+        .slice(0, 3)
+        .map((s) => s.label)
+        .join("; "),
+    });
   }
   if (mileSlips.length) {
     const text = `${mileSlips.length} milestone${mileSlips.length === 1 ? "" : "s"} overdue/slipped (e.g. ${mileSlips[0].label}) — schedule risk, not a direct $ add`;
     bullets.push(text);
-    drivers.push({ label: text, detail: mileSlips.slice(0, 3).map((s) => s.label).join("; ") });
+    drivers.push({
+      label: text,
+      detail: mileSlips
+        .slice(0, 3)
+        .map((s) => s.label)
+        .join("; "),
+    });
   }
 
   if (!bullets.length) {
@@ -453,10 +473,9 @@ export function explainGeneric(opts: {
   bullets?: string[];
   headline?: string;
 }): MetricExplanation {
-  const bullets =
-    opts.bullets?.length
-      ? opts.bullets
-      : ["Based on the current portfolio register and related execution data."];
+  const bullets = opts.bullets?.length
+    ? opts.bullets
+    : ["Based on the current portfolio register and related execution data."];
   return {
     title: opts.label,
     headline: opts.headline || `${opts.label}: ${opts.value}`,
@@ -534,13 +553,7 @@ function ragMeaning(rag: string): string {
   return "not set";
 }
 
-export type RagExplainSource =
-  | "register"
-  | "raid"
-  | "gate"
-  | "pulse"
-  | "criticality"
-  | "benefits";
+export type RagExplainSource = "register" | "raid" | "gate" | "pulse" | "criticality" | "benefits";
 
 /**
  * Explain a RAG chip the same way financials Explain a $ KPI:
@@ -548,7 +561,10 @@ export type RagExplainSource =
  */
 export function explainRag(opts: {
   rag?: string | null;
-  engine?: Pick<HealthEngineResult, "score" | "rag" | "dimensions" | "drivers" | "predictive"> | null;
+  engine?: Pick<
+    HealthEngineResult,
+    "score" | "rag" | "dimensions" | "drivers" | "predictive"
+  > | null;
   dimension?: HealthDimensionKey | "overall";
   manualRag?: string | null;
   /** When no Health Engine result is available, describe which RAG this chip is. */
@@ -571,9 +587,7 @@ export function explainRag(opts: {
     const bullets: string[] = [];
 
     if (dim) {
-      bullets.push(
-        `${dim.label} scores ${score}/100, which is ${rag} (${RAG_BAND_LOGIC})`,
-      );
+      bullets.push(`${dim.label} scores ${score}/100, which is ${rag} (${RAG_BAND_LOGIC})`);
       bullets.push(`Weight ${Math.round(dim.weight * 100)}% of overall health.`);
       if (dim.detail) bullets.push(dim.detail);
       for (const dr of engine.drivers.filter((d) => d.dimension === dim.key).slice(0, 3)) {
@@ -596,7 +610,7 @@ export function explainRag(opts: {
       const manual = String(opts.manualRag || "").trim();
       if (opts.overridden) {
         bullets.push(
-          "This colour is a manually updated RAG (sponsor / meeting override). It replaces calculated health on dashboards, Pulse, and Portfolio Health.",
+          "This colour is a manually updated RAG (sponsor / meeting override). RAG chips use it; Cockpit health score and Portfolio Health still use the Health Engine bands.",
         );
       } else if (manual && manual.toLowerCase() !== rag.toLowerCase()) {
         bullets.push(
@@ -629,7 +643,7 @@ export function explainRag(opts: {
       bullets: [
         `${RAG_BAND_LOGIC}${scoreLabel}`,
         opts.overridden
-          ? "This chip is a manually updated RAG (sponsor / meeting override). It is the colour used on Pulse, Portfolio Health, and registers."
+          ? "This chip is a manually updated RAG (sponsor / meeting override). RAG chips use it; Cockpit health score and Portfolio Health still use the Health Engine bands."
           : "This chip is the project register field (PM/PMO entered), unless a sponsor override is set.",
         "Open the project infographic → Project Health Engine for weighted dimensions (schedule, financial, delivery, risk) and drivers.",
       ],

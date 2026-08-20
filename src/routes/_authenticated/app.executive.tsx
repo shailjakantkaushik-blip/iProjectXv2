@@ -4,8 +4,20 @@ import { useServerFn } from "@tanstack/react-start";
 import { useState, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, PieChart, Pie, Cell,
-  Legend, LineChart, Line, CartesianGrid, LabelList,
+  BarChart,
+  Bar,
+  ResponsiveContainer,
+  XAxis,
+  YAxis,
+  Tooltip,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+  LineChart,
+  Line,
+  CartesianGrid,
+  LabelList,
 } from "recharts";
 import { SectionFrame, SectionTitle, RagChip } from "@/components/streamlit";
 import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
@@ -29,6 +41,11 @@ import {
 } from "@/lib/project-phase";
 import { fyOf, projectScheduleEnd, projectScheduleStart } from "@/lib/project-dates";
 import { portfolioSegmentLabels, projectPortfolio } from "@/lib/project-health";
+import {
+  computeEngineHealth,
+  groupRowsByProjectId,
+  useHealthEngineLookups,
+} from "@/hooks/use-health-engine-lookups";
 import {
   projectApprovedFunding,
   projectForecast,
@@ -101,18 +118,17 @@ const PHASES = ["Idea", "Discovery", "Design", "Build", "Test", "Deploy", "Benef
 const THEME_PALETTE = CHART_SERIES;
 const CAPEX_COLORS = [CHART_SERIES[0], CHART_SERIES[1], CHART_SERIES[2], CHART_SERIES[3]];
 
-const INACTIVE_STATUSES = new Set([
-  "completed",
-  "cancelled",
-  "canceled",
-  "closed",
-  "archived",
-]);
+const INACTIVE_STATUSES = new Set(["completed", "cancelled", "canceled", "closed", "archived"]);
 
 function money(n: number) {
-  return "$" + new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n || 0);
+  return (
+    "$" +
+    new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n || 0)
+  );
 }
-function moneyM(n: number) { return `$${(n / 1e6).toFixed(1)}M`; }
+function moneyM(n: number) {
+  return `$${(n / 1e6).toFixed(1)}M`;
+}
 
 function ExecutiveDashboard() {
   const { organization } = useAuth();
@@ -120,7 +136,8 @@ function ExecutiveDashboard() {
   const listProjects = useServerFn(listPortfolioProjects);
   const [filters, setFilters] = useState<ExecutivePortfolioFilterState>(emptyExecutiveFilters);
   const { fySelected } = filters;
-  type TimelineView = "Portfolio" | "Program" | "Health" | "Priority" | "Theme" | "Sponsor" | "Status";
+  type TimelineView =
+    "Portfolio" | "Program" | "Health" | "Priority" | "Theme" | "Sponsor" | "Status";
   const [timelineView, setTimelineView] = useState<TimelineView>("Program");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [showProjectTimeline, setShowProjectTimeline] = useState(false);
@@ -243,10 +260,25 @@ function ExecutiveDashboard() {
   const monthly = monthlyQ.data ?? [];
   const milestones = milestonesQ.data ?? [];
   const otherCosts = otherCostsQ.data ?? [];
+  const healthLookups = useHealthEngineLookups(organization?.id);
+  const monthlyByProject = useMemo(
+    () => groupRowsByProjectId(monthly as { project_id?: string | null }[]),
+    [monthly],
+  );
+  const gatesByProject = useMemo(() => {
+    const m = new Map<string, any[]>();
+    (gates as any[]).forEach((g) => {
+      const id = g?.project_id as string | undefined;
+      if (!id) return;
+      const list = m.get(id) || [];
+      list.push(g);
+      m.set(id, list);
+    });
+    return m;
+  }, [gates]);
   // Cold load only — keep the dashboard visible while background refetch runs.
   // Projects + streams are required for the shell; gates/monthly degrade softly.
-  const showColdLoad =
-    isColdLoading(projectsQ) || isColdLoading(streamsQ);
+  const showColdLoad = isColdLoading(projectsQ) || isColdLoading(streamsQ);
   const softUpdating =
     projectsQ.isFetching ||
     gatesQ.isFetching ||
@@ -276,181 +308,208 @@ function ExecutiveDashboard() {
   const fyStartMonth = organization?.fy_start_month || 4;
 
   const filtered = useMemo(
-    () => applyExecutivePortfolioFilters(projects, filters, fyStartMonth, { gates: gatesQ.data ?? [] }),
+    () =>
+      applyExecutivePortfolioFilters(projects, filters, fyStartMonth, { gates: gatesQ.data ?? [] }),
     [projects, filters, fyStartMonth, gatesQ.data],
   );
 
-  const filteredIds = useMemo(
-    () => new Set(filtered.map((p: any) => p.id as string)),
-    [filtered],
-  );
+  const filteredIds = useMemo(() => new Set(filtered.map((p: any) => p.id as string)), [filtered]);
+
+  /** Health Engine RAG (Green ≥ 80 / Amber 65–79 / Red < 65) — same as Cockpit health score. */
+  const engineRagById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of filtered as any[]) {
+      const id = String(p.id || "");
+      if (!id) continue;
+      const health = computeEngineHealth(
+        p,
+        (gatesByProject.get(id) || []) as never,
+        healthLookups,
+        (monthlyByProject.get(id) || []) as never,
+      );
+      m.set(id, health.overall_rag);
+    }
+    return m;
+  }, [filtered, gatesByProject, monthlyByProject, healthLookups]);
+
+  const engineRagOf = (p: { id?: string }) => engineRagById.get(String(p.id || "")) || null;
 
   // KPI totals + sparklines — memoized so filter typing doesn't rescan monthly ×8.
-  const {
-    approvedFunding,
-    totalIncurred,
-    totalForecast,
-    remaining,
-    kpis,
-    ragData,
-    capexBars,
-  } = useMemo(() => {
-    const approvedFunding = filtered.reduce((s, p) => s + projectApprovedFunding(p), 0);
-    const totalIncurred = filtered.reduce((s, p) => s + projectIncurred(p), 0);
-    const totalForecast = filtered.reduce((s, p) => s + projectForecast(p), 0);
-    const remaining = filtered.reduce((s, p) => s + projectRemaining(p), 0);
-    const active = filtered.filter((p: any) => p.status === "In Progress").length;
-    const completed = filtered.filter((p: any) => p.status === "Completed").length;
-    const today = new Date();
-    const overdue = filtered.filter(
-      (p: any) => p.end_date && new Date(p.end_date) < today && p.status !== "Completed",
-    ).length;
-    const ragScore = filtered.length
-      ? Math.round(
-          (filtered.filter((p: any) => displayRag(p) === "Green").length / filtered.length) * 100,
-        )
-      : 0;
+  const { approvedFunding, totalIncurred, totalForecast, remaining, kpis, ragData, capexBars } =
+    useMemo(() => {
+      const approvedFunding = filtered.reduce((s, p) => s + projectApprovedFunding(p), 0);
+      const totalIncurred = filtered.reduce((s, p) => s + projectIncurred(p), 0);
+      const totalForecast = filtered.reduce((s, p) => s + projectForecast(p), 0);
+      const remaining = filtered.reduce((s, p) => s + projectRemaining(p), 0);
+      const active = filtered.filter((p: any) => p.status === "In Progress").length;
+      const completed = filtered.filter((p: any) => p.status === "Completed").length;
+      const today = new Date();
+      const overdue = filtered.filter(
+        (p: any) => p.end_date && new Date(p.end_date) < today && p.status !== "Completed",
+      ).length;
+      const ragScore = filtered.length
+        ? Math.round(
+            (filtered.filter((p: any) => engineRagOf(p) === "Green").length / filtered.length) *
+              100,
+          )
+        : 0;
 
-    const buildSpark = (
-      key: "capex_planned" | "capex_actual" | "capex_forecast" | "benefits_actual" | null,
-      color: string,
-    ) => {
-      const rows = monthly.filter((m: any) => filteredIds.has(m.project_id));
-      const buckets = new Map<string, number>();
-      if (key && rows.length) {
-        rows.forEach((r: any) => {
-          const k = String(r.period_month || "").slice(0, 7);
-          if (!k) return;
-          buckets.set(k, (buckets.get(k) || 0) + Number(r[key] || 0));
-        });
-      }
-      let series = Array.from(buckets.entries())
-        .sort(([a], [b]) => a.localeCompare(b))
-        .slice(-12)
-        .map(([_m, v], i) => ({ i, v }));
-      if (series.length < 6) {
-        series = Array.from({ length: 12 }, (_, i) => ({ i, v: 0 }));
-      }
-      return { data: series, color };
-    };
+      const buildSpark = (
+        key: "capex_planned" | "capex_actual" | "capex_forecast" | "benefits_actual" | null,
+        color: string,
+      ) => {
+        const rows = monthly.filter((m: any) => filteredIds.has(m.project_id));
+        const buckets = new Map<string, number>();
+        if (key && rows.length) {
+          rows.forEach((r: any) => {
+            const k = String(r.period_month || "").slice(0, 7);
+            if (!k) return;
+            buckets.set(k, (buckets.get(k) || 0) + Number(r[key] || 0));
+          });
+        }
+        let series = Array.from(buckets.entries())
+          .sort(([a], [b]) => a.localeCompare(b))
+          .slice(-12)
+          .map(([_m, v], i) => ({ i, v }));
+        if (series.length < 6) {
+          series = Array.from({ length: 12 }, (_, i) => ({ i, v: 0 }));
+        }
+        return { data: series, color };
+      };
 
-    const mRows = monthly.filter((m: any) => filteredIds.has(m.project_id)) as MonthlyFinanceRow[];
-    const ms = milestones.filter((m: any) => filteredIds.has(m.project_id));
-    const gs = gates.filter((g: any) => filteredIds.has(g.project_id));
-    const oc = otherCosts.filter((c: any) => filteredIds.has(c.project_id));
+      const mRows = monthly.filter((m: any) =>
+        filteredIds.has(m.project_id),
+      ) as MonthlyFinanceRow[];
+      const ms = milestones.filter((m: any) => filteredIds.has(m.project_id));
+      const gs = gates.filter((g: any) => filteredIds.has(g.project_id));
+      const oc = otherCosts.filter((c: any) => filteredIds.has(c.project_id));
 
-    const explainByLabel: Record<string, MetricExplanation> = {
-      "Approved Funding": explainBudget({
-        label: "Approved Funding",
-        budget: approvedFunding,
-        forecast: totalForecast,
-        projects: filtered,
-      }),
-      Incurred: explainActualSpend({
-        label: "Incurred",
-        actual: totalIncurred,
-        monthly: mRows,
-        otherCosts: oc,
-        projects: filtered,
-      }),
-      Forecast: explainForecast({
-        label: "Forecast",
-        currentForecast: totalForecast,
-        monthly: mRows,
-        milestones: ms,
-        gates: gs,
-        otherCosts: oc,
-        projects: filtered,
-      }),
-      Remaining: explainRemaining({
-        remaining,
-        approved: approvedFunding,
-        incurred: totalIncurred,
-      }),
-      Overdue: explainGeneric({
-        label: "Overdue",
-        value: overdue,
-        headline: `${overdue} project${overdue === 1 ? "" : "s"} past planned end without completion`,
-        bullets: [
-          `${active} active · ${completed} completed`,
-          "Overdue uses planned end date vs today for incomplete work",
-        ],
-      }),
-      "RAG Score": explainGeneric({
-        label: "RAG Score",
-        value: `${ragScore}%`,
-        headline: `${ragScore}% of filtered projects are Green`,
-        bullets: [
-          `Green ${filtered.filter((p: any) => displayRag(p) === "Green").length}`,
-          `Amber ${filtered.filter((p: any) => displayRag(p) === "Amber").length}`,
-          `Red ${filtered.filter((p: any) => displayRag(p) === "Red").length}`,
-        ],
-      }),
-    };
-
-    return {
-      approvedFunding,
-      totalIncurred,
-      totalForecast,
-      remaining,
-      kpis: [
-        {
+      const explainByLabel: Record<string, MetricExplanation> = {
+        "Approved Funding": explainBudget({
           label: "Approved Funding",
-          value: money(approvedFunding),
-          spark: buildSpark("capex_planned", "#1d4ed8"),
-          explain: explainByLabel["Approved Funding"],
-        },
-        {
+          budget: approvedFunding,
+          forecast: totalForecast,
+          projects: filtered,
+        }),
+        Incurred: explainActualSpend({
           label: "Incurred",
-          value: money(totalIncurred),
-          spark: buildSpark("capex_actual", "#15803d"),
-          explain: explainByLabel.Incurred,
-        },
-        {
+          actual: totalIncurred,
+          monthly: mRows,
+          otherCosts: oc,
+          projects: filtered,
+        }),
+        Forecast: explainForecast({
           label: "Forecast",
-          value: money(totalForecast),
-          spark: buildSpark("capex_forecast", "#f59e0b"),
-          explain: explainByLabel.Forecast,
-        },
-        {
-          label: "Remaining",
-          value: money(remaining),
-          spark: buildSpark(null, "#8b5cf6"),
-          explain: explainByLabel.Remaining,
-        },
-        { label: "Active", value: active, spark: buildSpark(null, "#06b6d4") },
-        { label: "Completed", value: completed, spark: buildSpark(null, "#15803d") },
-        {
+          currentForecast: totalForecast,
+          monthly: mRows,
+          milestones: ms,
+          gates: gs,
+          otherCosts: oc,
+          projects: filtered,
+        }),
+        Remaining: explainRemaining({
+          remaining,
+          approved: approvedFunding,
+          incurred: totalIncurred,
+        }),
+        Overdue: explainGeneric({
           label: "Overdue",
           value: overdue,
-          spark: buildSpark(null, "#dc2626"),
-          explain: explainByLabel.Overdue,
-        },
-        {
+          headline: `${overdue} project${overdue === 1 ? "" : "s"} past planned end without completion`,
+          bullets: [
+            `${active} active · ${completed} completed`,
+            "Overdue uses planned end date vs today for incomplete work",
+          ],
+        }),
+        "RAG Score": explainGeneric({
           label: "RAG Score",
           value: `${ragScore}%`,
-          spark: buildSpark(null, "#8b5cf6"),
-          explain: explainByLabel["RAG Score"],
-        },
-      ],
-      ragData: ["Green", "Amber", "Red"]
-        .map((r) => ({
-          name: r,
-          value: filtered.filter((p: any) => displayRag(p) === r).length,
-        }))
-        .filter((d) => d.value > 0),
-      capexBars: [
-        { name: "Approved", value: approvedFunding },
-        { name: "Incurred", value: totalIncurred },
-        { name: "Forecast", value: totalForecast },
-        { name: "Remaining", value: remaining },
-      ],
-    };
-  }, [filtered, filteredIds, monthly, milestones, otherCosts, gates]);
+          headline: `${ragScore}% of filtered projects are Green on the Health Engine (same bands as Cockpit health score)`,
+          bullets: [
+            `Green ${filtered.filter((p: any) => engineRagOf(p) === "Green").length}`,
+            `Amber ${filtered.filter((p: any) => engineRagOf(p) === "Amber").length}`,
+            `Red ${filtered.filter((p: any) => engineRagOf(p) === "Red").length}`,
+            "Green ≥ 80, Amber 65–79, Red < 65. Sponsor RAG override still shows on chips, not this mix.",
+          ],
+        }),
+      };
+
+      return {
+        approvedFunding,
+        totalIncurred,
+        totalForecast,
+        remaining,
+        kpis: [
+          {
+            label: "Approved Funding",
+            value: money(approvedFunding),
+            spark: buildSpark("capex_planned", "#1d4ed8"),
+            explain: explainByLabel["Approved Funding"],
+          },
+          {
+            label: "Incurred",
+            value: money(totalIncurred),
+            spark: buildSpark("capex_actual", "#15803d"),
+            explain: explainByLabel.Incurred,
+          },
+          {
+            label: "Forecast",
+            value: money(totalForecast),
+            spark: buildSpark("capex_forecast", "#f59e0b"),
+            explain: explainByLabel.Forecast,
+          },
+          {
+            label: "Remaining",
+            value: money(remaining),
+            spark: buildSpark(null, "#8b5cf6"),
+            explain: explainByLabel.Remaining,
+          },
+          { label: "Active", value: active, spark: buildSpark(null, "#06b6d4") },
+          { label: "Completed", value: completed, spark: buildSpark(null, "#15803d") },
+          {
+            label: "Overdue",
+            value: overdue,
+            spark: buildSpark(null, "#dc2626"),
+            explain: explainByLabel.Overdue,
+          },
+          {
+            label: "RAG Score",
+            value: `${ragScore}%`,
+            spark: buildSpark(null, "#8b5cf6"),
+            explain: explainByLabel["RAG Score"],
+          },
+        ],
+        ragData: ["Green", "Amber", "Red"]
+          .map((r) => ({
+            name: r,
+            value: filtered.filter((p: any) => engineRagOf(p) === r).length,
+          }))
+          .filter((d) => d.value > 0),
+        capexBars: [
+          { name: "Approved", value: approvedFunding },
+          { name: "Incurred", value: totalIncurred },
+          { name: "Forecast", value: totalForecast },
+          { name: "Remaining", value: remaining },
+        ],
+      };
+    }, [filtered, filteredIds, monthly, milestones, otherCosts, gates, engineRagById]);
 
   // Monthly Spend ($M) — Actual vs Forecast, bucketed by year-month (last 12)
   const monthlySpend = useMemo(() => {
-    const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const monthNames = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
     const rows = monthly.filter((m: any) => filteredIds.has(m.project_id));
     const buckets = new Map<string, { actual: number; forecast: number }>();
     rows.forEach((r: any) => {
@@ -495,21 +554,26 @@ function ExecutiveDashboard() {
     });
     const arr = Array.from(m, ([name, value]) => ({ name, value }));
     arr.sort((a, b) => {
-      const ai = order.indexOf(a.name); const bi = order.indexOf(b.name);
+      const ai = order.indexOf(a.name);
+      const bi = order.indexOf(b.name);
       return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
     });
     return arr;
   }, [filtered]);
 
   // Top 10 by realised ROI (horizontal bar)
-  const topROI = useMemo(() => filtered
-    .map((p: any) => {
-      const roi = projectRealisedRoi(p);
-      return { name: (p.name || "").slice(0, 22), roi: Math.round(roi * 10) / 10 };
-    })
-    .filter((x) => x.roi !== 0)
-    .sort((a, b) => b.roi - a.roi)
-    .slice(0, 10), [filtered]);
+  const topROI = useMemo(
+    () =>
+      filtered
+        .map((p: any) => {
+          const roi = projectRealisedRoi(p);
+          return { name: (p.name || "").slice(0, 22), roi: Math.round(roi * 10) / 10 };
+        })
+        .filter((x) => x.roi !== 0)
+        .sort((a, b) => b.roi - a.roi)
+        .slice(0, 10),
+    [filtered],
+  );
 
   // Portfolio Segmentation — canonical Strategic Alignment labels, all ticks shown
   const segmentation = useMemo(() => {
@@ -519,16 +583,16 @@ function ExecutiveDashboard() {
       const k = projectPortfolio(p);
       m.set(k, (m.get(k) || 0) + 1);
     });
-    return labels
-      .map((name) => ({ name, value: m.get(name) || 0 }))
-      .filter((r) => r.value > 0);
+    return labels.map((name) => ({ name, value: m.get(name) || 0 })).filter((r) => r.value > 0);
   }, [filtered]);
 
   // Governance Channel
   const governanceChannel = useMemo(() => {
     const m = new Map<string, number>();
     filtered.forEach((p: any) => {
-      const k = p.governance_channel || (Number(p.budget || 0) > 200000 ? "Channel B (>$200K)" : "Channel A (<$200K)");
+      const k =
+        p.governance_channel ||
+        (Number(p.budget || 0) > 200000 ? "Channel B (>$200K)" : "Channel A (<$200K)");
       m.set(k, (m.get(k) || 0) + 1);
     });
     return Array.from(m, ([name, value]) => ({ name, value }));
@@ -538,16 +602,6 @@ function ExecutiveDashboard() {
     const fromDefs = (gateDefs as any[]).map((d) => d.gate_name).filter(Boolean);
     return fromDefs.length > 0 ? fromDefs : PHASES;
   }, [gateDefs]);
-
-  // Project-level gates (kanban / register). Timeline filters flat gates per lane.
-  const gatesByProject = useMemo(() => {
-    const m = new Map<string, any[]>();
-    gates.forEach((g: any) => {
-      if (!m.has(g.project_id)) m.set(g.project_id, []);
-      m.get(g.project_id)!.push(g);
-    });
-    return m;
-  }, [gates]);
 
   // ── Timeline (stream lanes by default; optional project rollup lane) ──
   const timelineLanes = useMemo(() => {
@@ -562,13 +616,20 @@ function ExecutiveDashboard() {
     const groups = new Map<string, any[]>();
     const keyFor = (p: any): string => {
       switch (timelineView) {
-        case "Portfolio": return p.portfolio || "Unassigned";
-        case "Program":   return p.program || "Unassigned";
-        case "Health":    return displayRag(p) || "Unrated";
-        case "Priority":  return p.priority || "Unset";
-        case "Theme":     return p.theme || "Unassigned";
-        case "Sponsor":   return p.sponsor || "Unassigned";
-        case "Status":    return p.status || "Unset";
+        case "Portfolio":
+          return p.portfolio || "Unassigned";
+        case "Program":
+          return p.program || "Unassigned";
+        case "Health":
+          return engineRagOf(p) || "Unrated";
+        case "Priority":
+          return p.priority || "Unset";
+        case "Theme":
+          return p.theme || "Unassigned";
+        case "Sponsor":
+          return p.sponsor || "Unassigned";
+        case "Status":
+          return p.status || "Unset";
       }
     };
     timelineLanes.forEach((p: any) => {
@@ -578,7 +639,7 @@ function ExecutiveDashboard() {
       groups.get(k)!.push(p);
     });
     return Array.from(groups.entries()).sort();
-  }, [timelineLanes, timelineView]);
+  }, [timelineLanes, timelineView, engineRagById]);
 
   // Per-group bounds — each Program/Theme/etc. axis starts near its own bars
   // so earlier groups don't leave empty lead-in on later sections.
@@ -592,8 +653,7 @@ function ExecutiveDashboard() {
     return m;
   }, [timelineGroups, fySelected, fyStartMonth]);
 
-  const toggleCollapse = (name: string) =>
-    setCollapsed((c) => ({ ...c, [name]: !c[name] }));
+  const toggleCollapse = (name: string) => setCollapsed((c) => ({ ...c, [name]: !c[name] }));
 
   const resolveCurrentStage = (p: any): string | null =>
     resolveStageShared(p, gatesByProject.get(p.id) || [], orgPhases);
@@ -645,7 +705,13 @@ function ExecutiveDashboard() {
         }
       } else {
         const stage = resolveStageShared(p, gatesByProject.get(p.id) || [], orgPhases);
-        pushItem(stage, { ...p, _kanbanKey: p.id, _streamLabel: null, _streamRef: null, _streamRag: displayRag(p) });
+        pushItem(stage, {
+          ...p,
+          _kanbanKey: p.id,
+          _streamLabel: null,
+          _streamRef: null,
+          _streamRag: displayRag(p),
+        });
       }
     }
 
@@ -693,6 +759,7 @@ function ExecutiveDashboard() {
       budget: number;
       incurred: number;
       rag: string | null;
+      ragManual?: boolean;
       phase: string | null;
     }[] = [];
     for (const p of filtered) {
@@ -759,7 +826,10 @@ function ExecutiveDashboard() {
             <div className="page-heading">Executive Dashboard</div>
             <p className="mt-1 text-xs text-muted-foreground">
               Charts, timelines, and register. Steering pack and project summaries live on{" "}
-              <Link to="/app/executive-cockpit" className="font-medium text-primary hover:underline">
+              <Link
+                to="/app/executive-cockpit"
+                className="font-medium text-primary hover:underline"
+              >
                 Executive Cockpit
               </Link>
               .
@@ -785,419 +855,544 @@ function ExecutiveDashboard() {
       </SectionFrame>
 
       <div ref={reportRef}>
-      {loadError && (
-        <QueryErrorPanel
-          className="mb-4"
-          title="Executive data failed to load"
-          message={queryErrorMessage(
-            loadError,
-            "A temporary issue interrupted loading. Retry to refresh portfolio data.",
-          )}
-          onRetry={retryAll}
-        />
-      )}
-      {softWarning && !loadError && (
-        <div
-          role="status"
-          className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100"
-        >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold">Some portfolio panels could not refresh</p>
-              <p className="mt-1 whitespace-pre-wrap break-words text-xs opacity-90">{softWarning}</p>
-              <p className="mt-2 text-xs opacity-80">
-                Retry to refresh. If this keeps happening, an administrator may need to apply pending migrations and reload the Supabase schema.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={retryAll}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium hover:bg-muted"
-            >
-              Retry
-            </button>
-          </div>
-        </div>
-      )}
-      <SectionFrame className="section-frame--filters" exportable={false}>
-            <ExecutivePortfolioFilters
-              projects={projects}
-              value={filters}
-              onChange={setFilters}
-              fyStartMonth={fyStartMonth}
-            />
-      </SectionFrame>
-
-      {/* Key Metrics */}
-      <SectionFrame>
-        <SectionTitle>Key Metrics</SectionTitle>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
-          {kpis.map((k) => (
-            <div key={k.label} className="kpi-card">
-              <div className="kpi-head">
-                <div className="kpi-label">{k.label}</div>
-                {"explain" in k && k.explain ? <ExplainThis explanation={k.explain} size="xs" /> : null}
-              </div>
-              <div className="kpi-value">{k.value}</div>
-              <div className="mt-1 h-10">
-                <ResponsiveContainer>
-                  <LineChart data={k.spark.data} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
-                    <Tooltip
-                      cursor={{ stroke: k.spark.color, strokeWidth: 1, strokeDasharray: "3 3" }}
-                      contentStyle={{ fontSize: 11, padding: "4px 8px", borderRadius: 6 }}
-                      labelFormatter={(i: any) => `Point ${Number(i) + 1}`}
-                      formatter={(v: any) => [typeof k.value === "string" && k.value.startsWith("$") ? money(Number(v)) : Math.round(Number(v) * 10) / 10, k.label]}
-                    />
-                    <Line type="monotone" dataKey="v" stroke={k.spark.color} strokeWidth={1.8} dot={false} activeDot={{ r: 3 }} isAnimationActive={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          ))}
-        </div>
-      </SectionFrame>
-
-      {/* Portfolio Analytics — matches reference layout */}
-      <SectionFrame>
-        <div className="mb-1 flex items-center justify-between gap-2">
-          <SectionTitle>Portfolio Analytics</SectionTitle>
-          <SoftUpdatingLabel active={!showColdLoad && softUpdating} />
-        </div>
-        {showColdLoad ? (
-          <PageLoading label="Loading executive view…" fullScreen={false} />
-        ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {/* Portfolio Health — donut */}
-            <ChartBox
-              title="Portfolio Health"
-              legend={
-                ragData.length > 0 ? (
-                  <ChartLegendList
-                    items={legendItemsFromCounts(ragData, RAG_COLORS)}
-                    columns={ragData.length <= 3 ? 1 : 2}
-                  />
-                ) : undefined
-              }
-            >
-              {ragData.length === 0 ? <Empty /> : (
-                <PieChart margin={{ top: 4, right: 4, left: 4, bottom: 4 }}>
-                  <Pie data={ragData} dataKey="value" nameKey="name"
-                    cx="50%" cy="50%" innerRadius="48%" outerRadius="74%"
-                    paddingAngle={2} stroke="#fff" strokeWidth={2}>
-                    {ragData.map((e) => <Cell key={e.name} fill={RAG_COLORS[e.name]} />)}
-                  </Pie>
-                  <Tooltip formatter={(v: any, n: any) => [`${v} projects`, n]} />
-                </PieChart>
-              )}
-            </ChartBox>
-
-            {/* Funding vs Actual */}
-            <ChartBox title="Funding vs Actual">
-              <BarChart data={capexBars} margin={{ top: 25, right: 15, left: 5, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-                <XAxis dataKey="name" fontSize={11} />
-                <YAxis fontSize={10} tickFormatter={(v) => money(v)} />
-                <Tooltip formatter={(v: any) => money(Number(v))} />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                  {capexBars.map((_, i) => <Cell key={i} fill={CAPEX_COLORS[i]} />)}
-                  <LabelList dataKey="value" position="top" fontSize={11} formatter={(v: any) => moneyM(Number(v))} />
-                </Bar>
-              </BarChart>
-            </ChartBox>
-
-            {/* Monthly Spend $M */}
-            <ChartBox title="Monthly Spend ($M)">
-              <LineChart data={monthlySpend} margin={{ top: 15, right: 15, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-                <XAxis dataKey="month" fontSize={11} />
-                <YAxis fontSize={10} />
-                <Tooltip formatter={(v: any) => `$${Number(v).toFixed(2)}M`} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Line type="monotone" dataKey="actual" stroke="#22c55e" strokeWidth={2} name="Actual" dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="forecast" stroke="#3b82f6" strokeWidth={2} strokeDasharray="4 4" name="Forecast" dot={{ r: 3 }} />
-              </LineChart>
-            </ChartBox>
-
-            {/* By Theme */}
-            <ChartBox
-              title="By Theme"
-              legend={
-                themeData.length > 0 ? (
-                  <ChartLegendList items={legendItemsFromCounts(themeData, THEME_PALETTE)} />
-                ) : undefined
-              }
-            >
-              {themeData.length === 0 ? <Empty /> : (
-                <PieChart margin={{ top: 4, right: 4, left: 4, bottom: 4 }}>
-                  <Pie data={themeData} dataKey="value" nameKey="name"
-                    cx="50%" cy="50%" innerRadius="46%" outerRadius="72%"
-                    paddingAngle={2} stroke="#fff" strokeWidth={2}>
-                    {themeData.map((_, i) => <Cell key={i} fill={THEME_PALETTE[i % THEME_PALETTE.length]} />)}
-                  </Pie>
-                  <Tooltip formatter={(v: any, n: any) => [`${v} projects`, n]} />
-                </PieChart>
-              )}
-            </ChartBox>
-
-            {/* By Priority — horizontal */}
-            <ChartBox title="By Priority">
-              <BarChart data={priorityData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-                <XAxis type="number" fontSize={10} allowDecimals={false} />
-                <YAxis type="category" dataKey="name" fontSize={11} width={90} />
-                <Tooltip />
-                <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                  {priorityData.map((d, i) => <Cell key={i} fill={PRIORITY_COLORS[d.name] || "#64748b"} />)}
-                  <LabelList dataKey="value" position="right" fontSize={11} />
-                </Bar>
-              </BarChart>
-            </ChartBox>
-
-            {/* Top 10 by ROI — horizontal */}
-            <ChartBox title="Top 10 Projects by ROI %">
-              {topROI.length === 0 ? <Empty msg="No ROI data — add benefits & incurred cost" /> : (
-                <BarChart data={topROI} layout="vertical" margin={{ top: 5, right: 40, left: 10, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-                  <XAxis type="number" fontSize={10} tickFormatter={(v) => `${v}%`} />
-                  <YAxis type="category" dataKey="name" fontSize={10} width={130} />
-                  <Tooltip formatter={(v: any) => `${v}%`} />
-                  <Bar dataKey="roi" fill="#eab308" radius={[0, 4, 4, 0]}>
-                    <LabelList dataKey="roi" position="right" fontSize={10} formatter={(v: any) => `${v}%`} />
-                  </Bar>
-                </BarChart>
-              )}
-            </ChartBox>
-
-            {/* Portfolio Segmentation */}
-            <ChartBox title="Segmentation — Projects by Strategic Alignment" heightClass="h-72">
-              <BarChart data={segmentation} margin={{ top: 25, right: 12, left: 16, bottom: 40 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-                <XAxis dataKey="name" interval={0} minTickGap={0} tick={<CategoryTick />} height={44} />
-                <YAxis fontSize={10} allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                  {segmentation.map((_, i) => <Cell key={i} fill={i === 0 ? "#1d4ed8" : "#60a5fa"} />)}
-                  <LabelList dataKey="value" position="top" fontSize={11} />
-                </Bar>
-              </BarChart>
-            </ChartBox>
-
-            {/* Projects by Governance Channel */}
-            <ChartBox title="Projects by Governance Channel" heightClass="h-72">
-              <BarChart data={governanceChannel} margin={{ top: 25, right: 12, left: 16, bottom: 40 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
-                <XAxis dataKey="name" interval={0} minTickGap={0} tick={<CategoryTick />} height={44} />
-                <YAxis fontSize={10} allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                  {governanceChannel.map((_, i) => <Cell key={i} fill={i === 0 ? "#1d4ed8" : "#93c5fd"} />)}
-                  <LabelList dataKey="value" position="top" fontSize={11} />
-                </Bar>
-              </BarChart>
-            </ChartBox>
-          </div>
+        {loadError && (
+          <QueryErrorPanel
+            className="mb-4"
+            title="Executive data failed to load"
+            message={queryErrorMessage(
+              loadError,
+              "A temporary issue interrupted loading. Retry to refresh portfolio data.",
+            )}
+            onRetry={retryAll}
+          />
         )}
-      </SectionFrame>
-
-      {/* Portfolio Timelines — collapsible Gantt swim-lanes (expandable + scrollable) */}
-      <SectionFrame>
-        <ExpandablePanel
-          title="Timeline and Roadmap"
-          compactMaxHeightClass="max-h-[min(68vh,760px)]"
-          toolbar={
-            <div className="flex items-center gap-2">
+        {softWarning && !loadError && (
+          <div
+            role="status"
+            className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold">Some portfolio panels could not refresh</p>
+                <p className="mt-1 whitespace-pre-wrap break-words text-xs opacity-90">
+                  {softWarning}
+                </p>
+                <p className="mt-2 text-xs opacity-80">
+                  Retry to refresh. If this keeps happening, an administrator may need to apply
+                  pending migrations and reload the Supabase schema.
+                </p>
+              </div>
               <button
                 type="button"
-                onClick={() => {
-                  const allCollapsed = timelineGroups.every(([g]) => collapsed[g]);
-                  const next: Record<string, boolean> = {};
-                  timelineGroups.forEach(([g]) => {
-                    next[g] = !allCollapsed;
-                  });
-                  setCollapsed(next);
-                }}
-                className="rounded-md border border-border bg-surface px-2 py-1 text-xs hover:bg-muted"
+                onClick={retryAll}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium hover:bg-muted"
               >
-                {timelineGroups.every(([g]) => collapsed[g]) ? "Expand all" : "Collapse all"}
+                Retry
               </button>
-              <select
-                value={timelineView}
-                onChange={(e) => setTimelineView(e.target.value as TimelineView)}
-                className="rounded-md border border-border bg-surface px-2 py-1 text-xs"
-              >
-                <option value="Portfolio">View: Strategic Alignment</option>
-                <option value="Program">View: Program</option>
-                <option value="Health">View: Health (RAG)</option>
-                <option value="Priority">View: Priority</option>
-                <option value="Theme">View: Theme</option>
-                <option value="Sponsor">View: Sponsor</option>
-                <option value="Status">View: Status</option>
-              </select>
             </div>
-          }
-        >
-          {timelineGroups.length === 0 ? (
-            <Empty msg="No projects with start/end dates match filters" />
-          ) : (
-            <div className="space-y-3">
-              {timelineGroups.map(([groupName, items]) => {
-                const groupBounds = boundsByGroup.get(groupName);
-                if (!groupBounds) return null;
-                return (
-                  <GanttGroup
-                    key={groupName}
-                    title={groupName}
-                    items={items}
-                    bounds={groupBounds}
-                    gates={gates as any[]}
-                    orgPhases={orgPhases}
-                    collapsed={!!collapsed[groupName]}
-                    onToggle={() => toggleCollapse(groupName)}
-                    showProjectTimeline={showProjectTimeline}
-                    onShowProjectTimelineChange={setShowProjectTimeline}
-                  />
-                );
-              })}
-            </div>
-          )}
-        </ExpandablePanel>
-      </SectionFrame>
+          </div>
+        )}
+        <SectionFrame className="section-frame--filters" exportable={false}>
+          <ExecutivePortfolioFilters
+            projects={projects}
+            value={filters}
+            onChange={setFilters}
+            fyStartMonth={fyStartMonth}
+          />
+        </SectionFrame>
 
-      {/* Governance Flow — stage columns with project links */}
-      <SectionFrame>
-        <ExpandablePanel
-          title="Governance Flow — active projects / streams by current stage"
-          compactMaxHeightClass="max-h-[min(60vh,640px)]"
-        >
-          <div
-            className="grid min-w-[720px] gap-3"
-            style={{ gridTemplateColumns: `repeat(${Math.max(1, kanban.length)}, minmax(140px, 1fr))` }}
-          >
-            {kanban.map((col, colIdx) => (
-              <div
-                key={col.phase}
-                className="flex max-h-[520px] flex-col border-r border-border/60 last:border-r-0 pr-3 last:pr-0"
-              >
-                <div
-                  className="mb-3 shrink-0 overflow-hidden rounded-lg border border-border/70 bg-gradient-to-br from-muted/80 via-background to-background shadow-sm"
-                  title={col.phase}
-                >
-                  <div
-                    className="h-1 w-full"
-                    style={{
-                      background: `linear-gradient(90deg, var(--primary) ${Math.min(100, (colIdx + 1) * (100 / Math.max(1, kanban.length)))}%, var(--border) 0%)`,
-                    }}
-                  />
-                  <div className="px-2.5 py-2">
-                    <div className="truncate text-[11px] font-bold tracking-wide text-foreground">
-                      {col.phase}
-                    </div>
-                    <div className="mt-1 flex items-center justify-between gap-2">
-                      <span className="text-[10px] text-muted-foreground">Stage</span>
-                      <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-primary">
-                        {col.items.length}
-                      </span>
-                    </div>
-                  </div>
+        {/* Key Metrics */}
+        <SectionFrame>
+          <SectionTitle>Key Metrics</SectionTitle>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+            {kpis.map((k) => (
+              <div key={k.label} className="kpi-card">
+                <div className="kpi-head">
+                  <div className="kpi-label">{k.label}</div>
+                  {"explain" in k && k.explain ? (
+                    <ExplainThis explanation={k.explain} size="xs" />
+                  ) : null}
                 </div>
-                <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto">
-                  {col.items.length === 0 ? (
-                    <div className="px-0.5 py-2 text-[10px] text-muted-foreground">No active projects</div>
-                  ) : (
-                    col.items.map((p: any) => {
-                      const rag = (p._streamRag as string) || displayRag(p) || "";
-                      const ragColor = RAG_COLORS[rag] || "var(--muted-foreground)";
-                      return (
-                        <Link
-                          key={p._kanbanKey || p.id}
-                          to="/app/project-infographic"
-                          search={{ pid: p.id }}
-                          className="group flex items-start gap-2 rounded-md px-1.5 py-1.5 hover:bg-muted/60"
-                          title={p._streamRef || p.name}
-                        >
-                          <span
-                            className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
-                            style={{ background: ragColor }}
-                            aria-label={rag ? `RAG ${rag}` : "RAG unset"}
-                          />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[11px] font-medium text-primary group-hover:underline">
-                              {p._streamRef || p.project_code || p.name}
-                            </span>
-                            {p._streamLabel ? (
-                              <span className="block truncate text-[10px] text-muted-foreground">
-                                {p.name} · {p._streamLabel}
-                              </span>
-                            ) : p.project_code ? (
-                              <span className="block truncate text-[10px] text-muted-foreground">
-                                {p.name}
-                              </span>
-                            ) : null}
-                          </span>
-                        </Link>
-                      );
-                    })
-                  )}
+                <div className="kpi-value">{k.value}</div>
+                <div className="mt-1 h-10">
+                  <ResponsiveContainer>
+                    <LineChart
+                      data={k.spark.data}
+                      margin={{ top: 2, right: 2, left: 2, bottom: 2 }}
+                    >
+                      <Tooltip
+                        cursor={{ stroke: k.spark.color, strokeWidth: 1, strokeDasharray: "3 3" }}
+                        contentStyle={{ fontSize: 11, padding: "4px 8px", borderRadius: 6 }}
+                        labelFormatter={(i: any) => `Point ${Number(i) + 1}`}
+                        formatter={(v: any) => [
+                          typeof k.value === "string" && k.value.startsWith("$")
+                            ? money(Number(v))
+                            : Math.round(Number(v) * 10) / 10,
+                          k.label,
+                        ]}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="v"
+                        stroke={k.spark.color}
+                        strokeWidth={1.8}
+                        dot={false}
+                        activeDot={{ r: 3 }}
+                        isAnimationActive={false}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
                 </div>
               </div>
             ))}
           </div>
-        </ExpandablePanel>
-      </SectionFrame>
+        </SectionFrame>
 
-      {/* Portfolio Register — stream-aware */}
-      <SectionFrame>
-        <SectionTitle>Portfolio Register</SectionTitle>
-        <ColumnarToolbar
-          globalQ={portfolioTable.globalQ}
-          onGlobalQ={portfolioTable.setGlobalQ}
-          shown={portfolioTable.rows.length}
-          total={portfolioTable.total}
-          dirty={portfolioTable.isDirty}
-          onClear={portfolioTable.clearAll}
-          placeholder="Search portfolio register…"
-        />
-        {portfolioTable.rows.length === 0 ? (
-          <div className="py-8 text-center text-sm text-muted-foreground">
-            {portfolioTable.total === 0 ? "No projects match filters" : "No matching projects."}
+        {/* Portfolio Analytics — matches reference layout */}
+        <SectionFrame>
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <SectionTitle>Portfolio Analytics</SectionTitle>
+            <SoftUpdatingLabel active={!showColdLoad && softUpdating} />
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="st-table">
-              <thead>
-                <tr>
-                  {portfolioColumns.map((col) => (
-                    <ColumnarTh
-                      key={col.key}
-                      column={col}
-                      filter={portfolioTable.filters[col.key]}
-                      onFilter={(v) => portfolioTable.setColumnFilter(col.key, v)}
-                      sortKey={portfolioTable.sortKey}
-                      sortDir={portfolioTable.sortDir}
-                      onToggleSort={portfolioTable.toggleSort}
+          {showColdLoad ? (
+            <PageLoading label="Loading executive view…" fullScreen={false} />
+          ) : (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {/* Portfolio Health — donut */}
+              <ChartBox
+                title="Portfolio Health"
+                legend={
+                  <>
+                    <p className="mb-1 text-[10px] leading-snug text-muted-foreground">
+                      Health Engine mix — same bands as Cockpit health score (Green ≥ 80, Amber
+                      65–79, Red &lt; 65). Sponsor RAG override still shows on chips, not this
+                      donut.
+                    </p>
+                    {ragData.length > 0 ? (
+                      <ChartLegendList
+                        items={legendItemsFromCounts(ragData, RAG_COLORS)}
+                        columns={ragData.length <= 3 ? 1 : 2}
+                      />
+                    ) : null}
+                  </>
+                }
+              >
+                {ragData.length === 0 ? (
+                  <Empty />
+                ) : (
+                  <PieChart margin={{ top: 4, right: 4, left: 4, bottom: 4 }}>
+                    <Pie
+                      data={ragData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius="48%"
+                      outerRadius="74%"
+                      paddingAngle={2}
+                      stroke="#fff"
+                      strokeWidth={2}
+                    >
+                      {ragData.map((e) => (
+                        <Cell key={e.name} fill={RAG_COLORS[e.name]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v: any, n: any) => [`${v} projects`, n]} />
+                  </PieChart>
+                )}
+              </ChartBox>
+
+              {/* Funding vs Actual */}
+              <ChartBox title="Funding vs Actual">
+                <BarChart data={capexBars} margin={{ top: 25, right: 15, left: 5, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+                  <XAxis dataKey="name" fontSize={11} />
+                  <YAxis fontSize={10} tickFormatter={(v) => money(v)} />
+                  <Tooltip formatter={(v: any) => money(Number(v))} />
+                  <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                    {capexBars.map((_, i) => (
+                      <Cell key={i} fill={CAPEX_COLORS[i]} />
+                    ))}
+                    <LabelList
+                      dataKey="value"
+                      position="top"
+                      fontSize={11}
+                      formatter={(v: any) => moneyM(Number(v))}
                     />
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {portfolioTable.rows.map((r) => (
-                  <tr key={r.key}>
-                    <td className="font-medium">{r.name}</td>
-                    <td className="font-mono text-xs">{r.stream}</td>
-                    <td>{r.program ?? "—"}</td>
-                    <td>{r.sponsor ?? "—"}</td>
-                    <td>{money(r.budget)}</td>
-                    <td>{money(r.incurred)}</td>
-                    <td><RagChip rag={r.rag} manual={r.ragManual} explain={explainRag({ rag: r.rag, source: "register", overridden: r.ragManual })} /></td>
-                    <td>{r.phase ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </SectionFrame>
+                  </Bar>
+                </BarChart>
+              </ChartBox>
 
+              {/* Monthly Spend $M */}
+              <ChartBox title="Monthly Spend ($M)">
+                <LineChart data={monthlySpend} margin={{ top: 15, right: 15, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+                  <XAxis dataKey="month" fontSize={11} />
+                  <YAxis fontSize={10} />
+                  <Tooltip formatter={(v: any) => `$${Number(v).toFixed(2)}M`} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Line
+                    type="monotone"
+                    dataKey="actual"
+                    stroke="#22c55e"
+                    strokeWidth={2}
+                    name="Actual"
+                    dot={{ r: 3 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="forecast"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    strokeDasharray="4 4"
+                    name="Forecast"
+                    dot={{ r: 3 }}
+                  />
+                </LineChart>
+              </ChartBox>
+
+              {/* By Theme */}
+              <ChartBox
+                title="By Theme"
+                legend={
+                  themeData.length > 0 ? (
+                    <ChartLegendList items={legendItemsFromCounts(themeData, THEME_PALETTE)} />
+                  ) : undefined
+                }
+              >
+                {themeData.length === 0 ? (
+                  <Empty />
+                ) : (
+                  <PieChart margin={{ top: 4, right: 4, left: 4, bottom: 4 }}>
+                    <Pie
+                      data={themeData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius="46%"
+                      outerRadius="72%"
+                      paddingAngle={2}
+                      stroke="#fff"
+                      strokeWidth={2}
+                    >
+                      {themeData.map((_, i) => (
+                        <Cell key={i} fill={THEME_PALETTE[i % THEME_PALETTE.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v: any, n: any) => [`${v} projects`, n]} />
+                  </PieChart>
+                )}
+              </ChartBox>
+
+              {/* By Priority — horizontal */}
+              <ChartBox title="By Priority">
+                <BarChart
+                  data={priorityData}
+                  layout="vertical"
+                  margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+                  <XAxis type="number" fontSize={10} allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" fontSize={11} width={90} />
+                  <Tooltip />
+                  <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                    {priorityData.map((d, i) => (
+                      <Cell key={i} fill={PRIORITY_COLORS[d.name] || "#64748b"} />
+                    ))}
+                    <LabelList dataKey="value" position="right" fontSize={11} />
+                  </Bar>
+                </BarChart>
+              </ChartBox>
+
+              {/* Top 10 by ROI — horizontal */}
+              <ChartBox title="Top 10 Projects by ROI %">
+                {topROI.length === 0 ? (
+                  <Empty msg="No ROI data — add benefits & incurred cost" />
+                ) : (
+                  <BarChart
+                    data={topROI}
+                    layout="vertical"
+                    margin={{ top: 5, right: 40, left: 10, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+                    <XAxis type="number" fontSize={10} tickFormatter={(v) => `${v}%`} />
+                    <YAxis type="category" dataKey="name" fontSize={10} width={130} />
+                    <Tooltip formatter={(v: any) => `${v}%`} />
+                    <Bar dataKey="roi" fill="#eab308" radius={[0, 4, 4, 0]}>
+                      <LabelList
+                        dataKey="roi"
+                        position="right"
+                        fontSize={10}
+                        formatter={(v: any) => `${v}%`}
+                      />
+                    </Bar>
+                  </BarChart>
+                )}
+              </ChartBox>
+
+              {/* Portfolio Segmentation */}
+              <ChartBox title="Segmentation — Projects by Strategic Alignment" heightClass="h-72">
+                <BarChart data={segmentation} margin={{ top: 25, right: 12, left: 16, bottom: 40 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+                  <XAxis
+                    dataKey="name"
+                    interval={0}
+                    minTickGap={0}
+                    tick={<CategoryTick />}
+                    height={44}
+                  />
+                  <YAxis fontSize={10} allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                    {segmentation.map((_, i) => (
+                      <Cell key={i} fill={i === 0 ? "#1d4ed8" : "#60a5fa"} />
+                    ))}
+                    <LabelList dataKey="value" position="top" fontSize={11} />
+                  </Bar>
+                </BarChart>
+              </ChartBox>
+
+              {/* Projects by Governance Channel */}
+              <ChartBox title="Projects by Governance Channel" heightClass="h-72">
+                <BarChart
+                  data={governanceChannel}
+                  margin={{ top: 25, right: 12, left: 16, bottom: 40 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
+                  <XAxis
+                    dataKey="name"
+                    interval={0}
+                    minTickGap={0}
+                    tick={<CategoryTick />}
+                    height={44}
+                  />
+                  <YAxis fontSize={10} allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                    {governanceChannel.map((_, i) => (
+                      <Cell key={i} fill={i === 0 ? "#1d4ed8" : "#93c5fd"} />
+                    ))}
+                    <LabelList dataKey="value" position="top" fontSize={11} />
+                  </Bar>
+                </BarChart>
+              </ChartBox>
+            </div>
+          )}
+        </SectionFrame>
+
+        {/* Portfolio Timelines — collapsible Gantt swim-lanes (expandable + scrollable) */}
+        <SectionFrame>
+          <ExpandablePanel
+            title="Timeline and Roadmap"
+            compactMaxHeightClass="max-h-[min(68vh,760px)]"
+            toolbar={
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const allCollapsed = timelineGroups.every(([g]) => collapsed[g]);
+                    const next: Record<string, boolean> = {};
+                    timelineGroups.forEach(([g]) => {
+                      next[g] = !allCollapsed;
+                    });
+                    setCollapsed(next);
+                  }}
+                  className="rounded-md border border-border bg-surface px-2 py-1 text-xs hover:bg-muted"
+                >
+                  {timelineGroups.every(([g]) => collapsed[g]) ? "Expand all" : "Collapse all"}
+                </button>
+                <select
+                  value={timelineView}
+                  onChange={(e) => setTimelineView(e.target.value as TimelineView)}
+                  className="rounded-md border border-border bg-surface px-2 py-1 text-xs"
+                >
+                  <option value="Portfolio">View: Strategic Alignment</option>
+                  <option value="Program">View: Program</option>
+                  <option value="Health">View: Health (RAG)</option>
+                  <option value="Priority">View: Priority</option>
+                  <option value="Theme">View: Theme</option>
+                  <option value="Sponsor">View: Sponsor</option>
+                  <option value="Status">View: Status</option>
+                </select>
+              </div>
+            }
+          >
+            {timelineGroups.length === 0 ? (
+              <Empty msg="No projects with start/end dates match filters" />
+            ) : (
+              <div className="space-y-3">
+                {timelineGroups.map(([groupName, items]) => {
+                  const groupBounds = boundsByGroup.get(groupName);
+                  if (!groupBounds) return null;
+                  return (
+                    <GanttGroup
+                      key={groupName}
+                      title={groupName}
+                      items={items}
+                      bounds={groupBounds}
+                      gates={gates as any[]}
+                      orgPhases={orgPhases}
+                      collapsed={!!collapsed[groupName]}
+                      onToggle={() => toggleCollapse(groupName)}
+                      showProjectTimeline={showProjectTimeline}
+                      onShowProjectTimelineChange={setShowProjectTimeline}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </ExpandablePanel>
+        </SectionFrame>
+
+        {/* Governance Flow — stage columns with project links */}
+        <SectionFrame>
+          <ExpandablePanel
+            title="Governance Flow — active projects / streams by current stage"
+            compactMaxHeightClass="max-h-[min(60vh,640px)]"
+          >
+            <div
+              className="grid min-w-[720px] gap-3"
+              style={{
+                gridTemplateColumns: `repeat(${Math.max(1, kanban.length)}, minmax(140px, 1fr))`,
+              }}
+            >
+              {kanban.map((col, colIdx) => (
+                <div
+                  key={col.phase}
+                  className="flex max-h-[520px] flex-col border-r border-border/60 last:border-r-0 pr-3 last:pr-0"
+                >
+                  <div
+                    className="mb-3 shrink-0 overflow-hidden rounded-lg border border-border/70 bg-gradient-to-br from-muted/80 via-background to-background shadow-sm"
+                    title={col.phase}
+                  >
+                    <div
+                      className="h-1 w-full"
+                      style={{
+                        background: `linear-gradient(90deg, var(--primary) ${Math.min(100, (colIdx + 1) * (100 / Math.max(1, kanban.length)))}%, var(--border) 0%)`,
+                      }}
+                    />
+                    <div className="px-2.5 py-2">
+                      <div className="truncate text-[11px] font-bold tracking-wide text-foreground">
+                        {col.phase}
+                      </div>
+                      <div className="mt-1 flex items-center justify-between gap-2">
+                        <span className="text-[10px] text-muted-foreground">Stage</span>
+                        <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-primary">
+                          {col.items.length}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto">
+                    {col.items.length === 0 ? (
+                      <div className="px-0.5 py-2 text-[10px] text-muted-foreground">
+                        No active projects
+                      </div>
+                    ) : (
+                      col.items.map((p: any) => {
+                        const rag = (p._streamRag as string) || displayRag(p) || "";
+                        const ragColor = RAG_COLORS[rag] || "var(--muted-foreground)";
+                        return (
+                          <Link
+                            key={p._kanbanKey || p.id}
+                            to="/app/project-infographic"
+                            search={{ pid: p.id }}
+                            className="group flex items-start gap-2 rounded-md px-1.5 py-1.5 hover:bg-muted/60"
+                            title={p._streamRef || p.name}
+                          >
+                            <span
+                              className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+                              style={{ background: ragColor }}
+                              aria-label={rag ? `RAG ${rag}` : "RAG unset"}
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-[11px] font-medium text-primary group-hover:underline">
+                                {p._streamRef || p.project_code || p.name}
+                              </span>
+                              {p._streamLabel ? (
+                                <span className="block truncate text-[10px] text-muted-foreground">
+                                  {p.name} · {p._streamLabel}
+                                </span>
+                              ) : p.project_code ? (
+                                <span className="block truncate text-[10px] text-muted-foreground">
+                                  {p.name}
+                                </span>
+                              ) : null}
+                            </span>
+                          </Link>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ExpandablePanel>
+        </SectionFrame>
+
+        {/* Portfolio Register — stream-aware */}
+        <SectionFrame>
+          <SectionTitle>Portfolio Register</SectionTitle>
+          <ColumnarToolbar
+            globalQ={portfolioTable.globalQ}
+            onGlobalQ={portfolioTable.setGlobalQ}
+            shown={portfolioTable.rows.length}
+            total={portfolioTable.total}
+            dirty={portfolioTable.isDirty}
+            onClear={portfolioTable.clearAll}
+            placeholder="Search portfolio register…"
+          />
+          {portfolioTable.rows.length === 0 ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">
+              {portfolioTable.total === 0 ? "No projects match filters" : "No matching projects."}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="st-table">
+                <thead>
+                  <tr>
+                    {portfolioColumns.map((col) => (
+                      <ColumnarTh
+                        key={col.key}
+                        column={col}
+                        filter={portfolioTable.filters[col.key]}
+                        onFilter={(v) => portfolioTable.setColumnFilter(col.key, v)}
+                        sortKey={portfolioTable.sortKey}
+                        sortDir={portfolioTable.sortDir}
+                        onToggleSort={portfolioTable.toggleSort}
+                      />
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {portfolioTable.rows.map((r) => (
+                    <tr key={r.key}>
+                      <td className="font-medium">{r.name}</td>
+                      <td className="font-mono text-xs">{r.stream}</td>
+                      <td>{r.program ?? "—"}</td>
+                      <td>{r.sponsor ?? "—"}</td>
+                      <td>{money(r.budget)}</td>
+                      <td>{money(r.incurred)}</td>
+                      <td>
+                        <RagChip
+                          rag={r.rag}
+                          manual={r.ragManual}
+                          explain={explainRag({
+                            rag: r.rag,
+                            source: "register",
+                            overridden: r.ragManual,
+                          })}
+                        />
+                      </td>
+                      <td>{r.phase ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </SectionFrame>
       </div>
     </div>
   );
@@ -1222,21 +1417,39 @@ function ChartBox({
 }
 
 function Empty({ msg = "No data" }: { msg?: string }) {
-  return <div className="flex h-full items-center justify-center text-xs text-muted-foreground">{msg}</div>;
+  return (
+    <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+      {msg}
+    </div>
+  );
 }
 
 type TimelineBounds = {
-  start: Date; end: Date; totalMs: number;
+  start: Date;
+  end: Date;
+  totalMs: number;
   months: { key: string; label: string; year: number; monthIndex: number; fy: string }[];
   fyGroups: { fy: string; span: number }[];
 };
 
 function GanttGroup({
-  title, items, bounds, gates, orgPhases = [], collapsed, onToggle,
-  showProjectTimeline, onShowProjectTimelineChange,
+  title,
+  items,
+  bounds,
+  gates,
+  orgPhases = [],
+  collapsed,
+  onToggle,
+  showProjectTimeline,
+  onShowProjectTimelineChange,
 }: {
-  title: string; items: any[]; bounds: TimelineBounds;
-  gates: any[]; orgPhases?: string[]; collapsed: boolean; onToggle: () => void;
+  title: string;
+  items: any[];
+  bounds: TimelineBounds;
+  gates: any[];
+  orgPhases?: string[];
+  collapsed: boolean;
+  onToggle: () => void;
   showProjectTimeline?: boolean;
   onShowProjectTimelineChange?: (v: boolean) => void;
 }) {
@@ -1246,10 +1459,23 @@ function GanttGroup({
 
   const phaseOf = (p: any) =>
     p.is_project_rollup
-      ? (p.current_phase || null)
+      ? p.current_phase || null
       : resolveStageShared(p, gatesForTimelineLane(p, gates), orgPhases);
   const { start: rangeStart, totalMs, months, fyGroups } = bounds;
-  const monthShort = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const monthShort = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
   const now = new Date();
   const monthCount = months.length || 1;
   // Align to the equal-width month grid used by the header. See portfolio-timeline.tsx.
@@ -1272,10 +1498,11 @@ function GanttGroup({
     return ((idx + frac) / monthCount) * 100;
   };
   const todayPct = dateToPct(now);
-  const fmtShort = (d: Date) => `${d.getDate()} ${monthShort[d.getMonth()]}-${String(d.getFullYear()).slice(-2)}`;
+  const fmtShort = (d: Date) =>
+    `${d.getDate()} ${monthShort[d.getMonth()]}-${String(d.getFullYear()).slice(-2)}`;
   // Reference totalMs/rangeStart so TS doesn't flag them as unused after refactor.
-  void totalMs; void rangeStart;
-
+  void totalMs;
+  void rangeStart;
 
   const COL_PROJECT = 240;
   const COL_SPONSOR = 130;
@@ -1295,7 +1522,9 @@ function GanttGroup({
 
   const Stat = ({ label, value }: { label: string; value: React.ReactNode }) => (
     <div className="flex flex-col items-start leading-tight">
-      <span className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
       <span className="text-[12px] font-semibold tabular-nums text-foreground">{value}</span>
     </div>
   );
@@ -1316,7 +1545,11 @@ function GanttGroup({
         aria-expanded={!collapsed}
       >
         <div className="flex min-w-0 items-center gap-2">
-          {collapsed ? <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />}
+          {collapsed ? (
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+          ) : (
+            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+          )}
           <span className="truncate text-sm font-semibold text-foreground">{title}</span>
           <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
             {rangeLabel}
@@ -1330,11 +1563,25 @@ function GanttGroup({
           <Stat label="Utilisation" value={`${groupUtil}%`} />
           <Stat label="Benefits" value={money(groupBenefits)} />
           <div className="flex flex-col items-start leading-tight">
-            <span className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">RAG</span>
+            <span className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+              RAG
+            </span>
             <span className="flex items-center gap-1.5 text-[12px] font-semibold tabular-nums text-foreground">
-              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: RAG_COLORS.Green }} />{rGreen}
-              <span className="ml-1 inline-block h-2.5 w-2.5 rounded-full" style={{ background: RAG_COLORS.Amber }} />{rAmber}
-              <span className="ml-1 inline-block h-2.5 w-2.5 rounded-full" style={{ background: RAG_COLORS.Red }} />{rRed}
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-full"
+                style={{ background: RAG_COLORS.Green }}
+              />
+              {rGreen}
+              <span
+                className="ml-1 inline-block h-2.5 w-2.5 rounded-full"
+                style={{ background: RAG_COLORS.Amber }}
+              />
+              {rAmber}
+              <span
+                className="ml-1 inline-block h-2.5 w-2.5 rounded-full"
+                style={{ background: RAG_COLORS.Red }}
+              />
+              {rRed}
             </span>
           </div>
         </div>
@@ -1343,320 +1590,462 @@ function GanttGroup({
       {!collapsed && (
         <div className="border-t border-border p-3 overflow-x-auto">
           <div style={{ minWidth: LEFT + Math.max(560, monthCount * 34) }}>
-          {/* Timeline controls — left of grid, never over the RAG summary in the header */}
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-0.5 text-[10px] font-medium text-foreground hover:bg-muted">
-              <input type="checkbox" checked={showPvA} onChange={(e) => setShowPvA(e.target.checked)} className="h-3 w-3" />
-              Planned vs Actual
-            </label>
-            {onShowProjectTimelineChange && (
-              <label
-                className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-0.5 text-[10px] font-medium text-foreground hover:bg-muted"
-                title="Show project rollup lane (start→end + financials from streams)"
-              >
+            {/* Timeline controls — left of grid, never over the RAG summary in the header */}
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-0.5 text-[10px] font-medium text-foreground hover:bg-muted">
                 <input
                   type="checkbox"
-                  checked={!!showProjectTimeline}
-                  onChange={(e) => onShowProjectTimelineChange(e.target.checked)}
+                  checked={showPvA}
+                  onChange={(e) => setShowPvA(e.target.checked)}
                   className="h-3 w-3"
                 />
-                Project timeline
+                Planned vs Actual
               </label>
-            )}
-            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-0.5 text-[10px] font-medium text-foreground hover:bg-muted">
-              <input type="checkbox" checked={showGates} onChange={(e) => setShowGates(e.target.checked)} className="h-3 w-3" />
-              Stage gates
-            </label>
-          </div>
-
-          {/* FY header row */}
-          <div className="flex items-stretch text-[10px] font-semibold uppercase tracking-wide">
-            <div style={{ width: LEFT }} className="shrink-0" />
-            <div className="grid flex-1" style={{ gridTemplateColumns: `repeat(${monthCount}, minmax(34px, 1fr))` }}>
-              {fyGroups.map((g, i) => (
-                <div key={`${g.fy}-${i}`}
-                  className="border-l border-border/60 bg-muted/40 py-1 text-center text-primary"
-                  style={{ gridColumn: `span ${g.span}` }}>
-                  {g.fy}
-                </div>
-              ))}
-            </div>
-          </div>
-          {/* Month header row */}
-          <div className="flex items-center border-b border-border pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            <div style={{ width: COL_PROJECT }} className="shrink-0 pl-1">Project / Stream</div>
-            <div style={{ width: COL_SPONSOR }} className="shrink-0">Sponsor · Phase</div>
-            <div style={{ width: COL_FIN }} className="shrink-0">Budget · Incurred · %</div>
-            <div className="relative grid flex-1" style={{ gridTemplateColumns: `repeat(${monthCount}, minmax(34px, 1fr))` }}>
-              {months.map((m) => (
-                <div key={m.key} className="border-l border-border/60 pl-1 text-center">
-                  {m.label}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="relative">
-            {items.map((p: any) => {
-              const projectId = p.project_id || p.id;
-              const startIso = projectScheduleStart(p);
-              const endIso = projectScheduleEnd(p);
-              const s = startIso ? new Date(startIso).getTime() : NaN;
-              const e = endIso ? new Date(endIso).getTime() : NaN;
-              const rawStartPct = dateToPct(new Date(s));
-              const rawEndPct = dateToPct(new Date(e));
-              const startPct = Math.max(0, Math.min(100, rawStartPct));
-              const endPct = Math.max(0, Math.min(100, rawEndPct));
-              const widthPct = Math.max(0.6, endPct - startPct);
-              const clippedLeft = rawStartPct < 0;
-              const clippedRight = rawEndPct > 100;
-              const color = RAG_COLORS[displayRag(p) as string] || "#64748b";
-              const budget = Number(p.budget || 0);
-              const incurred = projectIncurred(p);
-              const pct = budget > 0 ? Math.min(100, Math.round((incurred / budget) * 100)) : 0;
-              const overBudget = incurred > budget && budget > 0;
-              const schedPct = scheduleCompletionPct(s, e);
-              const doneColor = darkenHex(color, 0.4);
-              const projGates = gatesForTimelineLane(p, gates)
-                .filter((g: any) => g.planned_date || g.actual_date)
-                .sort(
-                  (a: any, b: any) =>
-                    new Date(a.actual_date || a.planned_date).getTime() -
-                    new Date(b.actual_date || b.planned_date).getTime(),
-                );
-              const rowKey = p.is_project_rollup ? `rollup:${projectId}` : p.id;
-
-              return (
-                <div
-                  key={rowKey}
-                  className="flex items-center border-b border-border/40 py-2 hover:bg-muted/30"
+              {onShowProjectTimelineChange && (
+                <label
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-0.5 text-[10px] font-medium text-foreground hover:bg-muted"
+                  title="Show project rollup lane (start→end + financials from streams)"
                 >
+                  <input
+                    type="checkbox"
+                    checked={!!showProjectTimeline}
+                    onChange={(e) => onShowProjectTimelineChange(e.target.checked)}
+                    className="h-3 w-3"
+                  />
+                  Project timeline
+                </label>
+              )}
+              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-0.5 text-[10px] font-medium text-foreground hover:bg-muted">
+                <input
+                  type="checkbox"
+                  checked={showGates}
+                  onChange={(e) => setShowGates(e.target.checked)}
+                  className="h-3 w-3"
+                />
+                Stage gates
+              </label>
+            </div>
+
+            {/* FY header row */}
+            <div className="flex items-stretch text-[10px] font-semibold uppercase tracking-wide">
+              <div style={{ width: LEFT }} className="shrink-0" />
+              <div
+                className="grid flex-1"
+                style={{ gridTemplateColumns: `repeat(${monthCount}, minmax(34px, 1fr))` }}
+              >
+                {fyGroups.map((g, i) => (
                   <div
-                    style={{ width: COL_PROJECT }}
-                    className={`shrink-0 self-stretch pl-1 pr-2 ${
-                      p.is_project_rollup
-                        ? "rounded-sm bg-muted/55"
-                        : p.is_stream_lane
-                          ? "bg-transparent"
-                          : ""
-                    }`}
+                    key={`${g.fy}-${i}`}
+                    className="border-l border-border/60 bg-muted/40 py-1 text-center text-primary"
+                    style={{ gridColumn: `span ${g.span}` }}
                   >
-                    <Link
-                      to="/app/project-infographic"
-                      search={{ pid: projectId }}
-                      className={`block truncate text-[12px] hover:text-primary hover:underline ${
+                    {g.fy}
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Month header row */}
+            <div className="flex items-center border-b border-border pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <div style={{ width: COL_PROJECT }} className="shrink-0 pl-1">
+                Project / Stream
+              </div>
+              <div style={{ width: COL_SPONSOR }} className="shrink-0">
+                Sponsor · Phase
+              </div>
+              <div style={{ width: COL_FIN }} className="shrink-0">
+                Budget · Incurred · %
+              </div>
+              <div
+                className="relative grid flex-1"
+                style={{ gridTemplateColumns: `repeat(${monthCount}, minmax(34px, 1fr))` }}
+              >
+                {months.map((m) => (
+                  <div key={m.key} className="border-l border-border/60 pl-1 text-center">
+                    {m.label}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="relative">
+              {items.map((p: any) => {
+                const projectId = p.project_id || p.id;
+                const startIso = projectScheduleStart(p);
+                const endIso = projectScheduleEnd(p);
+                const s = startIso ? new Date(startIso).getTime() : NaN;
+                const e = endIso ? new Date(endIso).getTime() : NaN;
+                const rawStartPct = dateToPct(new Date(s));
+                const rawEndPct = dateToPct(new Date(e));
+                const startPct = Math.max(0, Math.min(100, rawStartPct));
+                const endPct = Math.max(0, Math.min(100, rawEndPct));
+                const widthPct = Math.max(0.6, endPct - startPct);
+                const clippedLeft = rawStartPct < 0;
+                const clippedRight = rawEndPct > 100;
+                const color = RAG_COLORS[displayRag(p) as string] || "#64748b";
+                const budget = Number(p.budget || 0);
+                const incurred = projectIncurred(p);
+                const pct = budget > 0 ? Math.min(100, Math.round((incurred / budget) * 100)) : 0;
+                const overBudget = incurred > budget && budget > 0;
+                const schedPct = scheduleCompletionPct(s, e);
+                const doneColor = darkenHex(color, 0.4);
+                const projGates = gatesForTimelineLane(p, gates)
+                  .filter((g: any) => g.planned_date || g.actual_date)
+                  .sort(
+                    (a: any, b: any) =>
+                      new Date(a.actual_date || a.planned_date).getTime() -
+                      new Date(b.actual_date || b.planned_date).getTime(),
+                  );
+                const rowKey = p.is_project_rollup ? `rollup:${projectId}` : p.id;
+
+                return (
+                  <div
+                    key={rowKey}
+                    className="flex items-center border-b border-border/40 py-2 hover:bg-muted/30"
+                  >
+                    <div
+                      style={{ width: COL_PROJECT }}
+                      className={`shrink-0 self-stretch pl-1 pr-2 ${
                         p.is_project_rollup
-                          ? "font-semibold text-foreground"
-                          : "font-medium text-foreground/80"
+                          ? "rounded-sm bg-muted/55"
+                          : p.is_stream_lane
+                            ? "bg-transparent"
+                            : ""
                       }`}
-                      title={p.name}
                     >
-                      {p.is_project_rollup ? (
-                        <>
-                          <span>{p.name}</span>
-                          <span className="ml-1.5 rounded bg-primary/10 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary">
-                            Project
-                          </span>
-                        </>
-                      ) : p.is_stream_lane && (p.stream_name || p.stream_code) ? (
-                        <>
-                          <span className="font-normal text-muted-foreground">{p.project_name || "Project"}</span>
-                          <span className="text-muted-foreground"> · </span>
-                          <span className="font-medium text-foreground/75">{p.stream_name || p.stream_code}</span>
-                          {p.stream_code ? (
-                            <span className="ml-1.5 rounded bg-muted px-1 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
-                              {p.stream_code}
+                      <Link
+                        to="/app/project-infographic"
+                        search={{ pid: projectId }}
+                        className={`block truncate text-[12px] hover:text-primary hover:underline ${
+                          p.is_project_rollup
+                            ? "font-semibold text-foreground"
+                            : "font-medium text-foreground/80"
+                        }`}
+                        title={p.name}
+                      >
+                        {p.is_project_rollup ? (
+                          <>
+                            <span>{p.name}</span>
+                            <span className="ml-1.5 rounded bg-primary/10 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary">
+                              Project
                             </span>
-                          ) : null}
-                        </>
-                      ) : (
-                        p.name
-                      )}
-                    </Link>
-                    <div className="truncate text-[10px] text-muted-foreground">
-                      {p.is_stream_lane && p.stream_ref ? (
-                        <Link to="/app/project-infographic" search={{ pid: projectId }} className="font-mono text-primary hover:underline" title="Project · stream code">{p.stream_ref}</Link>
-                      ) : p.project_code ? (
-                        <Link to="/app/project-infographic" search={{ pid: projectId }} className="font-mono text-primary hover:underline">{p.project_code}</Link>
-                      ) : "—"}{" "}
-                      · {p.is_project_rollup ? "Rollup" : p.is_stream_lane ? "Stream" : p.program || "Unassigned"}
-                      {(p.is_stream_lane || p.is_project_rollup) && p.program ? ` · ${p.program}` : ""}
-                    </div>
-                  </div>
-                  <div style={{ width: COL_SPONSOR }} className="shrink-0 pr-2">
-                    <div className="truncate text-[11px] text-foreground">{p.sponsor || "—"}</div>
-                    <div className="truncate text-[10px] text-muted-foreground">{phaseOf(p) || "—"}</div>
-                  </div>
-                  <div style={{ width: COL_FIN }} className="shrink-0 pr-2">
-                    <div className="text-[11px] font-medium tabular-nums text-foreground">
-                      {money(budget)} <span className="text-muted-foreground">·</span> {money(incurred)}
-                    </div>
-                    <div className="mt-0.5 flex items-center gap-1">
-                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: overBudget ? "#dc2626" : color }} />
+                          </>
+                        ) : p.is_stream_lane && (p.stream_name || p.stream_code) ? (
+                          <>
+                            <span className="font-normal text-muted-foreground">
+                              {p.project_name || "Project"}
+                            </span>
+                            <span className="text-muted-foreground"> · </span>
+                            <span className="font-medium text-foreground/75">
+                              {p.stream_name || p.stream_code}
+                            </span>
+                            {p.stream_code ? (
+                              <span className="ml-1.5 rounded bg-muted px-1 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                {p.stream_code}
+                              </span>
+                            ) : null}
+                          </>
+                        ) : (
+                          p.name
+                        )}
+                      </Link>
+                      <div className="truncate text-[10px] text-muted-foreground">
+                        {p.is_stream_lane && p.stream_ref ? (
+                          <Link
+                            to="/app/project-infographic"
+                            search={{ pid: projectId }}
+                            className="font-mono text-primary hover:underline"
+                            title="Project · stream code"
+                          >
+                            {p.stream_ref}
+                          </Link>
+                        ) : p.project_code ? (
+                          <Link
+                            to="/app/project-infographic"
+                            search={{ pid: projectId }}
+                            className="font-mono text-primary hover:underline"
+                          >
+                            {p.project_code}
+                          </Link>
+                        ) : (
+                          "—"
+                        )}{" "}
+                        ·{" "}
+                        {p.is_project_rollup
+                          ? "Rollup"
+                          : p.is_stream_lane
+                            ? "Stream"
+                            : p.program || "Unassigned"}
+                        {(p.is_stream_lane || p.is_project_rollup) && p.program
+                          ? ` · ${p.program}`
+                          : ""}
                       </div>
-                      <span className={`text-[10px] tabular-nums ${overBudget ? "text-red-600 font-semibold" : "text-muted-foreground"}`}>{pct}%</span>
                     </div>
-                  </div>
-                  <div
-                    className={`relative ${showPvA ? "h-14" : "h-10"} flex-1 rounded bg-muted/30 ${
-                      showGates ? "overflow-visible" : ""
-                    }`}
-                  >
-                    {/* month gridlines with stronger FY dividers */}
-                    <div className="pointer-events-none absolute inset-0 grid" style={{ gridTemplateColumns: `repeat(${monthCount}, minmax(34px, 1fr))` }}>
-                      {months.map((m, i) => {
-                        const prev = months[i - 1];
-                        const fyBreak = prev && prev.fy !== m.fy;
-                        return <div key={m.key} className={fyBreak ? "border-l-2 border-primary/40" : "border-l border-border/40"} />;
-                      })}
+                    <div style={{ width: COL_SPONSOR }} className="shrink-0 pr-2">
+                      <div className="truncate text-[11px] text-foreground">{p.sponsor || "—"}</div>
+                      <div className="truncate text-[10px] text-muted-foreground">
+                        {phaseOf(p) || "—"}
+                      </div>
                     </div>
-                    {/* schedule bar(s) */}
-                    {(() => {
-                      if (!showPvA) {
-                        return (
+                    <div style={{ width: COL_FIN }} className="shrink-0 pr-2">
+                      <div className="text-[11px] font-medium tabular-nums text-foreground">
+                        {money(budget)} <span className="text-muted-foreground">·</span>{" "}
+                        {money(incurred)}
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-1">
+                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
                           <div
-                            className="absolute top-2 h-6 shadow-sm"
-                            style={{
-                              left: `${startPct}%`, width: `${widthPct}%`, background: color, opacity: 0.9,
-                              borderTopLeftRadius: clippedLeft ? 0 : 6,
-                              borderBottomLeftRadius: clippedLeft ? 0 : 6,
-                              borderTopRightRadius: clippedRight ? 0 : 6,
-                              borderBottomRightRadius: clippedRight ? 0 : 6,
-                            }}
-                            title={
-                              p.is_project_rollup
-                                ? `${startIso} → ${endIso} · Schedule ${schedPct}% complete`
-                                : `${startIso} → ${endIso} · ${money(budget)} budget · ${money(incurred)} incurred (${pct}%)`
-                            }
-                          >
-                            {p.is_project_rollup ? (
-                              <div
-                                className="h-full"
-                                style={{
-                                  width: `${schedPct}%`,
-                                  background: doneColor,
-                                  borderTopLeftRadius: clippedLeft ? 0 : 6,
-                                  borderBottomLeftRadius: clippedLeft ? 0 : 6,
-                                }}
-                              />
-                            ) : (
-                              <div className="h-full" style={{ width: `${pct}%`, background: "rgba(255,255,255,0.28)", borderTopLeftRadius: clippedLeft ? 0 : 6, borderBottomLeftRadius: clippedLeft ? 0 : 6 }} />
-                            )}
-                            {widthPct > 10 && (
-                              <div className="absolute inset-0 flex items-center justify-between px-2 text-[10px] font-medium text-white">
-                                <span className="truncate">{fmtShort(new Date(s))} → {fmtShort(new Date(e))}</span>
-                                <span className="tabular-nums font-semibold">
-                                  {p.is_project_rollup ? `${schedPct}%` : `${money(incurred)}/${money(budget)}`}
-                                </span>
-                              </div>
-                            )}
-                            {p.is_project_rollup && widthPct <= 10 && (
-                              <div className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-white">
-                                {schedPct}%
-                              </div>
-                            )}
-                          </div>
-                        );
-                      }
-                      const pS = p.planned_start_date ? new Date(p.planned_start_date).getTime() : s;
-                      const pE = p.planned_end_date ? new Date(p.planned_end_date).getTime() : e;
-                      const aS = p.actual_start_date ? new Date(p.actual_start_date).getTime() : s;
-                      const aE = p.actual_end_date ? new Date(p.actual_end_date).getTime() : e;
-                      const seg = (start: number, end: number) => {
-                        const rs = dateToPct(new Date(start));
-                        const re = dateToPct(new Date(end));
-                        const ls = Math.max(0, Math.min(100, rs));
-                        const le = Math.max(0, Math.min(100, re));
-                        return { left: ls, width: Math.max(0.6, le - ls) };
-                      };
-                      const plan = seg(pS, pE);
-                      const act = seg(aS, aE);
-                      const slipDays = Math.round((aE - pE) / 86400000);
-                      return (
-                        <>
-                          <div
-                            className="absolute top-0.5 h-4 rounded border-2 border-dashed"
-                            style={{ left: `${plan.left}%`, width: `${plan.width}%`, borderColor: color, background: "transparent" }}
-                            title={`Planned · ${p.planned_start_date || p.start_date} → ${p.planned_end_date || p.end_date}`}
-                          >
-                            {plan.width > 10 && (
-                              <div className="absolute inset-0 flex items-center px-2 text-[9px] font-medium" style={{ color }}>
-                                <span className="truncate">Plan: {fmtShort(new Date(pS))} → {fmtShort(new Date(pE))}</span>
-                              </div>
-                            )}
-                          </div>
-                          <div
-                            className="absolute bottom-0.5 h-4 rounded shadow-sm"
-                            style={{ left: `${act.left}%`, width: `${act.width}%`, background: color, opacity: 0.9 }}
-                            title={
-                              p.is_project_rollup
-                                ? `Actual · Schedule ${schedPct}% · slip ${slipDays >= 0 ? "+" : ""}${slipDays}d`
-                                : `Actual · ${p.actual_start_date || p.start_date} → ${p.actual_end_date || p.end_date} · slip ${slipDays >= 0 ? "+" : ""}${slipDays}d`
-                            }
-                          >
-                            {p.is_project_rollup ? (
-                              <div className="h-full rounded-l" style={{ width: `${schedPct}%`, background: doneColor }} />
-                            ) : (
-                              <div className="h-full rounded-l" style={{ width: `${pct}%`, background: "rgba(255,255,255,0.28)" }} />
-                            )}
-                            {act.width > 10 && (
-                              <div className="absolute inset-0 flex items-center justify-between px-2 text-[9px] font-medium text-white">
-                                <span className="truncate">Actual: {fmtShort(new Date(aS))} → {fmtShort(new Date(aE))}</span>
-                                <span className="tabular-nums">{p.is_project_rollup ? `${schedPct}%` : `${slipDays >= 0 ? "+" : ""}${slipDays}d`}</span>
-                              </div>
-                            )}
-                          </div>
-                        </>
-                      );
-                    })()}
-                    {/* Stage gate markers */}
-                    {showGates && projGates.map((g: any, idx: number) => {
-                      const gd = new Date(g.actual_date || g.planned_date).getTime();
-                      let pctX = dateToPct(new Date(gd));
-                      const outside = pctX < 0 || pctX > 100;
-                      pctX = Math.max(0.5, Math.min(99.5, pctX));
-                      const st = String(g.status || "Pending").toLowerCase();
-                      const isDone = st.includes("approv") || st.includes("complete") || st.includes("pass") || !!g.actual_date;
-                      const gcolor = isDone ? "#15803d"
-                        : st.includes("reject") || st.includes("fail") ? "#dc2626"
-                        : st.includes("progress") || st.includes("review") ? "#f59e0b" : "#3b82f6";
-                      const label = String(g.gate_name || "Gate");
-                      const stagger = idx % 2 === 0 ? "top-0" : "bottom-0";
-                      return (
-                        <div key={g.id} className={`absolute z-20 -translate-x-1/2 ${stagger}`}
-                          style={{ left: `${pctX}%`, opacity: outside ? 0.5 : 1 }}
-                          title={`${label} · planned ${g.planned_date || "—"}${g.actual_date ? ` · actual ${g.actual_date}` : ""} · ${g.status || "Pending"}${outside ? " (outside visible range)" : ""}`}>
-                          <div className="flex flex-col items-center">
-                            <div className="relative h-3 w-3 rotate-45 border border-white shadow" style={{ background: gcolor }}>
-                              {isDone && (
-                                <span className="absolute inset-0 -rotate-45 flex items-center justify-center text-[8px] font-bold leading-none text-white">✓</span>
+                            className="h-full rounded-full"
+                            style={{ width: `${pct}%`, background: overBudget ? "#dc2626" : color }}
+                          />
+                        </div>
+                        <span
+                          className={`text-[10px] tabular-nums ${overBudget ? "text-red-600 font-semibold" : "text-muted-foreground"}`}
+                        >
+                          {pct}%
+                        </span>
+                      </div>
+                    </div>
+                    <div
+                      className={`relative ${showPvA ? "h-14" : "h-10"} flex-1 rounded bg-muted/30 ${
+                        showGates ? "overflow-visible" : ""
+                      }`}
+                    >
+                      {/* month gridlines with stronger FY dividers */}
+                      <div
+                        className="pointer-events-none absolute inset-0 grid"
+                        style={{ gridTemplateColumns: `repeat(${monthCount}, minmax(34px, 1fr))` }}
+                      >
+                        {months.map((m, i) => {
+                          const prev = months[i - 1];
+                          const fyBreak = prev && prev.fy !== m.fy;
+                          return (
+                            <div
+                              key={m.key}
+                              className={
+                                fyBreak
+                                  ? "border-l-2 border-primary/40"
+                                  : "border-l border-border/40"
+                              }
+                            />
+                          );
+                        })}
+                      </div>
+                      {/* schedule bar(s) */}
+                      {(() => {
+                        if (!showPvA) {
+                          return (
+                            <div
+                              className="absolute top-2 h-6 shadow-sm"
+                              style={{
+                                left: `${startPct}%`,
+                                width: `${widthPct}%`,
+                                background: color,
+                                opacity: 0.9,
+                                borderTopLeftRadius: clippedLeft ? 0 : 6,
+                                borderBottomLeftRadius: clippedLeft ? 0 : 6,
+                                borderTopRightRadius: clippedRight ? 0 : 6,
+                                borderBottomRightRadius: clippedRight ? 0 : 6,
+                              }}
+                              title={
+                                p.is_project_rollup
+                                  ? `${startIso} → ${endIso} · Schedule ${schedPct}% complete`
+                                  : `${startIso} → ${endIso} · ${money(budget)} budget · ${money(incurred)} incurred (${pct}%)`
+                              }
+                            >
+                              {p.is_project_rollup ? (
+                                <div
+                                  className="h-full"
+                                  style={{
+                                    width: `${schedPct}%`,
+                                    background: doneColor,
+                                    borderTopLeftRadius: clippedLeft ? 0 : 6,
+                                    borderBottomLeftRadius: clippedLeft ? 0 : 6,
+                                  }}
+                                />
+                              ) : (
+                                <div
+                                  className="h-full"
+                                  style={{
+                                    width: `${pct}%`,
+                                    background: "rgba(255,255,255,0.28)",
+                                    borderTopLeftRadius: clippedLeft ? 0 : 6,
+                                    borderBottomLeftRadius: clippedLeft ? 0 : 6,
+                                  }}
+                                />
+                              )}
+                              {widthPct > 10 && (
+                                <div className="absolute inset-0 flex items-center justify-between px-2 text-[10px] font-medium text-white">
+                                  <span className="truncate">
+                                    {fmtShort(new Date(s))} → {fmtShort(new Date(e))}
+                                  </span>
+                                  <span className="tabular-nums font-semibold">
+                                    {p.is_project_rollup
+                                      ? `${schedPct}%`
+                                      : `${money(incurred)}/${money(budget)}`}
+                                  </span>
+                                </div>
+                              )}
+                              {p.is_project_rollup && widthPct <= 10 && (
+                                <div className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-white">
+                                  {schedPct}%
+                                </div>
                               )}
                             </div>
-                            <div className="mt-0.5 max-w-[80px] truncate rounded bg-white/95 px-1 text-[8px] font-medium text-foreground shadow-sm">
-                              {label.slice(0, 14)}
+                          );
+                        }
+                        const pS = p.planned_start_date
+                          ? new Date(p.planned_start_date).getTime()
+                          : s;
+                        const pE = p.planned_end_date ? new Date(p.planned_end_date).getTime() : e;
+                        const aS = p.actual_start_date
+                          ? new Date(p.actual_start_date).getTime()
+                          : s;
+                        const aE = p.actual_end_date ? new Date(p.actual_end_date).getTime() : e;
+                        const seg = (start: number, end: number) => {
+                          const rs = dateToPct(new Date(start));
+                          const re = dateToPct(new Date(end));
+                          const ls = Math.max(0, Math.min(100, rs));
+                          const le = Math.max(0, Math.min(100, re));
+                          return { left: ls, width: Math.max(0.6, le - ls) };
+                        };
+                        const plan = seg(pS, pE);
+                        const act = seg(aS, aE);
+                        const slipDays = Math.round((aE - pE) / 86400000);
+                        return (
+                          <>
+                            <div
+                              className="absolute top-0.5 h-4 rounded border-2 border-dashed"
+                              style={{
+                                left: `${plan.left}%`,
+                                width: `${plan.width}%`,
+                                borderColor: color,
+                                background: "transparent",
+                              }}
+                              title={`Planned · ${p.planned_start_date || p.start_date} → ${p.planned_end_date || p.end_date}`}
+                            >
+                              {plan.width > 10 && (
+                                <div
+                                  className="absolute inset-0 flex items-center px-2 text-[9px] font-medium"
+                                  style={{ color }}
+                                >
+                                  <span className="truncate">
+                                    Plan: {fmtShort(new Date(pS))} → {fmtShort(new Date(pE))}
+                                  </span>
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        </div>
-                      );
-                    })}
+                            <div
+                              className="absolute bottom-0.5 h-4 rounded shadow-sm"
+                              style={{
+                                left: `${act.left}%`,
+                                width: `${act.width}%`,
+                                background: color,
+                                opacity: 0.9,
+                              }}
+                              title={
+                                p.is_project_rollup
+                                  ? `Actual · Schedule ${schedPct}% · slip ${slipDays >= 0 ? "+" : ""}${slipDays}d`
+                                  : `Actual · ${p.actual_start_date || p.start_date} → ${p.actual_end_date || p.end_date} · slip ${slipDays >= 0 ? "+" : ""}${slipDays}d`
+                              }
+                            >
+                              {p.is_project_rollup ? (
+                                <div
+                                  className="h-full rounded-l"
+                                  style={{ width: `${schedPct}%`, background: doneColor }}
+                                />
+                              ) : (
+                                <div
+                                  className="h-full rounded-l"
+                                  style={{ width: `${pct}%`, background: "rgba(255,255,255,0.28)" }}
+                                />
+                              )}
+                              {act.width > 10 && (
+                                <div className="absolute inset-0 flex items-center justify-between px-2 text-[9px] font-medium text-white">
+                                  <span className="truncate">
+                                    Actual: {fmtShort(new Date(aS))} → {fmtShort(new Date(aE))}
+                                  </span>
+                                  <span className="tabular-nums">
+                                    {p.is_project_rollup
+                                      ? `${schedPct}%`
+                                      : `${slipDays >= 0 ? "+" : ""}${slipDays}d`}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        );
+                      })()}
+                      {/* Stage gate markers */}
+                      {showGates &&
+                        projGates.map((g: any, idx: number) => {
+                          const gd = new Date(g.actual_date || g.planned_date).getTime();
+                          let pctX = dateToPct(new Date(gd));
+                          const outside = pctX < 0 || pctX > 100;
+                          pctX = Math.max(0.5, Math.min(99.5, pctX));
+                          const st = String(g.status || "Pending").toLowerCase();
+                          const isDone =
+                            st.includes("approv") ||
+                            st.includes("complete") ||
+                            st.includes("pass") ||
+                            !!g.actual_date;
+                          const gcolor = isDone
+                            ? "#15803d"
+                            : st.includes("reject") || st.includes("fail")
+                              ? "#dc2626"
+                              : st.includes("progress") || st.includes("review")
+                                ? "#f59e0b"
+                                : "#3b82f6";
+                          const label = String(g.gate_name || "Gate");
+                          const stagger = idx % 2 === 0 ? "top-0" : "bottom-0";
+                          return (
+                            <div
+                              key={g.id}
+                              className={`absolute z-20 -translate-x-1/2 ${stagger}`}
+                              style={{ left: `${pctX}%`, opacity: outside ? 0.5 : 1 }}
+                              title={`${label} · planned ${g.planned_date || "—"}${g.actual_date ? ` · actual ${g.actual_date}` : ""} · ${g.status || "Pending"}${outside ? " (outside visible range)" : ""}`}
+                            >
+                              <div className="flex flex-col items-center">
+                                <div
+                                  className="relative h-3 w-3 rotate-45 border border-white shadow"
+                                  style={{ background: gcolor }}
+                                >
+                                  {isDone && (
+                                    <span className="absolute inset-0 -rotate-45 flex items-center justify-center text-[8px] font-bold leading-none text-white">
+                                      ✓
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="mt-0.5 max-w-[80px] truncate rounded bg-white/95 px-1 text-[8px] font-medium text-foreground shadow-sm">
+                                  {label.slice(0, 14)}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-            {todayPct >= 0 && todayPct <= 100 && (
-              <div className="pointer-events-none absolute inset-0 z-10 flex">
-                <div style={{ width: LEFT }} className="shrink-0" />
-                <div className="relative flex-1">
-                  <div className="absolute top-0 bottom-0" style={{ left: `${todayPct}%`, borderLeft: "2px dashed #dc2626" }}>
-                    <div className="-ml-6 mt-1 whitespace-nowrap rounded bg-red-600 px-1.5 py-0.5 text-[9px] font-semibold text-white">
-                      {now.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" })}
+                );
+              })}
+              {todayPct >= 0 && todayPct <= 100 && (
+                <div className="pointer-events-none absolute inset-0 z-10 flex">
+                  <div style={{ width: LEFT }} className="shrink-0" />
+                  <div className="relative flex-1">
+                    <div
+                      className="absolute top-0 bottom-0"
+                      style={{ left: `${todayPct}%`, borderLeft: "2px dashed #dc2626" }}
+                    >
+                      <div className="-ml-6 mt-1 whitespace-nowrap rounded bg-red-600 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+                        {now.toLocaleDateString("en-GB", {
+                          day: "2-digit",
+                          month: "short",
+                          year: "2-digit",
+                        })}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
           </div>
         </div>
       )}

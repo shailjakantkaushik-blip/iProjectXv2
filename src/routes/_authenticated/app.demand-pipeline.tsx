@@ -4,6 +4,15 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, canEditProjects } from "@/lib/auth-context";
+import { useTablePermission } from "@/lib/permissions";
+import { EditableCell } from "@/components/editable-cell";
+import {
+  DEMAND_STAGES,
+  DEMAND_STAGE_COLORS,
+  demandPaybackMonths,
+  demandStageOptions,
+  impliedDemandRoi,
+} from "@/lib/demand-pipeline";
 import { SectionFrame, SectionTitle, PageHeading, KpiCard } from "@/components/streamlit";
 import {
   BarChart,
@@ -35,22 +44,8 @@ export const Route = createFileRoute("/_authenticated/app/demand-pipeline")({
   component: DemandPipeline,
 });
 
-const STAGES = ["Idea", "Screening", "Business Case", "Approved", "Rejected", "On Hold"];
-const STAGE_COLORS: Record<string, string> = {
-  Idea: "#94a3b8",
-  Screening: "#3b82f6",
-  "Business Case": "#8b5cf6",
-  Approved: "#22c55e",
-  Rejected: "#ef4444",
-  "On Hold": "#f59e0b",
-};
-
-function demandPaybackMonths(idea: { estimated_cost?: number | null; estimated_benefit?: number | null }) {
-  const cost = Number(idea.estimated_cost || 0);
-  const benefit = Number(idea.estimated_benefit || 0);
-  if (!(cost > 0) || !(benefit > 0)) return null;
-  return Math.round((cost / benefit) * 12 * 10) / 10;
-}
+const STAGES = DEMAND_STAGES as unknown as string[];
+const STAGE_COLORS = DEMAND_STAGE_COLORS;
 
 function money(n: number) {
   return (
@@ -63,9 +58,22 @@ function DemandPipeline() {
   const { organization, roles } = useAuth();
   const orgId = organization?.id;
   const canConvert = canEditProjects(roles);
+  const { canEdit } = useTablePermission("demand_pipeline");
+  // PM / BU lead / admin can always update pipeline rows (same set as convert-to-project).
+  const canEditDemand = canEdit || canConvert;
   const qc = useQueryClient();
   const [statusF, setStatusF] = useState("All");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    idea_name: "",
+    sponsor: "",
+    status: "Idea",
+    estimated_cost: "",
+    estimated_benefit: "",
+    strategic_alignment: "3",
+    complexity: "3",
+    description: "",
+  });
 
   const { data: ideas = [] } = useQuery({
     queryKey: ["demand_pipeline", organization?.id],
@@ -83,9 +91,12 @@ function DemandPipeline() {
     mutationFn: async (idea: any) => {
       if (!orgId) throw new Error("No organisation");
       if (idea.project_id) throw new Error("Already converted to a project");
-      const { data, error } = await supabase.rpc("convert_demand_idea_to_project" as never, {
-        _idea_id: idea.id,
-      } as never);
+      const { data, error } = await supabase.rpc(
+        "convert_demand_idea_to_project" as never,
+        {
+          _idea_id: idea.id,
+        } as never,
+      );
       if (error) throw error;
       const row = Array.isArray(data) ? data[0] : data;
       const proj = row as { id?: string; project_code?: string } | null;
@@ -98,6 +109,49 @@ function DemandPipeline() {
       qc.invalidateQueries({ queryKey: ["demand_pipeline", orgId] });
       qc.invalidateQueries({ queryKey: ["projects"] });
       toast.success(`Created project ${proj.project_code}`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const create = useMutation({
+    mutationFn: async () => {
+      if (!orgId) throw new Error("No organisation");
+      const name = form.idea_name.trim();
+      if (!name) throw new Error("Idea name is required");
+      const cost = form.estimated_cost === "" ? null : Number(form.estimated_cost);
+      const benefit = form.estimated_benefit === "" ? null : Number(form.estimated_benefit);
+      const roi =
+        cost != null && benefit != null && Number.isFinite(cost) && Number.isFinite(benefit)
+          ? impliedDemandRoi(cost, benefit)
+          : null;
+      const { error } = await supabase.from("demand_pipeline").insert({
+        org_id: orgId,
+        idea_name: name,
+        sponsor: form.sponsor.trim() || null,
+        status: form.status,
+        estimated_cost: Number.isFinite(Number(cost)) ? cost : null,
+        estimated_benefit: Number.isFinite(Number(benefit)) ? benefit : null,
+        estimated_roi: roi,
+        strategic_alignment: Number(form.strategic_alignment) || null,
+        complexity: Number(form.complexity) || null,
+        description: form.description.trim() || null,
+        submitted_date: new Date().toISOString().slice(0, 10),
+      } as never);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["demand_pipeline", orgId] });
+      toast.success("Demand idea saved");
+      setForm({
+        idea_name: "",
+        sponsor: "",
+        status: "Idea",
+        estimated_cost: "",
+        estimated_benefit: "",
+        strategic_alignment: "3",
+        complexity: "3",
+        description: "",
+      });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -133,6 +187,7 @@ function DemandPipeline() {
   );
 
   const table = useColumnarTable(filtered, columns);
+  const stageOptions = useMemo(() => demandStageOptions(ideas), [ideas]);
 
   const funnel = useMemo(
     () =>
@@ -178,6 +233,17 @@ function DemandPipeline() {
         subtitle="Ideas & business cases — promote approved demand into a project register entry."
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            {canEditDemand ? (
+              <button
+                type="button"
+                className="st-btn-primary st-btn-inline"
+                onClick={() =>
+                  document.getElementById("log-demand")?.scrollIntoView({ behavior: "smooth" })
+                }
+              >
+                + Add idea
+              </button>
+            ) : null}
             <Link to="/app/work-board" className="text-xs text-sky-700 hover:underline">
               Work board
             </Link>
@@ -215,8 +281,90 @@ function DemandPipeline() {
         </div>
       </SectionFrame>
 
+      {canEditDemand ? (
+        <SectionFrame id="log-demand">
+          <SectionTitle>Log demand idea</SectionTitle>
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
+            <input
+              className="st-input md:col-span-2"
+              placeholder="Idea name"
+              value={form.idea_name}
+              onChange={(e) => setForm((f) => ({ ...f, idea_name: e.target.value }))}
+            />
+            <input
+              className="st-input"
+              placeholder="Sponsor"
+              value={form.sponsor}
+              onChange={(e) => setForm((f) => ({ ...f, sponsor: e.target.value }))}
+            />
+            <select
+              className="st-input"
+              value={form.status}
+              onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
+            >
+              {STAGES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+            <input
+              className="st-input"
+              type="number"
+              placeholder="Est. cost"
+              value={form.estimated_cost}
+              onChange={(e) => setForm((f) => ({ ...f, estimated_cost: e.target.value }))}
+            />
+            <input
+              className="st-input"
+              type="number"
+              placeholder="Est. benefit"
+              value={form.estimated_benefit}
+              onChange={(e) => setForm((f) => ({ ...f, estimated_benefit: e.target.value }))}
+            />
+            <input
+              className="st-input"
+              type="number"
+              min={1}
+              max={5}
+              placeholder="Align 1–5"
+              value={form.strategic_alignment}
+              onChange={(e) => setForm((f) => ({ ...f, strategic_alignment: e.target.value }))}
+            />
+            <input
+              className="st-input"
+              type="number"
+              min={1}
+              max={5}
+              placeholder="Complexity 1–5"
+              value={form.complexity}
+              onChange={(e) => setForm((f) => ({ ...f, complexity: e.target.value }))}
+            />
+            <input
+              className="st-input md:col-span-3"
+              placeholder="Description (optional)"
+              value={form.description}
+              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+            />
+            <button
+              type="button"
+              className="st-btn-primary"
+              disabled={create.isPending}
+              onClick={() => create.mutate()}
+            >
+              {create.isPending ? "Saving…" : "Save idea"}
+            </button>
+          </div>
+        </SectionFrame>
+      ) : null}
+
       <SectionFrame>
         <SectionTitle>Pipeline Register</SectionTitle>
+        <p className="mb-2 text-xs text-muted-foreground">
+          {canEditDemand
+            ? "Click a cell to update status, cost, benefit, and other fields. Creating a project from an idea still marks it Approved."
+            : "View only — ask an admin, PM, or BU lead to change demand status."}
+        </p>
         <ColumnarToolbar
           globalQ={table.globalQ}
           onGlobalQ={table.setGlobalQ}
@@ -267,35 +415,124 @@ function DemandPipeline() {
                   const payback = demandPaybackMonths(i);
                   return (
                     <tr key={i.id}>
-                      <td className="font-medium">{i.idea_name}</td>
-                      <td>{i.sponsor || "—"}</td>
+                      <td className="font-medium">
+                        <EditableCell
+                          table="demand_pipeline"
+                          rowId={i.id}
+                          field="idea_name"
+                          value={i.idea_name}
+                          invalidateKeys={["demand_pipeline"]}
+                          forceEditable={canEditDemand}
+                        />
+                      </td>
                       <td>
-                        <span
-                          className="rounded px-2 py-0.5 text-[11px] font-semibold"
-                          style={{
-                            background: `${STAGE_COLORS[i.status || "Idea"]}22`,
-                            color: STAGE_COLORS[i.status || "Idea"],
+                        <EditableCell
+                          table="demand_pipeline"
+                          rowId={i.id}
+                          field="sponsor"
+                          value={i.sponsor}
+                          invalidateKeys={["demand_pipeline"]}
+                          forceEditable={canEditDemand}
+                        />
+                      </td>
+                      <td>
+                        <EditableCell
+                          table="demand_pipeline"
+                          rowId={i.id}
+                          field="status"
+                          value={i.status || "Idea"}
+                          type="select"
+                          options={stageOptions.map((s) => ({ label: s, value: s }))}
+                          invalidateKeys={["demand_pipeline"]}
+                          forceEditable={canEditDemand}
+                          display={(v) => {
+                            const status = String(v || "Idea");
+                            const color = STAGE_COLORS[status] || "#64748b";
+                            return (
+                              <span
+                                className="rounded px-2 py-0.5 text-[11px] font-semibold"
+                                style={{ background: `${color}22`, color }}
+                              >
+                                {status}
+                              </span>
+                            );
                           }}
-                        >
-                          {i.status || "Idea"}
-                        </span>
+                        />
                       </td>
                       <td className="text-right tabular-nums">
-                        {money(Number(i.estimated_cost || 0))}
+                        <EditableCell
+                          table="demand_pipeline"
+                          rowId={i.id}
+                          field="estimated_cost"
+                          value={i.estimated_cost}
+                          type="number"
+                          invalidateKeys={["demand_pipeline"]}
+                          forceEditable={canEditDemand}
+                          display={(v) => money(Number(v || 0))}
+                        />
                       </td>
                       <td className="text-right tabular-nums">
-                        {money(Number(i.estimated_benefit || 0))}
+                        <EditableCell
+                          table="demand_pipeline"
+                          rowId={i.id}
+                          field="estimated_benefit"
+                          value={i.estimated_benefit}
+                          type="number"
+                          invalidateKeys={["demand_pipeline"]}
+                          forceEditable={canEditDemand}
+                          display={(v) => money(Number(v || 0))}
+                        />
                       </td>
                       <td className="text-right tabular-nums">
-                        {Number(i.estimated_roi || 0).toFixed(1)}%
+                        <EditableCell
+                          table="demand_pipeline"
+                          rowId={i.id}
+                          field="estimated_roi"
+                          value={i.estimated_roi}
+                          type="number"
+                          invalidateKeys={["demand_pipeline"]}
+                          forceEditable={canEditDemand}
+                          display={(v) => `${Number(v || 0).toFixed(1)}%`}
+                        />
                       </td>
                       <td className="text-right tabular-nums">
                         {payback == null ? "—" : `${payback} mo`}
                       </td>
-                      <td className="text-right tabular-nums">{i.strategic_alignment || "—"}/5</td>
-                      <td className="text-right tabular-nums">{i.complexity || "—"}/5</td>
+                      <td className="text-right tabular-nums">
+                        <EditableCell
+                          table="demand_pipeline"
+                          rowId={i.id}
+                          field="strategic_alignment"
+                          value={i.strategic_alignment}
+                          type="number"
+                          invalidateKeys={["demand_pipeline"]}
+                          forceEditable={canEditDemand}
+                          display={(v) => (v == null || v === "" ? "—" : `${v}/5`)}
+                        />
+                      </td>
+                      <td className="text-right tabular-nums">
+                        <EditableCell
+                          table="demand_pipeline"
+                          rowId={i.id}
+                          field="complexity"
+                          value={i.complexity}
+                          type="number"
+                          invalidateKeys={["demand_pipeline"]}
+                          forceEditable={canEditDemand}
+                          display={(v) => (v == null || v === "" ? "—" : `${v}/5`)}
+                        />
+                      </td>
                       <td>
-                        {i.submitted_date ? new Date(i.submitted_date).toLocaleDateString() : "—"}
+                        <EditableCell
+                          table="demand_pipeline"
+                          rowId={i.id}
+                          field="submitted_date"
+                          value={i.submitted_date ? String(i.submitted_date).slice(0, 10) : ""}
+                          type="date"
+                          invalidateKeys={["demand_pipeline"]}
+                          forceEditable={canEditDemand}
+                          display={(v) => (v ? new Date(String(v)).toLocaleDateString() : "—")}
+                        />
                       </td>
                       <td className="whitespace-nowrap">
                         {i.project_id ? (
