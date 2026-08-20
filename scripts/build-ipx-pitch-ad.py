@@ -175,31 +175,65 @@ def actor_frame(
     body: str = "",
     chips: list[str] | None = None,
     corner_mark: Image.Image | None = None,
+    tension: bool | str = False,
 ) -> Image.Image:
+    tense = bool(tension)
+    clutter = tension is True or tension == "full"
     base = cover_resize(Image.open(bg_path), W, H)
     dim = Image.new("RGB", (W, H), NAVY)
-    base = Image.blend(base, dim, 0.14)
-    base = bottom_gradient(base, 0.90)
-    if corner_mark is not None:
+    base = Image.blend(base, dim, 0.38 if tense else 0.14)
+    if tense:
+        heat = Image.new("RGB", (W, H), (62, 12, 18))
+        base = Image.blend(base, heat, 0.26 if clutter else 0.16)
+    base = bottom_gradient(base, 0.92 if tense else 0.90)
+    if corner_mark is not None and not tense:
         base = paste_mark_top_right(base, corner_mark)
     layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(layer)
+    if tense:
+        windows = [
+            (36, 48, "EXCEL", "Budget_FY_v14.xlsx", RED),
+            (300, 86, "EMAIL", "Board pack · sent 11:58pm", AMBER),
+            (560, 40, "TEAMS", "Which version is live?", AMBER),
+            (820, 104, "RAID.xls", "11 open · last update: March", RED),
+            (48, 196, "RAG", "Amber — typed, not calculated", AMBER),
+            (700, 204, "PLAN", "3 Gantts. None match.", RED),
+        ]
+        if tension == "light":
+            windows = windows[:3]
+        fw, fh = font(FONT_SEMI, 11), font(FONT_BOLD, 13)
+        for x0, y0, head, body_t, col in windows:
+            draw.rounded_rectangle(
+                [x0, y0, x0 + 250, y0 + 70],
+                radius=10,
+                fill=(20, 8, 12, 210),
+                outline=(*col, 200),
+                width=1,
+            )
+            draw.rectangle([x0, y0, x0 + 250, y0 + 22], fill=(*col, 40))
+            draw.text((x0 + 12, y0 + 5), head, font=fw, fill=(*col, 255))
+            draw.text((x0 + 12, y0 + 32), body_t, font=fh, fill=(*WHITE, 255))
     fk, ft, fb, fc = font(FONT_SEMI, 14), font(FONT_BOLD, 40), font(FONT_REG, 21), font(FONT_SEMI, 13)
     x, y = 52, H - 268
-    # Glass caption card so type stays readable on any still.
     card_top = y - 36
     draw.rounded_rectangle(
         [32, card_top, W - 32, H - 22],
         radius=18,
-        fill=(8, 12, 26, 176),
-        outline=(148, 197, 253, 90),
+        fill=(18, 8, 12, 200) if tension else (8, 12, 26, 176),
+        outline=(248, 113, 113, 140) if tension else (148, 197, 253, 90),
         width=1,
     )
     if kicker:
         lab = kicker.upper()
         kw = int(draw.textlength(lab, font=fk)) + 24
-        draw.rounded_rectangle([x, y - 16, x + kw, y + 10], radius=6, fill=(8, 14, 32, 180), outline=(147, 197, 253, 140), width=1)
-        draw.text((x + 12, y - 11), lab, font=fk, fill=(*BLUE, 255))
+        draw.rounded_rectangle(
+            [x, y - 16, x + kw, y + 10],
+            radius=6,
+            fill=(40, 12, 16, 210) if tension else (8, 14, 32, 180),
+            outline=(248, 113, 113, 160) if tension else (147, 197, 253, 140),
+            width=1,
+        )
+        draw.text((x + 12, y - 11), lab, font=fk, fill=(*RED, 255) if tension else (*BLUE, 255))
         y += 28
     for line in wrap(draw, title, ft, W - 120):
         draw.text((x, y), line, font=ft, fill=(*WHITE, 255))
@@ -225,24 +259,32 @@ def solid_navy() -> Image.Image:
     return Image.new("RGB", (W, H), NAVY)
 
 
-def ui_base() -> tuple[Image.Image, ImageDraw.ImageDraw, Image.Image]:
-    base = Image.new("RGB", (W, H), NAVY)
-    # faint grid
-    g = ImageDraw.Draw(base)
-    for x in range(0, W, 48):
-        g.line([(x, 0), (x, H)], fill=(16, 28, 52), width=1)
-    for y in range(0, H, 48):
-        g.line([(0, y), (W, y)], fill=(16, 28, 52), width=1)
-    vig = Image.new("L", (W, H), 0)
-    vd = ImageDraw.Draw(vig)
-    vd.ellipse([-40, -80, W + 40, H + 120], fill=255)
-    vig = vig.filter(ImageFilter.GaussianBlur(80))
-    tint = Image.new("RGB", (W, H), (14, 28, 58))
-    base = Image.composite(tint, base, vig)
-    # Soft diagonal sheen so UI frames feel live, not static.
+def ui_base(atmosphere: str | None = None) -> tuple[Image.Image, ImageDraw.ImageDraw, Image.Image]:
+    if atmosphere:
+        path = BG_DIR / f"{atmosphere}.jpg"
+        if path.exists():
+            base = cover_resize(Image.open(path), W, H)
+            dim = Image.new("RGB", (W, H), NAVY)
+            base = Image.blend(base, dim, 0.48)
+            base = bottom_gradient(base, 0.62)
+        else:
+            base = Image.new("RGB", (W, H), NAVY)
+    else:
+        base = Image.new("RGB", (W, H), NAVY)
+        g = ImageDraw.Draw(base)
+        for x in range(0, W, 48):
+            g.line([(x, 0), (x, H)], fill=(16, 28, 52), width=1)
+        for y in range(0, H, 48):
+            g.line([(0, y), (W, y)], fill=(16, 28, 52), width=1)
+        vig = Image.new("L", (W, H), 0)
+        vd = ImageDraw.Draw(vig)
+        vd.ellipse([-40, -80, W + 40, H + 120], fill=255)
+        vig = vig.filter(ImageFilter.GaussianBlur(80))
+        tint = Image.new("RGB", (W, H), (14, 28, 58))
+        base = Image.composite(tint, base, vig)
     sheen = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     sd = ImageDraw.Draw(sheen)
-    sd.polygon([(420, 0), (620, 0), (260, H), (60, H)], fill=(160, 210, 255, 18))
+    sd.polygon([(420, 0), (620, 0), (260, H), (60, H)], fill=(160, 210, 255, 16))
     base = Image.alpha_composite(base.convert("RGBA"), sheen).convert("RGB")
     layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     return base, ImageDraw.Draw(layer), layer
@@ -254,77 +296,87 @@ def labeled_flow(
     nodes: list[str],
     note: str = "",
     active: int | None = None,
+    atmosphere: str = "spine",
 ) -> Image.Image:
-    base, draw, layer = ui_base()
-    fk, ft, fb = font(FONT_SEMI, 14), font(FONT_BOLD, 32), font(FONT_REG, 18)
-    draw.text((56, 36), kicker.upper(), font=fk, fill=(*CYAN, 255))
-    y = 62
+    base, draw, layer = ui_base(atmosphere)
+    fk, ft, fn, fb = font(FONT_SEMI, 13), font(FONT_BOLD, 30), font(FONT_BOLD, 16), font(FONT_REG, 16)
+    draw.text((56, 28), kicker.upper(), font=fk, fill=(*CYAN, 255))
+    y = 50
     for line in wrap(draw, title, ft, W - 120):
         draw.text((56, y), line, font=ft, fill=(*WHITE, 255))
-        y += 40
-    y += 16
-    x, row_h = 56, 52
-    fchip = font(FONT_SEMI, 15)
+        y += 38
+    y += 18
+    n = len(nodes)
+    cols = 3 if n > 4 else min(max(n, 1), 4)
+    gap, card_h = 18, 92
+    card_w = (W - 112 - gap * (cols - 1)) // cols
     for i, node in enumerate(nodes):
-        tw = int(draw.textlength(node, font=fchip)) + 28
-        if x + tw > W - 56:
-            x = 56
-            y += row_h + 18
+        r, c = divmod(i, cols)
+        x = 56 + c * (card_w + gap)
+        cy = y + r * (card_h + 22)
         on = active is None or i <= active
         hot = active is not None and i == active
-        fill = (18, 70, 92, 240) if hot else ((12, 24, 48, 230) if on else (10, 16, 28, 200))
-        outline = (125, 211, 252, 230) if hot or on else (60, 80, 110, 120)
-        draw.rounded_rectangle([x, y, x + tw, y + row_h], radius=10, fill=fill, outline=outline, width=2 if hot else 1)
-        draw.text((x + 14, y + 16), node, font=fchip, fill=(*WHITE, 255) if on else (148, 163, 184, 255))
-        if i < len(nodes) - 1:
-            ax = x + tw + 6
-            if ax + 20 < W - 56:
-                draw.polygon([(ax, y + 22), (ax + 12, y + 26), (ax, y + 30)], fill=(*CYAN, 220))
-        x += tw + 28
+        fill = (14, 90, 118, 235) if hot else ((12, 28, 52, 220) if on else (10, 16, 28, 180))
+        outline = (125, 211, 252, 240) if hot else ((125, 211, 252, 140) if on else (70, 90, 120, 90))
+        draw.rounded_rectangle([x, cy, x + card_w, cy + card_h], radius=14, fill=fill, outline=outline, width=2 if hot else 1)
+        num = f"{i + 1:02d}"
+        draw.text((x + 16, cy + 14), num, font=fk, fill=(*CYAN, 255) if on else (100, 116, 139, 255))
+        draw.text((x + 16, cy + 40), node, font=fn, fill=(*WHITE, 255) if on else (148, 163, 184, 255))
+        if c < cols - 1 and i < n - 1:
+            ax = x + card_w + 2
+            mid = cy + card_h // 2
+            draw.polygon([(ax, mid - 6), (ax + 12, mid), (ax, mid + 6)], fill=(*CYAN, 220))
     if note:
-        draw.text((56, H - 64), note, font=fb, fill=(*MUTED, 255))
+        draw.text((56, H - 48), note, font=fb, fill=(*MUTED, 255))
     return Image.alpha_composite(base.convert("RGBA"), layer).convert("RGB")
 
 
 def pulse_frame(mode: str = "full", caption: str = "Portfolio Pulse") -> Image.Image:
-    base, draw, layer = ui_base()
-    fk, ft, fb, fs = font(FONT_SEMI, 14), font(FONT_BOLD, 36), font(FONT_REG, 18), font(FONT_SEMI, 16)
-    draw.text((56, 36), "INTELLIGENCE", font=fk, fill=(*CYAN, 255))
-    y = 62
+    base, draw, layer = ui_base("health")
+    fk, ft, fb, fs = font(FONT_SEMI, 13), font(FONT_BOLD, 30), font(FONT_REG, 17), font(FONT_SEMI, 15)
+    draw.text((56, 28), "INTELLIGENCE", font=fk, fill=(*CYAN, 255))
+    y = 50
     for line in wrap(draw, caption, ft, W - 120):
         draw.text((56, y), line, font=ft, fill=(*WHITE, 255))
-        y += 40
-    y += 10
+        y += 36
+    y += 8
     show_score = mode != "focus"
     show_focus = mode != "score"
     if show_score:
-        draw.rounded_rectangle([56, y, 420, y + 180], radius=16, fill=(12, 22, 44, 230), outline=(251, 191, 36, 180), width=2)
-        draw.text((88, y + 28), "72", font=font(FONT_BOLD, 84), fill=(*AMBER, 255))
-        draw.text((88, y + 120), "AT RISK", font=font(FONT_BOLD, 22), fill=(*AMBER, 255))
-        rows = [
-            ("Financial Health", GREEN),
-            ("Delivery Health", AMBER),
-            ("Resource Health", AMBER),
-            ("Risk Health", RED),
-            ("Benefits", GREEN),
+        cx, cy, r = 230, y + 128, 118
+        draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=(30, 48, 80, 255), width=18)
+        # 72 is Amber (65–79). Sweep 72% of a 270° gauge.
+        draw.arc([cx - r, cy - r, cx + r, cy + r], start=135, end=135 + int(270 * 0.72), fill=(*AMBER, 255), width=18)
+        draw.text((cx - 52, cy - 48), "72", font=font(FONT_BOLD, 64), fill=(*AMBER, 255))
+        tw = draw.textlength("AT RISK", font=fs)
+        draw.text((cx - tw / 2, cy + 28), "AT RISK", font=fs, fill=(*AMBER, 255))
+        dims = [
+            ("Schedule", GREEN),
+            ("Financial", GREEN),
+            ("Scope", AMBER),
+            ("Delivery", AMBER),
+            ("Resource", AMBER),
+            ("Risk", RED),
             ("Dependencies", RED),
+            ("Benefits", GREEN),
         ]
         ry = y + 8
-        for label, col in rows:
-            draw.ellipse([468, ry + 8, 484, ry + 24], fill=(*col, 255))
-            draw.text((500, ry + 4), label, font=fs, fill=(*WHITE, 255))
-            ry += 36
-        y += 200
+        for label, col in dims:
+            draw.rounded_rectangle([430, ry, 1220, ry + 32], radius=8, fill=(12, 22, 44, 210), outline=(*col, 90), width=1)
+            draw.ellipse([446, ry + 10, 462, ry + 26], fill=(*col, 255))
+            draw.text((476, ry + 6), label, font=fs, fill=(*WHITE, 255))
+            ry += 38
+        y = ry + 12
     if show_focus:
-        draw.text((56, y), "CRITICAL FOCUS AREAS", font=fk, fill=(*RED, 255))
-        y += 32
+        draw.text((56, min(y, 430)), "CRITICAL FOCUS AREAS", font=fk, fill=(*RED, 255))
+        y = min(y, 430) + 28
         focus = [
             "Cost forecast — Project Alpha",
             "Resource capacity — Program Beta",
             "Dependency — Project Gamma",
         ]
         for item in focus:
-            draw.rounded_rectangle([56, y, 900, y + 48], radius=8, fill=(40, 16, 24, 230), outline=(248, 113, 113, 140), width=1)
+            draw.rounded_rectangle([56, y, 900, y + 48], radius=10, fill=(48, 14, 20, 230), outline=(248, 113, 113, 160), width=1)
             draw.ellipse([76, y + 17, 90, y + 31], fill=(*RED, 255))
             draw.text((106, y + 12), item, font=fb, fill=(*WHITE, 255))
             y += 56
@@ -332,92 +384,110 @@ def pulse_frame(mode: str = "full", caption: str = "Portfolio Pulse") -> Image.I
 
 
 def gate_frame(caption: str = "Stage gate — ready for decision") -> Image.Image:
-    base, draw, layer = ui_base()
-    fk, ft, fb = font(FONT_SEMI, 14), font(FONT_BOLD, 32), font(FONT_SEMI, 18)
-    draw.text((56, 40), "GOVERNANCE", font=fk, fill=(*CYAN, 255))
-    y = 68
+    base, draw, layer = ui_base("govern")
+    fk, ft, fb = font(FONT_SEMI, 13), font(FONT_BOLD, 28), font(FONT_SEMI, 17)
+    draw.text((56, 28), "GOVERNANCE", font=fk, fill=(*CYAN, 255))
+    y = 50
     for line in wrap(draw, caption, ft, W - 120):
         draw.text((56, y), line, font=ft, fill=(*WHITE, 255))
-        y += 40
+        y += 36
     items = ["Business case", "Financials", "Risks", "Benefits", "Resources", "Dependencies", "Approvals"]
     y = 140
     for item in items:
-        draw.rounded_rectangle([56, y, 560, y + 48], radius=8, fill=(12, 24, 48, 230), outline=(52, 211, 153, 140), width=1)
-        draw.text((76, y + 12), "✓  " + item, font=fb, fill=(*WHITE, 255))
-        y += 58
-    draw.rounded_rectangle([640, 200, 1220, 360], radius=14, fill=(10, 40, 32, 230), outline=(52, 211, 153, 200), width=2)
-    draw.text((672, 230), "READY FOR DECISION", font=font(FONT_BOLD, 22), fill=(*GREEN, 255))
-    draw.text((672, 278), "Approve", font=font(FONT_BOLD, 36), fill=(*WHITE, 255))
+        draw.rounded_rectangle([56, y, 620, y + 52], radius=10, fill=(10, 36, 28, 220), outline=(52, 211, 153, 150), width=1)
+        draw.text((76, y + 14), "✓   " + item, font=fb, fill=(*WHITE, 255))
+        y += 60
+    draw.rounded_rectangle([680, 200, 1224, 430], radius=18, fill=(8, 48, 36, 230), outline=(52, 211, 153, 220), width=2)
+    draw.text((712, 236), "READY FOR DECISION", font=fk, fill=(*GREEN, 255))
+    draw.text((712, 276), "Approve", font=font(FONT_BOLD, 42), fill=(*WHITE, 255))
+    draw.text((712, 340), "Evidence on the gate.\nNot in email.", font=fb, fill=(*MUTED, 255))
     return Image.alpha_composite(base.convert("RGBA"), layer).convert("RGB")
 
 
-def layers_frame(caption: str = "Work item to portfolio") -> Image.Image:
-    base, draw, layer = ui_base()
-    fk, ft, fs = font(FONT_SEMI, 14), font(FONT_BOLD, 32), font(FONT_SEMI, 16)
-    draw.text((56, 40), "ONE SPINE", font=fk, fill=(*CYAN, 255))
-    y = 68
-    for line in wrap(draw, caption, ft, W - 120):
+def layers_frame(caption: str = "Work item to portfolio", mode: str = "money") -> Image.Image:
+    base, draw, layer = ui_base("money" if mode == "money" else "govern")
+    fk, ft, fs, fb = font(FONT_SEMI, 13), font(FONT_BOLD, 28), font(FONT_SEMI, 16), font(FONT_REG, 16)
+    draw.text((56, 28), "ONE SPINE", font=fk, fill=(*CYAN, 255))
+    y = 50
+    for line in wrap(draw, caption, ft, W - 80):
         draw.text((56, y), line, font=ft, fill=(*WHITE, 255))
-        y += 40
-    y += 12
-    cols = [
-        ("FINANCIALS", ["Budget", "Plan", "Forecast", "Demand", "Actual"]),
-        ("RAID", ["Risks", "Assumptions", "Issues", "Dependencies"]),
-        ("BENEFITS", ["Planned", "Realised"]),
-        ("RESOURCES", ["Capacity", "Allocation", "Actuals"]),
-    ]
-    x = 56
-    for title, items in cols:
-        draw.rounded_rectangle([x, 140, x + 280, 520], radius=14, fill=(12, 22, 44, 230), outline=(125, 211, 252, 120), width=1)
-        draw.text((x + 22, 162), title, font=fs, fill=(*CYAN, 255))
-        y = 210
-        for item in items:
-            draw.ellipse([x + 24, y + 6, x + 36, y + 18], fill=(*CYAN, 255))
-            draw.text((x + 48, y), item, font=fs, fill=(*WHITE, 255))
-            y += 42
-        x += 304
+        y += 36
+    if mode == "money":
+        bars = [
+            ("Budget", 0.78, CYAN),
+            ("Plan", 0.70, BLUE),
+            ("Forecast", 0.88, AMBER),
+            ("Demand", 0.62, (165, 180, 252)),
+            ("Actual", 0.54, GREEN),
+        ]
+        x = 80
+        for label, hgt, col in bars:
+            bh = int(280 * hgt)
+            bx = x
+            by = 620 - bh
+            draw.rounded_rectangle([bx, 320, bx + 180, 620], radius=12, fill=(12, 22, 44, 180), outline=(40, 60, 90, 160), width=1)
+            draw.rounded_rectangle([bx + 18, by, bx + 162, 604], radius=10, fill=(*col, 230))
+            draw.text((bx + 24, 336), label, font=fs, fill=(*WHITE, 255))
+            x += 230
+    else:
+        tiles = [
+            ("R", "Risks", RED),
+            ("A", "Actions", AMBER),
+            ("I", "Issues", AMBER),
+            ("D", "Decisions", CYAN),
+        ]
+        x = 56
+        for letter, name, col in tiles:
+            draw.rounded_rectangle([x, 160, x + 280, 520], radius=16, fill=(12, 22, 44, 220), outline=(*col, 180), width=2)
+            draw.text((x + 28, 200), letter, font=font(FONT_BOLD, 72), fill=(*col, 255))
+            draw.text((x + 28, 300), name, font=font(FONT_BOLD, 26), fill=(*WHITE, 255))
+            draw.text((x + 28, 350), "On the same spine\nas delivery.", font=fb, fill=(*MUTED, 255))
+            x += 304
+        draw.text((56, 560), "Benefits and resources roll up with them.", font=fs, fill=(*MUTED, 255))
     return Image.alpha_composite(base.convert("RGBA"), layer).convert("RGB")
 
 
 def security_frame() -> Image.Image:
-    base, draw, layer = ui_base()
-    fk, ft, fs = font(FONT_SEMI, 14), font(FONT_BOLD, 34), font(FONT_SEMI, 18)
-    draw.text((56, 40), "TRUST", font=fk, fill=(*CYAN, 255))
-    draw.text((56, 68), "Security a board will buy", font=ft, fill=(*WHITE, 255))
+    base, draw, layer = ui_base("trust")
+    fk, ft, fs = font(FONT_SEMI, 13), font(FONT_BOLD, 30), font(FONT_SEMI, 17)
+    draw.text((56, 28), "TRUST", font=fk, fill=(*CYAN, 255))
+    draw.text((56, 52), "Security a board will buy", font=ft, fill=(*WHITE, 255))
     items = [
-        "Mandatory MFA",
-        "SSO",
-        "IP allowlisting",
-        "Row-level security",
-        "Secure database",
-        "Bring Your Own Database",
+        ("MFA", "Mandatory MFA"),
+        ("SSO", "Optional SSO"),
+        ("IP", "IP Whitelisting"),
+        ("RLS", "Row-level security"),
+        ("DB", "Secure database"),
+        ("BYOD", "Bring Your Own Database"),
     ]
-    x, y = 56, 150
-    for item in items:
-        draw.rounded_rectangle([x, y, x + 560, y + 64], radius=10, fill=(12, 24, 48, 230), outline=(125, 211, 252, 150), width=1)
-        draw.text((x + 24, y + 20), item, font=fs, fill=(*WHITE, 255))
-        y += 80
-        if y > 560:
-            x, y = 660, 150
+    for i, (code, label) in enumerate(items):
+        r, c = divmod(i, 3)
+        x, y = 56 + c * 400, 140 + r * 230
+        draw.rounded_rectangle([x, y, x + 370, y + 200], radius=16, fill=(12, 22, 44, 220), outline=(125, 211, 252, 140), width=1)
+        draw.rounded_rectangle([x + 24, y + 28, x + 108, y + 88], radius=12, fill=(8, 40, 64, 255), outline=(125, 211, 252, 180), width=1)
+        draw.text((x + 40, y + 44), code, font=font(FONT_BOLD, 18), fill=(*CYAN, 255))
+        draw.text((x + 24, y + 112), label, font=fs, fill=(*WHITE, 255))
     return Image.alpha_composite(base.convert("RGBA"), layer).convert("RGB")
 
 
 def brand_frame() -> Image.Image:
-    base, draw, layer = ui_base()
-    fk, ft, fb = font(FONT_SEMI, 14), font(FONT_BOLD, 36), font(FONT_REG, 20)
-    draw.text((56, 40), "YOUR ORGANISATION", font=fk, fill=(*CYAN, 255))
-    draw.text((56, 72), "Make it yours.", font=ft, fill=(*WHITE, 255))
+    base, draw, layer = ui_base("command")
+    fk, ft, fb = font(FONT_SEMI, 13), font(FONT_BOLD, 32), font(FONT_REG, 18)
+    draw.text((56, 28), "YOUR ORGANISATION", font=fk, fill=(*CYAN, 255))
+    draw.text((56, 54), "Make it yours.", font=ft, fill=(*WHITE, 255))
     palettes = [((14, 116, 144), (8, 47, 73)), ((88, 28, 135), (24, 16, 48)), ((15, 118, 110), (8, 40, 36))]
     labels = ["Your logo", "Your colours", "Your login"]
     x = 56
     for (a, b), lab in zip(palettes, labels):
-        draw.rounded_rectangle([x, 180, x + 360, 480], radius=16, fill=(*b, 255), outline=(*a, 255), width=2)
-        draw.rounded_rectangle([x + 40, 230, x + 320, 300], radius=8, fill=(*a, 255))
-        draw.text((x + 56, 250), lab, font=font(FONT_BOLD, 22), fill=(*WHITE, 255))
+        draw.rounded_rectangle([x, 160, x + 360, 560], radius=18, fill=(*b, 255), outline=(*a, 255), width=2)
+        draw.rounded_rectangle([x + 36, 210, x + 324, 290], radius=10, fill=(*a, 255))
+        draw.text((x + 56, 234), lab, font=font(FONT_BOLD, 22), fill=(*WHITE, 255))
         draw.text((x + 56, 340), "Custom branding", font=fb, fill=(*MUTED, 255))
-        draw.text((x + 56, 374), "White label", font=fb, fill=(*MUTED, 255))
+        draw.text((x + 56, 376), "White label", font=fb, fill=(*MUTED, 255))
+        draw.text((x + 56, 430), "The product looks like\nyour organisation.", font=fb, fill=(*MUTED, 255))
         x += 390
     return Image.alpha_composite(base.convert("RGBA"), layer).convert("RGB")
+
 
 
 def network_frame() -> Image.Image:
@@ -475,7 +545,7 @@ def endcard(wordmark: Path) -> Image.Image:
     draw = ImageDraw.Draw(rgba)
     sub = font(FONT_SEMI, 16)
     tag = font(FONT_BOLD, 26)
-    line1 = "PMO COMMAND CENTER PLATFORM"
+    line1 = "PMO COMMAND CENTRE PLATFORM"
     w1 = draw.textlength(line1, font=sub)
     draw.text(((W - w1) / 2, 118 + mh + 10), line1, font=sub, fill=(14, 116, 144, 255))
     line2 = "From Strategic Alignment to delivery"
@@ -546,34 +616,34 @@ NETWORK = [
 ]
 
 BEATS: list[dict] = [
-    B("h1", "actor", "Every board asks the same question.", still="team-board", corner=True, kicker="The boardroom", title="Are we on track?"),
-    B("h2", "actor", "Are we on track?", still="board", kicker="The boardroom"),
-    B("h3", "actor", "And too often, the honest answer is, mostly.", still="team-board", kicker="The boardroom", title="Mostly."),
-    B("p1", "actor", "Mostly is how portfolios fail.", still="team-chaos", kicker="The cost", chips=["Excel", "Email", "Teams"]),
-    B("p2", "actor", "Strategy in one file. Delivery in another. Money, risk, and people telling different stories.", still="team-numbers", kicker="The cost", title="Different stories.", chips=["Budget", "RAID", "Plan"]),
-    B("p3", "actor", "Leadership is left connecting the dots, after the fact.", still="command-team", kicker="The cost"),
-    B("p4", "solid", "Stop flying blind."),
+    B("h1", "actor", "Every board asks the same question.", still="team-board", era="before", tension="light", kicker="The boardroom", title="Are we on track?"),
+    B("h2", "actor", "Are we on track?", still="board", era="before", tension="light", kicker="The boardroom"),
+    B("h3", "actor", "And too often, the honest answer is, mostly.", still="team-board", era="before", tension="light", kicker="The boardroom", title="Mostly."),
+    B("p1", "actor", "Mostly is how portfolios fail.", still="team-chaos", era="before", tension="full", kicker="The cost", chips=["Excel", "Email", "Teams"]),
+    B("p2", "actor", "Strategy in one file. Delivery in another. Money, risk, and people telling different stories.", still="team-numbers", era="before", tension="full", kicker="The cost", title="Different stories.", chips=["Budget", "RAID", "Plan"]),
+    B("p3", "actor", "Leadership is left connecting the dots, after the fact.", still="command-team", era="before", tension="full", kicker="The cost"),
+    B("p4", "actor", "Stop flying blind.", still="fragment", era="before", tension="full", kicker="The cost", title="Stop flying blind."),
     B("m1", "logo", "This is iProjectX. The PMO command centre they don't have."),
-    B("m2", "flow", "One platform. From Strategic Alignment, all the way to the work item.", kicker="The platform", title="Strategic Alignment to the work item.", nodes=["Strategic Alignment", "Program", "Project", "Stream", "Work item"]),
-    B("d1", "flow", "Start with Strategic Alignment.", kicker="Delivery engine", nodes=SPINE, active=0),
-    B("d2", "flow", "Turn it into programs, then into projects you can actually run.", kicker="Delivery engine", nodes=SPINE, active=2),
-    B("d3", "flow", "Estimate cost, effort, and time, with dependencies in view.", kicker="Delivery engine", nodes=["Scope", "Effort", "Cost", "Duration", "Resources", "Dependencies"]),
-    B("d4", "flow", "Then break the work into phases, streams, and work items.", kicker="Delivery engine", nodes=SPINE, active=6),
+    B("m2", "flow", "One platform. From Strategic Alignment, all the way to the work item.", kicker="The platform", title="Strategic Alignment to the work item.", nodes=["Strategic Alignment", "Program", "Project", "Stream", "Work item"], atmosphere="spine"),
+    B("d1", "flow", "Start with Strategic Alignment.", kicker="Delivery engine", nodes=SPINE, active=0, atmosphere="spine"),
+    B("d2", "flow", "Turn it into programs, then into projects you can actually run.", kicker="Delivery engine", nodes=SPINE, active=2, atmosphere="spine"),
+    B("d3", "flow", "Estimate cost, effort, and time, with dependencies in view.", kicker="Delivery engine", nodes=["Scope", "Effort", "Cost", "Duration", "Resources", "Dependencies"], atmosphere="spine"),
+    B("d4", "flow", "Then break the work into phases, streams, and work items.", kicker="Delivery engine", nodes=SPINE, active=6, atmosphere="spine"),
     B("d5", "actor", "Timesheets capture what really happened. Delivery stays on the same spine.", still="delivery", kicker="Delivery engine", chips=["Work items", "Timesheets", "Delivery"]),
     B("t1", "actor", "See the whole portfolio on a live timeline.", still="team-timeline", kicker="Timeline", chips=["Programs", "Projects", "Phases", "Milestones"]),
     B("t2", "actor", "What is happening. What is next. What could slip.", still="team-timeline", kicker="Timeline", chips=["Dependencies", "Delivery dates"]),
-    B("r1", "flow", "Shape demand before it becomes delivery.", kicker="Demand", nodes=DEMAND, active=0),
-    B("r2", "actor", "See capacity, and put the right people on the right work.", still="team-numbers", kicker="Resources"),
-    B("g1", "gate", "Govern with stage gates that demand evidence, not another email."),
-    B("f1", "layers", "Budget, Plan, Forecast, Demand, Actual. Five money layers. Every number explainable."),
-    B("f2", "layers", "RAID, benefits, and resources, connected from the work item to the portfolio."),
+    B("r1", "flow", "Shape demand before it becomes delivery.", kicker="Demand", nodes=DEMAND, active=0, atmosphere="cockpit"),
+    B("r2", "actor", "See capacity, and put the right people on the right work.", still="delivery", kicker="Resources"),
+    B("g1", "gate", "Govern with stage gates that demand evidence, not another email.", title="Stage gates that demand evidence."),
+    B("f1", "layers", "Budget, Plan, Forecast, Demand, Actual. Five money layers. Every number explainable.", layer_mode="money", title="Five money layers. Every number explainable."),
+    B("f2", "layers", "RAID — Risks, Actions, Issues, Decisions. Benefits and resources, on the same spine.", layer_mode="raid", title="RAID. Benefits. Resources."),
     B("i1", "actor", "iProjectX doesn't just collect data.", still="team-pulse", kicker="Intelligence"),
     B("i2", "pulse", "It makes sense of it.", pulse="score"),
     B("i3", "pulse", "Portfolio Pulse. Calculated health. Not a colour someone typed.", pulse="full", title="Portfolio Pulse. Calculated health."),
     B("i4", "pulse", "The issues that need leadership attention. Now.", pulse="focus"),
     B("v1", "actor", "Executives get the picture.", still="team-pulse", kicker="The right view"),
     B("v2", "actor", "Leaders get the insight. Teams get the detail.", still="delivery", kicker="The right view"),
-    B("s1", "actor", "Mandatory MFA. IP allowlisting. Bring your own database.", still="team-security", kicker="Trust", chips=["MFA", "IP allowlisting", "BYOD"]),
+    B("s1", "security", "Mandatory MFA. IP Whitelisting. Bring your own database."),
     B("s2", "brand", "White label. Your brand. Your organisation.", title="Make it yours."),
     B("c1", "actor", "So when the board asks, what needs my attention?", still="team-resolved", kicker="The question", title="What needs my attention?"),
     B("c2", "pulse", "You already know.", pulse="focus", title="These three."),
@@ -582,17 +652,23 @@ BEATS: list[dict] = [
 ]
 
 
-def add_chrome(img: Image.Image, index: int, total: int, *, end: bool = False) -> Image.Image:
-    """Thin progress bar + LIVE marker so the film feels like a live command centre."""
+def add_chrome(img: Image.Image, index: int, total: int, *, end: bool = False, era: str = "after") -> Image.Image:
+    """Progress bar. Problem scenes stay analog (no LIVE). Product scenes read as a live command centre."""
     rgba = img.convert("RGBA")
     layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(layer)
+    bar = RED if era == "before" else (56, 189, 248)
     draw.rectangle([0, 0, W, 6], fill=(8, 12, 24, 200))
-    draw.rectangle([0, 0, int(W * (index + 1) / max(1, total)), 6], fill=(56, 189, 248, 240))
+    draw.rectangle([0, 0, int(W * (index + 1) / max(1, total)), 6], fill=(*bar, 240) if era == "before" else (56, 189, 248, 240))
     if not end:
-        draw.rounded_rectangle([22, 18, 92, 42], radius=11, fill=(8, 14, 32, 210), outline=(52, 211, 153, 200), width=1)
-        draw.ellipse([32, 25, 44, 37], fill=(52, 211, 153, 255))
-        draw.text((50, 22), "LIVE", font=font(FONT_SEMI, 11), fill=(226, 244, 255, 255))
+        if era == "before":
+            draw.rounded_rectangle([22, 18, 196, 42], radius=11, fill=(40, 12, 16, 220), outline=(248, 113, 113, 210), width=1)
+            draw.ellipse([32, 25, 44, 37], fill=(248, 113, 113, 255))
+            draw.text((50, 22), "FLYING BLIND", font=font(FONT_SEMI, 11), fill=(254, 226, 226, 255))
+        else:
+            draw.rounded_rectangle([22, 18, 92, 42], radius=11, fill=(8, 14, 32, 210), outline=(52, 211, 153, 200), width=1)
+            draw.ellipse([32, 25, 44, 37], fill=(52, 211, 153, 255))
+            draw.text((50, 22), "LIVE", font=font(FONT_SEMI, 11), fill=(226, 244, 255, 255))
     return Image.alpha_composite(rgba, layer).convert("RGB")
 
 
@@ -607,6 +683,7 @@ def render_beat(beat: dict, mark_x: Image.Image, wordmark: Path) -> Image.Image:
             beat.get("body", ""),
             beat.get("chips"),
             mark_x if beat.get("corner") else None,
+            tension=beat.get("tension", False),
         )
     if kind == "solid":
         base = solid_navy()
@@ -618,7 +695,7 @@ def render_beat(beat: dict, mark_x: Image.Image, wordmark: Path) -> Image.Image:
         draw.text(((W - tw) / 2, H / 2 - 30), title, font=ft, fill=(*WHITE, 255))
         return Image.alpha_composite(base.convert("RGBA"), layer).convert("RGB")
     if kind == "logo":
-        base = solid_navy()
+        base, _d, _l = ui_base("command")
         layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         draw = ImageDraw.Draw(layer)
         draw.rounded_rectangle([220, 90, W - 220, H - 90], radius=28, fill=(248, 250, 252, 248), outline=(186, 230, 253, 255), width=2)
@@ -634,7 +711,7 @@ def render_beat(beat: dict, mark_x: Image.Image, wordmark: Path) -> Image.Image:
         label = "iProjectX"
         lw = draw.textlength(label, font=name)
         draw.text(((W - lw) / 2, 310), label, font=name, fill=(15, 23, 42, 255))
-        tag = "PMO COMMAND CENTER PLATFORM"
+        tag = "PMO COMMAND CENTRE PLATFORM"
         tw = draw.textlength(tag, font=sub)
         draw.text(((W - tw) / 2, 368), tag, font=sub, fill=(14, 116, 144, 255))
         return rgba.convert("RGB")
@@ -645,13 +722,14 @@ def render_beat(beat: dict, mark_x: Image.Image, wordmark: Path) -> Image.Image:
             beat["nodes"],
             beat.get("note", ""),
             beat.get("active"),
+            beat.get("atmosphere", "spine"),
         )
     if kind == "pulse":
         return pulse_frame(beat.get("pulse", "full"), beat.get("title", "Portfolio Pulse"))
     if kind == "gate":
         return gate_frame(beat.get("title", "Stage gate — ready for decision"))
     if kind == "layers":
-        return layers_frame(beat.get("title", "Work item to portfolio"))
+        return layers_frame(beat.get("title", "Work item to portfolio"), beat.get("layer_mode", "money"))
     if kind == "security":
         return security_frame()
     if kind == "brand":
@@ -959,7 +1037,7 @@ async def main() -> None:
     slides: list[tuple[float, Path]] = []
     for i, (hold, beat) in enumerate(plan):
         img = render_beat(beat, mark_x, word_path)
-        img = add_chrome(img, i, len(plan), end=beat["kind"] == "end")
+        img = add_chrome(img, i, len(plan), end=beat["kind"] == "end", era=beat.get("era", "after"))
         dest = WORK / f"slide_{i:02d}.png"
         img.save(dest, "PNG", optimize=True)
         slides.append((hold, dest))
