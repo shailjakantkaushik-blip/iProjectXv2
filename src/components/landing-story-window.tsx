@@ -8,7 +8,7 @@ const POSTER_SRC = "/landing/ipx-pitch-poster.jpg";
 /**
  * Lightweight advert player. Captions are burned into the MP4 so this
  * component does not re-render on every timeupdate (that janked landing scroll).
- * No Ken Burns. Opening frame has the X mark top-right; close uses the wordmark.
+ * One female narrator. Opening X mark top-right. Close: wordmark on a light plate.
  */
 export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
   const p = cfg.palette;

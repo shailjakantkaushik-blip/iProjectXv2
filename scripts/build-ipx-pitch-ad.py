@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""iProjectX cinematic advert — dual VO, clean quiet mix, no noise bed."""
+"""iProjectX enterprise advert — one human female VO, quiet mix, logo on a light plate."""
 
 from __future__ import annotations
 
@@ -25,15 +25,14 @@ LOGO_DIR = ROOT / "public/landing/logos"
 BG_DIR = ROOT / "public/landing/story-bg"
 ACTOR_DIR = BG_DIR / "actors"
 
-MALE = "en-US-AndrewMultilingualNeural"
-FEMALE = "en-US-AvaMultilingualNeural"
-RATE = "-2%"
+VOICE = "en-GB-SoniaNeural"
+RATE = "-8%"
 VOLUME = "+0%"
-PITCH = "+0Hz"
+PITCH = "-2Hz"
 SR = 44100
 W, H = 1280, 720
 FPS = 24
-FADE = 0.40
+FADE = 0.32
 FONT_BOLD = Path("/usr/share/fonts/truetype/macos/Inter-Bold.ttf")
 FONT_SEMI = Path("/usr/share/fonts/truetype/macos/Inter-SemiBold.ttf")
 FONT_REG = Path("/usr/share/fonts/truetype/macos/Inter-Regular.ttf")
@@ -186,7 +185,16 @@ def actor_frame(
     layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(layer)
     fk, ft, fb, fc = font(FONT_SEMI, 14), font(FONT_BOLD, 40), font(FONT_REG, 21), font(FONT_SEMI, 13)
-    x, y = 52, H - 250
+    x, y = 52, H - 268
+    # Glass caption card so type stays readable on any still.
+    card_top = y - 36
+    draw.rounded_rectangle(
+        [32, card_top, W - 32, H - 22],
+        radius=18,
+        fill=(8, 12, 26, 176),
+        outline=(148, 197, 253, 90),
+        width=1,
+    )
     if kicker:
         lab = kicker.upper()
         kw = int(draw.textlength(lab, font=fk)) + 24
@@ -231,6 +239,11 @@ def ui_base() -> tuple[Image.Image, ImageDraw.ImageDraw, Image.Image]:
     vig = vig.filter(ImageFilter.GaussianBlur(80))
     tint = Image.new("RGB", (W, H), (14, 28, 58))
     base = Image.composite(tint, base, vig)
+    # Soft diagonal sheen so UI frames feel live, not static.
+    sheen = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(sheen)
+    sd.polygon([(420, 0), (620, 0), (260, H), (60, H)], fill=(160, 210, 255, 18))
+    base = Image.alpha_composite(base.convert("RGBA"), sheen).convert("RGB")
     layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     return base, ImageDraw.Draw(layer), layer
 
@@ -428,28 +441,50 @@ def network_frame() -> Image.Image:
     )
 
 
+def wordmark_clear(path: Path) -> Image.Image:
+    """Transparent background, keep original navy letters and colour X."""
+    im = Image.open(path).convert("RGBA")
+    arr = np.array(im)
+    luma = arr[:, :, 0].astype(np.int16) + arr[:, :, 1] + arr[:, :, 2]
+    arr[luma < 22, 3] = 0
+    im = Image.fromarray(arr, "RGBA")
+    bbox = im.getbbox()
+    if bbox:
+        pad = 10
+        l, t, r, b = bbox
+        im = im.crop((max(0, l - pad), max(0, t - pad), min(im.width, r + pad), min(im.height, b + pad)))
+    return im
+
+
 def endcard(wordmark: Path) -> Image.Image:
-    base = Image.new("RGB", (W, H), (0, 0, 0))
+    """Light plate behind the wordmark so navy letters read on the dark film."""
+    base = Image.new("RGB", (W, H), NAVY)
+    g = ImageDraw.Draw(base)
+    g.ellipse([-80, -40, 420, 360], fill=(18, 40, 78))
+    g.ellipse([900, 420, 1400, 860], fill=(40, 18, 58))
     layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(layer)
-    wm = readable_wordmark(wordmark)
-    mw = 720
+    card = [120, 72, W - 120, H - 72]
+    draw.rounded_rectangle(card, radius=28, fill=(248, 250, 252, 252), outline=(186, 230, 253, 255), width=2)
+    wm = wordmark_clear(wordmark)
+    mw = 640
     mh = int(wm.height * (mw / wm.width))
     wm = wm.resize((mw, mh), Image.Resampling.LANCZOS)
-    rgba = base.convert("RGBA")
-    rgba.paste(wm, ((W - mw) // 2, 110), wm)
-    sub = font(FONT_SEMI, 18)
-    tag = font(FONT_BOLD, 28)
+    rgba = Image.alpha_composite(base.convert("RGBA"), layer)
+    rgba.paste(wm, ((W - mw) // 2, 118), wm)
+    draw = ImageDraw.Draw(rgba)
+    sub = font(FONT_SEMI, 16)
+    tag = font(FONT_BOLD, 26)
     line1 = "PMO COMMAND CENTER PLATFORM"
     w1 = draw.textlength(line1, font=sub)
-    draw.text(((W - w1) / 2, 110 + mh + 8), line1, font=sub, fill=(*CYAN, 255))
-    line2 = "From Strategy to Delivery"
-    w2 = draw.textlength(line2, font=font(FONT_REG, 18))
-    draw.text(((W - w2) / 2, 110 + mh + 42), line2, font=font(FONT_REG, 18), fill=(*MUTED, 255))
+    draw.text(((W - w1) / 2, 118 + mh + 10), line1, font=sub, fill=(14, 116, 144, 255))
+    line2 = "From Strategic Alignment to delivery"
+    w2 = draw.textlength(line2, font=font(FONT_REG, 17))
+    draw.text(((W - w2) / 2, 118 + mh + 38), line2, font=font(FONT_REG, 17), fill=(51, 65, 85, 255))
     line3 = "STOP FLYING BLIND"
     w3 = draw.textlength(line3, font=tag)
-    draw.text(((W - w3) / 2, 110 + mh + 84), line3, font=tag, fill=(*WHITE, 255))
-    return Image.alpha_composite(rgba, layer).convert("RGB")
+    draw.text(((W - w3) / 2, 118 + mh + 78), line3, font=tag, fill=(15, 23, 42, 255))
+    return rgba.convert("RGB")
 
 
 def load_still(name: str) -> Path:
@@ -462,14 +497,14 @@ def load_still(name: str) -> Path:
     sys.exit(f"Missing still {name}")
 
 
-def B(bid: str, kind: str, spk: str, text: str, **kw) -> dict:
-    """One spoken line = one picture, so the cut matches the narrative."""
+def B(bid: str, kind: str, text: str, **kw) -> dict:
+    """One spoken line, one picture, female VO only."""
     row = {
         "id": bid,
         "kind": kind,
-        "hold": 2.2,
+        "hold": 2.15,
         "title": kw.pop("title", text),
-        "lines": [(spk, text)],
+        "lines": [("female", text)],
     }
     row.update(kw)
     return row
@@ -511,55 +546,55 @@ NETWORK = [
 ]
 
 BEATS: list[dict] = [
-    B("s1a", "actor", "male", "Are we on track?", still="team-board", corner=True, kicker="The boardroom"),
-    B("s1b", "actor", "female", "The projects are... mostly on track.", still="board", kicker="The boardroom", title="The projects are… mostly on track."),
-    B("s1c", "actor", "male", "Mostly?", still="team-board", kicker="The boardroom"),
-    B("s2a", "actor", "female", "Strategy sits in one place. Projects somewhere else.", still="team-chaos", kicker="The cost", chips=["Excel", "Email", "Teams"]),
-    B("s2b", "actor", "female", "Resources, financials, risks and delivery... all telling different stories.", still="team-numbers", kicker="The cost", title="All telling different stories.", chips=["Budget", "RAID", "Plan"]),
-    B("s2c", "actor", "male", "And leadership is left trying to connect the dots.", still="command-team", kicker="The cost", title="Leadership is left connecting the dots."),
-    B("s2d", "solid", "both", "Stop flying blind."),
-    B("s3a", "logo", "female", "Meet iProjectX."),
-    B("s3b", "flow", "male", "A single platform connecting strategy, governance, planning and delivery.", kicker="The platform", title="Strategy, governance, planning, delivery.", nodes=["Strategy", "Governance", "Planning", "Delivery"]),
-    B("s4a", "flow", "male", "Start with organisational strategy.", kicker="Delivery engine", title="Start with Strategic Alignment.", nodes=SPINE, active=0),
-    B("s4b", "flow", "male", "Turn strategy into programs.", kicker="Delivery engine", nodes=SPINE, active=1),
-    B("s4c", "flow", "male", "Programs into projects.", kicker="Delivery engine", nodes=SPINE, active=2),
-    B("s4d", "flow", "male", "Estimate the effort, cost, resources and timelines.", kicker="Delivery engine", nodes=["Scope", "Effort", "Cost", "Duration", "Resources", "Dependencies"], active=None),
-    B("s4e", "flow", "male", "Break projects into phases and streams.", kicker="Delivery engine", nodes=SPINE, active=5),
-    B("s4f", "actor", "female", "Turn plans into work.", still="delivery", kicker="Delivery engine", chips=["Work items"]),
-    B("s4g", "actor", "female", "Capture actual effort through timesheets.", still="delivery", kicker="Delivery engine", chips=["Timesheets"]),
-    B("s4h", "actor", "female", "And manage delivery end to end.", still="s14-action", kicker="Delivery engine", chips=["Delivery"]),
-    B("s4i", "flow", "both", "One connected delivery model.", kicker="Delivery engine", nodes=SPINE),
-    B("s5a", "actor", "female", "See the entire portfolio through a connected timeline.", still="team-timeline", kicker="Timeline", chips=["Programs", "Projects", "Phases", "Streams", "Milestones"]),
-    B("s5b", "actor", "male", "Understand what's happening, what's coming next, and what could impact delivery.", still="team-timeline", kicker="Timeline", title="What's happening. What's next. What could slip.", chips=["Dependencies", "Delivery dates"]),
-    B("s6a", "flow", "male", "Manage demand before it becomes delivery.", kicker="Demand & resources", nodes=DEMAND, active=0),
-    B("s6b", "actor", "female", "See capacity.", still="team-numbers", kicker="Demand & resources"),
-    B("s6c", "actor", "female", "Forecast resource requirements.", still="team-numbers", kicker="Demand & resources"),
-    B("s6d", "actor", "female", "Allocate the right people to the right work.", still="s14-action", kicker="Demand & resources"),
-    B("s6e", "flow", "male", "And connect planned effort to actual delivery.", kicker="Demand & resources", nodes=["Planned effort", "Actual effort"]),
-    B("s7a", "gate", "female", "Govern delivery with structured stage gates."),
-    B("s7b", "gate", "male", "Make decisions with the right information, before moving to the next stage.", title="Ready for decision. Approve."),
-    B("s8a", "layers", "female", "Manage financials, RAID, benefits, dependencies and resources."),
-    B("s8b", "layers", "male", "All connected from work item to portfolio."),
-    B("s9a", "actor", "male", "But iProjectX doesn't just collect data.", still="team-pulse", kicker="Intelligence"),
-    B("s9b", "pulse", "female", "It makes sense of it.", pulse="score"),
-    B("s9c", "pulse", "male", "Portfolio Pulse and Health Status analyse financials, risks, resources, benefits, dependencies and delivery.", pulse="full", title="Portfolio Pulse and Health Status."),
-    B("s9d", "pulse", "female", "And identify the areas that need leadership attention.", pulse="focus", title="Areas that need leadership attention."),
-    B("s10a", "actor", "female", "Executives get the picture.", still="team-pulse", kicker="The right view"),
-    B("s10b", "actor", "female", "Leaders get the insight.", still="team-timeline", kicker="The right view"),
-    B("s10c", "actor", "male", "And delivery teams get the detail.", still="delivery", kicker="The right view"),
-    B("s10d", "flow", "both", "One platform. The right view for every level.", kicker="The right view", nodes=["Executive", "Leadership", "PMO", "Project manager"]),
-    B("s11a", "actor", "male", "From portfolio dashboards, to project detail, everyone sees the information that matters to them.", still="command-team", kicker="Live dashboards", title="Everyone sees what matters to them.", chips=["Portfolio", "Program", "Project", "Resource", "Financials", "Timeline"]),
-    B("s12a", "actor", "female", "Built for organisations where security, privacy and trust are essential.", still="team-security", kicker="Trust", chips=["MFA", "SSO", "IP allowlisting"]),
-    B("s12b", "security", "male", "With enterprise security controls and flexible deployment options, including Bring Your Own Database.", title="Enterprise controls, including Bring Your Own Database."),
-    B("s13a", "brand", "female", "And make it yours. Custom branding. White label. Designed around your organisation.", title="Make it yours."),
-    B("s14a", "actor", "male", "What needs my attention?", still="team-resolved", kicker="The question"),
-    B("s14b", "pulse", "female", "These three.", pulse="focus"),
-    B("s14c", "actor", "male", "Let's fix them.", still="s14-action", kicker="The answer"),
-    B("s15a", "network", "male", "See the whole portfolio.", kicker="The model", nodes=NETWORK, title="See the whole portfolio."),
-    B("s15b", "network", "female", "Understand what matters.", kicker="The model", nodes=NETWORK, title="Understand what matters."),
-    B("s15c", "pulse", "male", "Know where to focus.", pulse="focus"),
-    B("end", "end", "both", "Stop flying blind.", hold=5.0),
+    B("h1", "actor", "Every board asks the same question.", still="team-board", corner=True, kicker="The boardroom", title="Are we on track?"),
+    B("h2", "actor", "Are we on track?", still="board", kicker="The boardroom"),
+    B("h3", "actor", "And too often, the honest answer is, mostly.", still="team-board", kicker="The boardroom", title="Mostly."),
+    B("p1", "actor", "Mostly is how portfolios fail.", still="team-chaos", kicker="The cost", chips=["Excel", "Email", "Teams"]),
+    B("p2", "actor", "Strategy in one file. Delivery in another. Money, risk, and people telling different stories.", still="team-numbers", kicker="The cost", title="Different stories.", chips=["Budget", "RAID", "Plan"]),
+    B("p3", "actor", "Leadership is left connecting the dots, after the fact.", still="command-team", kicker="The cost"),
+    B("p4", "solid", "Stop flying blind."),
+    B("m1", "logo", "This is iProjectX. The PMO command centre they don't have."),
+    B("m2", "flow", "One platform. From Strategic Alignment, all the way to the work item.", kicker="The platform", title="Strategic Alignment to the work item.", nodes=["Strategic Alignment", "Program", "Project", "Stream", "Work item"]),
+    B("d1", "flow", "Start with Strategic Alignment.", kicker="Delivery engine", nodes=SPINE, active=0),
+    B("d2", "flow", "Turn it into programs, then into projects you can actually run.", kicker="Delivery engine", nodes=SPINE, active=2),
+    B("d3", "flow", "Estimate cost, effort, and time, with dependencies in view.", kicker="Delivery engine", nodes=["Scope", "Effort", "Cost", "Duration", "Resources", "Dependencies"]),
+    B("d4", "flow", "Then break the work into phases, streams, and work items.", kicker="Delivery engine", nodes=SPINE, active=6),
+    B("d5", "actor", "Timesheets capture what really happened. Delivery stays on the same spine.", still="delivery", kicker="Delivery engine", chips=["Work items", "Timesheets", "Delivery"]),
+    B("t1", "actor", "See the whole portfolio on a live timeline.", still="team-timeline", kicker="Timeline", chips=["Programs", "Projects", "Phases", "Milestones"]),
+    B("t2", "actor", "What is happening. What is next. What could slip.", still="team-timeline", kicker="Timeline", chips=["Dependencies", "Delivery dates"]),
+    B("r1", "flow", "Shape demand before it becomes delivery.", kicker="Demand", nodes=DEMAND, active=0),
+    B("r2", "actor", "See capacity, and put the right people on the right work.", still="team-numbers", kicker="Resources"),
+    B("g1", "gate", "Govern with stage gates that demand evidence, not another email."),
+    B("f1", "layers", "Budget, Plan, Forecast, Demand, Actual. Five money layers. Every number explainable."),
+    B("f2", "layers", "RAID, benefits, and resources, connected from the work item to the portfolio."),
+    B("i1", "actor", "iProjectX doesn't just collect data.", still="team-pulse", kicker="Intelligence"),
+    B("i2", "pulse", "It makes sense of it.", pulse="score"),
+    B("i3", "pulse", "Portfolio Pulse. Calculated health. Not a colour someone typed.", pulse="full", title="Portfolio Pulse. Calculated health."),
+    B("i4", "pulse", "The issues that need leadership attention. Now.", pulse="focus"),
+    B("v1", "actor", "Executives get the picture.", still="team-pulse", kicker="The right view"),
+    B("v2", "actor", "Leaders get the insight. Teams get the detail.", still="delivery", kicker="The right view"),
+    B("s1", "actor", "Mandatory MFA. IP allowlisting. Bring your own database.", still="team-security", kicker="Trust", chips=["MFA", "IP allowlisting", "BYOD"]),
+    B("s2", "brand", "White label. Your brand. Your organisation.", title="Make it yours."),
+    B("c1", "actor", "So when the board asks, what needs my attention?", still="team-resolved", kicker="The question", title="What needs my attention?"),
+    B("c2", "pulse", "You already know.", pulse="focus", title="These three."),
+    B("c3", "actor", "And you can act.", still="s14-action", kicker="The answer", title="Let's fix them."),
+    B("end", "end", "iProjectX. Stop flying blind.", hold=5.4),
 ]
+
+
+def add_chrome(img: Image.Image, index: int, total: int, *, end: bool = False) -> Image.Image:
+    """Thin progress bar + LIVE marker so the film feels like a live command centre."""
+    rgba = img.convert("RGBA")
+    layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    draw.rectangle([0, 0, W, 6], fill=(8, 12, 24, 200))
+    draw.rectangle([0, 0, int(W * (index + 1) / max(1, total)), 6], fill=(56, 189, 248, 240))
+    if not end:
+        draw.rounded_rectangle([22, 18, 92, 42], radius=11, fill=(8, 14, 32, 210), outline=(52, 211, 153, 200), width=1)
+        draw.ellipse([32, 25, 44, 37], fill=(52, 211, 153, 255))
+        draw.text((50, 22), "LIVE", font=font(FONT_SEMI, 11), fill=(226, 244, 255, 255))
+    return Image.alpha_composite(rgba, layer).convert("RGB")
+
 
 def render_beat(beat: dict, mark_x: Image.Image, wordmark: Path) -> Image.Image:
     kind = beat["kind"]
@@ -584,23 +619,25 @@ def render_beat(beat: dict, mark_x: Image.Image, wordmark: Path) -> Image.Image:
         return Image.alpha_composite(base.convert("RGBA"), layer).convert("RGB")
     if kind == "logo":
         base = solid_navy()
-        mark = knock_black(mark_x)
-        mh = 160
-        mw = int(mark.width * (mh / mark.height))
-        mark = mark.resize((mw, mh), Image.Resampling.LANCZOS)
-        rgba = base.convert("RGBA")
-        rgba.paste(mark, ((W - mw) // 2, 150), mark)
         layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         draw = ImageDraw.Draw(layer)
-        name = font(FONT_BOLD, 52)
-        sub = font(FONT_SEMI, 18)
+        draw.rounded_rectangle([220, 90, W - 220, H - 90], radius=28, fill=(248, 250, 252, 248), outline=(186, 230, 253, 255), width=2)
+        rgba = Image.alpha_composite(base.convert("RGBA"), layer)
+        mark = knock_black(mark_x)
+        mh = 150
+        mw = int(mark.width * (mh / mark.height))
+        mark = mark.resize((mw, mh), Image.Resampling.LANCZOS)
+        rgba.paste(mark, ((W - mw) // 2, 140), mark)
+        draw = ImageDraw.Draw(rgba)
+        name = font(FONT_BOLD, 44)
+        sub = font(FONT_SEMI, 16)
         label = "iProjectX"
         lw = draw.textlength(label, font=name)
-        draw.text(((W - lw) / 2, 340), label, font=name, fill=(*WHITE, 255))
+        draw.text(((W - lw) / 2, 310), label, font=name, fill=(15, 23, 42, 255))
         tag = "PMO COMMAND CENTER PLATFORM"
         tw = draw.textlength(tag, font=sub)
-        draw.text(((W - tw) / 2, 410), tag, font=sub, fill=(*CYAN, 255))
-        return Image.alpha_composite(rgba, layer).convert("RGB")
+        draw.text(((W - tw) / 2, 368), tag, font=sub, fill=(14, 116, 144, 255))
+        return rgba.convert("RGB")
     if kind == "flow":
         return labeled_flow(
             beat["kicker"],
@@ -724,8 +761,8 @@ def encode_visual(slides: list[tuple[float, Path]]) -> Path:
     return visual
 
 
-async def tts(text: str, voice: str, dest: Path) -> None:
-    communicate = edge_tts.Communicate(text, voice, rate=RATE, volume=VOLUME, pitch=PITCH)
+async def tts(text: str, dest: Path) -> None:
+    communicate = edge_tts.Communicate(text, VOICE, rate=RATE, volume=VOLUME, pitch=PITCH)
     await communicate.save(str(dest))
 
 
@@ -735,32 +772,20 @@ async def synth(beats: list[dict]) -> tuple[list[tuple[float, Path]], list[tuple
     pic = 0.0
     n = 0
     for beat in beats:
-        t = pic + 0.10
+        t = pic + 0.12
         lines = beat.get("lines") or []
-        for i, (spk, text) in enumerate(lines):
-            if spk == "both":
-                m = WORK / f"vo_{n:03d}_m.mp3"
-                f = WORK / f"vo_{n:03d}_f.mp3"
-                await tts(text, MALE, m)
-                await tts(text, FEMALE, f)
-                placed.append((t, m))
-                placed.append((t + 0.04, f))
-                d = max(ffprobe_duration(m), ffprobe_duration(f))
-                print(f"  BOTH {t:6.2f} +{d:4.2f}  {text}")
-            else:
-                dest = WORK / f"vo_{n:03d}.mp3"
-                await tts(text, MALE if spk == "male" else FEMALE, dest)
-                d = ffprobe_duration(dest)
-                placed.append((t, dest))
-                print(f"  {spk[:1].upper()}   {t:6.2f} +{d:4.2f}  {text}")
+        for i, (_spk, text) in enumerate(lines):
+            dest = WORK / f"vo_{n:03d}.mp3"
+            await tts(text, dest)
+            d = ffprobe_duration(dest)
+            placed.append((t, dest))
+            print(f"  VO {t:6.2f} +{d:4.2f}  {text}")
             n += 1
-            gap = 0.22 if i < len(lines) - 1 else 0.0
-            t += d + gap
+            t += d + (0.18 if i < len(lines) - 1 else 0.0)
         vo_end = t if lines else pic
-        hold = max(float(beat.get("hold", 2.2)), (vo_end - pic) + 0.30)
+        hold = max(float(beat.get("hold", 2.15)), (vo_end - pic) + 0.28)
         hold = max(hold, FADE + 1.05)
         plan.append((hold, beat))
-        # Match ffmpeg xfade output clock (each dissolve overlaps FADE seconds).
         pic += hold - FADE
     return placed, plan
 
@@ -934,6 +959,7 @@ async def main() -> None:
     slides: list[tuple[float, Path]] = []
     for i, (hold, beat) in enumerate(plan):
         img = render_beat(beat, mark_x, word_path)
+        img = add_chrome(img, i, len(plan), end=beat["kind"] == "end")
         dest = WORK / f"slide_{i:02d}.png"
         img.save(dest, "PNG", optimize=True)
         slides.append((hold, dest))
