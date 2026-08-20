@@ -392,6 +392,20 @@ export function ExecutiveQuickView({
     staleTime: 60_000,
   });
 
+  const fyAllocQ = useQuery({
+    queryKey: ["fy_allocations", orgId, "health"],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("fy_allocations")
+          .select("id,project_id,fy,budget,forecast,capex,opex,benefits")
+          .eq("org_id", orgId!)
+          .limit(10000)
+      ).data ?? [],
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+
   const changeRequestsQ = useQuery({
     queryKey: ["change_requests", orgId, "cockpit-health"],
     queryFn: async () => {
@@ -460,6 +474,8 @@ export function ExecutiveQuickView({
         allocations: (allocationsQ.data ?? []) as HealthEngineInput["allocations"],
         changeRequests: (changeRequestsQ.data ?? []) as HealthEngineInput["changeRequests"],
         benefitLines: (benefitsQ.data ?? []) as HealthEngineInput["benefitLines"],
+        fyAllocations: (fyAllocQ.data ?? []) as HealthEngineInput["fyAllocations"],
+        fyStartMonth: organization?.fy_start_month || 4,
       }),
     [
       filtered,
@@ -472,6 +488,8 @@ export function ExecutiveQuickView({
       allocationsQ.data,
       changeRequestsQ.data,
       benefitsQ.data,
+      fyAllocQ.data,
+      organization?.fy_start_month,
       ids,
     ],
   );

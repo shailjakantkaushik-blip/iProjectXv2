@@ -53,6 +53,7 @@ import {
   projectRemaining,
   projectRealisedRoi,
 } from "@/lib/project-finance";
+import { fyScopedBudget, monthlyInFyLabels } from "@/lib/fy-allocation-scope";
 import {
   expandProjectsToTimelineLanes,
   gatesForTimelineLane,
@@ -309,8 +310,11 @@ function ExecutiveDashboard() {
 
   const filtered = useMemo(
     () =>
-      applyExecutivePortfolioFilters(projects, filters, fyStartMonth, { gates: gatesQ.data ?? [] }),
-    [projects, filters, fyStartMonth, gatesQ.data],
+      applyExecutivePortfolioFilters(projects, filters, fyStartMonth, {
+        gates: gatesQ.data ?? [],
+        fyAllocations: (healthLookups.fyAllocations ?? []) as any[],
+      }),
+    [projects, filters, fyStartMonth, gatesQ.data, healthLookups.fyAllocations],
   );
 
   const filteredIds = useMemo(() => new Set(filtered.map((p: any) => p.id as string)), [filtered]);
@@ -326,21 +330,47 @@ function ExecutiveDashboard() {
         (gatesByProject.get(id) || []) as never,
         healthLookups,
         (monthlyByProject.get(id) || []) as never,
+        fyStartMonth,
       );
       m.set(id, health.overall_rag);
     }
     return m;
-  }, [filtered, gatesByProject, monthlyByProject, healthLookups]);
+  }, [filtered, gatesByProject, monthlyByProject, healthLookups, fyStartMonth]);
 
   const engineRagOf = (p: { id?: string }) => engineRagById.get(String(p.id || "")) || null;
 
   // KPI totals + sparklines — memoized so filter typing doesn't rescan monthly ×8.
   const { approvedFunding, totalIncurred, totalForecast, remaining, kpis, ragData, capexBars } =
     useMemo(() => {
-      const approvedFunding = filtered.reduce((s, p) => s + projectApprovedFunding(p), 0);
-      const totalIncurred = filtered.reduce((s, p) => s + projectIncurred(p), 0);
-      const totalForecast = filtered.reduce((s, p) => s + projectForecast(p), 0);
-      const remaining = filtered.reduce((s, p) => s + projectRemaining(p), 0);
+      const fyOn = fySelected.length > 0;
+      const approvedFunding = fyOn
+        ? filtered.reduce((s, p) => {
+            const rows = (healthLookups.fyAllocations ?? []).filter(
+              (a: any) => a.project_id === p.id,
+            );
+            return (
+              s +
+              fyScopedBudget({
+                allocations: rows as any[],
+                overallBudget: projectApprovedFunding(p),
+                fySelected,
+              })
+            );
+          }, 0)
+        : filtered.reduce((s, p) => s + projectApprovedFunding(p), 0);
+      let mAll = monthly.filter((m: any) => filteredIds.has(m.project_id)) as MonthlyFinanceRow[];
+      if (fyOn) mAll = monthlyInFyLabels(mAll, fySelected, fyStartMonth);
+      const totalIncurred = fyOn
+        ? mAll.reduce((s, m) => s + Number(m.capex_actual || 0) + Number(m.opex_actual || 0), 0)
+        : filtered.reduce((s, p) => s + projectIncurred(p), 0);
+      const totalPlan = mAll.reduce(
+        (s, m) => s + Number(m.capex_planned || 0) + Number(m.opex_planned || 0),
+        0,
+      );
+      const totalForecast = fyOn
+        ? mAll.reduce((s, m) => s + Number(m.capex_forecast || 0) + Number(m.opex_forecast || 0), 0)
+        : filtered.reduce((s, p) => s + projectForecast(p), 0);
+      const remaining = Math.max(0, approvedFunding - totalIncurred);
       const active = filtered.filter((p: any) => p.status === "In Progress").length;
       const completed = filtered.filter((p: any) => p.status === "Completed").length;
       const today = new Date();
@@ -358,7 +388,7 @@ function ExecutiveDashboard() {
         key: "capex_planned" | "capex_actual" | "capex_forecast" | "benefits_actual" | null,
         color: string,
       ) => {
-        const rows = monthly.filter((m: any) => filteredIds.has(m.project_id));
+        const rows = mAll;
         const buckets = new Map<string, number>();
         if (key && rows.length) {
           rows.forEach((r: any) => {
@@ -377,16 +407,14 @@ function ExecutiveDashboard() {
         return { data: series, color };
       };
 
-      const mRows = monthly.filter((m: any) =>
-        filteredIds.has(m.project_id),
-      ) as MonthlyFinanceRow[];
+      const mRows = mAll;
       const ms = milestones.filter((m: any) => filteredIds.has(m.project_id));
       const gs = gates.filter((g: any) => filteredIds.has(g.project_id));
       const oc = otherCosts.filter((c: any) => filteredIds.has(c.project_id));
 
       const explainByLabel: Record<string, MetricExplanation> = {
         "Approved Funding": explainBudget({
-          label: "Approved Funding",
+          label: fyOn ? "FY allocation" : "Approved Funding",
           budget: approvedFunding,
           forecast: totalForecast,
           projects: filtered,
@@ -441,11 +469,20 @@ function ExecutiveDashboard() {
         remaining,
         kpis: [
           {
-            label: "Approved Funding",
+            label: fyOn ? "FY allocation" : "Approved Funding",
             value: money(approvedFunding),
             spark: buildSpark("capex_planned", "#1d4ed8"),
             explain: explainByLabel["Approved Funding"],
           },
+          ...(fyOn
+            ? [
+                {
+                  label: "Plan",
+                  value: money(totalPlan),
+                  spark: buildSpark("capex_planned", "#93c5fd"),
+                },
+              ]
+            : []),
           {
             label: "Incurred",
             value: money(totalIncurred),
@@ -486,13 +523,14 @@ function ExecutiveDashboard() {
           }))
           .filter((d) => d.value > 0),
         capexBars: [
-          { name: "Approved", value: approvedFunding },
+          { name: fyOn ? "FY allocation" : "Approved", value: approvedFunding },
+          ...(fyOn ? [{ name: "Plan", value: totalPlan }] : []),
           { name: "Incurred", value: totalIncurred },
           { name: "Forecast", value: totalForecast },
           { name: "Remaining", value: remaining },
         ],
       };
-    }, [filtered, filteredIds, monthly, milestones, otherCosts, gates, engineRagById]);
+    }, [filtered, filteredIds, monthly, milestones, otherCosts, gates, engineRagById, fySelected, fyStartMonth, healthLookups.fyAllocations]);
 
   // Monthly Spend ($M) — Actual vs Forecast, bucketed by year-month (last 12)
   const monthlySpend = useMemo(() => {

@@ -19,6 +19,7 @@ export type BriefForecastPhaseRes = {
 export type BriefForecastOtherCost = {
   forecast_phase_id?: string | null;
   amount?: number | null;
+  cost_type?: string | null;
 };
 
 export type BriefForecastRow = {

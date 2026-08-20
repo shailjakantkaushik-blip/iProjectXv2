@@ -98,6 +98,7 @@ export const PAGES: { path: string; label: string; group: string }[] = [
   { path: "/app/financials", label: "Financials", group: "Financials" },
   { path: "/app/how-money-works", label: "How money works", group: "Financials" },
   { path: "/app/fy-allocation", label: "FY Allocation", group: "Financials" },
+  { path: "/app/budget-vs-plan", label: "Budget vs Plan", group: "Financials" },
   { path: "/app/phase-financials", label: "Phase Financials", group: "Financials" },
   { path: "/app/evm", label: "Earned Value (EVM)", group: "Financials" },
   { path: "/app/cost-vs-benefit", label: "Cost vs Benefit", group: "Financials" },

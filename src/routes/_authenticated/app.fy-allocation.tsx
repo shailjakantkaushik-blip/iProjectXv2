@@ -4,8 +4,8 @@ import { useMemo, useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/project-selects";
+import { FINANCIALS_MONTHLY_SELECT, STAGE_GATE_DEFINITIONS_SELECT } from "@/lib/query-selects";
 import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
-import { STAGE_GATE_DEFINITIONS_SELECT } from "@/lib/query-selects";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import {
@@ -35,6 +35,10 @@ import {
   fyAllocForecast,
   splitCapexOpex,
 } from "@/lib/project-finance";
+import {
+  fyYearWatches,
+  type FyYearWatch,
+} from "@/lib/fy-allocation-scope";
 import {
   cascadeMonthlyFromFyPlan,
   syncProjectFacFromFyAllocations,
@@ -122,17 +126,29 @@ function FYAllocationPage() {
       [],
     enabled: !!organization,
   });
+  const { data: monthly = [] } = useQuery({
+    queryKey: ["financials_monthly", organization?.id, "fy-alloc"],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("financials_monthly")
+          .select(FINANCIALS_MONTHLY_SELECT as "*")
+          .eq("org_id", organization!.id)
+      ).data ?? [],
+    enabled: !!organization,
+  });
 
   return (
     <PageExport name="FY_Allocation" title="FY Budget & Forecast Allocation">
       <PageHeading icon="📅">FY Budget &amp; Forecast Allocation</PageHeading>
       <div className="text-sm text-muted-foreground mb-3">
-        Forward planning: split each project&apos;s <strong>Budget</strong> (approved envelope) and{" "}
-        <strong>Forecast</strong> (in-flight outlook) across Financial Years. Saving writes monthly{" "}
-        <strong>Forecast</strong> columns (and CapEx plan from the budget split) onto the existing
-        stream · month row. <strong>OpEx Plan</strong> and planned FTE stay with Project Estimation
-        Planning — FY Allocation does not create a second monthly record. Actuals are always
-        preserved.
+        Split each project&apos;s <strong>approved envelope</strong> into{" "}
+        <strong>FY Allocation</strong> — the budget for that year (a subset of overall budget).
+        Financials and Cockpit use this slice when an FY filter is selected, then show Estimation
+        Plan, Actuals, and Forecast for those months. Saving still writes CapEx plan and monthly
+        Forecast onto the existing stream · month row. OpEx Plan stays with Project Estimation
+        Planning. Actuals are always preserved. If Plan/Actual/Forecast exceeds a year&apos;s
+        allocation, finance health flags.
       </div>
 
       <div className="mb-3 flex gap-1 border-b">
@@ -153,6 +169,7 @@ function FYAllocationPage() {
           alloc={alloc}
           orgId={organization?.id}
           fyStartMonth={organization?.fy_start_month || 4}
+          monthly={monthly}
           onSaved={() => {
             void qc.invalidateQueries({ queryKey: ["fy_allocations"] });
             void qc.invalidateQueries({ queryKey: ["financials_monthly"] });
@@ -164,6 +181,8 @@ function FYAllocationPage() {
         <PortfolioViewTab
           projects={projects}
           alloc={alloc}
+          monthly={monthly}
+          fyStartMonth={organization?.fy_start_month || 4}
           phaseOptions={orgPhases}
           gates={gates}
         />
@@ -181,12 +200,14 @@ function AllocateTab({
   alloc,
   orgId,
   fyStartMonth,
+  monthly,
   onSaved,
 }: {
   projects: any[];
   alloc: any[];
   orgId?: string;
   fyStartMonth: number;
+  monthly: any[];
   onSaved: () => void;
 }) {
   const [projectId, setProjectId] = useState<string>("");
@@ -204,6 +225,25 @@ function AllocateTab({
   );
   const totalBudget = projectApprovedFunding(project);
   const totalForecast = projectForecast(project);
+  const yearWatches = useMemo(() => {
+    if (!project) return [] as FyYearWatch[];
+    return fyYearWatches({
+      allocations: alloc.filter((a: any) => a.project_id === project.id),
+      monthly: monthly.filter((m: any) => m.project_id === project.id),
+      fyStartMonth,
+      overallBudget: totalBudget,
+      project,
+    });
+  }, [project, alloc, monthly, fyStartMonth, totalBudget]);
+  const watchByFy = useMemo(() => {
+    const m = new Map<string, FyYearWatch>();
+    for (const w of yearWatches) m.set(w.fy, w);
+    return m;
+  }, [yearWatches]);
+  const overYears = yearWatches.filter(
+    (w) =>
+      w.allocation > 0 && (w.overBy > 0 || w.capexOverBy > 0 || w.opexOverBy > 0),
+  );
 
   // Derive FY suggestions from all allocations + org FY calendar
   const knownFYs = useMemo(() => {
@@ -496,10 +536,11 @@ function AllocateTab({
       <SectionFrame>
         <SectionTitle>Allocation table (percentages must total 100)</SectionTitle>
         <p className="mb-2 text-[11px] text-muted-foreground">
-          Budget % phases the project total across years. CAPEX $ and OPEX $ for each FY default from
-          the project approved mix — edit them to set the CapEx/OpEx split explicitly (they always
-          add to that FY&apos;s Budget $). Cascade writes CAPEX Plan / OPEX Plan monthly from these
-          amounts.
+          Budget % phases the overall envelope across years (must stay a subset — totals 100%).
+          That year&apos;s allocation is what Financials and Cockpit show when you filter to an FY.
+          CAPEX $ and OPEX $ split that year&apos;s allocation. Plan CapEx / Plan OpEx come from
+          Estimation Planning (further costs tagged CapEx or OpEx, plus labor as OpEx). Exceeding
+          the matching allocation flags finance health.
         </p>
         <div className="mb-2 grid grid-cols-3 gap-2">
           <button
@@ -532,6 +573,12 @@ function AllocateTab({
                 <th className="text-right whitespace-nowrap">OPEX $</th>
                 <th className="text-right whitespace-nowrap">Forecast %</th>
                 <th className="text-right whitespace-nowrap">Forecast $</th>
+                <th className="text-right whitespace-nowrap">Plan $</th>
+                <th className="text-right whitespace-nowrap">Plan CapEx</th>
+                <th className="text-right whitespace-nowrap">Plan OpEx</th>
+                <th className="text-right whitespace-nowrap">Actual $</th>
+                <th className="text-right whitespace-nowrap">Monthly Fcst $</th>
+                <th className="text-left whitespace-nowrap">vs FY</th>
                 <th className="text-left whitespace-nowrap min-w-[8rem]">Notes</th>
               </tr>
             </thead>
@@ -540,8 +587,21 @@ function AllocateTab({
                 const r = ensureRow(fy);
                 const bAmt = budgetDollars(r.bp);
                 const fAmt = forecastDollars(r.fp);
+                const w = watchByFy.get(fy);
+                const over = !!(
+                  w &&
+                  w.allocation > 0 &&
+                  (w.overBy > 0 || w.capexOverBy > 0 || w.opexOverBy > 0)
+                );
+                const vsParts = [
+                  w?.capexOverBy && w.capexOverBy > 0 ? `CapEx +${fmt$(w.capexOverBy)}` : null,
+                  w?.opexOverBy && w.opexOverBy > 0 ? `OpEx +${fmt$(w.opexOverBy)}` : null,
+                  w?.overBy && w.overBy > 0 && !(w.capexOverBy > 0 || w.opexOverBy > 0)
+                    ? `${w.peakSource} +${fmt$(w.overBy)}`
+                    : null,
+                ].filter(Boolean);
                 return (
-                  <tr key={fy}>
+                  <tr key={fy} className={over ? "bg-rose-50" : undefined}>
                     <td className="font-medium text-left align-middle whitespace-nowrap">{fy}</td>
                     <td className="align-middle">
                       <input
@@ -589,6 +649,30 @@ function AllocateTab({
                     <td className="align-middle text-right tabular-nums whitespace-nowrap text-muted-foreground">
                       {fmt$(fAmt)}
                     </td>
+                    <td className="align-middle text-right tabular-nums whitespace-nowrap">
+                      {fmt$(w?.plan ?? 0)}
+                    </td>
+                    <td
+                      className={`align-middle text-right tabular-nums whitespace-nowrap ${w && w.capexOverBy > 0 ? "font-semibold text-rose-700" : ""}`}
+                    >
+                      {fmt$(w?.planCapex ?? 0)}
+                    </td>
+                    <td
+                      className={`align-middle text-right tabular-nums whitespace-nowrap ${w && w.opexOverBy > 0 ? "font-semibold text-rose-700" : ""}`}
+                    >
+                      {fmt$(w?.planOpex ?? 0)}
+                    </td>
+                    <td className="align-middle text-right tabular-nums whitespace-nowrap">
+                      {fmt$(w?.actual ?? 0)}
+                    </td>
+                    <td className="align-middle text-right tabular-nums whitespace-nowrap">
+                      {fmt$(w?.forecast ?? 0)}
+                    </td>
+                    <td
+                      className={`align-middle whitespace-nowrap text-[11px] font-medium ${over ? "text-rose-700" : "text-emerald-700"}`}
+                    >
+                      {over ? vsParts.join(" · ") || "Over allocation" : "Within allocation"}
+                    </td>
                     <td className="align-middle">
                       <input
                         type="text"
@@ -602,7 +686,7 @@ function AllocateTab({
               })}
               {!selectedFYs.length && (
                 <tr>
-                  <td colSpan={8} className="p-4 text-center text-[12px] text-muted-foreground">
+                  <td colSpan={14} className="p-4 text-center text-[12px] text-muted-foreground">
                     Add one or more FYs above.
                   </td>
                 </tr>
@@ -611,7 +695,7 @@ function AllocateTab({
           </table>
         </div>
 
-        <div className="mt-3 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="mt-3 grid gap-3 sm:grid-cols-3 lg:grid-cols-7">
           <KpiCard
             label="Budget % total"
             value={`${bpTotal.toFixed(1)}%`}
@@ -626,6 +710,16 @@ function AllocateTab({
           <KpiCard label="CAPEX $ allocated" value={fmt$(capexAllocated)} accent="#1d4ed8" />
           <KpiCard label="OPEX $ allocated" value={fmt$(opexAllocated)} accent="#f59e0b" />
           <KpiCard label="Forecast $ allocated" value={fmt$(fAllocated)} accent="#8b5cf6" />
+          <KpiCard
+            label="Years over FY allocation"
+            value={String(overYears.length)}
+            sub={
+              overYears.length
+                ? overYears.map((w) => `${w.fy} ${w.peakSource}`).join(" · ")
+                : "Plan / Actual / Forecast within each year"
+            }
+            accent={overYears.length ? "#ef4444" : "#22c55e"}
+          />
         </div>
 
         <div className="mt-3">
@@ -645,11 +739,15 @@ function AllocateTab({
 function PortfolioViewTab({
   projects,
   alloc,
+  monthly,
+  fyStartMonth,
   phaseOptions,
   gates,
 }: {
   projects: any[];
   alloc: any[];
+  monthly: any[];
+  fyStartMonth: number;
   phaseOptions: string[];
   gates: any[];
 }) {
@@ -661,6 +759,20 @@ function PortfolioViewTab({
   const projectMap = useMemo(() => new Map(filtered.map((p: any) => [p.id, p])), [filtered]);
   const ids = useMemo(() => new Set(filtered.map((p: any) => p.id)), [filtered]);
   const rowsF = useMemo(() => alloc.filter((a: any) => ids.has(a.project_id)), [alloc, ids]);
+  const watchesByProjectFy = useMemo(() => {
+    const m = new Map<string, FyYearWatch>();
+    for (const p of filtered as any[]) {
+      const watches = fyYearWatches({
+        allocations: alloc.filter((a: any) => a.project_id === p.id),
+        monthly: monthly.filter((row: any) => row.project_id === p.id),
+        fyStartMonth,
+        overallBudget: projectApprovedFunding(p),
+        project: p,
+      });
+      for (const w of watches) m.set(`${p.id}|${w.fy}`, w);
+    }
+    return m;
+  }, [filtered, alloc, monthly, fyStartMonth]);
 
   const byFY = useMemo(() => {
     const m = new Map<string, any>();
@@ -726,6 +838,7 @@ function PortfolioViewTab({
         const projF = projectForecast(p);
         const bp = projB ? (bAmt / projB) * 100 : 0;
         const fp = projF ? (fAmt / projF) * 100 : 0;
+        const watch = watchesByProjectFy.get(`${r.project_id}|${r.fy}`);
         return {
           id: r.id,
           project_id: r.project_id,
@@ -736,6 +849,12 @@ function PortfolioViewTab({
           fp,
           bAmt,
           fAmt,
+          plan: watch?.plan ?? 0,
+          actual: watch?.actual ?? 0,
+          monthlyForecast: watch?.forecast ?? 0,
+          over: !!(watch && watch.allocation > 0 && watch.overBy > 0),
+          overBy: watch?.overBy ?? 0,
+          peakSource: watch?.peakSource ?? "",
           portfolio: p?.portfolio || p?.portfolio_category || "",
           sponsor: p?.sponsor || "",
           rag: displayRag(p) || "NA",
@@ -743,7 +862,7 @@ function PortfolioViewTab({
           project: p,
         };
       }),
-    [rowsF, projectMap],
+    [rowsF, projectMap, watchesByProjectFy],
   );
 
   const allocDetailColumns: ColumnarColumn<(typeof allocDetailRows)[number]>[] = useMemo(
@@ -753,8 +872,11 @@ function PortfolioViewTab({
       { key: "fy", label: "FY" },
       { key: "bp", label: "Budget %" },
       { key: "fp", label: "Forecast %" },
-      { key: "bAmt", label: "Budget Amount" },
-      { key: "fAmt", label: "Forecast Amount" },
+      { key: "bAmt", label: "FY allocation" },
+      { key: "plan", label: "Plan" },
+      { key: "actual", label: "Actual" },
+      { key: "monthlyForecast", label: "Forecast" },
+      { key: "fAmt", label: "FY outlook $" },
       { key: "portfolio", label: "Strategic Alignment" },
       { key: "sponsor", label: "Sponsor" },
       { key: "rag", label: "RAG" },
@@ -998,7 +1120,7 @@ function PortfolioViewTab({
                     sortKey={allocDetailTable.sortKey}
                     sortDir={allocDetailTable.sortDir}
                     onToggleSort={allocDetailTable.toggleSort}
-                    align={["bp", "fp", "bAmt", "fAmt"].includes(col.key) ? "right" : "left"}
+                    align={["bp", "fp", "bAmt", "fAmt", "plan", "actual", "monthlyForecast"].includes(col.key) ? "right" : "left"}
                   />
                 ))}
               </tr>
@@ -1038,6 +1160,15 @@ function PortfolioViewTab({
                       <td className="text-right tabular-nums">{r.bp.toFixed(0)}</td>
                       <td className="text-right tabular-nums">{r.fp.toFixed(0)}</td>
                       <td className="text-right tabular-nums">{fmt$(r.bAmt)}</td>
+                      <td className={`text-right tabular-nums ${r.over && r.peakSource === "plan" ? "font-semibold text-rose-700" : ""}`}>
+                        {fmt$(r.plan)}
+                      </td>
+                      <td className={`text-right tabular-nums ${r.over && r.peakSource === "actual" ? "font-semibold text-rose-700" : ""}`}>
+                        {fmt$(r.actual)}
+                      </td>
+                      <td className={`text-right tabular-nums ${r.over && r.peakSource === "forecast" ? "font-semibold text-rose-700" : ""}`}>
+                        {fmt$(r.monthlyForecast)}
+                      </td>
                       <td className="text-right tabular-nums">{fmt$(r.fAmt)}</td>
                       <td>{r.portfolio || "—"}</td>
                       <td>{r.sponsor || "—"}</td>

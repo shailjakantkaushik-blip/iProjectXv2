@@ -181,6 +181,20 @@ export function PortfolioPulsePanel({
     staleTime: 60_000,
   });
 
+  const fyAllocQ = useQuery({
+    queryKey: ["fy_allocations", orgId, "health"],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("fy_allocations")
+          .select("id,project_id,fy,budget,forecast,capex,opex,benefits")
+          .eq("org_id", orgId!)
+          .limit(10000)
+      ).data ?? [],
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+
   const benefitsQ = useQuery({
     queryKey: ["benefits", orgId],
     queryFn: async () => {
@@ -218,8 +232,11 @@ export function PortfolioPulsePanel({
 
   const filteredProjects = useMemo(() => {
     const all = projectsQ.data ?? [];
-    return applyExecutivePortfolioFilters(all, filters, fyStartMonth, { gates: gatesQ.data ?? [] });
-  }, [projectsQ.data, filters, fyStartMonth, gatesQ.data]);
+    return applyExecutivePortfolioFilters(all, filters, fyStartMonth, {
+      gates: gatesQ.data ?? [],
+      fyAllocations: (fyAllocQ.data ?? []) as any[],
+    });
+  }, [projectsQ.data, filters, fyStartMonth, gatesQ.data, fyAllocQ.data]);
 
   const snapshotScope = useMemo(() => executiveFilterScopeKey(filters), [filters]);
 
@@ -233,6 +250,7 @@ export function PortfolioPulsePanel({
     const monthlyBy = groupByProjectId(monthlyQ.data ?? []);
     const benefitsBy = groupByProjectId(benefitsQ.data ?? []);
     const crsBy = groupByProjectId(changeRequestsQ.data ?? []);
+    const fyBy = groupByProjectId((fyAllocQ.data ?? []) as { project_id?: string | null }[]);
     const idSet = new Set(filteredProjects.map((p) => p.id as string));
 
     const projects = filteredProjects.map((p) => ({
@@ -245,6 +263,7 @@ export function PortfolioPulsePanel({
       monthly: monthlyBy.get(p.id) || [],
       benefitLines: benefitsBy.get(p.id) || [],
       changeRequests: crsBy.get(p.id) || [],
+      fyAllocations: fyBy.get(p.id) || [],
     }));
 
     const allRisks = (risksQ.data ?? []).filter((r) => idSet.has(r.project_id));
@@ -256,6 +275,7 @@ export function PortfolioPulsePanel({
       allRisks,
       allDecisions,
       snapshotScope,
+      fyStartMonth,
     });
   }, [
     orgId,
@@ -269,8 +289,10 @@ export function PortfolioPulsePanel({
     monthlyQ.data,
     benefitsQ.data,
     changeRequestsQ.data,
+    fyAllocQ.data,
     decisionsQ.data,
     snapshotScope,
+    fyStartMonth,
   ]);
 
   useEffect(() => {

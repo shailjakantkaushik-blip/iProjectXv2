@@ -5,9 +5,11 @@
  * columns on that row — FY Allocation and Estimation Planning must not insert a
  * second record for the same month.
  *
- * Budget:   stream budget (Data Editor) — FY Allocation budget % is the year split
- * Plan:     CapEx planned ← FY budget CapEx
- *           OpEx planned + FTE ← Estimation Planning apply (FY save never writes OpEx plan)
+ * Budget:   overall envelope = CapEx approved + OpEx approved (or stream budget)
+ *           FY Allocation is the year slice of that envelope (including CapEx/OpEx)
+ * Plan:     Estimation Planning apply
+ *           OpEx planned + FTE ← labor + OpEx further costs
+ *           CapEx planned ← CapEx further costs (FY save only fills empty CapEx plan)
  * Forecast: FY Allocation forecast % → monthly *_forecast (empty forecast starts = plan)
  * Actual:   financials_monthly.*_actual → projects.capex_incurred / opex_incurred
  * Demand:   work items — compare to Plan; never written here
@@ -242,7 +244,8 @@ export function sumMonthlyForecast(rows: MonthlyFinanceRow[]): number {
 /**
  * Distribute FY Allocation into monthly columns on the existing stream·month row.
  * - *_forecast always from FY forecast $ (this is the Forecast layer)
- * - capex_planned from FY budget CapEx (capital is not on Estimation Planning)
+ * - capex_planned filled from FY budget CapEx only when still empty
+ *   (Estimation Apply owns CapEx plan once further costs are tagged CapEx)
  * - opex_planned / opex_labor_planned are never written here (Estimation Apply owns Plan)
  * Preserves actuals. Months outside project schedule are skipped when start/end
  * are provided; otherwise all 12 FY months are used.
@@ -347,7 +350,7 @@ export async function cascadeMonthlyFromFyPlan(opts: {
           project_id: projectId,
           stream_id: laneStreamId,
           period_month: m,
-          capex_planned: fyCapexPlan,
+          capex_planned: num(prev?.capex_planned) > 0 ? num(prev?.capex_planned) : fyCapexPlan,
           capex_forecast: forecast > 0 || !prev ? fyCapexFc : num(prev.capex_forecast),
           opex_forecast: forecast > 0 || !prev ? fyOpexFc : num(prev.opex_forecast),
           capex_actual: num(prev?.capex_actual),

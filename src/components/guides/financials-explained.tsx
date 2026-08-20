@@ -7,14 +7,14 @@ const LAYERS = [
     name: "Budget",
     color: "#1d4ed8",
     plain: "The approved envelope — how much this stream is allowed to spend.",
-    where: "Data Editor → Project Streams (rolls up to the project).",
+    where: "Data Editor → Project Streams (lifetime). FY Allocation is the approved subset for each financial year.",
     not: "Do not change this when a phase is late.",
   },
   {
     name: "Plan",
     color: "#15803d",
     plain: "The baseline: how we intend to spend that envelope, by month and by person.",
-    where: "Project Estimation Planning → Apply planned baseline. CapEx plan also comes from FY Allocation.",
+    where: "Project Estimation Planning → Apply planned baseline. Labor is OpEx; further costs tagged CapEx/OpEx write those planned buckets. FY Allocation fills empty CapEx plan only.",
     not: "Plan stays frozen unless a sponsor unlocks it.",
   },
   {
@@ -80,6 +80,11 @@ export function FinancialsExplained({ showHouse = true }: { showHouse?: boolean 
           Forecast for that phase can rise — Budget and Plan stay put until someone formally
           changes them.
         </p>
+        <p className="mt-3 text-sm leading-relaxed">
+          FY Allocation is not Plan. It is the approved budget for that financial year — a subset
+          of the lifetime envelope. If Estimation Plan, Actuals, or Forecast for that year goes
+          above the allocation, the Financial health dimension flags Amber or Red.
+        </p>
       </SectionFrame>
 
       <SectionFrame>
@@ -101,7 +106,13 @@ export function FinancialsExplained({ showHouse = true }: { showHouse?: boolean 
             <Link to="/app/fy-allocation" className="font-medium text-primary hover:underline">
               FY Allocation
             </Link>{" "}
-            — split Budget and Forecast across financial years.
+            — split the overall envelope into a year budget (subset of overall), including CapEx
+            and OpEx. Tag Estimation further costs as CapEx or OpEx so Plan lands in the matching
+            bucket.{" "}
+            <Link to="/app/budget-vs-plan" className="font-medium text-primary hover:underline">
+              Budget vs Plan
+            </Link>{" "}
+            shows allocated vs planned vs forecast vs actuals by project.
           </li>
           <li>
             <Link to="/app/work-items" className="font-medium text-primary hover:underline">
@@ -120,6 +131,13 @@ export function FinancialsExplained({ showHouse = true }: { showHouse?: boolean 
               Financials
             </Link>{" "}
             — Plan vs Actual vs Forecast on one page.
+          </li>
+          <li>
+            <Link to="/app/budget-vs-plan" className="font-medium text-primary hover:underline">
+              Budget vs Plan
+            </Link>{" "}
+            — overall budget, FY allocation, Estimation Plan, Forecast, and Actuals by project and
+            year (CapEx and OpEx).
           </li>
         </ul>
       </SectionFrame>

@@ -173,6 +173,19 @@ export function ProjectHealthEnginePanel({
     enabled: changeRequestsProp == null && !!orgId && !!projectId,
     staleTime: 30_000,
   });
+  const { data: fyAllocFetched = [] } = useQuery({
+    queryKey: ["fy_allocations", orgId, "health-engine", projectId],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("fy_allocations")
+          .select("fy,budget,forecast,capex,opex")
+          .eq("org_id", orgId!)
+          .eq("project_id", projectId!)
+      ).data ?? [],
+    enabled: !!orgId && !!projectId,
+    staleTime: 30_000,
+  });
   const workItems = workItemsProp ?? workItemsFetched;
   const changeRequests = changeRequestsProp ?? changeRequestsFetched;
 
@@ -193,6 +206,8 @@ export function ProjectHealthEnginePanel({
       allocations,
       monthly,
       benefitLines: benefits,
+      fyAllocations: fyAllocFetched as any[],
+      fyStartMonth: organization?.fy_start_month || 4,
       previousScore: prevScore,
     });
   }, [
@@ -205,6 +220,8 @@ export function ProjectHealthEnginePanel({
     allocations,
     monthly,
     benefits,
+    fyAllocFetched,
+    organization?.fy_start_month,
     prevScore,
   ]);
 

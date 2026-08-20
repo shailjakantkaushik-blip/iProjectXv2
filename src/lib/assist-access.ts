@@ -23,6 +23,7 @@ const DOMAIN_PAGES: Record<AssistDomain, string[]> = {
   budget: [
     "/app/financials",
     "/app/fy-allocation",
+    "/app/budget-vs-plan",
     "/app/phase-financials",
     "/app/cost-vs-benefit",
     "/app/executive-intelligence",

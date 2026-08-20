@@ -1,6 +1,6 @@
 /**
  * Project Estimation Planning — streams × delivery-method phases.
- * The estimate is the planned baseline (dates, OpEx, FTE allocations).
+ * The estimate is the planned baseline (dates, FTE, OpEx, and CapEx further costs).
  * After start, actuals live on streams / gates / timesheets and must never
  * be overwritten here. Forecast (in-flight) lives on FY Allocation / monthly *_forecast.
  */
@@ -23,6 +23,14 @@ export const FORECAST_COST_CATEGORIES = [
   "Training",
   "Other",
 ] as const;
+
+export const FORECAST_COST_TYPES = ["opex", "capex"] as const;
+export type ForecastCostType = (typeof FORECAST_COST_TYPES)[number];
+
+/** Further-cost bucket. Missing / unknown values count as OpEx (legacy rows). */
+export function forecastCostType(v: unknown): ForecastCostType {
+  return String(v || "").trim().toLowerCase() === "capex" ? "capex" : "opex";
+}
 
 export const DEFAULT_PHASE_DAYS = 20;
 

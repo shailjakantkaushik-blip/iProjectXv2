@@ -2,12 +2,13 @@
  * Canonical project finance helpers — single source of truth for portfolio pages.
  *
  * Layers (do not mix write-paths):
- * 1. Budget   — stream `budget` in Data Editor (rolls up to the project)
+ * 1. Budget   — stream `budget` in Data Editor (lifetime envelope).
+ *               FY Allocation `budget` is the approved subset for that year.
  * 2. Plan     — Estimation Planning apply → dates, opex_planned, opex_labor_planned,
- *               resource_allocations. CapEx plan comes from FY budget CapEx.
+ *               resource_allocations. Further cost categories tagged CapEx write
+ *               capex_planned; OpEx (including labor) writes opex_planned.
  *               Same monthly row as Forecast — never a second financials_monthly record.
- * 3. Forecast — FY Allocation `forecast` by year → monthly *_forecast.
- *               Phase forecast starts equal to phase plan; slips can raise it.
+ * 3. Forecast — monthly *_forecast (starts = plan; FY forecast % can move the year outlook).
  * 4. Demand   — work-item estimate_hours × assignees (never writes Plan columns)
  * 5. Actual   — timesheets + other OpEx → monthly *_actual → incurred
  *
@@ -184,6 +185,30 @@ export function fyAllocForecast(a: FyAllocationLike | null | undefined): number 
   const f = num(a.forecast ?? a.forecast_amount);
   if (f) return f;
   return fyAllocBudget(a);
+}
+
+/** CapEx $ on an FY allocation row (explicit, else remainder after OpEx, else mix). */
+export function fyAllocCapex(
+  a: FyAllocationLike | null | undefined,
+  p?: ProjectFinanceLike | null,
+): number {
+  if (!a) return 0;
+  const c = num(a.capex);
+  const o = num(a.opex);
+  if (c > 0 || o > 0) return c;
+  return splitCapexOpex(fyAllocBudget(a), p).capex;
+}
+
+/** OpEx $ on an FY allocation row (explicit, else remainder after CapEx, else mix). */
+export function fyAllocOpex(
+  a: FyAllocationLike | null | undefined,
+  p?: ProjectFinanceLike | null,
+): number {
+  if (!a) return 0;
+  const c = num(a.capex);
+  const o = num(a.opex);
+  if (c > 0 || o > 0) return o;
+  return splitCapexOpex(fyAllocBudget(a), p).opex;
 }
 
 /** Split a total amount into CapEx/OpEx using project approved mix. */

@@ -10,6 +10,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import { HOURS_PER_DAY } from "@/lib/ops-enhancements";
 import type { ForecastPhaseRow } from "@/lib/project-forecast";
+import { forecastCostType } from "@/lib/project-forecast";
 import { monthKeysInclusive } from "@/lib/work-item-fte-plan";
 import {
   absorbBlankMonthlyIntoStreams,
@@ -38,6 +39,7 @@ export type ForecastPhaseResLike = {
 export type ForecastOtherCostLike = {
   forecast_phase_id?: string | null;
   amount?: number | null;
+  cost_type?: string | null;
 };
 
 export type ForecastResourceLike = {
@@ -157,10 +159,18 @@ function laborForPhase(ph: ForecastPhaseRow, phaseRes: ForecastPhaseResLike[]) {
     .reduce((s, r) => s + num(r.labor_cost), 0);
 }
 
-function otherForPhase(ph: ForecastPhaseRow, otherCosts: ForecastOtherCostLike[]) {
+function otherForPhase(
+  ph: ForecastPhaseRow,
+  otherCosts: ForecastOtherCostLike[],
+  type?: "capex" | "opex",
+) {
   if (!ph.id) return 0;
   return otherCosts
-    .filter((c) => c.forecast_phase_id === ph.id)
+    .filter((c) => {
+      if (c.forecast_phase_id !== ph.id) return false;
+      if (!type) return true;
+      return forecastCostType(c.cost_type) === type;
+    })
     .reduce((s, c) => s + num(c.amount), 0);
 }
 
@@ -168,12 +178,17 @@ export function plannedCostByPhase(
   phases: ForecastPhaseRow[],
   phaseRes: ForecastPhaseResLike[],
   otherCosts: ForecastOtherCostLike[],
-): Map<string, { labor: number; other: number; total: number }> {
-  const out = new Map<string, { labor: number; other: number; total: number }>();
+): Map<string, { labor: number; other: number; capex: number; opexOther: number; total: number }> {
+  const out = new Map<
+    string,
+    { labor: number; other: number; capex: number; opexOther: number; total: number }
+  >();
   for (const ph of phases) {
     const labor = laborForPhase(ph, phaseRes);
-    const other = otherForPhase(ph, otherCosts);
-    out.set(phaseKey(ph), { labor, other, total: labor + other });
+    const capex = otherForPhase(ph, otherCosts, "capex");
+    const opexOther = otherForPhase(ph, otherCosts, "opex");
+    const other = capex + opexOther;
+    out.set(phaseKey(ph), { labor, other, capex, opexOther, total: labor + other });
   }
   return out;
 }
@@ -201,7 +216,8 @@ export async function loadForecastApplyInputs(forecastId: string): Promise<{
 /**
  * Spread estimation labor + other into monthly *planned* cells, and effort
  * into resource_allocations (Planned FTE). Actuals are untouched.
- * opex_forecast is set to the plan amount only when it is still empty.
+ * OpEx further costs + labor → opex_planned. CapEx further costs → capex_planned.
+ * opex_forecast / capex_forecast are set to the plan amount only when still empty.
  */
 export async function applyForecastPlannedMoneyAndFte(opts: {
   orgId: string;
@@ -216,21 +232,50 @@ export async function applyForecastPlannedMoneyAndFte(opts: {
   const otherCosts = opts.otherCosts ?? [];
   const costs = plannedCostByPhase(opts.phases, phaseRes, otherCosts);
 
-  const monthMoney = new Map<string, { labor: number; other: number }>();
+  const monthMoney = new Map<string, { labor: number; opexOther: number; capexOther: number }>();
+  const addMonth = (
+    key: string,
+    patch: { labor?: number; opexOther?: number; capexOther?: number },
+  ) => {
+    const prev = monthMoney.get(key) || { labor: 0, opexOther: 0, capexOther: 0 };
+    monthMoney.set(key, {
+      labor: prev.labor + (patch.labor || 0),
+      opexOther: prev.opexOther + (patch.opexOther || 0),
+      capexOther: prev.capexOther + (patch.capexOther || 0),
+    });
+  };
+
   for (const ph of opts.phases) {
     const $ = costs.get(phaseKey(ph));
-    if (!$ || ($.labor <= 0 && $.other <= 0)) continue;
+    if (!$ || ($.labor <= 0 && $.opexOther <= 0 && $.capex <= 0)) continue;
     const months = monthKeysInclusive(ph.start_date, ph.end_date, false);
     if (!months.length) continue;
     const laborEach = $.labor / months.length;
-    const otherEach = $.other / months.length;
+    const opexEach = $.opexOther / months.length;
+    const capexEach = $.capex / months.length;
     for (const m of months) {
-      const key = `${ph.stream_id || ""}|${m}`;
-      const prev = monthMoney.get(key) || { labor: 0, other: 0 };
-      monthMoney.set(key, {
-        labor: prev.labor + laborEach,
-        other: prev.other + otherEach,
+      addMonth(`${ph.stream_id || ""}|${m}`, {
+        labor: laborEach,
+        opexOther: opexEach,
+        capexOther: capexEach,
       });
+    }
+  }
+
+  const unphased = otherCosts.filter((c) => !c.forecast_phase_id);
+  if (unphased.length) {
+    const allMonths = [
+      ...new Set(opts.phases.flatMap((ph) => monthKeysInclusive(ph.start_date, ph.end_date, false))),
+    ].sort();
+    if (allMonths.length) {
+      for (const c of unphased) {
+        const each = num(c.amount) / allMonths.length;
+        if (each <= 0) continue;
+        const capex = forecastCostType(c.cost_type) === "capex";
+        for (const m of allMonths) {
+          addMonth(`|${m}`, capex ? { capexOther: each } : { opexOther: each });
+        }
+      }
     }
   }
 
@@ -253,27 +298,33 @@ export async function applyForecastPlannedMoneyAndFte(opts: {
     const [streamIdRaw, period] = key.split("|");
     const streamId = streamIdRaw || null;
     const prev = findMonthlyRowForLane(monthRow, streamId, period);
-    const planned = Math.round((amt.labor + amt.other) * 100) / 100;
+    const opexPlanned = Math.round((amt.labor + amt.opexOther) * 100) / 100;
     const labor = Math.round(amt.labor * 100) / 100;
+    const capexPlanned = Math.round(amt.capexOther * 100) / 100;
+    const writesCapex = amt.capexOther > 0;
     if (
       opts.onlyFillEmpty &&
       prev &&
-      (num(prev.opex_planned) > 0 || num(prev.opex_labor_planned) > 0)
+      (num(prev.opex_planned) > 0 ||
+        num(prev.opex_labor_planned) > 0 ||
+        (writesCapex && num(prev.capex_planned) > 0))
     ) {
       continue;
     }
+    const nextCapex = writesCapex ? capexPlanned : num(prev?.capex_planned);
     const patch = {
       org_id: opts.orgId,
       project_id: opts.projectId,
       stream_id: streamId || prev?.stream_id || null,
       period_month: period,
-      opex_planned: planned,
+      opex_planned: opexPlanned,
       opex_labor_planned: labor,
       capex_actual: num(prev?.capex_actual),
       opex_actual: num(prev?.opex_actual),
-      capex_forecast: prev?.capex_forecast ?? null,
-      opex_forecast: num(prev?.opex_forecast) > 0 ? num(prev.opex_forecast) : planned,
-      capex_planned: prev?.capex_planned ?? 0,
+      capex_forecast:
+        writesCapex && !(num(prev?.capex_forecast) > 0) ? nextCapex : (prev?.capex_forecast ?? null),
+      opex_forecast: num(prev?.opex_forecast) > 0 ? num(prev.opex_forecast) : opexPlanned,
+      capex_planned: nextCapex,
       benefits_planned: num(prev?.benefits_planned),
       benefits_actual: num(prev?.benefits_actual),
     };
