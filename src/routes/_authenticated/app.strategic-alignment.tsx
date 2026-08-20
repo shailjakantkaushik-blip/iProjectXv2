@@ -381,7 +381,10 @@ function StrategicAlignmentPage() {
     const keys = new Set<string>();
     for (const sa of tree) {
       keys.add(`sa:${sa.name}`);
-      for (const prog of sa.programs) keys.add(`prog:${sa.name}:${prog.name}`);
+      for (const prog of sa.programs) {
+        keys.add(`prog:${sa.name}:${prog.name}`);
+        for (const proj of prog.projects) keys.add(`proj:${proj.id}`);
+      }
     }
     return keys;
   }, [tree]);
@@ -425,7 +428,7 @@ function StrategicAlignmentPage() {
       <PageHeading
         icon="🧭"
         title="Strategic Alignment"
-        subtitle="Hierarchy from Strategic Alignment to programs, projects, and streams. Each card shows calculated health, money, and open RAID counts."
+        subtitle="Family tree from Strategic Alignment to programs, projects, and streams. Markers on each card are Health Engine RAG, money, and open RAID."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" size="sm" onClick={expandAll}>
@@ -453,92 +456,146 @@ function StrategicAlignmentPage() {
         </SectionFrame>
       ) : null}
 
-      <div className="space-y-3">
-        {tree.map((sa) => {
-          const saKey = `sa:${sa.name}`;
-          const saOpen = openKeys.has(saKey);
-          return (
-            <SectionFrame key={saKey} exportName={`sa-${sa.name}`} exportTitle={sa.name}>
-              <HierarchyCard
-                level="Strategic Alignment"
-                title={sa.name}
-                metrics={sa.metrics}
-                expanded={saOpen}
-                onToggle={() => toggle(saKey)}
-                childLabel={`${sa.programs.length} program${sa.programs.length === 1 ? "" : "s"}`}
-              />
-              {saOpen ? (
-                <div className="mt-3 space-y-2 border-l-2 border-border/70 pl-3 sm:pl-4">
-                  {sa.programs.map((prog) => {
-                    const progKey = `prog:${sa.name}:${prog.name}`;
-                    const progOpen = openKeys.has(progKey);
-                    return (
-                      <div key={progKey}>
-                        <HierarchyCard
-                          level="Program"
-                          title={prog.name}
-                          metrics={prog.metrics}
-                          expanded={progOpen}
-                          onToggle={() => toggle(progKey)}
-                          childLabel={`${prog.projects.length} project${prog.projects.length === 1 ? "" : "s"}`}
-                          to="/app/programs"
-                        />
-                        {progOpen ? (
-                          <div className="mt-2 space-y-2 border-l-2 border-border/50 pl-3 sm:pl-4">
-                            {prog.projects.map((proj) => {
-                              const projKey = `proj:${proj.id}`;
-                              const projOpen = openKeys.has(projKey);
-                              return (
-                                <div key={proj.id}>
-                                  <HierarchyCard
-                                    level="Project"
-                                    title={proj.name}
-                                    code={proj.code}
-                                    metrics={proj.metrics}
-                                    expanded={projOpen}
-                                    onToggle={() => toggle(projKey)}
-                                    childLabel={
-                                      proj.streams.length
-                                        ? `${proj.streams.length} stream${proj.streams.length === 1 ? "" : "s"}`
-                                        : "No streams"
-                                    }
-                                    to="/app/projects/$id"
-                                    params={{ id: proj.id }}
-                                    showToggle={proj.streams.length > 0}
-                                  />
-                                  {projOpen && proj.streams.length ? (
-                                    <div className="mt-2 space-y-2 border-l-2 border-border/40 pl-3 sm:pl-4">
-                                      {proj.streams.map((stream) => (
+      {tree.length ? (
+        <SectionFrame exportName="alignment-tree" exportTitle="Strategic Alignment tree">
+          <TreeLegend />
+          <div className="sa-org mt-4 overflow-x-auto pb-8">
+            <ul>
+              {tree.map((sa) => {
+                const saKey = `sa:${sa.name}`;
+                const saOpen = openKeys.has(saKey);
+                return (
+                  <li key={saKey}>
+                    <HierarchyCard
+                      level="Strategic Alignment"
+                      title={sa.name}
+                      metrics={sa.metrics}
+                      expanded={saOpen}
+                      onToggle={() => toggle(saKey)}
+                      childLabel={`${sa.programs.length} program${sa.programs.length === 1 ? "" : "s"}`}
+                    />
+                    {saOpen && sa.programs.length ? (
+                      <ul>
+                        {sa.programs.map((prog) => {
+                          const progKey = `prog:${sa.name}:${prog.name}`;
+                          const progOpen = openKeys.has(progKey);
+                          return (
+                            <li key={progKey}>
+                              <HierarchyCard
+                                level="Program"
+                                title={prog.name}
+                                metrics={prog.metrics}
+                                expanded={progOpen}
+                                onToggle={() => toggle(progKey)}
+                                childLabel={`${prog.projects.length} project${prog.projects.length === 1 ? "" : "s"}`}
+                                to="/app/programs"
+                              />
+                              {progOpen && prog.projects.length ? (
+                                <ul>
+                                  {prog.projects.map((proj) => {
+                                    const projKey = `proj:${proj.id}`;
+                                    const projOpen = openKeys.has(projKey);
+                                    return (
+                                      <li key={proj.id}>
                                         <HierarchyCard
-                                          key={stream.id}
-                                          level="Stream"
-                                          title={stream.name}
-                                          code={stream.code}
-                                          metrics={stream.metrics}
+                                          level="Project"
+                                          title={proj.name}
+                                          code={proj.code}
+                                          metrics={proj.metrics}
+                                          expanded={projOpen}
+                                          onToggle={() => toggle(projKey)}
+                                          childLabel={
+                                            proj.streams.length
+                                              ? `${proj.streams.length} stream${proj.streams.length === 1 ? "" : "s"}`
+                                              : "No streams"
+                                          }
                                           to="/app/projects/$id"
                                           params={{ id: proj.id }}
-                                          search={{ tab: "streams" as const }}
-                                          showToggle={false}
-                                          raidUnavailable
+                                          showToggle={proj.streams.length > 0}
                                         />
-                                      ))}
-                                    </div>
-                                  ) : null}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : null}
-            </SectionFrame>
-          );
-        })}
-      </div>
+                                        {projOpen && proj.streams.length ? (
+                                          <ul>
+                                            {proj.streams.map((stream) => (
+                                              <li key={stream.id}>
+                                                <HierarchyCard
+                                                  level="Stream"
+                                                  title={stream.name}
+                                                  code={stream.code}
+                                                  metrics={stream.metrics}
+                                                  to="/app/projects/$id"
+                                                  params={{ id: proj.id }}
+                                                  search={{ tab: "streams" as const }}
+                                                  showToggle={false}
+                                                  raidUnavailable
+                                                />
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        ) : null}
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              ) : null}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+          <OrgTreeStyles />
+        </SectionFrame>
+      ) : null}
     </PageExport>
+  );
+}
+
+function TreeLegend() {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] text-muted-foreground">
+      <span className="font-semibold uppercase tracking-wide text-foreground">Markers</span>
+      <span className="inline-flex items-center gap-1.5">
+        <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500" />
+        <span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-500" />
+        <span className="inline-block h-2.5 w-2.5 rounded-full bg-rose-500" />
+        Health Engine RAG
+      </span>
+      <span>Score /100</span>
+      <span>B budget · F forecast · A actual</span>
+      <span className="inline-flex items-center gap-1">
+        <MarkerPill kind="R" n={0} />
+        <MarkerPill kind="A" n={0} />
+        <MarkerPill kind="I" n={0} />
+        <MarkerPill kind="D" n={0} />
+        Open RAID
+      </span>
+    </div>
+  );
+}
+
+function MarkerPill({ kind, n }: { kind: "R" | "A" | "I" | "D"; n: number }) {
+  const tone =
+    kind === "R"
+      ? "bg-rose-100 text-rose-800"
+      : kind === "A"
+        ? "bg-sky-100 text-sky-800"
+        : kind === "I"
+          ? "bg-amber-100 text-amber-900"
+          : "bg-violet-100 text-violet-800";
+  const label =
+    kind === "R" ? "Open risks" : kind === "A" ? "Open actions" : kind === "I" ? "Open issues" : "Open decisions";
+  return (
+    <span
+      title={label}
+      className={`inline-flex min-w-[1.75rem] items-center justify-center rounded-full px-1.5 py-0.5 font-mono text-[10px] font-bold tabular-nums ${tone}`}
+    >
+      {kind}
+      {n}
+    </span>
   );
 }
 
@@ -579,83 +636,137 @@ function HierarchyCard({
       : [`Rolled or calculated score ${metrics.score}/100.`],
   });
 
-  const titleClass = "text-base font-semibold tracking-tight hover:underline";
+  const titleClass = "block max-w-[200px] truncate text-sm font-semibold tracking-tight hover:underline";
   const titleNode =
     to === "/app/projects/$id" && params ? (
-      <Link to="/app/projects/$id" params={params} search={search} className={titleClass}>
+      <Link to="/app/projects/$id" params={params} search={search} className={titleClass} title={title}>
         {title}
       </Link>
     ) : to === "/app/programs" ? (
-      <Link to="/app/programs" className={titleClass}>
+      <Link to="/app/programs" className={titleClass} title={title}>
         {title}
       </Link>
     ) : (
-      <h2 className="text-base font-semibold tracking-tight">{title}</h2>
+      <h2 className="max-w-[200px] truncate text-sm font-semibold tracking-tight" title={title}>
+        {title}
+      </h2>
     );
 
   return (
     <div
-      className="rounded-xl border bg-card/80 p-3 shadow-sm sm:p-3.5"
-      style={{ borderLeftWidth: 4, borderLeftColor: ragColor(String(rag)) }}
+      className="relative z-[1] w-[232px] rounded-xl border bg-card p-2.5 text-left shadow-sm"
+      style={{ borderTopWidth: 4, borderTopColor: ragColor(String(rag)) }}
     >
-      <div className="flex flex-wrap items-start gap-2 sm:gap-3">
+      <div className="flex items-start gap-1.5">
         {showToggle && onToggle ? (
           <button
             type="button"
-            className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border bg-background"
+            className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border bg-background"
             onClick={onToggle}
             aria-expanded={expanded}
             aria-label={expanded ? `Collapse ${title}` : `Expand ${title}`}
           >
-            {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
           </button>
         ) : (
-          <span className="mt-0.5 inline-flex h-7 w-7 shrink-0" />
+          <span className="mt-0.5 inline-flex h-6 w-6 shrink-0" />
         )}
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-              {level}
-            </span>
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{level}</span>
+            <span
+              className="inline-block h-2.5 w-2.5 rounded-full"
+              style={{ background: ragColor(String(rag)) }}
+              title={`Health ${String(rag)}`}
+            />
             <RagChip rag={String(rag)} explain={explanation} manual={metrics.ragManual} />
-            <span className="text-xs tabular-nums text-muted-foreground">{metrics.score}/100</span>
-            {childLabel ? <span className="text-xs text-muted-foreground">{childLabel}</span> : null}
+            <span className="text-[10px] font-semibold tabular-nums text-muted-foreground">{metrics.score}</span>
           </div>
-          <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            {titleNode}
-            {code ? <span className="font-mono text-xs text-muted-foreground">{code}</span> : null}
-          </div>
+          <div className="mt-0.5">{titleNode}</div>
+          {code ? <div className="font-mono text-[10px] text-muted-foreground">{code}</div> : null}
+          {childLabel ? <div className="text-[10px] text-muted-foreground">{childLabel}</div> : null}
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Metric label="Budget" value={money(metrics.budget)} />
-        <Metric label="Forecast" value={money(metrics.forecast)} />
-        <Metric label="Actual" value={money(metrics.actual)} />
-        <div className="rounded-lg border bg-background/70 px-2.5 py-2">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">RAID</div>
-          {raidUnavailable ? (
-            <div className="mt-1 text-sm text-muted-foreground">On the project</div>
-          ) : (
-            <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-xs font-semibold tabular-nums">
-              <span title="Open risks">R {metrics.raid.risks}</span>
-              <span title="Open actions">A {metrics.raid.actions}</span>
-              <span title="Open issues">I {metrics.raid.issues}</span>
-              <span title="Open decisions">D {metrics.raid.decisions}</span>
-              <span className="text-muted-foreground">· {raidTotal(metrics.raid)} open</span>
-            </div>
-          )}
-        </div>
+      <div className="mt-2 flex flex-wrap gap-1">
+        <span className="rounded-md bg-muted/70 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums" title="Budget">
+          B {money(metrics.budget)}
+        </span>
+        <span className="rounded-md bg-muted/70 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums" title="Forecast">
+          F {money(metrics.forecast)}
+        </span>
+        <span className="rounded-md bg-muted/70 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums" title="Actual">
+          A {money(metrics.actual)}
+        </span>
+      </div>
+      <div className="mt-1.5 flex flex-wrap items-center gap-1">
+        {raidUnavailable ? (
+          <span className="text-[10px] text-muted-foreground">RAID on the project</span>
+        ) : (
+          <>
+            <MarkerPill kind="R" n={metrics.raid.risks} />
+            <MarkerPill kind="A" n={metrics.raid.actions} />
+            <MarkerPill kind="I" n={metrics.raid.issues} />
+            <MarkerPill kind="D" n={metrics.raid.decisions} />
+            <span className="text-[10px] text-muted-foreground">{raidTotal(metrics.raid)} open</span>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function OrgTreeStyles() {
   return (
-    <div className="rounded-lg border bg-background/70 px-2.5 py-2">
-      <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className="mt-1 text-sm font-semibold tabular-nums">{value}</div>
-    </div>
+    <style>{`
+      .sa-org ul {
+        display: flex;
+        justify-content: center;
+        padding-top: 28px;
+        position: relative;
+        margin: 0;
+      }
+      .sa-org li {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        position: relative;
+        padding: 28px 12px 0;
+        list-style: none;
+      }
+      .sa-org li::before,
+      .sa-org li::after {
+        content: "";
+        position: absolute;
+        top: 0;
+      }
+      .sa-org li::before {
+        left: 50%;
+        height: 28px;
+        border-left: 2px solid hsl(var(--border));
+      }
+      .sa-org li::after {
+        left: 0;
+        width: 100%;
+        border-top: 2px solid hsl(var(--border));
+      }
+      .sa-org li:first-child::after {
+        left: 50%;
+        width: 50%;
+      }
+      .sa-org li:last-child::after {
+        width: 50%;
+      }
+      .sa-org li:only-child::after {
+        display: none;
+      }
+      .sa-org > ul {
+        padding-top: 0;
+      }
+      .sa-org > ul > li::before,
+      .sa-org > ul > li::after {
+        display: none;
+      }
+    `}</style>
   );
 }
