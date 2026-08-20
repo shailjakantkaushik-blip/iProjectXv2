@@ -23,12 +23,26 @@ import {
 import { StageGateStatusFilter } from "@/components/stage-gate-status-filter";
 import { GATE_STATUS_COLORS } from "@/lib/chart-theme";
 import { cn } from "@/lib/utils";
+import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
+import { ColumnarTh } from "@/components/columnar-table-header";
+import { ColumnarToolbar } from "@/components/columnar-toolbar";
 
 export const Route = createFileRoute("/_authenticated/app/projects/")({
   component: ProjectsIndex,
 });
 
 type ProjectRow = Record<string, any>;
+type ProjectsView = "cards" | "list";
+
+const PROJECTS_VIEW_KEY = "ipx.projects.view";
+
+function readProjectsView(): ProjectsView {
+  try {
+    return localStorage.getItem(PROJECTS_VIEW_KEY) === "list" ? "list" : "cards";
+  } catch {
+    return "cards";
+  }
+}
 
 function ragTone(projects: ProjectRow[]) {
   const rags = projects.map((p) => displayRag(p));
@@ -54,6 +68,7 @@ function ProjectsIndex() {
   const [gateStatusByName, setGateStatusByName] = useState<GateStatusFilter>({});
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   const [openedOnce, setOpenedOnce] = useState(false);
+  const [view, setView] = useState<ProjectsView>(() => readProjectsView());
 
   const {
     data: projects = [],
@@ -116,7 +131,7 @@ function ProjectsIndex() {
           `${p.project_code || ""} ${p.name || ""} ${p.portfolio || ""} ${p.program || ""} ${p.sponsor || ""}`.toLowerCase();
         if (!hay.includes(needle)) return false;
       }
-      return projectMatchesGateStatusFilter(gates as never, p.id, gateStatusByName);
+      return projectMatchesGateStatusFilter(gates as never, p.id, gateStatusByName, p);
     });
   }, [projects, q, gates, gateStatusByName]);
 
@@ -191,6 +206,72 @@ function ProjectsIndex() {
     setOpen(new Set());
   };
 
+  const setListView = (list: boolean) => {
+    const next: ProjectsView = list ? "list" : "cards";
+    setView(next);
+    try {
+      localStorage.setItem(PROJECTS_VIEW_KEY, next);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const projectGate = (p: ProjectRow) => {
+    const gs = gatesByProject.get(p.id) || [];
+    const top = projectLevelGates(gs, p.id, orgPhases);
+    const current = resolveCurrentStage(p, gs, orgPhases) || p.current_phase || "—";
+    const currentRow = top.find(
+      (g) => String(g.gate_name || "").trim() === String(current).trim(),
+    );
+    return { current, currentRow, gateStatus: normalizeGateStatus(currentRow?.status) };
+  };
+
+  const listColumns: ColumnarColumn<ProjectRow>[] = useMemo(
+    () => [
+      {
+        key: "project_code",
+        label: "Code",
+        getValue: (p) => p.project_code || "",
+      },
+      { key: "name", label: "Project" },
+      {
+        key: "portfolio",
+        label: "Strategic Alignment",
+        getValue: (p) => p.portfolio || "",
+      },
+      { key: "program", label: "Program", getValue: (p) => p.program || "" },
+      { key: "sponsor", label: "Sponsor", getValue: (p) => p.sponsor || "" },
+      { key: "priority", label: "Priority", getValue: (p) => p.priority || "" },
+      { key: "status", label: "Status", getValue: (p) => p.status || "" },
+      {
+        key: "rag",
+        label: "RAG",
+        getValue: (p) => displayRag(p) || "",
+      },
+      {
+        key: "delivery_method",
+        label: "Method",
+        getValue: (p) => p.delivery_method || "",
+      },
+      {
+        key: "stage_gate",
+        label: "Stage gate",
+        getValue: (p) => projectGate(p).current,
+      },
+      {
+        key: "gate_status",
+        label: "Gate status",
+        getValue: (p) => {
+          const { currentRow, gateStatus } = projectGate(p);
+          return currentRow ? gateStatus : "";
+        },
+      },
+    ],
+    [gatesByProject, orgPhases],
+  );
+
+  const listTable = useColumnarTable(filtered, listColumns);
+
   if (authLoading || (isLoading && !projects.length)) {
     return <PageLoading label="Loading projects…" fullScreen={false} />;
   }
@@ -200,15 +281,19 @@ function ProjectsIndex() {
       <PageHeading
         icon="📁"
         title="Projects"
-        subtitle="Fold Strategic Alignment into programs, then into projects. Open a card for the workspace."
+        subtitle="Fold Strategic Alignment into programs, then into projects. Switch to a data list for a register view."
         actions={
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={expandAll}>
-              Expand all
-            </Button>
-            <Button type="button" variant="outline" size="sm" onClick={collapseAll}>
-              Collapse all
-            </Button>
+            {view === "cards" ? (
+              <>
+                <Button type="button" variant="outline" size="sm" onClick={expandAll}>
+                  Expand all
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={collapseAll}>
+                  Collapse all
+                </Button>
+              </>
+            ) : null}
             {canEdit ? (
               <Button asChild size="sm">
                 <Link to="/app/projects/new">
@@ -244,6 +329,15 @@ function ProjectsIndex() {
           value={gateStatusByName}
           onChange={setGateStatusByName}
         />
+        <label className="inline-flex items-center gap-2 text-xs font-medium text-foreground">
+          <input
+            type="checkbox"
+            className="h-3.5 w-3.5 accent-primary"
+            checked={view === "list"}
+            onChange={(e) => setListView(e.target.checked)}
+          />
+          Data list
+        </label>
       </div>
 
       {!filtered.length && !isError ? (
@@ -256,6 +350,106 @@ function ProjectsIndex() {
         </SectionFrame>
       ) : null}
 
+      {view === "list" && filtered.length ? (
+        <SectionFrame>
+          <ColumnarToolbar
+            globalQ={listTable.globalQ}
+            onGlobalQ={listTable.setGlobalQ}
+            shown={listTable.rows.length}
+            total={listTable.total}
+            dirty={listTable.isDirty}
+            onClear={listTable.clearAll}
+            placeholder="Filter list…"
+          />
+          <div className="overflow-x-auto">
+            <table className="st-table">
+              <thead>
+                <tr>
+                  {listColumns.map((col) => (
+                    <ColumnarTh
+                      key={col.key}
+                      column={col}
+                      filter={listTable.filters[col.key]}
+                      onFilter={(v) => listTable.setColumnFilter(col.key, v)}
+                      sortKey={listTable.sortKey}
+                      sortDir={listTable.sortDir}
+                      onToggleSort={listTable.toggleSort}
+                    />
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {listTable.rows.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={listColumns.length}
+                      className="py-6 text-center text-sm text-muted-foreground"
+                    >
+                      No projects match list filters.
+                    </td>
+                  </tr>
+                ) : (
+                  listTable.rows.map((p) => {
+                    const { current, currentRow, gateStatus } = projectGate(p);
+                    const rag = displayRag(p);
+                    return (
+                      <tr key={p.id}>
+                        <td className="font-mono text-xs whitespace-nowrap">
+                          {p.project_code || "—"}
+                        </td>
+                        <td>
+                          <Link
+                            to="/app/projects/$id"
+                            params={{ id: p.id }}
+                            className="font-medium text-primary hover:underline"
+                          >
+                            {p.name}
+                          </Link>
+                        </td>
+                        <td>{p.portfolio || "—"}</td>
+                        <td>{p.program || "—"}</td>
+                        <td>{p.sponsor || "—"}</td>
+                        <td>{p.priority || "—"}</td>
+                        <td>{p.status || "—"}</td>
+                        <td>
+                          <RagChip
+                            rag={rag}
+                            manual={isRagOverridden(p)}
+                            explain={explainRagMetric({
+                              rag,
+                              source: "register",
+                              overridden: isRagOverridden(p),
+                            })}
+                          />
+                        </td>
+                        <td>{p.delivery_method || "—"}</td>
+                        <td className="font-medium">{current}</td>
+                        <td>
+                          {currentRow ? (
+                            <span
+                              className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
+                              style={{
+                                background: GATE_STATUS_COLORS[gateStatus],
+                                color: "#0f172a",
+                              }}
+                            >
+                              {gateStatus}
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </SectionFrame>
+      ) : null}
+
+      {view === "cards" ? (
       <div className="space-y-5">
         {groups.map((sa) => {
           const saKey = `sa:${sa.name}`;
@@ -415,6 +609,7 @@ function ProjectsIndex() {
           );
         })}
       </div>
+      ) : null}
     </PageExport>
   );
 }

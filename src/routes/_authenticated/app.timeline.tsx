@@ -162,7 +162,7 @@ function TimelinePage() {
       if (fMethod !== "All" && (p.delivery_method || "") !== fMethod) return false;
       if (fSchedule !== "All" && scheduleStatus(p) !== fSchedule) return false;
       if (q && !(`${p.name || ""} ${p.project_code || ""}`.toLowerCase().includes(q))) return false;
-      if (!projectMatchesGateStatusFilter(gates as never, p.id, gateStatusByName)) return false;
+      if (!projectMatchesGateStatusFilter(gates as never, p.id, gateStatusByName, p)) return false;
       return true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -22,7 +22,7 @@ export type PortfolioFilterState = {
   phase: string;
   search: string;
   projectIds: string[]; // empty = all
-  /** Gate name → selected approval statuses (hover multi-select). */
+  /** Gate filter: delivery method → stage gate → approval statuses. */
   gateStatusByName: GateStatusFilter;
 };
 
@@ -71,7 +71,7 @@ export function applyFilters<T extends Record<string, any>>(
     }
     if (
       gateStatusFilterActive(gateFilter) &&
-      !projectMatchesGateStatusFilter(gates, p.id, gateFilter)
+      !projectMatchesGateStatusFilter(gates, p.id, gateFilter, p)
     ) {
       return false;
     }
@@ -621,7 +621,7 @@ export function applyExecutivePortfolioFilters<T extends Record<string, any>>(
     }
     if (
       gateStatusFilterActive(gateFilter) &&
-      !projectMatchesGateStatusFilter(gates, p.id, gateFilter)
+      !projectMatchesGateStatusFilter(gates, p.id, gateFilter, p)
     ) {
       return false;
     }

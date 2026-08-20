@@ -9,6 +9,7 @@ import {
   defaultGatesForMethodCode,
   fetchGateNamesForMethod,
   findDeliveryMethod,
+  methodUsesStageGates,
   type DeliveryMethodRow,
 } from "@/lib/delivery-methods";
 import { persistCurrentPhaseFromGates, sortGatesByOrgOrder } from "@/lib/project-phase";
@@ -25,8 +26,72 @@ export type StageGateApprovalLike = {
   status?: string | null;
 };
 
-/** Selected statuses per gate name. Empty object / empty arrays = no filter. */
+/** Selected statuses per gate. Keys are `methodId::gateName` (legacy: gate name only). */
 export type GateStatusFilter = Record<string, string[]>;
+
+export type MethodGateGroup = {
+  methodId: string;
+  methodName: string;
+  methodCode: string;
+  gateNames: string[];
+};
+
+export type ProjectMethodLike = {
+  id?: string;
+  delivery_method_id?: string | null;
+  delivery_method?: string | null;
+};
+
+export function methodGateFilterKey(methodId: string, gateName: string) {
+  return `${methodId}::${gateName}`;
+}
+
+export function parseMethodGateFilterKey(key: string): { methodId: string; gateName: string } {
+  const i = key.indexOf("::");
+  if (i <= 0) return { methodId: "", gateName: key };
+  return { methodId: key.slice(0, i), gateName: key.slice(i + 2) };
+}
+
+export function buildMethodGateGroups(
+  methods: DeliveryMethodRow[],
+  defs: { gate_name?: string | null; delivery_method_id?: string | null; sort_order?: number | null }[] = [],
+): MethodGateGroup[] {
+  const gated = methods.filter((m) => methodUsesStageGates(m));
+  return gated
+    .map((m) => {
+      const names = defs
+        .filter((d) => (d.delivery_method_id || "") === m.id)
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+        .map((d) => String(d.gate_name || "").trim())
+        .filter(Boolean);
+      const unique: string[] = [];
+      const seen = new Set<string>();
+      for (const n of names.length ? names : [...defaultGatesForMethodCode(m.code)]) {
+        if (seen.has(n)) continue;
+        seen.add(n);
+        unique.push(n);
+      }
+      return {
+        methodId: m.id,
+        methodName: m.name,
+        methodCode: m.code,
+        gateNames: unique,
+      };
+    })
+    .filter((g) => g.gateNames.length);
+}
+
+export function resolveProjectMethodId(
+  project?: ProjectMethodLike | null,
+  methods: DeliveryMethodRow[] = [],
+) {
+  if (project?.delivery_method_id) {
+    if (!methods.length || methods.some((m) => m.id === project.delivery_method_id)) {
+      return project.delivery_method_id;
+    }
+  }
+  return findDeliveryMethod(methods, project?.delivery_method)?.id || "";
+}
 
 export function gateStatusFilterActive(f: GateStatusFilter | null | undefined) {
   if (!f) return false;
@@ -114,16 +179,32 @@ export function projectHasGateStatus(
   return check.some((g) => wanted.has(normalizeGateStatus(g.status)));
 }
 
-/** AND across named gates: each selected gate must match one of its statuses. */
+/** AND across named gates for the project's delivery method. */
 export function projectMatchesGateStatusFilter(
   gates: StageGateApprovalLike[],
   projectId: string,
   selected: GateStatusFilter | null | undefined,
+  project?: ProjectMethodLike | null,
+  methods: DeliveryMethodRow[] = [],
 ) {
   if (!gateStatusFilterActive(selected)) return true;
-  return Object.entries(selected!).every(([name, statuses]) => {
-    if (!statuses?.length) return true;
-    return projectHasGateStatus(gates, projectId, name, statuses);
+  const entries = Object.entries(selected!).filter(([, statuses]) => statuses?.length);
+  if (!entries.length) return true;
+
+  const methodId = resolveProjectMethodId(project, methods);
+  const scoped = entries.filter(([key]) => parseMethodGateFilterKey(key).methodId);
+  const forProject = entries.filter(([key]) => {
+    const parsed = parseMethodGateFilterKey(key);
+    if (!parsed.methodId) return true;
+    return !!methodId && parsed.methodId === methodId;
+  });
+
+  if (scoped.length && !forProject.length) return false;
+
+  return forProject.every(([key, statuses]) => {
+    const { gateName } = parseMethodGateFilterKey(key);
+    if (!gateName || !statuses?.length) return true;
+    return projectHasGateStatus(gates, projectId, gateName, statuses);
   });
 }
 
