@@ -952,14 +952,35 @@ function TrustedBy({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string }
         >
           {cfg.trusted.heading}
         </div>
-        <div className="flex flex-wrap items-center justify-center gap-x-12 gap-y-8">
-          {cfg.trusted.logos.map((l) => (
-            <img
-              key={l.name + l.logo_url}
-              src={l.logo_url}
-              alt={l.name}
-              className="h-9 max-w-[130px] object-contain opacity-70 grayscale transition duration-300 hover:opacity-100 hover:grayscale-0"
-            />
+        <div className="flex flex-wrap items-end justify-center gap-x-10 gap-y-8">
+          {cfg.trusted.logos.map((l, i) => (
+            <div
+              key={`${l.name}-${i}`}
+              className="flex w-[140px] flex-col items-center gap-2"
+            >
+              {l.logo_url ? (
+                <img
+                  src={l.logo_url}
+                  alt=""
+                  className="h-10 max-w-[130px] object-contain opacity-80 grayscale transition duration-300 hover:opacity-100 hover:grayscale-0"
+                />
+              ) : (
+                <div
+                  className="flex h-10 w-full items-center justify-center rounded-md text-xs font-semibold"
+                  style={{ background: cfg.palette.surface, color: cfg.palette.textMuted }}
+                >
+                  {(l.name || "?").slice(0, 1)}
+                </div>
+              )}
+              {l.name ? (
+                <div
+                  className="text-[11px] font-medium leading-tight"
+                  style={{ color: cfg.palette.textBody }}
+                >
+                  {l.name}
+                </div>
+              ) : null}
+            </div>
           ))}
         </div>
       </div>

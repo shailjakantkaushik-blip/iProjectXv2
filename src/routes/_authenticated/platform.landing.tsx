@@ -153,7 +153,7 @@ function LandingConfigPage() {
           <TabsTrigger value="sections">Product Sections</TabsTrigger>
           <TabsTrigger value="capabilities">Capabilities</TabsTrigger>
           <TabsTrigger value="stats">Stats</TabsTrigger>
-          <TabsTrigger value="trusted">Trusted-by Logos</TabsTrigger>
+          <TabsTrigger value="customers">Customers using iProjectX</TabsTrigger>
           <TabsTrigger value="ceo">CEO Message</TabsTrigger>
           <TabsTrigger value="testimonials">Testimonials</TabsTrigger>
           <TabsTrigger value="board">iProjectX Board</TabsTrigger>
@@ -948,13 +948,13 @@ function LandingConfigPage() {
           </SectionFrame>
         </TabsContent>
 
-        {/* TRUSTED */}
-        <TabsContent value="trusted">
+        {/* CUSTOMERS USING IPROJECTX */}
+        <TabsContent value="customers">
           <SectionFrame>
-            <SectionTitle>Trusted-by / Client Logos</SectionTitle>
+            <SectionTitle>Customers using iProjectX</SectionTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              Add customer / partner logos to display in the trusted-by band. Paste hosted image
-              URLs (SVG or PNG on a transparent or white background).
+              Logos and names on the public landing page. Upload PNG, JPEG, or WebP (max ~400KB), or
+              paste a hosted image URL. Save &amp; publish to show them on the site.
             </p>
             <div className="mt-4">
               <Field label="Section heading" className="max-w-md">
@@ -966,11 +966,15 @@ function LandingConfigPage() {
             </div>
             <div className="mt-4 space-y-3">
               {cfg.trusted.logos.map((l, i) => (
-                <div key={i} className="grid items-center gap-2 md:grid-cols-12">
+                <div
+                  key={i}
+                  className="grid items-end gap-2 rounded-lg border border-border bg-surface/40 p-3 md:grid-cols-12"
+                >
                   <div className="md:col-span-3">
-                    <Label className="text-xs">Name</Label>
+                    <Label className="text-xs">Customer name</Label>
                     <Input
                       value={l.name}
+                      placeholder="Acme Corp"
                       onChange={(e) =>
                         updateArr(cfg.trusted.logos, i, { name: e.target.value }, (a) =>
                           patch("trusted", { logos: a }),
@@ -978,11 +982,11 @@ function LandingConfigPage() {
                       }
                     />
                   </div>
-                  <div className="md:col-span-6">
-                    <Label className="text-xs">Logo URL</Label>
+                  <div className="md:col-span-4">
+                    <Label className="text-xs">Logo URL (optional)</Label>
                     <Input
-                      value={l.logo_url}
-                      placeholder="https://…"
+                      value={l.logo_url.startsWith("data:") ? "" : l.logo_url}
+                      placeholder={l.logo_url.startsWith("data:") ? "Uploaded file" : "https://…"}
                       onChange={(e) =>
                         updateArr(cfg.trusted.logos, i, { logo_url: e.target.value }, (a) =>
                           patch("trusted", { logos: a }),
@@ -990,7 +994,35 @@ function LandingConfigPage() {
                       }
                     />
                   </div>
-                  <div className="md:col-span-2 flex h-12 items-center justify-center rounded border bg-white">
+                  <div className="md:col-span-2">
+                    <Label className="text-xs">Upload logo</Label>
+                    <label className="inline-flex h-9 w-full cursor-pointer items-center justify-center gap-1.5 rounded-md border border-border bg-background px-2 text-xs font-medium hover:bg-muted">
+                      <Upload className="h-3.5 w-3.5" />
+                      {l.logo_url ? "Replace" : "Upload"}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/gif"
+                        className="sr-only"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = "";
+                          if (!file) return;
+                          void (async () => {
+                            try {
+                              const { readSafeLogoDataUrl } = await import("@/lib/safe-logo-upload");
+                              const dataUrl = await readSafeLogoDataUrl(file);
+                              updateArr(cfg.trusted.logos, i, { logo_url: dataUrl }, (a) =>
+                                patch("trusted", { logos: a }),
+                              );
+                            } catch (err: any) {
+                              toast.error(err?.message ?? "Could not read logo");
+                            }
+                          })();
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <div className="flex h-12 items-center justify-center rounded border bg-white md:col-span-2">
                     {l.logo_url ? (
                       <img
                         src={l.logo_url}
@@ -1018,11 +1050,11 @@ function LandingConfigPage() {
                 size="sm"
                 onClick={() =>
                   patch("trusted", {
-                    logos: [...cfg.trusted.logos, { name: "New", logo_url: "" } as LandingLogo],
+                    logos: [...cfg.trusted.logos, { name: "", logo_url: "" } as LandingLogo],
                   })
                 }
               >
-                <Plus className="mr-1 h-4 w-4" /> Add logo
+                <Plus className="mr-1 h-4 w-4" /> Add customer
               </Button>
             </div>
           </SectionFrame>
