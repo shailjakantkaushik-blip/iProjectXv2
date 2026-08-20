@@ -97,7 +97,7 @@ export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
     >
       <video
         ref={videoRef}
-        className="absolute inset-0 h-full w-full object-cover"
+        className={`absolute inset-0 h-full w-full object-cover ${reduced ? "" : "lp-pitch-zoom"}`}
         src={VIDEO_SRC}
         poster={POSTER_SRC}
         muted={muted}
@@ -106,8 +106,21 @@ export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
         preload="metadata"
         disablePictureInPicture
         aria-label="iProjectX product advertisement"
-        style={{ transform: "translateZ(0)" }}
       />
+      <style>{`
+        @keyframes lp-pitch-zoom {
+          from { transform: scale(1.02); }
+          to { transform: scale(1.09); }
+        }
+        .lp-pitch-zoom {
+          transform-origin: 50% 42%;
+          will-change: transform;
+          animation: lp-pitch-zoom 22s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite alternate;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .lp-pitch-zoom { animation: none !important; }
+        }
+      `}</style>
       {muted && userPlaying && !reduced ? (
         <button
           type="button"

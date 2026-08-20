@@ -884,31 +884,10 @@ def render_beat(beat: dict, mark_x: Image.Image, wordmark: Path) -> Image.Image:
     raise ValueError(kind)
 
 
-def ken_burns_filter(hold: float, index: int) -> tuple[str, int]:
-    """Slow zoom so stills read as camera moves, not a slideshow."""
-    frames = max(int(round(hold * FPS)), int(FPS * 1.05))
-    step = 0.00085
-    if index % 2 == 0:
-        z = f"min(1.0+{step}*on,1.09)"
-    else:
-        z = f"if(eq(on,0),1.09,max(1.09-{step}*on,1.0))"
-    vf = (
-        f"scale=1600:900:force_original_aspect_ratio=increase,"
-        f"crop=1600:900,"
-        f"zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
-        f":d={frames}:s={W}x{H}:fps={FPS},"
-        f"format=yuv420p"
-    )
-    return vf, frames
-
-
 def encode_visual(slides: list[tuple[float, Path]]) -> Path:
     clips: list[Path] = []
-    holds: list[float] = []
     for i, (hold, png) in enumerate(slides):
         clip = WORK / f"clip_{i:02d}.mp4"
-        vf, frames = ken_burns_filter(hold, i)
-        holds.append(frames / FPS)
         run(
             [
                 "ffmpeg",
@@ -916,12 +895,16 @@ def encode_visual(slides: list[tuple[float, Path]]) -> Path:
                 "-hide_banner",
                 "-loglevel",
                 "error",
+                "-loop",
+                "1",
                 "-i",
                 str(png),
+                "-t",
+                f"{hold:.3f}",
+                "-r",
+                str(FPS),
                 "-vf",
-                vf,
-                "-frames:v",
-                str(frames),
+                "format=yuv420p",
                 "-an",
                 "-c:v",
                 "libx264",
@@ -940,12 +923,12 @@ def encode_visual(slides: list[tuple[float, Path]]) -> Path:
         inputs += ["-i", str(c)]
     parts = []
     last = "[0:v]"
-    offset = holds[0] - FADE
+    offset = slides[0][0] - FADE
     for i in range(1, len(clips)):
         out = f"[x{i}]" if i < len(clips) - 1 else "[vout]"
         parts.append(f"{last}[{i}:v]xfade=transition=fade:duration={FADE}:offset={offset:.3f}{out}")
         last = out
-        offset += holds[i] - FADE
+        offset += slides[i][0] - FADE
     visual = WORK / "visual.mp4"
     run(
         [
