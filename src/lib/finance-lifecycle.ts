@@ -123,8 +123,8 @@ function preferLane(streamVal: unknown, blankVal: unknown, share: number) {
 
 /**
  * Fold a leftover project-level (blank stream) month into a stream-scoped row.
- * Forecast on the blank row is the FY outlook — it wins when set.
- * Plan stays with the stream when Estimation already wrote it.
+ * Stream values win when already set (FY cascade / Estimation just wrote them).
+ * Blank leftover fills only empty Plan / Forecast cells.
  * Actuals are summed so deleting the blank row does not drop incurred $.
  */
 export function mergeBlankMonthlyIntoStream(
@@ -133,10 +133,8 @@ export function mergeBlankMonthlyIntoStream(
   share: number,
 ): Record<string, number> {
   return {
-    capex_forecast:
-      num(blank.capex_forecast) > 0 ? shareOf(blank.capex_forecast, share) : num(stream.capex_forecast),
-    opex_forecast:
-      num(blank.opex_forecast) > 0 ? shareOf(blank.opex_forecast, share) : num(stream.opex_forecast),
+    capex_forecast: preferLane(stream.capex_forecast, blank.capex_forecast, share),
+    opex_forecast: preferLane(stream.opex_forecast, blank.opex_forecast, share),
     capex_planned: preferLane(stream.capex_planned, blank.capex_planned, share),
     opex_planned: preferLane(stream.opex_planned, blank.opex_planned, share),
     opex_labor_planned: preferLane(stream.opex_labor_planned, blank.opex_labor_planned, share),
