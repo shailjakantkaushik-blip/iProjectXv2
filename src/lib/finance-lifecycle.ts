@@ -1,10 +1,14 @@
 /**
  * Budget / Plan / Forecast / Actual cashflow lifecycle.
  *
+ * One financials_monthly row per project · stream · month. Plan and Forecast are
+ * columns on that row — FY Allocation and Estimation Planning must not insert a
+ * second record for the same month.
+ *
  * Budget:   stream budget (Data Editor) — FY Allocation budget % is the year split
  * Plan:     CapEx planned ← FY budget CapEx
- *           OpEx planned + FTE ← Estimation Planning apply (not FY save)
- * Forecast: FY Allocation forecast % → monthly *_forecast (phase forecast starts = plan)
+ *           OpEx planned + FTE ← Estimation Planning apply (FY save never writes OpEx plan)
+ * Forecast: FY Allocation forecast % → monthly *_forecast (empty forecast starts = plan)
  * Actual:   financials_monthly.*_actual → projects.capex_incurred / opex_incurred
  * Demand:   work items — compare to Plan; never written here
  */
@@ -86,6 +90,105 @@ export function monthKey(iso: string | Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
+/** Map key for one monthly cashflow lane (blank stream_id → empty prefix). */
+export function monthlyLaneKey(streamId: string | null | undefined, period: string): string {
+  return `${streamId || ""}|${monthKey(period)}`;
+}
+
+export type MonthlyLaneLike = {
+  id?: string;
+  stream_id?: string | null;
+  period_month: string;
+  capex_planned?: number | null;
+  opex_planned?: number | null;
+  capex_forecast?: number | null;
+  opex_forecast?: number | null;
+  capex_actual?: number | null;
+  opex_actual?: number | null;
+  benefits_planned?: number | null;
+  benefits_actual?: number | null;
+};
+
+/**
+ * Prefer the exact stream·month row. If FY already created a blank-stream month
+ * and Estimation (or a later FY save) targets a stream, reuse that row instead
+ * of inserting a second record.
+ */
+export function findMonthlyRowForLane<T extends MonthlyLaneLike>(
+  byKey: Map<string, T>,
+  streamId: string | null | undefined,
+  period: string,
+): T | undefined {
+  const exact = byKey.get(monthlyLaneKey(streamId, period));
+  if (exact) return exact;
+  if (streamId) return byKey.get(monthlyLaneKey(null, period));
+  const want = monthKey(period);
+  const matches: T[] = [];
+  for (const row of byKey.values()) {
+    if (monthKey(row.period_month) === want) matches.push(row);
+  }
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+/**
+ * Which stream lanes receive a project-level FY allocation.
+ * Never returns both null and a named stream — that pair is what showed up as
+ * two Phase · stream rows (FY on blank stream + Estimation on the named stream).
+ */
+export function fyCascadeTargetStreamIds(opts: {
+  allocationStreamId?: string | null;
+  existing: MonthlyLaneLike[];
+  months: string[];
+  defaultStreamId?: string | null;
+}): (string | null)[] {
+  if (opts.allocationStreamId) return [opts.allocationStreamId];
+  const monthSet = new Set(opts.months.map((m) => monthKey(m)));
+  const streams: string[] = [];
+  const seen = new Set<string>();
+  for (const r of opts.existing) {
+    if (!monthSet.has(monthKey(r.period_month))) continue;
+    if (!r.stream_id || seen.has(r.stream_id)) continue;
+    seen.add(r.stream_id);
+    streams.push(r.stream_id);
+  }
+  if (streams.length) return streams;
+  if (opts.defaultStreamId) return [opts.defaultStreamId];
+  return [null];
+}
+
+/** Split one FY month across stream lanes (by existing plan $, else equally). */
+export function fyCascadeStreamShares(
+  streamIds: (string | null)[],
+  existing: MonthlyLaneLike[],
+  months: string[],
+): Map<string | null, number> {
+  const shares = new Map<string | null, number>();
+  if (!streamIds.length) return shares;
+  if (streamIds.length === 1) {
+    shares.set(streamIds[0] ?? null, 1);
+    return shares;
+  }
+  const monthSet = new Set(months.map((m) => monthKey(m)));
+  let total = 0;
+  for (const sid of streamIds) {
+    let w = 0;
+    for (const r of existing) {
+      if (!monthSet.has(monthKey(r.period_month))) continue;
+      if ((r.stream_id || null) !== (sid || null)) continue;
+      w += num(r.capex_planned) + num(r.opex_planned);
+    }
+    shares.set(sid, w);
+    total += w;
+  }
+  if (total <= 0) {
+    const eq = 1 / streamIds.length;
+    for (const sid of streamIds) shares.set(sid, eq);
+    return shares;
+  }
+  for (const sid of streamIds) shares.set(sid, (shares.get(sid) || 0) / total);
+  return shares;
+}
+
 export function sumMonthlyPlanned(rows: MonthlyFinanceRow[]): number {
   return rows.reduce((s, r) => s + num(r.capex_planned) + num(r.opex_planned), 0);
 }
@@ -99,16 +202,15 @@ export function sumMonthlyForecast(rows: MonthlyFinanceRow[]): number {
 }
 
 /**
- * Distribute FY budget/forecast into monthly rows.
- * - capex_planned always from FY budget CapEx
- * - opex_planned from FY budget OpEx only until Estimation Planning has been applied
- * - *_forecast always from FY forecast $
- * Preserves actuals and opex_labor_planned. Months outside project schedule are
- * skipped when start/end are provided; otherwise all 12 FY months are used.
+ * Distribute FY Allocation into monthly columns on the existing stream·month row.
+ * - *_forecast always from FY forecast $ (this is the Forecast layer)
+ * - capex_planned from FY budget CapEx (capital is not on Estimation Planning)
+ * - opex_planned / opex_labor_planned are never written here (Estimation Apply owns Plan)
+ * Preserves actuals. Months outside project schedule are skipped when start/end
+ * are provided; otherwise all 12 FY months are used.
  *
- * Stream-aware: when allocations carry `stream_id` (or `streamId` is passed),
- * rows are upserted into that stream lane. Avoids creating parallel null-stream
- * months that would double-count against stream-scoped seed data.
+ * Project-level FY rows (blank stream_id) land on existing stream months, or the
+ * default stream — never a parallel blank-stream record beside Estimation's lane.
  */
 export async function cascadeMonthlyFromFyPlan(opts: {
   orgId: string;
@@ -138,35 +240,25 @@ export async function cascadeMonthlyFromFyPlan(opts: {
     .select("*")
     .eq("project_id", projectId);
 
-  let estimationOwnsOpex = false;
-  try {
-    const { data: estimate } = await supabase
-      .from("project_forecasts" as any)
-      .select("applied_to_plan_at")
-      .eq("project_id", projectId)
-      .maybeSingle();
-    estimationOwnsOpex = !!(estimate as { applied_to_plan_at?: string | null } | null)
-      ?.applied_to_plan_at;
-  } catch {
-    estimationOwnsOpex = false;
-  }
+  const { data: streamRows } = await supabase
+    .from("project_streams")
+    .select("id,is_default")
+    .eq("project_id", projectId);
+  const defaultStreamId =
+    (streamRows ?? []).find((s: { is_default?: boolean | null }) => s.is_default)?.id ||
+    ((streamRows ?? []).length === 1 ? (streamRows as { id: string }[])[0].id : null) ||
+    null;
 
-  const hasStreamRows = (existing ?? []).some((r: any) => !!r.stream_id);
-  const rowKey = (stream: string | null | undefined, period: string) =>
-    `${stream ?? "∅"}|${monthKey(period)}`;
-
-  const byKey = new Map((existing ?? []).map((r: any) => [rowKey(r.stream_id, r.period_month), r]));
+  const byKey = new Map(
+    (existing ?? []).map((r: MonthlyLaneLike) => [monthlyLaneKey(r.stream_id, r.period_month), r]),
+  );
 
   let upserted = 0;
   for (const a of allocations) {
     const fy = String((a as any).fy || "");
     if (!fy) continue;
-    const laneStreamId = streamId !== undefined ? streamId : ((a as any).stream_id ?? null);
-
-    // Do not invent null-stream plan rows when the project already uses streams.
-    if (laneStreamId == null && hasStreamRows) {
-      continue;
-    }
+    const allocationStreamId =
+      streamId !== undefined ? streamId : ((a as any).stream_id ?? null);
 
     const budget = fyAllocBudget(a);
     const forecast = fyAllocForecast(a);
@@ -184,7 +276,6 @@ export async function cascadeMonthlyFromFyPlan(opts: {
     if (!months.length) continue;
     const bEach = budget / months.length;
     const fEach = forecast / months.length;
-    // Prefer FY row CapEx/OpEx when set; otherwise fall back to project approved mix.
     const bSplit = hasExplicitSplit
       ? {
           capex: explicitCapex / months.length,
@@ -193,45 +284,116 @@ export async function cascadeMonthlyFromFyPlan(opts: {
       : splitCapexOpex(bEach, project);
     const fSplit = hasExplicitSplit
       ? {
-          // Scale the same CapEx/OpEx mix onto forecast $
           capex: budget > 0 ? (explicitCapex / budget) * fEach : 0,
           opex: budget > 0 ? (explicitOpex / budget) * fEach : fEach,
         }
       : splitCapexOpex(fEach, project);
 
+    const targets = fyCascadeTargetStreamIds({
+      allocationStreamId,
+      existing: [...byKey.values()],
+      months,
+      defaultStreamId,
+    });
+    const shares = fyCascadeStreamShares(targets, [...byKey.values()], months);
+
     for (const m of months) {
-      const key = rowKey(laneStreamId, m);
-      const prev = byKey.get(key);
-      const fyOpexPlan = Math.round(bSplit.opex * 100) / 100;
-      const fyCapexFc = Math.round(fSplit.capex * 100) / 100;
-      const fyOpexFc = Math.round(fSplit.opex * 100) / 100;
-      const row = {
-        org_id: orgId,
-        project_id: projectId,
-        stream_id: laneStreamId,
-        period_month: m,
-        capex_planned: Math.round(bSplit.capex * 100) / 100,
-        opex_planned: estimationOwnsOpex && prev ? num(prev.opex_planned) : fyOpexPlan,
-        capex_forecast: forecast > 0 || !prev ? fyCapexFc : num(prev.capex_forecast),
-        opex_forecast: forecast > 0 || !prev ? fyOpexFc : num(prev.opex_forecast),
-        // preserve actuals + benefits + planned FTE (estimation)
-        capex_actual: num(prev?.capex_actual),
-        opex_actual: num(prev?.opex_actual),
-        benefits_planned: num(prev?.benefits_planned),
-        benefits_actual: num(prev?.benefits_actual),
-      };
-      if (prev?.id) {
-        const { error } = await supabase.from("financials_monthly").update(row).eq("id", prev.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("financials_monthly").insert(row);
-        if (error) throw error;
+      for (const laneStreamId of targets) {
+        const share = shares.get(laneStreamId) ?? 1;
+        const prev = findMonthlyRowForLane(byKey, laneStreamId, m);
+        const fyCapexFc = Math.round(fSplit.capex * share * 100) / 100;
+        const fyOpexFc = Math.round(fSplit.opex * share * 100) / 100;
+        const fyCapexPlan = Math.round(bSplit.capex * share * 100) / 100;
+        const row = {
+          org_id: orgId,
+          project_id: projectId,
+          stream_id: laneStreamId,
+          period_month: m,
+          capex_planned: fyCapexPlan,
+          capex_forecast: forecast > 0 || !prev ? fyCapexFc : num(prev.capex_forecast),
+          opex_forecast: forecast > 0 || !prev ? fyOpexFc : num(prev.opex_forecast),
+          capex_actual: num(prev?.capex_actual),
+          opex_actual: num(prev?.opex_actual),
+          benefits_planned: num(prev?.benefits_planned),
+          benefits_actual: num(prev?.benefits_actual),
+        };
+        if (prev?.id) {
+          const { error } = await supabase.from("financials_monthly").update(row).eq("id", prev.id);
+          if (error) throw error;
+          if (!prev.stream_id && laneStreamId) {
+            byKey.delete(monthlyLaneKey(null, m));
+          }
+        } else {
+          const { error } = await supabase.from("financials_monthly").insert(row);
+          if (error) throw error;
+        }
+        byKey.set(monthlyLaneKey(laneStreamId, m), { ...prev, ...row });
+        upserted++;
       }
-      byKey.set(key, { ...prev, ...row });
-      upserted++;
     }
   }
+  await absorbBlankMonthlyIntoStreams(projectId);
   return { monthsUpserted: upserted };
+}
+
+/**
+ * If a blank-stream month sits beside stream-scoped months, copy empty Forecast
+ * (and empty CapEx plan) onto the stream rows, then drop the blank record.
+ */
+export async function absorbBlankMonthlyIntoStreams(projectId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from("financials_monthly")
+    .select(
+      "id,stream_id,period_month,capex_planned,opex_planned,capex_forecast,opex_forecast",
+    )
+    .eq("project_id", projectId);
+  if (error) throw error;
+
+  const byMonth = new Map<string, { blank?: MonthlyLaneLike; streams: MonthlyLaneLike[] }>();
+  for (const r of (data ?? []) as MonthlyLaneLike[]) {
+    const m = monthKey(r.period_month);
+    const cur = byMonth.get(m) || { streams: [] };
+    if (r.stream_id) cur.streams.push(r);
+    else cur.blank = r;
+    byMonth.set(m, cur);
+  }
+
+  let deleted = 0;
+  for (const { blank, streams } of byMonth.values()) {
+    if (!blank?.id || !streams.length) continue;
+    const streamFc = streams.reduce(
+      (s, r) => s + num(r.capex_forecast) + num(r.opex_forecast),
+      0,
+    );
+    const blankFc = num(blank.capex_forecast) + num(blank.opex_forecast);
+    const shares = fyCascadeStreamShares(
+      streams.map((s) => s.stream_id || null),
+      streams,
+      [blank.period_month],
+    );
+    if (blankFc > 0 && streamFc <= 0) {
+      for (const s of streams) {
+        if (!s.id) continue;
+        const share = shares.get(s.stream_id || null) ?? 1 / streams.length;
+        const patch: Record<string, number> = {
+          capex_forecast: Math.round(num(blank.capex_forecast) * share * 100) / 100,
+          opex_forecast: Math.round(num(blank.opex_forecast) * share * 100) / 100,
+        };
+        if (num(s.capex_planned) <= 0 && num(blank.capex_planned) > 0) {
+          patch.capex_planned = Math.round(num(blank.capex_planned) * share * 100) / 100;
+        }
+        const { error: uerr } = await supabase
+          .from("financials_monthly")
+          .update(patch as never)
+          .eq("id", s.id);
+        if (uerr) throw uerr;
+      }
+    }
+    const { error: derr } = await supabase.from("financials_monthly").delete().eq("id", blank.id);
+    if (derr) throw derr;
+    deleted += 1;
+  }
+  return deleted;
 }
 
 /** Register FAC = sum of FY Allocation forecast $ for the project. */

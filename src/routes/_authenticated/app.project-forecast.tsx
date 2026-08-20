@@ -660,7 +660,7 @@ function ProjectForecastPage() {
       <PageHeading
         icon="📊"
         title="Project Estimation Planning"
-        subtitle="Build the planned baseline by stream and phase (people, effort, other OpEx). Apply writes Plan and Planned FTE only. Forecast is the FY Allocation outlook — it starts equal to this plan. Actuals come from timesheets and never overwrite this page."
+        subtitle="Build the planned baseline by stream and phase (people, effort, other OpEx). Apply writes Plan and Planned FTE onto the same monthly row FY Allocation uses for Forecast — not a second record. Forecast starts equal to this plan until you save FY Allocation. Actuals come from timesheets and never overwrite this page."
       />
 
       <SectionFrame>

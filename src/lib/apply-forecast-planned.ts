@@ -4,11 +4,18 @@
  * The estimate is edited on Project Estimation Planning.
  * Apply writes planned money and resource allocations only — never actuals.
  * Monthly *_forecast is filled from plan only when still empty (forecast defaults to plan).
+ * Reuses the FY Allocation month row when one already exists (Plan and Forecast are
+ * columns, not two records).
  */
 import { supabase } from "@/integrations/supabase/client";
 import { HOURS_PER_DAY } from "@/lib/ops-enhancements";
 import type { ForecastPhaseRow } from "@/lib/project-forecast";
 import { monthKeysInclusive } from "@/lib/work-item-fte-plan";
+import {
+  absorbBlankMonthlyIntoStreams,
+  findMonthlyRowForLane,
+  monthlyLaneKey,
+} from "@/lib/finance-lifecycle";
 
 function effortDaysToHours(days: number) {
   return Math.round((Number(days) || 0) * HOURS_PER_DAY * 10) / 10;
@@ -236,15 +243,16 @@ export async function applyForecastPlannedMoneyAndFte(opts: {
 
   const monthRow = new Map(
     ((existingMonths ?? []) as any[]).map((r) => [
-      `${r.stream_id || ""}|${monthKey(r.period_month)}`,
+      monthlyLaneKey(r.stream_id, r.period_month),
       r,
     ]),
   );
 
   let monthsUpdated = 0;
   for (const [key, amt] of monthMoney) {
-    const [streamId, period] = key.split("|");
-    const prev = monthRow.get(key);
+    const [streamIdRaw, period] = key.split("|");
+    const streamId = streamIdRaw || null;
+    const prev = findMonthlyRowForLane(monthRow, streamId, period);
     const planned = Math.round((amt.labor + amt.other) * 100) / 100;
     const labor = Math.round(amt.labor * 100) / 100;
     if (
@@ -257,7 +265,7 @@ export async function applyForecastPlannedMoneyAndFte(opts: {
     const patch = {
       org_id: opts.orgId,
       project_id: opts.projectId,
-      stream_id: streamId || null,
+      stream_id: streamId || prev?.stream_id || null,
       period_month: period,
       opex_planned: planned,
       opex_labor_planned: labor,
@@ -283,6 +291,9 @@ export async function applyForecastPlannedMoneyAndFte(opts: {
           .eq("id", prev.id);
         if (retry.error) throw retry.error;
       }
+      if (!prev.stream_id && streamId) {
+        monthRow.delete(monthlyLaneKey(null, period));
+      }
     } else {
       const { error } = await supabase.from("financials_monthly").insert(patch as never);
       if (error && !/opex_labor_planned|schema cache|column/i.test(error.message)) throw error;
@@ -292,7 +303,14 @@ export async function applyForecastPlannedMoneyAndFte(opts: {
         if (retry.error) throw retry.error;
       }
     }
+    monthRow.set(monthlyLaneKey(streamId, period), { ...prev, ...patch });
     monthsUpdated += 1;
+  }
+
+  try {
+    await absorbBlankMonthlyIntoStreams(opts.projectId);
+  } catch {
+    // Older orgs may lack stream_id on monthly; Plan columns are already written.
   }
 
   const { data: resourceRows } = opts.resources

@@ -150,11 +150,19 @@ function PhaseFinancialsPage() {
     return m;
   }, [streams, filteredIds]);
 
-  /** Monthly rows keyed by lane: stream_id when set, else project_id. */
+  /** Monthly rows keyed by lane: stream_id when set, else project_id.
+   * Blank-stream leftovers are ignored once the project has stream-scoped months
+   * (FY Allocation and Estimation share those stream rows as Plan vs Forecast columns). */
   const monthlyByLane = useMemo(() => {
     const m = new Map<string, MonthlyFinanceRow[]>();
+    const projectsWithStreamMonthly = new Set<string>();
     for (const row of monthly as MonthlyFinanceRow[]) {
       if (!filteredIds.has(row.project_id)) continue;
+      if (row.stream_id) projectsWithStreamMonthly.add(row.project_id);
+    }
+    for (const row of monthly as MonthlyFinanceRow[]) {
+      if (!filteredIds.has(row.project_id)) continue;
+      if (!row.stream_id && projectsWithStreamMonthly.has(row.project_id)) continue;
       const key = row.stream_id || row.project_id;
       const list = m.get(key) || [];
       list.push(row);
@@ -446,10 +454,11 @@ function PhaseFinancialsPage() {
       <div className="text-sm text-muted-foreground mb-3">
         Monthly financials have no stage-gate column. This page maps each month onto a phase using
         the gate <strong>planned date</strong> window (from that gate until the month before the
-        next gate). Planned / forecast / actual $ come from Data Editor → Financials (Monthly), or
-        from FY Allocation and Estimation Planning Apply. One row per project · stream · phase —
-        duplicate gate names (project-level copy + stream gate) are merged. Blank-stream monthly
-        rows attach to the Core / default stream only.
+        next gate). <strong>Plan</strong> (OpEx / FTE) comes from Project Estimation Planning →
+        Apply. <strong>Forecast</strong> comes from FY Allocation. Those are columns on the same
+        project · stream · month row — not two records. CapEx plan is the FY budget split. Actuals
+        are incurred spend. Duplicate gate names (project-level copy + stream gate) are merged.
+        Blank-stream monthly rows attach to the Core / default stream only.
       </div>
       <PortfolioFilters
         projects={projects}

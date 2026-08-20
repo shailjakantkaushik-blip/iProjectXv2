@@ -128,9 +128,11 @@ function FYAllocationPage() {
       <PageHeading icon="📅">FY Budget &amp; Forecast Allocation</PageHeading>
       <div className="text-sm text-muted-foreground mb-3">
         Forward planning: split each project&apos;s <strong>Budget</strong> (approved envelope) and{" "}
-        <strong>Forecast</strong> (in-flight outlook) across Financial Years. Saving writes CapEx
-        plan and monthly Forecast. After Estimation Planning has been applied, OpEx plan and
-        planned FTE stay with that baseline. Actuals are always preserved.
+        <strong>Forecast</strong> (in-flight outlook) across Financial Years. Saving writes monthly{" "}
+        <strong>Forecast</strong> columns (and CapEx plan from the budget split) onto the existing
+        stream · month row. <strong>OpEx Plan</strong> and planned FTE stay with Project Estimation
+        Planning — FY Allocation does not create a second monthly record. Actuals are always
+        preserved.
       </div>
 
       <div className="mb-3 flex gap-1 border-b">
