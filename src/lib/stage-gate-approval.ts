@@ -54,7 +54,11 @@ export function parseMethodGateFilterKey(key: string): { methodId: string; gateN
 
 export function buildMethodGateGroups(
   methods: DeliveryMethodRow[],
-  defs: { gate_name?: string | null; delivery_method_id?: string | null; sort_order?: number | null }[] = [],
+  defs: {
+    gate_name?: string | null;
+    delivery_method_id?: string | null;
+    sort_order?: number | null;
+  }[] = [],
 ): MethodGateGroup[] {
   const gated = methods.filter((m) => methodUsesStageGates(m));
   return gated
@@ -109,8 +113,10 @@ function uniqueGatesByName<T extends StageGateApprovalLike>(rows: T[], orgPhases
   const byName = new Map<string, T>();
   for (const g of rows) {
     const n = String(g.gate_name || "").trim();
-    if (!n || byName.has(n)) continue;
-    byName.set(n, g);
+    if (!n) continue;
+    const prev = byName.get(n);
+    // Prefer project-level (null stream_id) when the same name exists on a stream.
+    if (!prev || (prev.stream_id && !g.stream_id)) byName.set(n, g);
   }
   return sortGatesByOrgOrder([...byName.values()], orgPhases) as T[];
 }
@@ -120,10 +126,36 @@ export function projectLevelGates<T extends StageGateApprovalLike>(
   projectId: string,
   orgPhases: string[] = [],
 ): T[] {
-  const all = gates.filter((g) => g.project_id === projectId);
-  const top = all.filter((g) => !g.stream_id);
-  const source = top.length ? top : all;
-  return uniqueGatesByName(source, orgPhases);
+  return uniqueGatesByName(
+    gates.filter((g) => g.project_id === projectId),
+    orgPhases,
+  );
+}
+
+/** Project gates that exist, ordered by the delivery-method template. */
+export function projectApprovalGates<T extends StageGateApprovalLike>(
+  gates: T[],
+  projectId: string,
+  methodGateNames: string[] = [],
+): T[] {
+  const unique = projectLevelGates(gates, projectId, methodGateNames);
+  if (!methodGateNames.length) return unique;
+  const byName = new Map(unique.map((g) => [String(g.gate_name || "").trim(), g] as const));
+  const ordered: T[] = [];
+  const seen = new Set<string>();
+  for (const n of methodGateNames) {
+    const g = byName.get(n);
+    if (!g || seen.has(n)) continue;
+    ordered.push(g);
+    seen.add(n);
+  }
+  for (const g of unique) {
+    const n = String(g.gate_name || "").trim();
+    if (!n || seen.has(n)) continue;
+    ordered.push(g);
+    seen.add(n);
+  }
+  return ordered;
 }
 
 /**
@@ -220,8 +252,9 @@ export async function methodGateNames(
 }
 
 /**
- * Ensure a project-level (null stream_id) row exists for each method gate.
- * Copies status from an existing stream gate of the same name when creating.
+ * Ensure a project-level (null stream_id) row exists for each gate that
+ * already lives on this project (stream or project). Do not insert extra
+ * delivery-method template names the project does not have.
  */
 export async function ensureProjectLevelGates(opts: {
   orgId: string;
@@ -230,11 +263,6 @@ export async function ensureProjectLevelGates(opts: {
   deliveryMethodName?: string | null;
   methods?: DeliveryMethodRow[];
 }): Promise<StageGateApprovalLike[]> {
-  const method =
-    (opts.deliveryMethodId
-      ? (opts.methods || []).find((m) => m.id === opts.deliveryMethodId)
-      : undefined) || findDeliveryMethod(opts.methods || [], opts.deliveryMethodName);
-  const names = await methodGateNames(opts.orgId, method);
   const { data, error } = await supabase
     .from("stage_gates")
     .select("id,project_id,stream_id,gate_name,status")
@@ -242,8 +270,9 @@ export async function ensureProjectLevelGates(opts: {
   if (error) throw error;
   const existing = (data ?? []) as StageGateApprovalLike[];
   const top = existing.filter((g) => !g.stream_id);
-  const have = new Set(top.map((g) => String(g.gate_name || "").trim()));
-  const toInsert = names
+  const have = new Set(top.map((g) => String(g.gate_name || "").trim()).filter(Boolean));
+  const onProject = new Set(existing.map((g) => String(g.gate_name || "").trim()).filter(Boolean));
+  const toInsert = [...onProject]
     .filter((n) => n && !have.has(n))
     .map((gate_name) => {
       const fromStream = existing.find((g) => String(g.gate_name || "").trim() === gate_name);
@@ -262,9 +291,17 @@ export async function ensureProjectLevelGates(opts: {
   const { data: refreshed } = await supabase
     .from("stage_gates")
     .select("id,project_id,stream_id,gate_name,status")
-    .eq("project_id", opts.projectId)
-    .is("stream_id", null);
-  return (refreshed ?? []) as StageGateApprovalLike[];
+    .eq("project_id", opts.projectId);
+  return projectApprovalGates(
+    (refreshed ?? []) as StageGateApprovalLike[],
+    opts.projectId,
+    await methodGateNames(
+      opts.orgId,
+      (opts.deliveryMethodId
+        ? (opts.methods || []).find((m) => m.id === opts.deliveryMethodId)
+        : undefined) || findDeliveryMethod(opts.methods || [], opts.deliveryMethodName),
+    ),
+  );
 }
 
 /**
@@ -294,7 +331,10 @@ export async function setStageGateStatus(opts: {
   const gateName = String(source?.gate_name || "").trim();
 
   if (!projectId || !gateName) {
-    const { error } = await supabase.from("stage_gates").update(patch as never).eq("id", opts.gateId);
+    const { error } = await supabase
+      .from("stage_gates")
+      .update(patch as never)
+      .eq("id", opts.gateId);
     if (error) throw error;
     if (projectId) await persistCurrentPhaseFromGates(supabase as never, projectId);
     return;

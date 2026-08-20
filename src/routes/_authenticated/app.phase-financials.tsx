@@ -38,6 +38,7 @@ import {
   monthlyInWindow,
   monthlyTriple,
   phaseWindowsFromGates,
+  uniqueGatesForPhaseWindows,
   stageMatchesPhaseFilter,
   type MonthlyFinanceRow,
 } from "@/lib/finance-lifecycle";
@@ -189,7 +190,7 @@ function PhaseFinancialsPage() {
       pgates: any[],
       rows: MonthlyFinanceRow[],
     ) => {
-      const windows = phaseWindowsFromGates(pgates, orgPhases);
+      const windows = phaseWindowsFromGates(uniqueGatesForPhaseWindows(pgates), orgPhases);
       const streamLabel = stream ? formatStreamLabel(stream) : null;
       const streamRef = stream ? formatProjectStreamRef(project, stream) : null;
       const push = (
@@ -235,7 +236,11 @@ function PhaseFinancialsPage() {
           const gs = (gates as any[]).filter(
             (g) => g.stream_id === s.id || (!g.stream_id && g.project_id === p.id && s.is_default),
           );
-          const rows = monthlyByLane.get(s.id) || monthlyByLane.get(p.id) || [];
+          const inheritProjectMonthly = Boolean(s.is_default) || projectStreams.length === 1;
+          const rows =
+            monthlyByLane.get(s.id) ||
+            (inheritProjectMonthly ? monthlyByLane.get(p.id) : undefined) ||
+            [];
           attributeLane(p, s, gs, rows);
         }
       } else {
@@ -244,7 +249,20 @@ function PhaseFinancialsPage() {
         attributeLane(p, null, gs, rows);
       }
     }
-    return out;
+    const merged = new Map<string, LaneSpend>();
+    for (const r of out) {
+      const prev = merged.get(r.key);
+      if (!prev) {
+        merged.set(r.key, { ...r });
+        continue;
+      }
+      prev.planned += r.planned;
+      prev.actual += r.actual;
+      prev.forecast += r.forecast;
+      prev.ftePlan += r.ftePlan;
+      prev.fteActual += r.fteActual;
+    }
+    return Array.from(merged.values());
   }, [filtered, orgPhases, gatesByProject, monthlyByLane, streamsByProject, gates]);
 
   /** Phase filter scopes attributed spend rows (gate windows), not projects.current_phase. */
@@ -426,10 +444,12 @@ function PhaseFinancialsPage() {
     <PageExport name="Phase_Financials" title="Phase Financials">
       <PageHeading icon="💠">Phase Financials</PageHeading>
       <div className="text-sm text-muted-foreground mb-3">
-        Planned vs actual vs forecast spend inside each stage-gate date window (from monthly
-        cashflow), plus FTE plan (work items) vs FTE actual (timesheets). Attributed per project
-        stream when streams are configured. The phase filter scopes spend to that gate window — not
-        only projects whose current phase matches.
+        Monthly financials have no stage-gate column. This page maps each month onto a phase using
+        the gate <strong>planned date</strong> window (from that gate until the month before the
+        next gate). Planned / forecast / actual $ come from Data Editor → Financials (Monthly), or
+        from FY Allocation and Estimation Planning Apply. One row per project · stream · phase —
+        duplicate gate names (project-level copy + stream gate) are merged. Blank-stream monthly
+        rows attach to the Core / default stream only.
       </div>
       <PortfolioFilters
         projects={projects}
@@ -525,6 +545,10 @@ function PhaseFinancialsPage() {
 
       <SectionFrame>
         <SectionTitle>Phase · stream detail</SectionTitle>
+        <p className="mb-2 text-[12px] text-muted-foreground">
+          Stage is inferred from gate planned dates, not a column on Financials Monthly. Same
+          project · stream · phase is shown once.
+        </p>
         <ColumnarToolbar
           globalQ={detailTable.globalQ}
           onGlobalQ={detailTable.setGlobalQ}

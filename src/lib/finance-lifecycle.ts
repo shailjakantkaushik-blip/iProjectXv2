@@ -61,10 +61,7 @@ export function parseFyEndingYear(fy: string | null | undefined): number | null 
 }
 
 /** Inclusive month starts (YYYY-MM-01) for an FY label. */
-export function monthsForFyLabel(
-  fy: string,
-  fyStartMonth?: number | null,
-): string[] {
+export function monthsForFyLabel(fy: string, fyStartMonth?: number | null): string[] {
   const endYear = parseFyEndingYear(fy);
   if (!endYear) return [];
   const startIdx = fyMonthIndex(fyStartMonth);
@@ -73,9 +70,7 @@ export function monthsForFyLabel(
   const out: string[] = [];
   for (let i = 0; i < 12; i++) {
     const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
-    out.push(
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`,
-    );
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`);
   }
   return out;
 }
@@ -92,24 +87,15 @@ export function monthKey(iso: string | Date): string {
 }
 
 export function sumMonthlyPlanned(rows: MonthlyFinanceRow[]): number {
-  return rows.reduce(
-    (s, r) => s + num(r.capex_planned) + num(r.opex_planned),
-    0,
-  );
+  return rows.reduce((s, r) => s + num(r.capex_planned) + num(r.opex_planned), 0);
 }
 
 export function sumMonthlyActual(rows: MonthlyFinanceRow[]): number {
-  return rows.reduce(
-    (s, r) => s + num(r.capex_actual) + num(r.opex_actual),
-    0,
-  );
+  return rows.reduce((s, r) => s + num(r.capex_actual) + num(r.opex_actual), 0);
 }
 
 export function sumMonthlyForecast(rows: MonthlyFinanceRow[]): number {
-  return rows.reduce(
-    (s, r) => s + num(r.capex_forecast) + num(r.opex_forecast),
-    0,
-  );
+  return rows.reduce((s, r) => s + num(r.capex_forecast) + num(r.opex_forecast), 0);
 }
 
 /**
@@ -142,15 +128,8 @@ export async function cascadeMonthlyFromFyPlan(opts: {
 }): Promise<{ monthsUpserted: number }> {
   const { orgId, projectId, project, allocations, fyStartMonth, streamId } = opts;
   const startIso =
-    project.actual_start_date ||
-    project.planned_start_date ||
-    project.start_date ||
-    null;
-  const endIso =
-    project.actual_end_date ||
-    project.planned_end_date ||
-    project.end_date ||
-    null;
+    project.actual_start_date || project.planned_start_date || project.start_date || null;
+  const endIso = project.actual_end_date || project.planned_end_date || project.end_date || null;
   const startBound = startIso ? monthKey(startIso) : null;
   const endBound = endIso ? monthKey(endIso) : null;
 
@@ -176,16 +155,13 @@ export async function cascadeMonthlyFromFyPlan(opts: {
   const rowKey = (stream: string | null | undefined, period: string) =>
     `${stream ?? "∅"}|${monthKey(period)}`;
 
-  const byKey = new Map(
-    (existing ?? []).map((r: any) => [rowKey(r.stream_id, r.period_month), r]),
-  );
+  const byKey = new Map((existing ?? []).map((r: any) => [rowKey(r.stream_id, r.period_month), r]));
 
   let upserted = 0;
   for (const a of allocations) {
     const fy = String((a as any).fy || "");
     if (!fy) continue;
-    const laneStreamId =
-      streamId !== undefined ? streamId : ((a as any).stream_id ?? null);
+    const laneStreamId = streamId !== undefined ? streamId : ((a as any).stream_id ?? null);
 
     // Do not invent null-stream plan rows when the project already uses streams.
     if (laneStreamId == null && hasStreamRows) {
@@ -245,10 +221,7 @@ export async function cascadeMonthlyFromFyPlan(opts: {
         benefits_actual: num(prev?.benefits_actual),
       };
       if (prev?.id) {
-        const { error } = await supabase
-          .from("financials_monthly")
-          .update(row)
-          .eq("id", prev.id);
+        const { error } = await supabase.from("financials_monthly").update(row).eq("id", prev.id);
         if (error) throw error;
       } else {
         const { error } = await supabase.from("financials_monthly").insert(row);
@@ -356,13 +329,28 @@ export type PhaseWindow = {
 };
 
 /**
- * Build date windows per stage from ordered gate planned dates.
- * Window for gate i: [gate_i.planned, day before gate_{i+1}.planned].
+ * One gate name → one phase window. Monthly financials have no stage_gate_id;
+ * spend is attributed by planned_date (this gate → month before the next).
+ * Prefer a stream-owned row when the same name also exists as a project-level copy.
  */
-export function phaseWindowsFromGates(
-  gates: StageGateLike[],
-  orgPhases: string[],
-): PhaseWindow[] {
+export function uniqueGatesForPhaseWindows<T extends StageGateLike & { stream_id?: string | null }>(
+  gates: T[],
+): T[] {
+  const byName = new Map<string, T>();
+  for (const g of gates) {
+    const n = String(g.gate_name || "").trim() || "Stage";
+    const prev = byName.get(n);
+    if (!prev) {
+      byName.set(n, g);
+      continue;
+    }
+    if (!prev.stream_id && g.stream_id) byName.set(n, g);
+  }
+  return [...byName.values()];
+}
+
+/** Window for gate i: [gate_i.planned, day before gate_{i+1}.planned]. */
+export function phaseWindowsFromGates(gates: StageGateLike[], orgPhases: string[]): PhaseWindow[] {
   const sorted = sortGatesByOrgOrder(gates, orgPhases);
   const windows: PhaseWindow[] = [];
   for (let i = 0; i < sorted.length; i++) {
@@ -475,10 +463,7 @@ export function phaseSpendByStage(
 }
 
 /** Which FY a calendar month belongs to (label). */
-export function fyLabelForMonth(
-  periodMonth: string,
-  fyStartMonth?: number | null,
-): string {
+export function fyLabelForMonth(periodMonth: string, fyStartMonth?: number | null): string {
   const d = new Date(monthKey(periodMonth) + "T00:00:00");
   const s = fyStartFor(d, fyStartMonth);
   return `FY${String(s.getFullYear() + 1).slice(-2)}`;
