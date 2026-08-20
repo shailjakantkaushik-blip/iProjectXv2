@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 import { RagChip, SectionFrame, SectionTitle } from "@/components/streamlit";
 import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 
 type Props = {
   projectId: string;
@@ -118,7 +119,10 @@ export function ProjectMeetingSummary({ projectId, project, readOnly }: Props) {
   }, [actions, milestones, next]);
 
   const [form, setForm] = useState<Record<string, string>>({});
+  const [hideAutoDraft, setHideAutoDraft] = useState<boolean | null>(null);
   const ragSource = extras || project;
+  const hideAutomaticNotes =
+    hideAutoDraft ?? (summary?.hide_automatic_notes === true);
   const merged = {
     previous_meeting_date: form.previous_meeting_date ?? prev,
     next_meeting_date: form.next_meeting_date ?? next,
@@ -131,18 +135,25 @@ export function ProjectMeetingSummary({ projectId, project, readOnly }: Props) {
 
   const save = useMutation({
     mutationFn: async () => {
-      const payload = {
+      const payload: Record<string, unknown> = {
         org_id: orgId,
         project_id: projectId,
         previous_meeting_date: merged.previous_meeting_date || null,
         next_meeting_date: merged.next_meeting_date || null,
         progress_manual: merged.progress_manual || null,
         action_plan_manual: merged.action_plan_manual || null,
+        hide_automatic_notes: hideAutomaticNotes,
         updated_by: session?.user?.id || null,
       };
-      const { error } = await supabase
+      let { error } = await supabase
         .from("project_meeting_summaries" as any)
         .upsert(payload, { onConflict: "org_id,project_id" });
+      if (error && /hide_automatic_notes/i.test(error.message)) {
+        delete payload.hide_automatic_notes;
+        ({ error } = await supabase
+          .from("project_meeting_summaries" as any)
+          .upsert(payload, { onConflict: "org_id,project_id" }));
+      }
       if (error) throw error;
       const { error: pe } = await supabase
         .from("projects")
@@ -174,11 +185,28 @@ export function ProjectMeetingSummary({ projectId, project, readOnly }: Props) {
           <RagChip rag={rag} manual={isRagOverridden({ rag_override: merged.rag_override })} />
         </div>
       )}
+      {!readOnly && (
+        <label className="mb-3 flex cursor-pointer items-start gap-2 text-sm">
+          <Checkbox
+            className="mt-0.5"
+            checked={hideAutomaticNotes}
+            onCheckedChange={(v) => setHideAutoDraft(v === true)}
+          />
+          <span>
+            <span className="font-medium">Hide automatic notes</span>
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              System-generated actions and milestones stay off this summary and Executive Cockpit.
+              Manual notes remain. Save summary to apply.
+            </span>
+          </span>
+        </label>
+      )}
       <div className="grid gap-3 md:grid-cols-2">
         <div className="rounded-lg border border-border bg-surface p-3">
           <h4 className="mb-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">
             Since previous meeting
           </h4>
+          {!hideAutomaticNotes ? (
           <ul className="mb-2 list-disc pl-4 text-sm">
             {systemDone.doneActions.map((a: any) => (
               <li key={a.id}>Action done: {a.title}</li>
@@ -192,6 +220,7 @@ export function ProjectMeetingSummary({ projectId, project, readOnly }: Props) {
               </li>
             )}
           </ul>
+          ) : null}
           {readOnly ? (
             <p className="whitespace-pre-wrap text-sm">{merged.progress_manual || "—"}</p>
           ) : (
@@ -207,6 +236,7 @@ export function ProjectMeetingSummary({ projectId, project, readOnly }: Props) {
           <h4 className="mb-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">
             Action plan until next meeting
           </h4>
+          {!hideAutomaticNotes ? (
           <ul className="mb-2 list-disc pl-4 text-sm">
             {systemNext.openActions.map((a: any) => (
               <li key={a.id}>
@@ -226,6 +256,7 @@ export function ProjectMeetingSummary({ projectId, project, readOnly }: Props) {
               </li>
             )}
           </ul>
+          ) : null}
           {readOnly ? (
             <p className="whitespace-pre-wrap text-sm">{merged.action_plan_manual || "—"}</p>
           ) : (
