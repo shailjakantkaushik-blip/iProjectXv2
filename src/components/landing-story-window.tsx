@@ -92,59 +92,20 @@ export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
       style={{
         aspectRatio: "16 / 9",
         background: "#0b1224",
-        contain: "layout style",
       }}
     >
-      {/* Zoom a GPU layer around the film — transforming <video> itself is stepped. */}
-      <div className={`absolute inset-0 ${reduced ? "" : "lp-pitch-zoom"}`}>
-        <video
-          ref={videoRef}
-          className="absolute inset-0 h-full w-full object-cover"
-          src={VIDEO_SRC}
-          poster={POSTER_SRC}
-          muted={muted}
-          playsInline
-          loop
-          preload="metadata"
-          disablePictureInPicture
-          aria-label="iProjectX product advertisement"
-        />
-      </div>
-      <style>{`
-        @keyframes lp-pitch-zoom {
-          0% { transform: translate3d(0%, 0%, 0) scale(1.03); }
-          5% { transform: translate3d(-0.0392%, -0.0257%, 0) scale(1.03196); }
-          10% { transform: translate3d(-0.1528%, -0.1003%, 0) scale(1.03764); }
-          15% { transform: translate3d(-0.3298%, -0.2164%, 0) scale(1.04649); }
-          20% { transform: translate3d(-0.5528%, -0.3628%, 0) scale(1.05764); }
-          25% { transform: translate3d(-0.8%, -0.525%, 0) scale(1.07); }
-          30% { transform: translate3d(-1.0472%, -0.6872%, 0) scale(1.08236); }
-          35% { transform: translate3d(-1.2702%, -0.8336%, 0) scale(1.09351); }
-          40% { transform: translate3d(-1.4472%, -0.9497%, 0) scale(1.10236); }
-          45% { transform: translate3d(-1.5608%, -1.0243%, 0) scale(1.10804); }
-          50% { transform: translate3d(-1.6%, -1.05%, 0) scale(1.11); }
-          55% { transform: translate3d(-1.5608%, -1.0243%, 0) scale(1.10804); }
-          60% { transform: translate3d(-1.4472%, -0.9497%, 0) scale(1.10236); }
-          65% { transform: translate3d(-1.2702%, -0.8336%, 0) scale(1.09351); }
-          70% { transform: translate3d(-1.0472%, -0.6872%, 0) scale(1.08236); }
-          75% { transform: translate3d(-0.8%, -0.525%, 0) scale(1.07); }
-          80% { transform: translate3d(-0.5528%, -0.3628%, 0) scale(1.05764); }
-          85% { transform: translate3d(-0.3298%, -0.2164%, 0) scale(1.04649); }
-          90% { transform: translate3d(-0.1528%, -0.1003%, 0) scale(1.03764); }
-          95% { transform: translate3d(-0.0392%, -0.0257%, 0) scale(1.03196); }
-          100% { transform: translate3d(0%, 0%, 0) scale(1.03); }
-        }
-        .lp-pitch-zoom {
-          transform-origin: 50% 42%;
-          will-change: transform;
-          backface-visibility: hidden;
-          transform: translateZ(0);
-          animation: lp-pitch-zoom 36s linear infinite;
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .lp-pitch-zoom { animation: none !important; transform: none !important; }
-        }
-      `}</style>
+      <video
+        ref={videoRef}
+        className="absolute inset-0 h-full w-full object-cover"
+        src={VIDEO_SRC}
+        poster={POSTER_SRC}
+        muted={muted}
+        playsInline
+        loop
+        preload="metadata"
+        disablePictureInPicture
+        aria-label="iProjectX product advertisement"
+      />
       {muted && userPlaying && !reduced ? (
         <button
           type="button"
