@@ -617,23 +617,30 @@ def endcard(wordmark: Path) -> Image.Image:
     card = [120, 72, W - 120, H - 72]
     draw.rounded_rectangle(card, radius=28, fill=(248, 250, 252, 252), outline=(186, 230, 253, 255), width=2)
     wm = wordmark_clear(wordmark)
-    mw = 640
+    mw = 560
     mh = int(wm.height * (mw / wm.width))
     wm = wm.resize((mw, mh), Image.Resampling.LANCZOS)
     rgba = Image.alpha_composite(base.convert("RGBA"), layer)
-    rgba.paste(wm, ((W - mw) // 2, 118), wm)
+    rgba.paste(wm, ((W - mw) // 2, 88), wm)
     draw = ImageDraw.Draw(rgba)
-    sub = font(FONT_SEMI, 16)
-    tag = font(FONT_BOLD, 26)
+    sub = font(FONT_SEMI, 15)
+    tag = font(FONT_BOLD, 24)
+    y = 88 + mh + 6
     line1 = "PMO COMMAND CENTRE PLATFORM"
     w1 = draw.textlength(line1, font=sub)
-    draw.text(((W - w1) / 2, 118 + mh + 10), line1, font=sub, fill=(14, 116, 144, 255))
-    line2 = "From Strategic Alignment to delivery"
-    w2 = draw.textlength(line2, font=font(FONT_REG, 17))
-    draw.text(((W - w2) / 2, 118 + mh + 38), line2, font=font(FONT_REG, 17), fill=(51, 65, 85, 255))
-    line3 = "STOP FLYING BLIND"
-    w3 = draw.textlength(line3, font=tag)
-    draw.text(((W - w3) / 2, 118 + mh + 78), line3, font=tag, fill=(15, 23, 42, 255))
+    draw.text(((W - w1) / 2, y), line1, font=sub, fill=(14, 116, 144, 255))
+    line2 = "Plan, execute and deliver"
+    w2 = draw.textlength(line2, font=font(FONT_BOLD, 22))
+    draw.text(((W - w2) / 2, y + 28), line2, font=font(FONT_BOLD, 22), fill=(15, 23, 42, 255))
+    line3 = "Click Expression of Interest"
+    w3 = draw.textlength(line3, font=font(FONT_SEMI, 18))
+    draw.text(((W - w3) / 2, y + 60), line3, font=font(FONT_SEMI, 18), fill=(14, 116, 144, 255))
+    line4 = "STOP FLYING BLIND"
+    w4 = draw.textlength(line4, font=tag)
+    draw.text(((W - w4) / 2, y + 96), line4, font=tag, fill=(15, 23, 42, 255))
+    line5 = "Designed for your success"
+    w5 = draw.textlength(line5, font=font(FONT_REG, 17))
+    draw.text(((W - w5) / 2, y + 132), line5, font=font(FONT_REG, 17), fill=(51, 65, 85, 255))
     return rgba.convert("RGB")
 
 
@@ -749,7 +756,7 @@ BEATS: list[dict] = [
     B("c3", "actor", "And you can act.", still="s14-action", kicker="The answer", title="Let's fix them."),
     B("s1", "security", "Safety and security is the highest priority for iProjectX. Mandatory MFA. IP Whitelisting. Bring your own database.", title="Safety and security is the highest priority."),
     B("s2", "brand", "White label. iProjectX is designed to be one of the customer's immutable products.", title="One of the customer's immutable products."),
-    B("end", "end", "iProjectX. Stop flying blind.", hold=4.8),
+    B("end", "end", "Click Expression of Interest to know more about the platform, and to arrange a demo. We are committed to making our customers successful. We are iProjectX. Plan, execute and deliver. Please stop flying blind, and board our secure platform. iProjectX is designed for your success.", hold=16.0),
 ]
 
 
