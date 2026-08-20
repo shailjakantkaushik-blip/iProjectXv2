@@ -32,6 +32,7 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
     heading: "Command Center",
     items: [
       { to: "/app/", label: "Home", icon: "Home", exact: true },
+      { to: "/app/strategic-alignment", label: "Strategic Alignment", icon: "Network" },
       { to: "/app/my-work", label: "My Work", icon: "Briefcase" },
       { to: "/app/portfolio-pulse", label: "Portfolio Pulse", icon: "Activity" },
       { to: "/app/executive-cockpit", label: "Executive Cockpit", icon: "Rocket" },

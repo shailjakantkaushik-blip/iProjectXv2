@@ -62,6 +62,7 @@ import {
   FileSpreadsheet,
   Link2,
   Brain,
+  Network,
   type LucideIcon,
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -177,6 +178,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   FileSpreadsheet,
   Link2,
   Brain,
+  Network,
 };
 
 function resolveIcon(name: string): LucideIcon {

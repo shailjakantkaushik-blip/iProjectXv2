@@ -80,6 +80,7 @@ import { Route as AuthenticatedAppAlertEmailsRouteImport } from './routes/_authe
 import { Route as AuthenticatedAppStageGateConfigRouteImport } from './routes/_authenticated/app.stage-gate-config'
 import { Route as AuthenticatedAppStageGatesRouteImport } from './routes/_authenticated/app.stage-gates'
 import { Route as AuthenticatedAppStakeholdersRouteImport } from './routes/_authenticated/app.stakeholders'
+import { Route as AuthenticatedAppStrategicAlignmentRouteImport } from './routes/_authenticated/app.strategic-alignment'
 import { Route as AuthenticatedAppSupportRouteImport } from './routes/_authenticated/app.support'
 import { Route as AuthenticatedAppTeamRouteImport } from './routes/_authenticated/app.team'
 import { Route as AuthenticatedAppTimelineRouteImport } from './routes/_authenticated/app.timeline'
@@ -518,6 +519,12 @@ const AuthenticatedAppStakeholdersRoute =
     path: '/stakeholders',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
+const AuthenticatedAppStrategicAlignmentRoute =
+  AuthenticatedAppStrategicAlignmentRouteImport.update({
+    id: '/strategic-alignment',
+    path: '/strategic-alignment',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
 const AuthenticatedAppSupportRoute = AuthenticatedAppSupportRouteImport.update({
   id: '/support',
   path: '/support',
@@ -790,6 +797,7 @@ export interface FileRoutesByFullPath {
   '/app/stage-gate-config': typeof AuthenticatedAppStageGateConfigRoute
   '/app/stage-gates': typeof AuthenticatedAppStageGatesRoute
   '/app/stakeholders': typeof AuthenticatedAppStakeholdersRoute
+  '/app/strategic-alignment': typeof AuthenticatedAppStrategicAlignmentRoute
   '/app/support': typeof AuthenticatedAppSupportRoute
   '/app/team': typeof AuthenticatedAppTeamRoute
   '/app/timeline': typeof AuthenticatedAppTimelineRoute
@@ -894,6 +902,7 @@ export interface FileRoutesByTo {
   '/app/stage-gate-config': typeof AuthenticatedAppStageGateConfigRoute
   '/app/stage-gates': typeof AuthenticatedAppStageGatesRoute
   '/app/stakeholders': typeof AuthenticatedAppStakeholdersRoute
+  '/app/strategic-alignment': typeof AuthenticatedAppStrategicAlignmentRoute
   '/app/support': typeof AuthenticatedAppSupportRoute
   '/app/team': typeof AuthenticatedAppTeamRoute
   '/app/timeline': typeof AuthenticatedAppTimelineRoute
@@ -1002,6 +1011,7 @@ export interface FileRoutesById {
   '/_authenticated/app/stage-gate-config': typeof AuthenticatedAppStageGateConfigRoute
   '/_authenticated/app/stage-gates': typeof AuthenticatedAppStageGatesRoute
   '/_authenticated/app/stakeholders': typeof AuthenticatedAppStakeholdersRoute
+  '/_authenticated/app/strategic-alignment': typeof AuthenticatedAppStrategicAlignmentRoute
   '/_authenticated/app/support': typeof AuthenticatedAppSupportRoute
   '/_authenticated/app/team': typeof AuthenticatedAppTeamRoute
   '/_authenticated/app/timeline': typeof AuthenticatedAppTimelineRoute
@@ -1110,6 +1120,7 @@ export interface FileRouteTypes {
     | '/app/stage-gate-config'
     | '/app/stage-gates'
     | '/app/stakeholders'
+    | '/app/strategic-alignment'
     | '/app/support'
     | '/app/team'
     | '/app/timeline'
@@ -1214,6 +1225,7 @@ export interface FileRouteTypes {
     | '/app/stage-gate-config'
     | '/app/stage-gates'
     | '/app/stakeholders'
+    | '/app/strategic-alignment'
     | '/app/support'
     | '/app/team'
     | '/app/timeline'
@@ -1321,6 +1333,7 @@ export interface FileRouteTypes {
     | '/_authenticated/app/stage-gate-config'
     | '/_authenticated/app/stage-gates'
     | '/_authenticated/app/stakeholders'
+    | '/_authenticated/app/strategic-alignment'
     | '/_authenticated/app/support'
     | '/_authenticated/app/team'
     | '/_authenticated/app/timeline'
@@ -1872,6 +1885,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppStakeholdersRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
+    '/_authenticated/app/strategic-alignment': {
+      id: '/_authenticated/app/strategic-alignment'
+      path: '/strategic-alignment'
+      fullPath: '/app/strategic-alignment'
+      preLoaderRoute: typeof AuthenticatedAppStrategicAlignmentRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
     '/_authenticated/app/support': {
       id: '/_authenticated/app/support'
       path: '/support'
@@ -2190,6 +2210,7 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppStageGateConfigRoute: typeof AuthenticatedAppStageGateConfigRoute
   AuthenticatedAppStageGatesRoute: typeof AuthenticatedAppStageGatesRoute
   AuthenticatedAppStakeholdersRoute: typeof AuthenticatedAppStakeholdersRoute
+  AuthenticatedAppStrategicAlignmentRoute: typeof AuthenticatedAppStrategicAlignmentRoute
   AuthenticatedAppSupportRoute: typeof AuthenticatedAppSupportRoute
   AuthenticatedAppTeamRoute: typeof AuthenticatedAppTeamRoute
   AuthenticatedAppTimelineRoute: typeof AuthenticatedAppTimelineRoute
@@ -2266,6 +2287,7 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppStageGateConfigRoute: AuthenticatedAppStageGateConfigRoute,
   AuthenticatedAppStageGatesRoute: AuthenticatedAppStageGatesRoute,
   AuthenticatedAppStakeholdersRoute: AuthenticatedAppStakeholdersRoute,
+  AuthenticatedAppStrategicAlignmentRoute: AuthenticatedAppStrategicAlignmentRoute,
   AuthenticatedAppSupportRoute: AuthenticatedAppSupportRoute,
   AuthenticatedAppTeamRoute: AuthenticatedAppTeamRoute,
   AuthenticatedAppTimelineRoute: AuthenticatedAppTimelineRoute,

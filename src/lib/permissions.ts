@@ -61,6 +61,7 @@ export function capabilityKey(id: string) {
 // table_name = `page::<path>`. Admin/org_admin bypass these checks.
 export const PAGES: { path: string; label: string; group: string }[] = [
   { path: "/app/my-work", label: "My Work", group: "Command Center" },
+  { path: "/app/strategic-alignment", label: "Strategic Alignment", group: "Command Center" },
   { path: "/app/portfolio-pulse", label: "Portfolio Pulse", group: "Command Center" },
   { path: "/app/executive-cockpit", label: "Executive Cockpit", group: "Command Center" },
   { path: "/app/executive", label: "Executive Dashboard", group: "Command Center" },
