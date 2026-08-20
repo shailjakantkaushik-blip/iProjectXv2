@@ -43,7 +43,8 @@ export const CAPABILITIES: {
   {
     id: "template_upload",
     label: "Upload template / workbook",
-    description: "Upload Excel workbooks on Data Editor and import project templates (Edit or Other).",
+    description:
+      "Upload Excel workbooks on Data Editor and import project templates (Edit or Other).",
   },
   {
     id: "timesheet_cost_view",
@@ -88,6 +89,7 @@ export const PAGES: { path: string; label: string; group: string }[] = [
   { path: "/app/stage-gate-config", label: "Delivery Methods & Gates", group: "Org Admin" },
   { path: "/app/agile", label: "Agile / Sprints", group: "Delivery" },
   { path: "/app/governance-channels", label: "Governance Channel", group: "Delivery" },
+  { path: "/app/investment-committee", label: "Investment Committee", group: "Delivery" },
   { path: "/app/dependencies", label: "Dependencies", group: "Delivery" },
   { path: "/app/schedule-cpm", label: "Schedule CPM", group: "Delivery" },
   { path: "/app/resources", label: "Resources", group: "Delivery" },

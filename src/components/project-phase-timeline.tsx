@@ -1,8 +1,9 @@
 import { Link } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { computeTimelineBounds } from "@/components/portfolio-timeline";
+import { ExpandablePanel } from "@/components/expandable-panel";
 import { PageLoading } from "@/components/page-loading";
 import { SectionFrame, SectionTitle } from "@/components/streamlit";
 import { fyLabel } from "@/lib/fiscal-year";
@@ -131,11 +132,17 @@ export function ProjectPhaseTimeline({
         .select("id,notes")
         .eq("project_id", projectId)
         .maybeSingle();
-      if (error) return { id: null as string | null, notes: null as unknown, phases: [] as ForecastPhaseRow[] };
-      if (!data?.id) return { id: null, notes: null, phases: [] as ForecastPhaseRow[] };
-      let phases = await loadForecastPhases(data.id);
-      if (!phases.length) phases = parseForecastPhaseNotes((data as { notes?: unknown }).notes);
-      return { id: data.id as string, notes: (data as { notes?: unknown }).notes, phases };
+      if (error)
+        return {
+          id: null as string | null,
+          notes: null as unknown,
+          phases: [] as ForecastPhaseRow[],
+        };
+      const row = data as { id?: string | null; notes?: unknown } | null;
+      if (!row?.id) return { id: null, notes: null, phases: [] as ForecastPhaseRow[] };
+      let phases = await loadForecastPhases(row.id);
+      if (!phases.length) phases = parseForecastPhaseNotes(row.notes);
+      return { id: row.id, notes: row.notes, phases };
     },
     enabled: !!projectId,
   });
@@ -283,161 +290,187 @@ export function ProjectPhaseTimeline({
 
   const hasDates = dated.length > 0;
 
+  const legend: ReactNode = (
+    <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground">
+      <span className="inline-flex items-center gap-1.5">
+        <span className="inline-block h-2.5 w-4 rounded-sm bg-emerald-500" /> Approved / done
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span className="inline-block h-2.5 w-4 rounded-sm bg-amber-500" /> In progress
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span className="inline-block h-2.5 w-4 rounded-sm bg-rose-500" /> Rejected
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span className="inline-block h-2.5 w-4 rounded-sm bg-sky-500" /> Planned
+      </span>
+    </div>
+  );
+
+  const toolbar: ReactNode = (
+    <div className="flex flex-wrap items-center gap-2 text-[11px]">
+      <Link to="/app/project-forecast" className="font-medium text-primary hover:underline">
+        Edit phase plan
+      </Link>
+      <Link
+        to="/app/projects/$id"
+        params={{ id: projectId }}
+        search={{ tab: "streams" }}
+        className="font-medium text-primary hover:underline"
+      >
+        Streams
+      </Link>
+    </div>
+  );
+
   return (
     <SectionFrame exportName="phase-timeline" exportTitle="Phase timeline">
-      <SectionTitle>Phase timeline by stream</SectionTitle>
-      <p className="mt-1 text-sm text-muted-foreground">
-        One row per phase, grouped by stream. Bars use plan dates from Estimation Planning when set,
-        otherwise stage-gate planned dates. Colour follows gate status when live.
-      </p>
-      <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-4 rounded-sm bg-emerald-500" /> Approved / done
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-4 rounded-sm bg-amber-500" /> In progress
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-4 rounded-sm bg-rose-500" /> Rejected
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-4 rounded-sm bg-sky-500" /> Planned
-        </span>
-        <Link to="/app/project-forecast" className="font-medium text-primary hover:underline">
-          Edit phase plan
-        </Link>
-        <Link
-          to="/app/projects/$id"
-          params={{ id: projectId }}
-          search={{ tab: "streams" }}
-          className="font-medium text-primary hover:underline"
-        >
-          Streams
-        </Link>
-      </div>
-
-      {!hasDates ? (
-        <p className="mt-4 text-sm text-muted-foreground">
-          No phase dates yet. Set the project start and phase durations on{" "}
-          <Link to="/app/project-forecast" className="font-medium text-primary hover:underline">
-            Project Estimation Planning
-          </Link>
-          , or add planned dates on stage gates.
+      <ExpandablePanel
+        title="Phase timeline by stream"
+        toolbar={toolbar}
+        compactMaxHeightClass="max-h-[min(72vh,820px)]"
+      >
+        <p className="text-sm text-muted-foreground">
+          One row per phase, grouped by stream. Bars use plan dates from Estimation Planning when
+          set, otherwise stage-gate planned dates. Colour follows gate status when live.
         </p>
-      ) : (
-        <div className="mt-4 overflow-x-auto">
-          <div className="min-w-[720px]">
-            <div className="flex text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              <div className="w-48 shrink-0" />
-              <div
-                className="grid flex-1"
-                style={{ gridTemplateColumns: `repeat(${monthCount}, minmax(0, 1fr))` }}
-              >
-                {fyGroups.map((g) => (
-                  <div
-                    key={g.fy}
-                    className="border-l border-border px-1 first:border-l-0"
-                    style={{ gridColumn: `span ${g.span}` }}
-                  >
-                    {g.fy}
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="mb-2 flex text-[10px] text-muted-foreground">
-              <div className="w-48 shrink-0 pr-2">Phase</div>
-              <div
-                className="grid flex-1"
-                style={{ gridTemplateColumns: `repeat(${monthCount}, minmax(0, 1fr))` }}
-              >
-                {months.map((m) => (
-                  <div key={m.key} className="truncate border-l border-border/60 px-0.5 first:border-l-0">
-                    {m.label}
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-6">
-              {lanes.map((lane) => (
-                <div key={lane.id}>
-                  <div className="mb-2 flex items-baseline gap-2 border-b border-border/70 pb-1">
-                    <span className="text-xs font-semibold tracking-tight" title={lane.label}>
-                      {lane.label}
-                    </span>
-                    <span className="font-mono text-[10px] text-muted-foreground">{lane.code}</span>
-                    <span className="text-[10px] text-muted-foreground">
-                      {lane.segs.length} phase{lane.segs.length === 1 ? "" : "s"}
-                    </span>
-                  </div>
-                  <div className="space-y-1.5">
-                    {lane.segs.length ? (
-                      lane.segs.map((seg, i) => {
-                        const left = pct(seg.start);
-                        const right = pct(seg.end);
-                        const width = Math.max(1.6, right - left);
-                        const datedSeg = Boolean(seg.start && seg.end);
-                        return (
-                          <div key={`${lane.id}-${seg.name}`} className="flex items-center gap-2">
-                            <div className="w-48 shrink-0 pr-1">
-                              <div className="truncate text-[11px] font-medium" title={seg.name}>
-                                {seg.name}
-                              </div>
-                              <div className="truncate text-[10px] text-muted-foreground">
-                                {seg.status || "Pending"}
-                                {datedSeg ? ` · ${seg.start} → ${seg.end}` : ""}
-                              </div>
-                            </div>
-                            <div className="relative h-8 flex-1 overflow-hidden rounded-md bg-muted/45">
-                              <div
-                                className="pointer-events-none absolute inset-0 grid"
-                                style={{
-                                  gridTemplateColumns: `repeat(${monthCount}, minmax(0, 1fr))`,
-                                }}
-                              >
-                                {months.map((m) => (
-                                  <div key={m.key} className="border-l border-border/40 first:border-l-0" />
-                                ))}
-                              </div>
-                              {datedSeg ? (
-                                <div
-                                  className="absolute top-1.5 h-5 overflow-hidden rounded-sm text-[9px] font-semibold text-white"
-                                  style={{
-                                    left: `${left}%`,
-                                    width: `${width}%`,
-                                    background: statusFill(seg, i),
-                                    boxShadow: seg.current
-                                      ? "inset 0 0 0 2px rgba(15,23,42,0.55)"
-                                      : undefined,
-                                    opacity: seg.done || seg.current || seg.rejected ? 1 : 0.88,
-                                  }}
-                                  title={`${seg.name}: ${seg.start} → ${seg.end}${seg.status ? ` · ${seg.status}` : ""}`}
-                                >
-                                  <span className="block truncate px-1 leading-5">{seg.name}</span>
-                                </div>
-                              ) : (
-                                <span className="absolute inset-y-0 left-2 flex items-center text-[10px] text-muted-foreground">
-                                  No dates
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <p className="pl-1 text-[11px] text-muted-foreground">No phases on this stream.</p>
-                    )}
-                  </div>
+        <div className="mt-3">{legend}</div>
+
+        {!hasDates ? (
+          <p className="mt-4 text-sm text-muted-foreground">
+            No phase dates yet. Set the project start and phase durations on{" "}
+            <Link to="/app/project-forecast" className="font-medium text-primary hover:underline">
+              Project Estimation Planning
+            </Link>
+            , or add planned dates on stage gates.
+          </p>
+        ) : (
+          <div className="mt-4 overflow-x-auto">
+            <div className="min-w-[720px]">
+              <div className="flex text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <div className="w-48 shrink-0" />
+                <div
+                  className="grid flex-1"
+                  style={{ gridTemplateColumns: `repeat(${monthCount}, minmax(0, 1fr))` }}
+                >
+                  {fyGroups.map((g) => (
+                    <div
+                      key={g.fy}
+                      className="border-l border-border px-1 first:border-l-0"
+                      style={{ gridColumn: `span ${g.span}` }}
+                    >
+                      {g.fy}
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
+              <div className="mb-2 flex text-[10px] text-muted-foreground">
+                <div className="w-48 shrink-0 pr-2">Phase</div>
+                <div
+                  className="grid flex-1"
+                  style={{ gridTemplateColumns: `repeat(${monthCount}, minmax(0, 1fr))` }}
+                >
+                  {months.map((m) => (
+                    <div
+                      key={m.key}
+                      className="truncate border-l border-border/60 px-0.5 first:border-l-0"
+                    >
+                      {m.label}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-6">
+                {lanes.map((lane) => (
+                  <div key={lane.id}>
+                    <div className="mb-2 flex items-baseline gap-2 border-b border-border/70 pb-1">
+                      <span className="text-xs font-semibold tracking-tight" title={lane.label}>
+                        {lane.label}
+                      </span>
+                      <span className="font-mono text-[10px] text-muted-foreground">
+                        {lane.code}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {lane.segs.length} phase{lane.segs.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {lane.segs.length ? (
+                        lane.segs.map((seg, i) => {
+                          const left = pct(seg.start);
+                          const right = pct(seg.end);
+                          const width = Math.max(1.6, right - left);
+                          const datedSeg = Boolean(seg.start && seg.end);
+                          return (
+                            <div key={`${lane.id}-${seg.name}`} className="flex items-center gap-2">
+                              <div className="w-48 shrink-0 pr-1">
+                                <div className="truncate text-[11px] font-medium" title={seg.name}>
+                                  {seg.name}
+                                </div>
+                                <div className="truncate text-[10px] text-muted-foreground">
+                                  {seg.status || "Pending"}
+                                  {datedSeg ? ` · ${seg.start} → ${seg.end}` : ""}
+                                </div>
+                              </div>
+                              <div className="relative h-8 flex-1 overflow-hidden rounded-md bg-muted/45">
+                                <div
+                                  className="pointer-events-none absolute inset-0 grid"
+                                  style={{
+                                    gridTemplateColumns: `repeat(${monthCount}, minmax(0, 1fr))`,
+                                  }}
+                                >
+                                  {months.map((m) => (
+                                    <div
+                                      key={m.key}
+                                      className="border-l border-border/40 first:border-l-0"
+                                    />
+                                  ))}
+                                </div>
+                                {datedSeg ? (
+                                  <div
+                                    className="absolute top-1.5 h-5 overflow-hidden rounded-sm text-[9px] font-semibold text-white"
+                                    style={{
+                                      left: `${left}%`,
+                                      width: `${width}%`,
+                                      background: statusFill(seg, i),
+                                      boxShadow: seg.current
+                                        ? "inset 0 0 0 2px rgba(15,23,42,0.55)"
+                                        : undefined,
+                                      opacity: seg.done || seg.current || seg.rejected ? 1 : 0.88,
+                                    }}
+                                    title={`${seg.name}: ${seg.start} → ${seg.end}${seg.status ? ` · ${seg.status}` : ""}`}
+                                  >
+                                    <span className="block truncate px-1 leading-5">
+                                      {seg.name}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="absolute inset-y-0 left-2 flex items-center text-[10px] text-muted-foreground">
+                                    No dates
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <p className="pl-1 text-[11px] text-muted-foreground">
+                          No phases on this stream.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-3 text-[11px] text-muted-foreground">
+                Window {fyLabel(bounds.start, fyStartMonth)}–{fyLabel(bounds.end, fyStartMonth)} ·{" "}
+                {months[0]?.label} {months[0]?.year} → {months[months.length - 1]?.label}{" "}
+                {months[months.length - 1]?.year}
+              </p>
             </div>
-            <p className="mt-3 text-[11px] text-muted-foreground">
-              Window {fyLabel(bounds.start, fyStartMonth)}–{fyLabel(bounds.end, fyStartMonth)} ·{" "}
-              {months[0]?.label} {months[0]?.year} → {months[months.length - 1]?.label}{" "}
-              {months[months.length - 1]?.year}
-            </p>
           </div>
-        </div>
-      )}
+        )}
+      </ExpandablePanel>
     </SectionFrame>
   );
 }

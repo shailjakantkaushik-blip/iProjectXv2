@@ -13,7 +13,12 @@ const DOMAIN_PAGES: Record<AssistDomain, string[]> = {
     "/app/my-work",
   ],
   risks: ["/app/risks", "/app/risk-roadmap"],
-  decisions: ["/app/decisions", "/app/my-work", "/app/executive-intelligence"],
+  decisions: [
+    "/app/decisions",
+    "/app/my-work",
+    "/app/executive-intelligence",
+    "/app/investment-committee",
+  ],
   actions: ["/app/actions", "/app/my-work", "/app/executive-intelligence"],
   budget: [
     "/app/financials",
@@ -21,6 +26,7 @@ const DOMAIN_PAGES: Record<AssistDomain, string[]> = {
     "/app/phase-financials",
     "/app/cost-vs-benefit",
     "/app/executive-intelligence",
+    "/app/investment-committee",
   ],
   benefits: [
     "/app/benefits",

@@ -1418,7 +1418,7 @@ BEGIN
         (r_org.id, p_id, 'ACT-004', 'Close previous steering actions', 'Actions agreed at last steering are complete', primary_person_name, CURRENT_DATE - 2, 'Done', 'Medium', CURRENT_DATE - 3);
 
       INSERT INTO public.decisions (
-        org_id, project_id, raid_code, stage_gate_id, title, description, decision_date, decided_by, rationale, impact, status
+        org_id, project_id, raid_code, stage_gate_id, title, description, decision_date, decided_by, rationale, impact, status, forum
       )
       SELECT
         r_org.id, p_id, 'DEC-001',
@@ -1430,7 +1430,8 @@ BEGIN
         starts[i] + 20, sponsor_name,
         'Clear ownership of dates, gates and finance per stream',
         'Enables rollup timelines and PvA by stream',
-        'Approved'
+        'Approved',
+        'Project Board'
       UNION ALL
       SELECT
         r_org.id, p_id, 'DEC-002',
@@ -1445,7 +1446,8 @@ BEGIN
         CASE WHEN methods[i] = 'Agile' THEN 'Sprint cadence without stage gates'
              WHEN methods[i] = 'Hybrid' THEN 'Sprint + stage-gate hybrid where needed'
              ELSE 'Sequential stage-gate delivery' END,
-        'Approved';
+        'Approved',
+        'Investment Committee';
 
       INSERT INTO public.stakeholders (
         org_id, project_id, name, role, email, influence, interest, engagement_strategy, is_sponsor
