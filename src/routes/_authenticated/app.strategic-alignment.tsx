@@ -343,7 +343,7 @@ function StrategicAlignmentPage() {
     const alignmentMap = new Map<string, Map<string, ProjectNode[]>>();
     for (const p of projects as Array<Record<string, unknown>>) {
       const id = String(p.id);
-      if (!projectMatchesGateStatusFilter(gates as never, id, gateStatusByName)) continue;
+      if (!projectMatchesGateStatusFilter(gates as never, id, gateStatusByName, p as never)) continue;
       const alignment = String(p.portfolio || "").trim() || "Unassigned";
       const program = String(p.program || "").trim() || "Unassigned";
       const health = computeProjectHealth(p as never, (gatesByProject.get(id) ?? []) as never, {
