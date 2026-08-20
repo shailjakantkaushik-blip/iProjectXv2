@@ -10,7 +10,8 @@ import {
 } from "@/lib/project-options";
 import {
   ensureProjectLevelGates,
-  projectLevelGates,
+  gatesForRaidScope,
+  remapGateIdForScope,
   setStageGateStatus,
 } from "@/lib/stage-gate-approval";
 import {
@@ -18,6 +19,8 @@ import {
   fetchDeliveryMethods,
 } from "@/lib/delivery-methods";
 import { StageGateApprovalSelect } from "@/components/stage-gate-approval-select";
+import { RaidStreamSelect } from "@/components/raid-stream-select";
+import { fetchOrgStreams } from "@/lib/project-streams";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -116,6 +119,12 @@ function DecisionsPage() {
     enabled: !!orgId,
   });
 
+  const { data: streams = [] } = useQuery({
+    queryKey: ["project_streams", orgId],
+    queryFn: () => fetchOrgStreams(orgId!),
+    enabled: !!orgId,
+  });
+
   const { data: decisions = [] } = useQuery({
     queryKey: ["decisions", orgId],
     queryFn: async () => {
@@ -141,6 +150,8 @@ function DecisionsPage() {
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["decisions", orgId] });
     qc.invalidateQueries({ queryKey: ["stage_gates", orgId] });
+    qc.invalidateQueries({ queryKey: ["stage_gates"] });
+    qc.invalidateQueries({ queryKey: ["projects"] });
     qc.invalidateQueries({ queryKey: ["notifications"] });
     window.dispatchEvent(new CustomEvent("pmo:data-changed"));
   };
@@ -172,6 +183,7 @@ function DecisionsPage() {
 
   const [form, setForm] = useState({
     project_id: "",
+    stream_id: "",
     stage_gate_id: "",
     forum: "Portfolio Board",
     sponsor: "",
@@ -200,6 +212,7 @@ function DecisionsPage() {
       const { error } = await supabase.from("decisions").insert({
         org_id: orgId,
         project_id: form.project_id,
+        stream_id: form.stream_id || null,
         stage_gate_id: form.stage_gate_id || null,
         program: proj?.program || null,
         forum: form.forum || null,
@@ -235,6 +248,8 @@ function DecisionsPage() {
         required_date: "",
         schedule_impact_days: "",
         cost_impact: "",
+        stream_id: "",
+        stage_gate_id: "",
       }));
     },
     onError: (e: any) => toast.error(e.message),
@@ -287,8 +302,8 @@ function DecisionsPage() {
 
   const gatesForProject = useMemo(() => {
     if (!form.project_id) return [];
-    return projectLevelGates(gates as never, form.project_id, orgPhases);
-  }, [gates, form.project_id, orgPhases]);
+    return gatesForRaidScope(gates as never, form.project_id, form.stream_id || null, orgPhases);
+  }, [gates, form.project_id, form.stream_id, orgPhases]);
 
   useEffect(() => {
     if (!orgId || !form.project_id || !methods.length) return;
@@ -321,6 +336,14 @@ function DecisionsPage() {
       },
       { key: "raid_code", label: "Decision ID" },
       { key: "title", label: "Title" },
+      {
+        key: "stream",
+        label: "Stream",
+        getValue: (d) => {
+          const s = d.stream_id ? streams.find((x) => x.id === d.stream_id) : null;
+          return s ? `${s.name || ""} ${s.code || ""}` : "";
+        },
+      },
       { key: "forum", label: "Forum" },
       { key: "sponsor", label: "Sponsor" },
       { key: "owner", label: "Owner" },
@@ -347,7 +370,7 @@ function DecisionsPage() {
       { key: "rationale", label: "Rationale" },
       { key: "notes", label: "Notes" },
     ],
-    [projectById, gateById, memberById],
+    [projectById, gateById, memberById, streams],
   );
 
   const table = useColumnarTable(visibleDecisions, columns);
@@ -369,8 +392,8 @@ function DecisionsPage() {
     count: counts[o] || 0,
   }));
 
-  const dataColsBeforeActions = columns.slice(0, 9);
-  const dataColsAfterActions = columns.slice(9);
+  const dataColsBeforeActions = columns.slice(0, 10);
+  const dataColsAfterActions = columns.slice(10);
 
   return (
     <PageExport name="Decisions_Log" title="Decisions Log">
@@ -444,7 +467,12 @@ function DecisionsPage() {
             className="st-input"
             value={form.project_id}
             onChange={(e) =>
-              setForm((f) => ({ ...f, project_id: e.target.value, stage_gate_id: "" }))
+              setForm((f) => ({
+                ...f,
+                project_id: e.target.value,
+                stream_id: "",
+                stage_gate_id: "",
+              }))
             }
             required
           >
@@ -455,6 +483,29 @@ function DecisionsPage() {
               </option>
             ))}
           </select>
+          <div>
+            <label className="mb-1 block text-[11px] font-semibold text-muted-foreground">
+              Stream (optional)
+            </label>
+            <RaidStreamSelect
+              streams={streams}
+              projectId={form.project_id}
+              value={form.stream_id}
+              onChange={(stream_id) =>
+                setForm((f) => ({
+                  ...f,
+                  stream_id,
+                  stage_gate_id: remapGateIdForScope(
+                    gates as never,
+                    f.project_id,
+                    stream_id || null,
+                    f.stage_gate_id,
+                    orgPhases,
+                  ),
+                }))
+              }
+            />
+          </div>
           <div className="md:col-span-2">
             <label className="mb-1 block text-[11px] font-semibold text-muted-foreground">
               Stage gate approval
@@ -584,8 +635,9 @@ function DecisionsPage() {
           </button>
         </form>
         <p className="mt-2 text-xs text-muted-foreground">
-          Capture options, recommendation, owner, required date, and impact. Approver is notified
-          in-app. Link related risks/issues/actions on Executive Intelligence.
+          Capture options, recommendation, owner, required date, and impact. Optionally record
+          against a stream. Approver is notified in-app. Stage-gate status stays in sync with
+          the Stage Gates page.
         </p>
       </SectionFrame>
 
@@ -642,7 +694,7 @@ function DecisionsPage() {
               <tbody>
                 {table.rows.length === 0 ? (
                   <tr>
-                    <td colSpan={16} className="py-6 text-center text-sm text-muted-foreground">
+                    <td colSpan={17} className="py-6 text-center text-sm text-muted-foreground">
                       No decisions match filters.
                     </td>
                   </tr>
@@ -665,6 +717,31 @@ function DecisionsPage() {
                             field="title"
                             value={d.title}
                             invalidateKeys={["decisions"]}
+                          />
+                        </td>
+                        <td className="min-w-[9rem]">
+                          <RaidStreamSelect
+                            compact
+                            streams={streams}
+                            projectId={d.project_id}
+                            value={d.stream_id || ""}
+                            disabled={updateDecision.isPending}
+                            onChange={(stream_id) =>
+                              updateDecision.mutate({
+                                id: d.id,
+                                patch: {
+                                  stream_id: stream_id || null,
+                                  stage_gate_id:
+                                    remapGateIdForScope(
+                                      gates as never,
+                                      d.project_id,
+                                      stream_id || null,
+                                      d.stage_gate_id,
+                                      orgPhases,
+                                    ) || null,
+                                },
+                              })
+                            }
                           />
                         </td>
                         <td>
@@ -733,9 +810,10 @@ function DecisionsPage() {
                           <StageGateApprovalSelect
                             compact
                             gates={(() => {
-                              const list = projectLevelGates(
+                              const list = gatesForRaidScope(
                                 gates as never,
                                 d.project_id,
+                                d.stream_id || null,
                                 orgPhases,
                               );
                               if (

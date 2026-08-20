@@ -21,10 +21,13 @@ import {
 } from "@/lib/delivery-methods";
 import {
   ensureProjectLevelGates,
-  projectLevelGates,
+  gatesForRaidScope,
+  remapGateIdForScope,
   setStageGateStatus,
 } from "@/lib/stage-gate-approval";
 import { StageGateApprovalSelect } from "@/components/stage-gate-approval-select";
+import { RaidStreamSelect } from "@/components/raid-stream-select";
+import { fetchOrgStreams } from "@/lib/project-streams";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
@@ -89,6 +92,12 @@ export function ProjectDecisionsPanel({
     enabled: !!orgId,
   });
 
+  const { data: streams = [] } = useQuery({
+    queryKey: ["project_streams", orgId],
+    queryFn: () => fetchOrgStreams(orgId!),
+    enabled: !!orgId,
+  });
+
   const { data: gates = [] } = useQuery({
     queryKey: ["stage_gates", orgId, projectId, "decisions"],
     queryFn: async () => {
@@ -119,9 +128,22 @@ export function ProjectDecisionsPanel({
       });
   }, [canEdit, orgId, projectId, deliveryMethodId, deliveryMethodName, methods, qc]);
 
+  const [form, setForm] = useState({
+    title: "",
+    rationale: "",
+    notes: "",
+    forum: "Project Board",
+    owner: profile?.full_name || "",
+    approver_user_id: "",
+    outcome: "In Review" as DecisionOutcome,
+    decision_date: new Date().toISOString().slice(0, 10),
+    stream_id: "",
+    stage_gate_id: "",
+  });
+
   const methodGates = useMemo(
-    () => projectLevelGates(gates as never, projectId),
-    [gates, projectId],
+    () => gatesForRaidScope(gates as never, projectId, form.stream_id || null),
+    [gates, projectId, form.stream_id],
   );
   const gateById = useMemo(
     () => new Map((gates as { id: string }[]).map((g) => [g.id, g])),
@@ -133,21 +155,10 @@ export function ProjectDecisionsPanel({
     [members],
   );
 
-  const [form, setForm] = useState({
-    title: "",
-    rationale: "",
-    notes: "",
-    forum: "Project Board",
-    owner: profile?.full_name || "",
-    approver_user_id: "",
-    outcome: "In Review" as DecisionOutcome,
-    decision_date: new Date().toISOString().slice(0, 10),
-    stage_gate_id: "",
-  });
-
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["decisions"] });
     qc.invalidateQueries({ queryKey: ["stage_gates"] });
+    qc.invalidateQueries({ queryKey: ["projects"] });
     qc.invalidateQueries({ queryKey: ["notifications"] });
     window.dispatchEvent(new CustomEvent("pmo:data-changed"));
   };
@@ -172,6 +183,7 @@ export function ProjectDecisionsPanel({
         title: form.title.trim(),
         rationale: form.rationale || null,
         notes: form.notes || null,
+        stream_id: form.stream_id || null,
         stage_gate_id: form.stage_gate_id || null,
       } as never);
       if (error) throw error;
@@ -179,7 +191,7 @@ export function ProjectDecisionsPanel({
     onSuccess: () => {
       invalidate();
       toast.success("Decision sent to approver");
-      setForm((f) => ({ ...f, title: "", rationale: "", notes: "", stage_gate_id: "" }));
+      setForm((f) => ({ ...f, title: "", rationale: "", notes: "", stream_id: "", stage_gate_id: "" }));
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -228,16 +240,20 @@ export function ProjectDecisionsPanel({
   });
 
   const setDecisionGate = useMutation({
-    mutationFn: async (vars: { id: string; stage_gate_id: string | null }) => {
-      const { error } = await supabase
-        .from("decisions")
-        .update({ stage_gate_id: vars.stage_gate_id } as never)
-        .eq("id", vars.id);
+    mutationFn: async (vars: {
+      id: string;
+      stage_gate_id?: string | null;
+      stream_id?: string | null;
+    }) => {
+      const patch: Record<string, unknown> = {};
+      if ("stage_gate_id" in vars) patch.stage_gate_id = vars.stage_gate_id ?? null;
+      if ("stream_id" in vars) patch.stream_id = vars.stream_id ?? null;
+      const { error } = await supabase.from("decisions").update(patch as never).eq("id", vars.id);
       if (error) throw error;
     },
     onSuccess: () => {
       invalidate();
-      toast.success("Stage gate approval linked");
+      toast.success("Decision updated");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -245,6 +261,14 @@ export function ProjectDecisionsPanel({
   const columns: ColumnarColumn<any>[] = useMemo(
     () => [
       { key: "title", label: "Title" },
+      {
+        key: "stream",
+        label: "Stream",
+        getValue: (d) => {
+          const s = d.stream_id ? streams.find((x) => x.id === d.stream_id) : null;
+          return s ? `${s.name || ""} ${s.code || ""}` : "";
+        },
+      },
       {
         key: "approver",
         label: "Approver",
@@ -264,7 +288,7 @@ export function ProjectDecisionsPanel({
       },
       { key: "decision_date", label: "Date" },
     ],
-    [memberById, gateById],
+    [memberById, gateById, streams],
   );
 
   const table = useColumnarTable(decisions, columns);
@@ -274,8 +298,9 @@ export function ProjectDecisionsPanel({
       <SectionTitle>Key Decisions</SectionTitle>
       <p className="mb-3 text-xs text-muted-foreground">
         Assign an organisation user as approver. They receive an in-app notification and can
-        approve or reject from here or the Decisions Log. Link a delivery-method stage gate and
-        set its approval status on the same row.
+        approve or reject from here or the Decisions Log. Optionally record against a stream.
+        Link a delivery-method stage gate and set its approval status — that status is kept in
+        sync with the Stage Gates page.
         {projectCode || projectName
           ? ` Showing decisions for ${projectCode ? `${projectCode} · ` : ""}${projectName || ""}.`
           : ""}
@@ -320,18 +345,42 @@ export function ProjectDecisionsPanel({
             </option>
           ))}
         </select>
-        <div className="md:col-span-2">
-          <label className="mb-1 block text-[11px] font-semibold text-muted-foreground">
-            Stage gate approval
-          </label>
-          <StageGateApprovalSelect
-            gates={methodGates}
-            gateId={form.stage_gate_id}
-            onGateId={(stage_gate_id) => setForm((f) => ({ ...f, stage_gate_id }))}
-            onStatus={(gateId, status) => setGateStatus.mutate({ gateId, status })}
-            canEdit={canEdit}
-            disabled={setGateStatus.isPending}
-          />
+        <div className="md:col-span-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-[11px] font-semibold text-muted-foreground">
+              Stream (optional)
+            </label>
+            <RaidStreamSelect
+              streams={streams}
+              projectId={projectId}
+              value={form.stream_id}
+              onChange={(stream_id) =>
+                setForm((f) => ({
+                  ...f,
+                  stream_id,
+                  stage_gate_id: remapGateIdForScope(
+                    gates as never,
+                    projectId,
+                    stream_id || null,
+                    f.stage_gate_id,
+                  ),
+                }))
+              }
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] font-semibold text-muted-foreground">
+              Stage gate approval
+            </label>
+            <StageGateApprovalSelect
+              gates={methodGates}
+              gateId={form.stage_gate_id}
+              onGateId={(stage_gate_id) => setForm((f) => ({ ...f, stage_gate_id }))}
+              onStatus={(gateId, status) => setGateStatus.mutate({ gateId, status })}
+              canEdit={canEdit}
+              disabled={setGateStatus.isPending}
+            />
+          </div>
         </div>
         <input
           className="st-input"
@@ -408,7 +457,7 @@ export function ProjectDecisionsPanel({
                 <tbody>
                   {table.rows.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-6 text-center text-xs text-muted-foreground">
+                      <td colSpan={7} className="py-6 text-center text-xs text-muted-foreground">
                         No decisions match filters.
                       </td>
                     </tr>
@@ -427,6 +476,28 @@ export function ProjectDecisionsPanel({
                                 {d.rationale}
                               </div>
                             ) : null}
+                          </td>
+                          <td className="min-w-[9rem]">
+                            <RaidStreamSelect
+                              compact
+                              streams={streams}
+                              projectId={projectId}
+                              value={d.stream_id || ""}
+                              disabled={!canEdit || setDecisionGate.isPending}
+                              onChange={(stream_id) =>
+                                setDecisionGate.mutate({
+                                  id: d.id,
+                                  stream_id: stream_id || null,
+                                  stage_gate_id:
+                                    remapGateIdForScope(
+                                      gates as never,
+                                      projectId,
+                                      stream_id || null,
+                                      d.stage_gate_id,
+                                    ) || null,
+                                })
+                              }
+                            />
                           </td>
                           <td className="text-xs">
                             {approver ? memberLabel(approver) : d.approvers || "—"}
@@ -449,7 +520,13 @@ export function ProjectDecisionsPanel({
                             <StageGateApprovalSelect
                               compact
                               gates={(() => {
-                                const list = [...methodGates];
+                                const list = [
+                                  ...gatesForRaidScope(
+                                    gates as never,
+                                    projectId,
+                                    d.stream_id || null,
+                                  ),
+                                ];
                                 if (
                                   d.stage_gate_id &&
                                   !list.some((g: any) => g.id === d.stage_gate_id)

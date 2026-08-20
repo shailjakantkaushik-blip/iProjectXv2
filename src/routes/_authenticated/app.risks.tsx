@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { RISKS_SELECT, selectWithRaidCodeFallback } from "@/lib/query-selects";
 import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
+import { fetchOrgStreams } from "@/lib/project-streams";
+import { RaidStreamSelect } from "@/components/raid-stream-select";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -41,6 +43,11 @@ function RisksPage() {
     queryFn: fetchProjectOptions,
     enabled: !!orgId,
   });
+  const { data: streams = [] } = useQuery({
+    queryKey: ["project_streams", orgId],
+    queryFn: () => fetchOrgStreams(orgId!),
+    enabled: !!orgId,
+  });
   const { data: risks = [] } = useQuery({
     queryKey: ["risks", orgId, organization?.byod_active ? "byod" : "platform"],
     queryFn: async () => {
@@ -65,6 +72,7 @@ function RisksPage() {
 
   const [form, setForm] = useState({
     project_id: "",
+    stream_id: "",
     title: "",
     category: "Delivery",
     probability: 3,
@@ -83,6 +91,14 @@ function RisksPage() {
         label: "Project",
         getValue: (r) => (projectById.get(r.project_id) as any)?.project_code || "",
       },
+      {
+        key: "stream",
+        label: "Stream",
+        getValue: (r) => {
+          const s = r.stream_id ? streams.find((x) => x.id === r.stream_id) : null;
+          return s ? `${s.name || ""} ${s.code || ""}` : "";
+        },
+      },
       { key: "raid_code", label: "Risk ID" },
       { key: "title", label: "Title" },
       { key: "category", label: "Category" },
@@ -100,7 +116,7 @@ function RisksPage() {
       { key: "mitigation", label: "Mitigation" },
       { key: "notes", label: "Notes" },
     ],
-    [projectById],
+    [projectById, streams],
   );
 
   const table = useColumnarTable(risks, columns);
@@ -110,6 +126,7 @@ function RisksPage() {
       if (!orgId || !form.project_id || !form.title) throw new Error("Project and title required");
       const patch = {
         project_id: form.project_id,
+        stream_id: form.stream_id || null,
         title: form.title,
         category: form.category,
         probability: form.probability,
@@ -135,7 +152,32 @@ function RisksPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["risks", orgId] });
       toast.success("Risk added");
-      setForm((f) => ({ ...f, title: "", owner: "", mitigation: "", notes: "", due_date: "" }));
+      setForm((f) => ({
+        ...f,
+        title: "",
+        owner: "",
+        mitigation: "",
+        notes: "",
+        due_date: "",
+        stream_id: "",
+      }));
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const setStream = useMutation({
+    mutationFn: async ({ id, stream_id }: { id: string; stream_id: string | null }) => {
+      if (!orgId) throw new Error("No organisation");
+      if (organization?.byod_active) {
+        const { upsertOrgRisk } = await import("@/lib/tenant-raid.functions");
+        await upsertOrgRisk({ data: { orgId, id, patch: { stream_id } } });
+        return;
+      }
+      const { error } = await supabase.from("risks").update({ stream_id } as never).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["risks"] });
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -253,7 +295,7 @@ function RisksPage() {
           <select
             className="st-input"
             value={form.project_id}
-            onChange={(e) => setForm((f) => ({ ...f, project_id: e.target.value }))}
+            onChange={(e) => setForm((f) => ({ ...f, project_id: e.target.value, stream_id: "" }))}
           >
             <option value="">— Project —</option>
             {projects.map((p: any) => (
@@ -262,6 +304,12 @@ function RisksPage() {
               </option>
             ))}
           </select>
+          <RaidStreamSelect
+            streams={streams}
+            projectId={form.project_id}
+            value={form.stream_id}
+            onChange={(stream_id) => setForm((f) => ({ ...f, stream_id }))}
+          />
           <input
             className="st-input md:col-span-2"
             placeholder="Risk title"
@@ -382,6 +430,18 @@ function RisksPage() {
                   return (
                     <tr key={r.id}>
                       <td className="font-medium">{p?.project_code || "—"}</td>
+                      <td className="min-w-[9rem]">
+                        <RaidStreamSelect
+                          compact
+                          streams={streams}
+                          projectId={r.project_id}
+                          value={r.stream_id || ""}
+                          disabled={setStream.isPending}
+                          onChange={(stream_id) =>
+                            setStream.mutate({ id: r.id, stream_id: stream_id || null })
+                          }
+                        />
+                      </td>
                       <td className="font-mono text-xs whitespace-nowrap">{r.raid_code || "—"}</td>
                       <td>
                         <div className="flex flex-wrap items-center gap-1.5">

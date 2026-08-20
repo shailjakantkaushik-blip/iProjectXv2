@@ -234,8 +234,11 @@ export const TABLES: TableDef[] = [
     label: "Risks",
     matchOn: ["project_code", "title"],
     orderBy: "raid_code",
+    description:
+      "Optional `stream_code` records the risk against a delivery stream. Leave blank for project-level.",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "stream_id", label: "Stream", type: "text", fk: "stream" },
       { key: "raid_code", label: "Risk ID", type: "text" },
       { key: "title", label: "Title", type: "text", required: true },
       { key: "description", label: "Description", type: "textarea" },
@@ -254,8 +257,11 @@ export const TABLES: TableDef[] = [
     label: "Issues",
     matchOn: ["project_code", "title"],
     orderBy: "raid_code",
+    description:
+      "Optional `stream_code` records the issue against a delivery stream. Leave blank for project-level.",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "stream_id", label: "Stream", type: "text", fk: "stream" },
       { key: "raid_code", label: "Issue ID", type: "text" },
       { key: "title", label: "Title", type: "text", required: true },
       { key: "description", label: "Description", type: "textarea" },
@@ -278,8 +284,11 @@ export const TABLES: TableDef[] = [
     label: "Actions",
     matchOn: ["project_code", "title"],
     orderBy: "raid_code",
+    description:
+      "Optional `stream_code` records the action against a delivery stream. Leave blank for project-level.",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "stream_id", label: "Stream", type: "text", fk: "stream" },
       { key: "raid_code", label: "Action ID", type: "text" },
       { key: "title", label: "Title", type: "text", required: true },
       { key: "description", label: "Description", type: "textarea" },
@@ -300,8 +309,12 @@ export const TABLES: TableDef[] = [
     label: "Decisions",
     matchOn: ["project_code", "title"],
     orderBy: "raid_code",
+    description:
+      "Optional `stream_code` records the decision against a delivery stream. `stage_gate_id` is the linked stage-gate approval; status is shared across the project and its streams.",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
+      { key: "stream_id", label: "Stream", type: "text", fk: "stream" },
+      { key: "stage_gate_id", label: "Stage Gate", type: "text", fk: "stage_gate" },
       { key: "raid_code", label: "Decision ID", type: "text" },
       { key: "title", label: "Title", type: "text", required: true },
       { key: "description", label: "Description", type: "textarea" },

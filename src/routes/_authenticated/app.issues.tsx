@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { ISSUES_SELECT, selectWithRaidCodeFallback } from "@/lib/query-selects";
 import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
+import { fetchOrgStreams } from "@/lib/project-streams";
+import { RaidStreamSelect } from "@/components/raid-stream-select";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -30,6 +32,11 @@ function IssuesPage() {
     queryFn: fetchProjectOptions,
     enabled: !!orgId,
   });
+  const { data: streams = [] } = useQuery({
+    queryKey: ["project_streams", orgId],
+    queryFn: () => fetchOrgStreams(orgId!),
+    enabled: !!orgId,
+  });
   const { data: issues = [] } = useQuery({
     queryKey: ["issues", orgId],
     queryFn: async () =>
@@ -48,6 +55,7 @@ function IssuesPage() {
 
   const [form, setForm] = useState({
     project_id: "",
+    stream_id: "",
     title: "",
     priority: "Medium",
     status: "Open",
@@ -63,6 +71,14 @@ function IssuesPage() {
         label: "Project",
         getValue: (i) => (projectById.get(i.project_id) as any)?.project_code || "",
       },
+      {
+        key: "stream",
+        label: "Stream",
+        getValue: (i) => {
+          const s = i.stream_id ? streams.find((x) => x.id === i.stream_id) : null;
+          return s ? `${s.name || ""} ${s.code || ""}` : "";
+        },
+      },
       { key: "raid_code", label: "Issue ID" },
       { key: "title", label: "Title" },
       { key: "priority", label: "Priority" },
@@ -71,7 +87,7 @@ function IssuesPage() {
       { key: "raised_date", label: "Raised" },
       { key: "target_date", label: "Target" },
     ],
-    [projectById],
+    [projectById, streams],
   );
 
   const table = useColumnarTable(issues, columns);
@@ -82,6 +98,7 @@ function IssuesPage() {
       const { error } = await supabase.from("issues").insert({
         org_id: orgId,
         project_id: form.project_id,
+        stream_id: form.stream_id || null,
         title: form.title,
         priority: form.priority,
         status: form.status,
@@ -95,7 +112,18 @@ function IssuesPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["issues", orgId] });
       toast.success("Issue logged");
-      setForm((f) => ({ ...f, title: "", owner: "", description: "", target_date: "" }));
+      setForm((f) => ({ ...f, title: "", owner: "", description: "", target_date: "", stream_id: "" }));
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const setStream = useMutation({
+    mutationFn: async ({ id, stream_id }: { id: string; stream_id: string | null }) => {
+      const { error } = await supabase.from("issues").update({ stream_id } as never).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["issues"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -152,7 +180,7 @@ function IssuesPage() {
           <select
             className="st-input"
             value={form.project_id}
-            onChange={(e) => setForm((f) => ({ ...f, project_id: e.target.value }))}
+            onChange={(e) => setForm((f) => ({ ...f, project_id: e.target.value, stream_id: "" }))}
           >
             <option value="">— Project —</option>
             {projects.map((p: any) => (
@@ -161,6 +189,12 @@ function IssuesPage() {
               </option>
             ))}
           </select>
+          <RaidStreamSelect
+            streams={streams}
+            projectId={form.project_id}
+            value={form.stream_id}
+            onChange={(stream_id) => setForm((f) => ({ ...f, stream_id }))}
+          />
           <select
             className="st-input"
             value={form.priority}
@@ -253,6 +287,18 @@ function IssuesPage() {
                   <tr key={i.id}>
                     <td className="font-medium">
                       {(projectById.get(i.project_id) as any)?.project_code || "—"}
+                    </td>
+                    <td className="min-w-[9rem]">
+                      <RaidStreamSelect
+                        compact
+                        streams={streams}
+                        projectId={i.project_id}
+                        value={i.stream_id || ""}
+                        disabled={setStream.isPending}
+                        onChange={(stream_id) =>
+                          setStream.mutate({ id: i.id, stream_id: stream_id || null })
+                        }
+                      />
                     </td>
                     <td className="font-mono text-xs whitespace-nowrap">{i.raid_code || "—"}</td>
                     <td>
