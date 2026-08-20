@@ -851,7 +851,7 @@ function Hero({ cfg, onEoiClick }: { cfg: LandingConfig; onEoiClick?: () => void
                 aria-hidden
               >
                 <img
-                  src="/landing/hero-room.jpg"
+                  src="/landing/ipx-pitch-poster.jpg"
                   alt=""
                   className="absolute inset-0 h-full w-full object-cover"
                 />

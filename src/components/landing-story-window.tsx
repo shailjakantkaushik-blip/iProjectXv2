@@ -4,21 +4,9 @@ import type { LandingConfig } from "@/lib/landing-config";
 
 const VIDEO_SRC = "/landing/ipx-pitch.mp4";
 const POSTER_SRC = "/landing/ipx-pitch-poster.jpg";
-const ROOM_SRC = "/landing/hero-room.jpg";
 
 /** Conversational default — the file is already loudnormed; 1.0 feels too hot. */
 const DEFAULT_VOLUME = 0.52;
-
-/**
- * Film slot fitted to the glowing wall display in public/landing/hero-room.jpg.
- * Stops above the seated team. The board is wider than 16:9; object-cover fills it.
- */
-const BOARD = {
-  left: "4.5%",
-  top: "8.6%",
-  width: "90.8%",
-  height: "47.8%",
-};
 
 export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
   const p = cfg.palette;
@@ -100,75 +88,44 @@ export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
       ref={rootRef}
       className="relative w-full overflow-hidden"
       role="region"
-      aria-label="iProjectX advertisement playing on the team whiteboard"
+      aria-label="iProjectX advertisement"
       style={{
         aspectRatio: "16 / 9",
+        background: "#0b1224",
         contain: "layout paint style",
       }}
     >
-      <img
-        src={ROOM_SRC}
-        alt=""
+      <video
+        ref={videoRef}
         className="absolute inset-0 h-full w-full object-cover"
-        draggable={false}
+        src={VIDEO_SRC}
+        poster={POSTER_SRC}
+        muted={muted}
+        playsInline
+        loop
+        preload="metadata"
+        disablePictureInPicture
+        aria-label="iProjectX product advertisement"
+        style={{ transform: "translateZ(0)" }}
       />
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{
-          boxShadow: `inset 24px 8px 40px ${p.navy}, inset -24px -32px 48px ${p.navy}`,
-        }}
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute inset-y-0 left-0 w-6 sm:w-10"
-        style={{
-          background: `linear-gradient(to right, ${p.navy} 0%, transparent 100%)`,
-        }}
-        aria-hidden
-      />
+      {muted && userPlaying && !reduced ? (
+        <button
+          type="button"
+          onClick={playWithSound}
+          className="absolute right-3 top-3 inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[10px] font-bold sm:right-4 sm:top-4 sm:px-3 sm:py-1.5 sm:text-xs"
+          style={{
+            background: "rgba(8,14,32,0.82)",
+            color: "#F8FAFC",
+            border: "1px solid rgba(248,250,252,0.28)",
+          }}
+        >
+          <Volume2 className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+          Play with sound
+        </button>
+      ) : null}
 
       <div
-        className="absolute overflow-hidden"
-        style={{
-          left: BOARD.left,
-          top: BOARD.top,
-          width: BOARD.width,
-          height: BOARD.height,
-          background: "#0b1224",
-        }}
-      >
-        <video
-          ref={videoRef}
-          className="h-full w-full object-cover"
-          src={VIDEO_SRC}
-          poster={POSTER_SRC}
-          muted={muted}
-          playsInline
-          loop
-          preload="metadata"
-          disablePictureInPicture
-          aria-label="iProjectX product advertisement"
-          style={{ transform: "translateZ(0)" }}
-        />
-        {muted && userPlaying && !reduced ? (
-          <button
-            type="button"
-            onClick={playWithSound}
-            className="absolute right-2 top-2 inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[10px] font-bold sm:right-3 sm:top-3 sm:px-3 sm:py-1.5 sm:text-xs"
-            style={{
-              background: "rgba(8,14,32,0.82)",
-              color: "#F8FAFC",
-              border: "1px solid rgba(248,250,252,0.28)",
-            }}
-          >
-            <Volume2 className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-            Play with sound
-          </button>
-        ) : null}
-      </div>
-
-      <div
-        className="absolute bottom-[6%] right-[6%] flex items-center gap-2 rounded-full px-2 py-1.5"
+        className="absolute bottom-3 right-3 flex items-center gap-2 rounded-full px-2 py-1.5 sm:bottom-4 sm:right-4"
         style={{ background: "rgba(8,14,32,0.62)", border: "1px solid rgba(248,250,252,0.12)" }}
       >
         <button
