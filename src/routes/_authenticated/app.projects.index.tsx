@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, FolderKanban, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/query-selects";
 import { sortProjectsByCodeName } from "@/lib/project-sort";
@@ -14,9 +14,15 @@ import { PORTFOLIO_CATEGORIES } from "@/lib/project-health";
 import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
 import { explainRag as explainRagMetric } from "@/lib/explain-metric";
 import { resolveCurrentStage, groupGatesByProject } from "@/lib/project-phase";
-import { normalizeGateStatus, projectLevelGates, projectMatchesGateStatusFilter, type GateStatusFilter } from "@/lib/stage-gate-approval";
+import {
+  normalizeGateStatus,
+  projectLevelGates,
+  projectMatchesGateStatusFilter,
+  type GateStatusFilter,
+} from "@/lib/stage-gate-approval";
 import { StageGateStatusFilter } from "@/components/stage-gate-status-filter";
 import { GATE_STATUS_COLORS } from "@/lib/chart-theme";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/app/projects/")({
   component: ProjectsIndex,
@@ -24,12 +30,30 @@ export const Route = createFileRoute("/_authenticated/app/projects/")({
 
 type ProjectRow = Record<string, any>;
 
+function ragTone(projects: ProjectRow[]) {
+  const rags = projects.map((p) => displayRag(p));
+  if (rags.some((r) => r === "Red")) return "Red";
+  if (rags.some((r) => r === "Amber")) return "Amber";
+  if (rags.some((r) => r === "Green")) return "Green";
+  return "Green";
+}
+
+function ragColor(rag: string | null | undefined) {
+  const v = String(rag || "").toLowerCase();
+  if (v === "green") return "#22c55e";
+  if (v === "amber") return "#f59e0b";
+  if (v === "red") return "#ef4444";
+  return "#94a3b8";
+}
+
 function ProjectsIndex() {
   const { organization, roles, loading: authLoading } = useAuth();
   const canEdit = canEditProjects(roles);
   const orgId = organization?.id;
   const [q, setQ] = useState("");
   const [gateStatusByName, setGateStatusByName] = useState<GateStatusFilter>({});
+  const [open, setOpen] = useState<Set<string>>(() => new Set());
+  const [openedOnce, setOpenedOnce] = useState(false);
 
   const {
     data: projects = [],
@@ -76,7 +100,10 @@ function ProjectsIndex() {
   });
 
   const orgPhases = useMemo(
-    () => (gateDefs as { gate_name?: string | null }[]).map((d) => String(d.gate_name || "").trim()).filter(Boolean),
+    () =>
+      (gateDefs as { gate_name?: string | null }[])
+        .map((d) => String(d.gate_name || "").trim())
+        .filter(Boolean),
     [gateDefs],
   );
   const gatesByProject = useMemo(() => groupGatesByProject(gates as any[]), [gates]);
@@ -85,7 +112,8 @@ function ProjectsIndex() {
     const needle = q.trim().toLowerCase();
     return (projects as ProjectRow[]).filter((p) => {
       if (needle) {
-        const hay = `${p.project_code || ""} ${p.name || ""} ${p.portfolio || ""} ${p.program || ""} ${p.sponsor || ""}`.toLowerCase();
+        const hay =
+          `${p.project_code || ""} ${p.name || ""} ${p.portfolio || ""} ${p.program || ""} ${p.sponsor || ""}`.toLowerCase();
         if (!hay.includes(needle)) return false;
       }
       return projectMatchesGateStatusFilter(gates as never, p.id, gateStatusByName);
@@ -111,14 +139,57 @@ function ProjectsIndex() {
     if (bySa.has("Unassigned") && !order.includes("Unassigned")) order.push("Unassigned");
     return order.map((sa) => ({
       name: sa,
+      rag: ragTone([...(bySa.get(sa)?.values() ?? [])].flat()),
+      programCount: bySa.get(sa)?.size ?? 0,
+      projectCount: [...(bySa.get(sa)?.values() ?? [])].reduce((n, list) => n + list.length, 0),
       programs: [...(bySa.get(sa)?.keys() ?? [])]
         .sort((a, b) => a.localeCompare(b))
-        .map((program) => ({
-          name: program,
-          projects: bySa.get(sa)!.get(program)!,
-        })),
+        .map((program) => {
+          const plist = bySa.get(sa)!.get(program)!;
+          return {
+            name: program,
+            rag: ragTone(plist),
+            projects: plist,
+          };
+        }),
     }));
   }, [filtered]);
+
+  const defaultOpen = useMemo(() => {
+    const keys = new Set<string>();
+    for (const sa of groups) {
+      keys.add(`sa:${sa.name}`);
+      for (const prog of sa.programs) keys.add(`prog:${sa.name}:${prog.name}`);
+    }
+    return keys;
+  }, [groups]);
+
+  const openKeys = openedOnce ? open : defaultOpen;
+
+  const toggle = (key: string) => {
+    setOpenedOnce(true);
+    setOpen((prev) => {
+      const base = prev.size ? new Set(prev) : new Set(defaultOpen);
+      if (base.has(key)) base.delete(key);
+      else base.add(key);
+      return base;
+    });
+  };
+
+  const expandAll = () => {
+    const keys = new Set<string>();
+    for (const sa of groups) {
+      keys.add(`sa:${sa.name}`);
+      for (const prog of sa.programs) keys.add(`prog:${sa.name}:${prog.name}`);
+    }
+    setOpenedOnce(true);
+    setOpen(keys);
+  };
+
+  const collapseAll = () => {
+    setOpenedOnce(true);
+    setOpen(new Set());
+  };
 
   if (authLoading || (isLoading && !projects.length)) {
     return <PageLoading label="Loading projects…" fullScreen={false} />;
@@ -129,16 +200,24 @@ function ProjectsIndex() {
       <PageHeading
         icon="📁"
         title="Projects"
-        subtitle="All projects grouped by Strategic Alignment and program. Open a row for the project workspace."
+        subtitle="Fold Strategic Alignment into programs, then into projects. Open a card for the workspace."
         actions={
-          canEdit ? (
-            <Button asChild size="sm">
-              <Link to="/app/projects/new">
-                <Plus className="mr-2 h-4 w-4" />
-                New Project
-              </Link>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={expandAll}>
+              Expand all
             </Button>
-          ) : null
+            <Button type="button" variant="outline" size="sm" onClick={collapseAll}>
+              Collapse all
+            </Button>
+            {canEdit ? (
+              <Button asChild size="sm">
+                <Link to="/app/projects/new">
+                  <Plus className="mr-2 h-4 w-4" />
+                  New Project
+                </Link>
+              </Button>
+            ) : null}
+          </div>
         }
       />
 
@@ -153,7 +232,7 @@ function ProjectsIndex() {
         </SectionFrame>
       ) : null}
 
-      <div className="mb-3 flex flex-wrap items-center gap-3">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <input
           className="st-input max-w-md"
           placeholder="Search code, name, alignment, program…"
@@ -170,94 +249,171 @@ function ProjectsIndex() {
       {!filtered.length && !isError ? (
         <SectionFrame>
           <p className="text-sm text-muted-foreground">
-            {projects.length ? "No projects match the search or stage gate filter." : "No projects in this organisation yet."}
+            {projects.length
+              ? "No projects match the search or stage gate filter."
+              : "No projects in this organisation yet."}
           </p>
         </SectionFrame>
       ) : null}
 
-      <div className="space-y-4">
-        {groups.map((sa) => (
-          <SectionFrame key={sa.name} exportName={`sa-${sa.name}`} exportTitle={sa.name}>
-            <h2 className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
-              Strategic Alignment
-            </h2>
-            <h3 className="mt-0.5 text-lg font-semibold tracking-tight">{sa.name}</h3>
-            <div className="mt-3 space-y-4">
-              {sa.programs.map((prog) => (
-                <div key={`${sa.name}:${prog.name}`}>
-                  <div className="mb-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                    Program · {prog.name}
+      <div className="space-y-5">
+        {groups.map((sa) => {
+          const saKey = `sa:${sa.name}`;
+          const saOpen = openKeys.has(saKey);
+          return (
+            <section
+              key={saKey}
+              className="overflow-hidden rounded-2xl border bg-card shadow-sm"
+            >
+              <div className="h-1.5 w-full" style={{ background: ragColor(sa.rag) }} />
+              <button
+                type="button"
+                className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-muted/40 sm:px-5"
+                onClick={() => toggle(saKey)}
+                aria-expanded={saOpen}
+              >
+                <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border bg-background">
+                  {saOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                      Strategic Alignment
+                    </span>
+                    <span
+                      className="h-2.5 w-2.5 rounded-full"
+                      style={{ background: ragColor(sa.rag) }}
+                    />
                   </div>
-                  <div className="overflow-x-auto">
-                    <table className="st-table">
-                      <thead>
-                        <tr>
-                          <th>Code</th>
-                          <th>Project</th>
-                          <th>Status</th>
-                          <th>Health</th>
-                          <th>Stage gate approval</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {prog.projects.map((p) => {
-                          const gs = gatesByProject.get(p.id) || [];
-                          const top = projectLevelGates(gs, p.id, orgPhases);
-                          const current =
-                            resolveCurrentStage(p, gs, orgPhases) || p.current_phase || "—";
-                          const currentRow = top.find(
-                            (g) => String(g.gate_name || "").trim() === String(current).trim(),
-                          );
-                          const gateStatus = normalizeGateStatus(currentRow?.status);
-                          return (
-                            <tr key={p.id}>
-                              <td className="font-mono text-xs">{p.project_code || "—"}</td>
-                              <td>
-                                <Link
-                                  to="/app/projects/$id"
-                                  params={{ id: p.id }}
-                                  className="font-medium text-primary hover:underline"
-                                >
-                                  {p.name}
-                                </Link>
-                              </td>
-                              <td className="text-xs">{p.status || "—"}</td>
-                              <td>
-                                <RagChip
-                                  rag={displayRag(p)}
-                                  manual={isRagOverridden(p)}
-                                  explain={explainRagMetric({
-                                    rag: displayRag(p),
-                                    source: "register",
-                                    overridden: isRagOverridden(p),
-                                  })}
-                                />
-                              </td>
-                              <td>
-                                <span className="text-xs font-medium">{current}</span>
-                                {currentRow ? (
-                                  <span
-                                    className="ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
-                                    style={{
-                                      background: GATE_STATUS_COLORS[gateStatus],
-                                      color: "#0f172a",
-                                    }}
+                  <h2 className="mt-0.5 text-lg font-semibold tracking-tight">{sa.name}</h2>
+                  <p className="text-[12px] text-muted-foreground">
+                    {sa.programCount} program{sa.programCount === 1 ? "" : "s"} · {sa.projectCount}{" "}
+                    project{sa.projectCount === 1 ? "" : "s"}
+                  </p>
+                </div>
+              </button>
+
+              {saOpen ? (
+                <div className="border-t px-3 pb-4 pt-3 sm:px-5">
+                  <div className="space-y-3">
+                    {sa.programs.map((prog) => {
+                      const progKey = `prog:${sa.name}:${prog.name}`;
+                      const progOpen = openKeys.has(progKey);
+                      return (
+                        <div
+                          key={progKey}
+                          className="relative overflow-hidden rounded-xl border bg-background/80"
+                        >
+                          <div
+                            className="absolute inset-y-0 left-0 w-1"
+                            style={{ background: ragColor(prog.rag) }}
+                          />
+                          <button
+                            type="button"
+                            className="flex w-full items-start gap-3 py-3 pl-4 pr-3 text-left hover:bg-muted/30"
+                            onClick={() => toggle(progKey)}
+                            aria-expanded={progOpen}
+                          >
+                            <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border bg-background">
+                              {progOpen ? (
+                                <ChevronDown className="h-3.5 w-3.5" />
+                              ) : (
+                                <ChevronRight className="h-3.5 w-3.5" />
+                              )}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="rounded-full bg-muted px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                                  Program
+                                </span>
+                                <span className="text-[12px] text-muted-foreground">
+                                  {prog.projects.length} project
+                                  {prog.projects.length === 1 ? "" : "s"}
+                                </span>
+                              </div>
+                              <h3 className="mt-0.5 text-sm font-semibold tracking-tight">{prog.name}</h3>
+                            </div>
+                          </button>
+                          {progOpen ? (
+                            <div className="grid gap-3 border-t px-3 py-3 sm:grid-cols-2 xl:grid-cols-3">
+                              {prog.projects.map((p) => {
+                                const gs = gatesByProject.get(p.id) || [];
+                                const top = projectLevelGates(gs, p.id, orgPhases);
+                                const current =
+                                  resolveCurrentStage(p, gs, orgPhases) || p.current_phase || "—";
+                                const currentRow = top.find(
+                                  (g) => String(g.gate_name || "").trim() === String(current).trim(),
+                                );
+                                const gateStatus = normalizeGateStatus(currentRow?.status);
+                                const rag = displayRag(p);
+                                return (
+                                  <Link
+                                    key={p.id}
+                                    to="/app/projects/$id"
+                                    params={{ id: p.id }}
+                                    className={cn(
+                                      "group relative block overflow-hidden rounded-xl border bg-card p-3 shadow-sm transition",
+                                      "hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md",
+                                    )}
                                   >
-                                    {gateStatus}
-                                  </span>
-                                ) : null}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                                    <div
+                                      className="absolute inset-x-0 top-0 h-1"
+                                      style={{ background: ragColor(rag) }}
+                                    />
+                                    <div className="flex items-start justify-between gap-2 pt-1">
+                                      <div className="min-w-0">
+                                        <div className="font-mono text-[10px] text-muted-foreground">
+                                          {p.project_code || "—"}
+                                        </div>
+                                        <div className="mt-0.5 truncate text-sm font-semibold tracking-tight group-hover:text-primary">
+                                          {p.name}
+                                        </div>
+                                      </div>
+                                      <FolderKanban className="h-4 w-4 shrink-0 text-muted-foreground/70" />
+                                    </div>
+                                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                      <span className="rounded-md bg-muted/80 px-1.5 py-0.5 text-[10px] font-medium">
+                                        {p.status || "—"}
+                                      </span>
+                                      <RagChip
+                                        rag={rag}
+                                        manual={isRagOverridden(p)}
+                                        explain={explainRagMetric({
+                                          rag,
+                                          source: "register",
+                                          overridden: isRagOverridden(p),
+                                        })}
+                                      />
+                                    </div>
+                                    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+                                      <span className="text-muted-foreground">Stage gate</span>
+                                      <span className="font-medium">{current}</span>
+                                      {currentRow ? (
+                                        <span
+                                          className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
+                                          style={{
+                                            background: GATE_STATUS_COLORS[gateStatus],
+                                            color: "#0f172a",
+                                          }}
+                                        >
+                                          {gateStatus}
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  </Link>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-              ))}
-            </div>
-          </SectionFrame>
-        ))}
+              ) : null}
+            </section>
+          );
+        })}
       </div>
     </PageExport>
   );
