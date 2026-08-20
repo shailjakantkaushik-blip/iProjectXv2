@@ -53,28 +53,29 @@ export function EditableCell({
       if (type === "text" && draft === "") payload = null;
       if (type === "select" && draft === "") payload = null;
 
-      // Governance: block Approve when required checklist items are open.
-      if (
-        table === "stage_gates" &&
-        field === "status" &&
-        /approved/i.test(String(payload || "")) &&
-        organization?.id
-      ) {
+      // Governance: block Approve when required checklist items are open,
+      // then copy status onto every row of the same project + gate name.
+      if (table === "stage_gates" && field === "status") {
         const { data: gate } = await (supabase as any)
           .from("stage_gates")
-          .select("id,gate_name,org_id")
+          .select("id,gate_name,org_id,project_id")
           .eq("id", rowId)
           .maybeSingle();
-        const reason = await fetchGateChecklistBlockReason(supabase as any, {
-          orgId: gate?.org_id || organization.id,
-          stageGateId: rowId,
-          gateName: String(gate?.gate_name || ""),
+        if (/approved/i.test(String(payload || "")) && organization?.id) {
+          const reason = await fetchGateChecklistBlockReason(supabase as any, {
+            orgId: gate?.org_id || organization.id,
+            stageGateId: rowId,
+            gateName: String(gate?.gate_name || ""),
+          });
+          if (reason) throw new Error(reason);
+        }
+        const { setStageGateStatus } = await import("@/lib/stage-gate-approval");
+        await setStageGateStatus({
+          gateId: rowId,
+          projectId: String(gate?.project_id || ""),
+          status: String(payload || "Pending"),
         });
-        if (reason) throw new Error(reason);
-      }
-
-      // Projects: keep schedule start/end aligned when planned/actual dates change.
-      if (
+      } else if (
         table === "projects" &&
         [
           "planned_start_date",
@@ -135,7 +136,7 @@ export function EditableCell({
       }
 
       // Stage gates → mirror current phase onto the project for app-wide filters.
-      if (table === "stage_gates" && (field === "status" || field === "gate_name")) {
+      if (table === "stage_gates" && field === "gate_name") {
         const { data: gate } = await (supabase as any)
           .from("stage_gates")
           .select("project_id")
@@ -150,6 +151,10 @@ export function EditableCell({
       setEditing(false);
       // Scoped invalidation only — never wipe the whole query cache.
       const keys = new Set<string>([table, ...(invalidateKeys ?? [])]);
+      if (table === "stage_gates") {
+        keys.add("projects");
+        keys.add("project");
+      }
       for (const k of keys) {
         void qc.invalidateQueries({ queryKey: [k], refetchType: "active" });
       }

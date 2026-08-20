@@ -17,12 +17,9 @@ import { GATE_STATUS_COLORS as STATUS_COLORS } from "@/lib/chart-theme";
 import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  persistCurrentPhaseFromGates,
-  resolveCurrentAndNextGate,
-  resolveCurrentStage,
-} from "@/lib/project-phase";
+import { resolveCurrentAndNextGate, resolveCurrentStage } from "@/lib/project-phase";
 import { fetchOrgStreams, formatProjectStreamRef, formatStreamLabel } from "@/lib/project-streams";
+import { setStageGateStatus } from "@/lib/stage-gate-approval";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
@@ -214,20 +211,12 @@ function StageGatesPage() {
         const reason = approvalBlockedReason(summaryForGate(g));
         if (reason) throw new Error(reason);
       }
-      const { error } = await supabase
-        .from("stage_gates")
-        .update({
-          status,
-          ...(/approved/i.test(status)
-            ? { actual_date: new Date().toISOString().slice(0, 10) }
-            : {}),
-        } as never)
-        .eq("id", id);
-      if (error) throw error;
-      if (projectId) await persistCurrentPhaseFromGates(supabase as any, projectId);
+      await setStageGateStatus({ gateId: id, projectId, status });
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["stage_gates"] });
+      void qc.invalidateQueries({ queryKey: ["projects"] });
+      void qc.invalidateQueries({ queryKey: ["project"] });
       toast.success("Gate status updated");
     },
     onError: (e: Error) => toast.error(e.message),

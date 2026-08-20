@@ -31,6 +31,7 @@ export type Database = {
           project_id: string
           raid_code: string | null
           status: string | null
+          stream_id: string | null
           title: string
           updated_at: string
         }
@@ -50,6 +51,7 @@ export type Database = {
           project_id: string
           raid_code?: string | null
           status?: string | null
+          stream_id?: string | null
           title: string
           updated_at?: string
         }
@@ -69,6 +71,7 @@ export type Database = {
           project_id?: string
           raid_code?: string | null
           status?: string | null
+          stream_id?: string | null
           title?: string
           updated_at?: string
         }
@@ -85,6 +88,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "actions_stream_id_fkey"
+            columns: ["stream_id"]
+            isOneToOne: false
+            referencedRelation: "project_streams"
             referencedColumns: ["id"]
           },
         ]
@@ -393,6 +403,7 @@ export type Database = {
           sponsor: string | null
           stage_gate_id: string | null
           status: string | null
+          stream_id: string | null
           title: string
           updated_at: string
         }
@@ -425,6 +436,7 @@ export type Database = {
           sponsor?: string | null
           stage_gate_id?: string | null
           status?: string | null
+          stream_id?: string | null
           title: string
           updated_at?: string
         }
@@ -457,6 +469,7 @@ export type Database = {
           sponsor?: string | null
           stage_gate_id?: string | null
           status?: string | null
+          stream_id?: string | null
           title?: string
           updated_at?: string
         }
@@ -480,6 +493,13 @@ export type Database = {
             columns: ["stage_gate_id"]
             isOneToOne: false
             referencedRelation: "stage_gates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "decisions_stream_id_fkey"
+            columns: ["stream_id"]
+            isOneToOne: false
+            referencedRelation: "project_streams"
             referencedColumns: ["id"]
           },
         ]
@@ -1211,6 +1231,7 @@ export type Database = {
           resolution: string | null
           resolved_date: string | null
           status: string | null
+          stream_id: string | null
           target_date: string | null
           title: string
           updated_at: string
@@ -1231,6 +1252,7 @@ export type Database = {
           resolution?: string | null
           resolved_date?: string | null
           status?: string | null
+          stream_id?: string | null
           target_date?: string | null
           title: string
           updated_at?: string
@@ -1251,6 +1273,7 @@ export type Database = {
           resolution?: string | null
           resolved_date?: string | null
           status?: string | null
+          stream_id?: string | null
           target_date?: string | null
           title?: string
           updated_at?: string
@@ -1268,6 +1291,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "issues_stream_id_fkey"
+            columns: ["stream_id"]
+            isOneToOne: false
+            referencedRelation: "project_streams"
             referencedColumns: ["id"]
           },
         ]
@@ -2139,6 +2169,7 @@ export type Database = {
           raid_code: string | null
           severity: number | null
           status: string | null
+          stream_id: string | null
           title: string
           updated_at: string
         }
@@ -2161,6 +2192,7 @@ export type Database = {
           raid_code?: string | null
           severity?: number | null
           status?: string | null
+          stream_id?: string | null
           title: string
           updated_at?: string
         }
@@ -2183,6 +2215,7 @@ export type Database = {
           raid_code?: string | null
           severity?: number | null
           status?: string | null
+          stream_id?: string | null
           title?: string
           updated_at?: string
         }
@@ -2199,6 +2232,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "risks_stream_id_fkey"
+            columns: ["stream_id"]
+            isOneToOne: false
+            referencedRelation: "project_streams"
             referencedColumns: ["id"]
           },
         ]

@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { ACTIONS_SELECT, selectWithRaidCodeFallback } from "@/lib/query-selects";
 import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
+import { fetchOrgStreams } from "@/lib/project-streams";
+import { RaidStreamSelect } from "@/components/raid-stream-select";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -37,6 +39,11 @@ function ActionsPage() {
     queryFn: fetchProjectOptions,
     enabled: !!orgId,
   });
+  const { data: streams = [] } = useQuery({
+    queryKey: ["project_streams", orgId],
+    queryFn: () => fetchOrgStreams(orgId!),
+    enabled: !!orgId,
+  });
   const { data: actions = [] } = useQuery({
     queryKey: ["actions", orgId],
     queryFn: async () =>
@@ -54,6 +61,7 @@ function ActionsPage() {
 
   const [form, setForm] = useState({
     project_id: "",
+    stream_id: "",
     title: "",
     owner: "",
     priority: "Medium",
@@ -70,6 +78,14 @@ function ActionsPage() {
         label: "Project",
         getValue: (a) => (projectById.get(a.project_id) as any)?.project_code || "",
       },
+      {
+        key: "stream",
+        label: "Stream",
+        getValue: (a) => {
+          const s = a.stream_id ? streams.find((x) => x.id === a.stream_id) : null;
+          return s ? `${s.name || ""} ${s.code || ""}` : "";
+        },
+      },
       { key: "raid_code", label: "Action ID" },
       { key: "title", label: "Title" },
       { key: "owner", label: "Owner" },
@@ -79,7 +95,7 @@ function ActionsPage() {
       { key: "description", label: "Description" },
       { key: "notes", label: "Notes" },
     ],
-    [projectById],
+    [projectById, streams],
   );
 
   const table = useColumnarTable(actions, columns);
@@ -90,6 +106,7 @@ function ActionsPage() {
       const { error } = await supabase.from("actions").insert({
         org_id: orgId,
         project_id: form.project_id,
+        stream_id: form.stream_id || null,
         title: form.title,
         owner: form.owner || null,
         priority: form.priority,
@@ -103,7 +120,26 @@ function ActionsPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["actions", orgId] });
       toast.success("Action added");
-      setForm((f) => ({ ...f, title: "", owner: "", description: "", notes: "", due_date: "" }));
+      setForm((f) => ({
+        ...f,
+        title: "",
+        owner: "",
+        description: "",
+        notes: "",
+        due_date: "",
+        stream_id: "",
+      }));
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const setStream = useMutation({
+    mutationFn: async ({ id, stream_id }: { id: string; stream_id: string | null }) => {
+      const { error } = await supabase.from("actions").update({ stream_id } as never).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["actions"] });
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -226,7 +262,7 @@ function ActionsPage() {
           <select
             className="st-input"
             value={form.project_id}
-            onChange={(e) => setForm((f) => ({ ...f, project_id: e.target.value }))}
+            onChange={(e) => setForm((f) => ({ ...f, project_id: e.target.value, stream_id: "" }))}
           >
             <option value="">— Project —</option>
             {projects.map((p: any) => (
@@ -235,6 +271,12 @@ function ActionsPage() {
               </option>
             ))}
           </select>
+          <RaidStreamSelect
+            streams={streams}
+            projectId={form.project_id}
+            value={form.stream_id}
+            onChange={(stream_id) => setForm((f) => ({ ...f, stream_id }))}
+          />
           <input
             className="st-input md:col-span-2"
             placeholder="Action title"
@@ -333,6 +375,18 @@ function ActionsPage() {
                   return (
                     <tr key={a.id}>
                       <td className="font-medium">{p?.project_code || "—"}</td>
+                      <td className="min-w-[9rem]">
+                        <RaidStreamSelect
+                          compact
+                          streams={streams}
+                          projectId={a.project_id}
+                          value={a.stream_id || ""}
+                          disabled={setStream.isPending}
+                          onChange={(stream_id) =>
+                            setStream.mutate({ id: a.id, stream_id: stream_id || null })
+                          }
+                        />
+                      </td>
                       <td className="font-mono text-xs whitespace-nowrap">{a.raid_code || "—"}</td>
                       <td>
                         <div className="flex flex-wrap items-center gap-1.5">

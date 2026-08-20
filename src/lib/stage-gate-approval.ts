@@ -40,6 +40,16 @@ export function normalizeGateStatus(raw?: string | null): GateApprovalStatus {
     : "Pending";
 }
 
+function uniqueGatesByName<T extends StageGateApprovalLike>(rows: T[], orgPhases: string[] = []) {
+  const byName = new Map<string, T>();
+  for (const g of rows) {
+    const n = String(g.gate_name || "").trim();
+    if (!n || byName.has(n)) continue;
+    byName.set(n, g);
+  }
+  return sortGatesByOrgOrder([...byName.values()], orgPhases) as T[];
+}
+
 export function projectLevelGates<T extends StageGateApprovalLike>(
   gates: T[],
   projectId: string,
@@ -48,13 +58,43 @@ export function projectLevelGates<T extends StageGateApprovalLike>(
   const all = gates.filter((g) => g.project_id === projectId);
   const top = all.filter((g) => !g.stream_id);
   const source = top.length ? top : all;
-  const byName = new Map<string, T>();
-  for (const g of source) {
-    const n = String(g.gate_name || "").trim();
-    if (!n || byName.has(n)) continue;
-    byName.set(n, g);
+  return uniqueGatesByName(source, orgPhases);
+}
+
+/**
+ * Gates offered when recording RAID against a project (and optional stream).
+ * Stream-owned rows win when that stream has its own template; otherwise
+ * fall back to project-level (null stream_id) rows.
+ */
+export function gatesForRaidScope<T extends StageGateApprovalLike>(
+  gates: T[],
+  projectId: string,
+  streamId?: string | null,
+  orgPhases: string[] = [],
+): T[] {
+  const all = gates.filter((g) => g.project_id === projectId);
+  if (streamId) {
+    const streamRows = all.filter((g) => g.stream_id === streamId);
+    if (streamRows.length) return uniqueGatesByName(streamRows, orgPhases);
   }
-  return sortGatesByOrgOrder([...byName.values()], orgPhases) as T[];
+  return projectLevelGates(all, projectId, orgPhases);
+}
+
+/** Keep the same gate name when the RAID stream (or project) scope changes. */
+export function remapGateIdForScope(
+  gates: StageGateApprovalLike[],
+  projectId: string,
+  streamId: string | null | undefined,
+  currentGateId: string | null | undefined,
+  orgPhases: string[] = [],
+): string {
+  const scoped = gatesForRaidScope(gates, projectId, streamId, orgPhases);
+  if (currentGateId && scoped.some((g) => g.id === currentGateId)) return currentGateId;
+  if (!currentGateId) return "";
+  const current = gates.find((g) => g.id === currentGateId);
+  const name = String(current?.gate_name || "").trim();
+  if (!name) return "";
+  return scoped.find((g) => String(g.gate_name || "").trim() === name)?.id || "";
 }
 
 export function projectHasGateStatus(
@@ -146,19 +186,66 @@ export async function ensureProjectLevelGates(opts: {
   return (refreshed ?? []) as StageGateApprovalLike[];
 }
 
+/**
+ * Set approval status for a gate and keep every row of the same
+ * project + gate name in lockstep (project-level and each stream).
+ * That way Stage Gates, Overview, and Decisions never diverge.
+ */
 export async function setStageGateStatus(opts: {
   gateId: string;
   projectId: string;
   status: string;
 }) {
   const status = normalizeGateStatus(opts.status);
+  const patch = {
+    status,
+    ...(/approved/i.test(status) ? { actual_date: new Date().toISOString().slice(0, 10) } : {}),
+  };
+
+  const { data: source, error: srcErr } = await supabase
+    .from("stage_gates")
+    .select("id,org_id,project_id,gate_name")
+    .eq("id", opts.gateId)
+    .maybeSingle();
+  if (srcErr) throw srcErr;
+
+  const projectId = opts.projectId || (source?.project_id as string | undefined);
+  const gateName = String(source?.gate_name || "").trim();
+
+  if (!projectId || !gateName) {
+    const { error } = await supabase.from("stage_gates").update(patch as never).eq("id", opts.gateId);
+    if (error) throw error;
+    if (projectId) await persistCurrentPhaseFromGates(supabase as never, projectId);
+    return;
+  }
+
   const { error } = await supabase
     .from("stage_gates")
-    .update({
-      status,
-      ...(/approved/i.test(status) ? { actual_date: new Date().toISOString().slice(0, 10) } : {}),
-    } as never)
-    .eq("id", opts.gateId);
+    .update(patch as never)
+    .eq("project_id", projectId)
+    .eq("gate_name", gateName);
   if (error) throw error;
-  await persistCurrentPhaseFromGates(supabase as never, opts.projectId);
+
+  // Overview / Decisions prefer null-stream rows. Create one if the register
+  // only had stream-owned gates (common after Core stream enable).
+  const { data: top, error: topErr } = await supabase
+    .from("stage_gates")
+    .select("id")
+    .eq("project_id", projectId)
+    .eq("gate_name", gateName)
+    .is("stream_id", null)
+    .limit(1);
+  if (topErr) throw topErr;
+  if (!top?.length && source?.org_id) {
+    const { error: insErr } = await supabase.from("stage_gates").insert({
+      org_id: source.org_id,
+      project_id: projectId,
+      stream_id: null,
+      gate_name: gateName,
+      ...patch,
+    } as never);
+    if (insErr) throw insErr;
+  }
+
+  await persistCurrentPhaseFromGates(supabase as never, projectId);
 }

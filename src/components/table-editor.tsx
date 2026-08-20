@@ -450,10 +450,13 @@ function AddRowForm({ def, lookups, orgId, onDone }: { def: TableDef; lookups: L
         else payload[f.key] = v;
       }
       // Autopopulate default Core stream when stream_id blank but project has streams.
+      // RAID stays optional: blank means project-level, not Core.
+      const raidOptionalStream = new Set(["risks", "actions", "issues", "decisions"]);
       if (
         def.fields.some((f) => f.key === "stream_id") &&
         !payload.stream_id &&
-        payload.project_id
+        payload.project_id &&
+        !raidOptionalStream.has(def.key)
       ) {
         const defStream = lookups.defaultStreamByProject.get(String(payload.project_id));
         if (defStream) payload.stream_id = defStream;

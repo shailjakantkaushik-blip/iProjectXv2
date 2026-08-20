@@ -81,6 +81,7 @@ export function ProjectStageGateApproval({
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["stage_gates"] });
       void qc.invalidateQueries({ queryKey: ["project", projectId] });
+      void qc.invalidateQueries({ queryKey: ["projects"] });
       toast.success("Stage gate approval updated");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -101,8 +102,9 @@ export function ProjectStageGateApproval({
     <SectionFrame exportName="stage-gate-approval" exportTitle="Stage gate approval">
       <SectionTitle>Stage gate approval</SectionTitle>
       <p className="mt-1 text-sm text-muted-foreground">
-        Project-level approval for each gate on this delivery method. Changing status updates the
-        live stage-gate register and current phase.
+        Project-level approval for each gate on this delivery method. Changing status updates
+        every matching gate on this project (including streams) so the Stage Gates page stays
+        in lockstep.
       </p>
       <div className="mt-3 overflow-x-auto">
         <table className="st-table">

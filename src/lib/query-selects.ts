@@ -92,6 +92,7 @@ export const RISKS_SELECT = [
   "id",
   "raid_code",
   "project_id",
+  "stream_id",
   "title",
   "description",
   "category",
@@ -116,6 +117,7 @@ export const ISSUES_SELECT = [
   "id",
   "raid_code",
   "project_id",
+  "stream_id",
   "title",
   "description",
   "priority",
@@ -134,6 +136,7 @@ export const ACTIONS_SELECT = [
   "id",
   "raid_code",
   "project_id",
+  "stream_id",
   "title",
   "description",
   "owner",
@@ -150,6 +153,8 @@ export const DECISIONS_SELECT = [
   "id",
   "raid_code",
   "project_id",
+  "stream_id",
+  "stage_gate_id",
   "title",
   "description",
   "program",
@@ -257,8 +262,18 @@ export async function selectWithRaidCodeFallback(
 ) {
   const first = await run(select);
   if (!first.error) return (first.data as unknown[]) ?? [];
-  if (!isMissingRaidCodeColumn(first.error)) throw first.error;
-  const second = await run(selectWithoutRaidCode(select));
+  const msg = String(first.error.message || "");
+  let next = select;
+  if (/raid_code/i.test(msg)) next = selectWithoutRaidCode(next);
+  if (/stream_id/i.test(msg)) {
+    next = next
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s && s !== "stream_id")
+      .join(",");
+  }
+  if (next === select) throw first.error;
+  const second = await run(next);
   if (second.error) throw second.error;
   return (second.data as unknown[]) ?? [];
 }
