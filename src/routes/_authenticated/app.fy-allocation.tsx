@@ -115,6 +115,13 @@ function FYAllocationPage() {
     () => (gateDefs as { gate_name?: string }[]).map((g) => g.gate_name).filter(Boolean) as string[],
     [gateDefs],
   );
+  const { data: gates = [] } = useQuery({
+    queryKey: ["stage_gates", organization?.id],
+    queryFn: async () =>
+      (await supabase.from("stage_gates").select("id,project_id,stream_id,gate_name,status")).data ??
+      [],
+    enabled: !!organization,
+  });
 
   return (
     <PageExport name="FY_Allocation" title="FY Budget & Forecast Allocation">
@@ -152,9 +159,16 @@ function FYAllocationPage() {
         />
       )}
       {tab === "portfolio" && (
-        <PortfolioViewTab projects={projects} alloc={alloc} phaseOptions={orgPhases} />
+        <PortfolioViewTab
+          projects={projects}
+          alloc={alloc}
+          phaseOptions={orgPhases}
+          gates={gates}
+        />
       )}
-      {tab === "roadmap" && <RoadmapTab projects={projects} alloc={alloc} phaseOptions={orgPhases} />}
+      {tab === "roadmap" && (
+        <RoadmapTab projects={projects} alloc={alloc} phaseOptions={orgPhases} gates={gates} />
+      )}
     </PageExport>
   );
 }
@@ -630,13 +644,18 @@ function PortfolioViewTab({
   projects,
   alloc,
   phaseOptions,
+  gates,
 }: {
   projects: any[];
   alloc: any[];
   phaseOptions: string[];
+  gates: any[];
 }) {
   const [filters, setFilters] = useState<PortfolioFilterState>(emptyFilters);
-  const filtered = useMemo(() => applyFilters(projects, filters), [projects, filters]);
+  const filtered = useMemo(
+    () => applyFilters(projects, filters, { gates }),
+    [projects, filters, gates],
+  );
   const projectMap = useMemo(() => new Map(filtered.map((p: any) => [p.id, p])), [filtered]);
   const ids = useMemo(() => new Set(filtered.map((p: any) => p.id)), [filtered]);
   const rowsF = useMemo(() => alloc.filter((a: any) => ids.has(a.project_id)), [alloc, ids]);
@@ -1041,13 +1060,18 @@ function RoadmapTab({
   projects,
   alloc,
   phaseOptions,
+  gates,
 }: {
   projects: any[];
   alloc: any[];
   phaseOptions: string[];
+  gates: any[];
 }) {
   const [filters, setFilters] = useState<PortfolioFilterState>(emptyFilters);
-  const filtered = useMemo(() => applyFilters(projects, filters), [projects, filters]);
+  const filtered = useMemo(
+    () => applyFilters(projects, filters, { gates }),
+    [projects, filters, gates],
+  );
   const projectMap = useMemo(() => new Map(filtered.map((p: any) => [p.id, p])), [filtered]);
   const ids = useMemo(() => new Set(filtered.map((p: any) => p.id)), [filtered]);
   const rowsF = useMemo(() => alloc.filter((a: any) => ids.has(a.project_id)), [alloc, ids]);

@@ -276,8 +276,8 @@ function ExecutiveDashboard() {
   const fyStartMonth = organization?.fy_start_month || 4;
 
   const filtered = useMemo(
-    () => applyExecutivePortfolioFilters(projects, filters, fyStartMonth),
-    [projects, filters, fyStartMonth],
+    () => applyExecutivePortfolioFilters(projects, filters, fyStartMonth, { gates: gatesQ.data ?? [] }),
+    [projects, filters, fyStartMonth, gatesQ.data],
   );
 
   const filteredIds = useMemo(

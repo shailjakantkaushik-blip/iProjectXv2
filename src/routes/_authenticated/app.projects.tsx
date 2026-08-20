@@ -1,9 +1,7 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 
 /**
- * Layout for /app/projects/* so /new and /$id can render via Outlet.
- * /app/projects redirects to the last (or first) project workspace.
- * The portfolio register lives on Programs.
+ * Layout for /app/projects/* so the index list, /new, and /$id render via Outlet.
  */
 export const Route = createFileRoute("/_authenticated/app/projects")({
   component: ProjectsLayout,

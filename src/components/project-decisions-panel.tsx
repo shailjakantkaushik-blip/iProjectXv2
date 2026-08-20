@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Check, X } from "lucide-react";
@@ -15,6 +15,16 @@ import {
   type DecisionOutcome,
   type OrgMember,
 } from "@/lib/decision-approval";
+import {
+  deliveryMethodsQueryKey,
+  fetchDeliveryMethods,
+} from "@/lib/delivery-methods";
+import {
+  ensureProjectLevelGates,
+  projectLevelGates,
+  setStageGateStatus,
+} from "@/lib/stage-gate-approval";
+import { StageGateApprovalSelect } from "@/components/stage-gate-approval-select";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
@@ -25,6 +35,8 @@ type Props = {
   projectName?: string | null;
   program?: string | null;
   sponsor?: string | null;
+  deliveryMethodId?: string | null;
+  deliveryMethodName?: string | null;
   canEdit?: boolean;
 };
 
@@ -34,6 +46,8 @@ export function ProjectDecisionsPanel({
   projectName,
   program,
   sponsor,
+  deliveryMethodId,
+  deliveryMethodName,
   canEdit = true,
 }: Props) {
   const { organization, session, profile } = useAuth();
@@ -69,6 +83,51 @@ export function ProjectDecisionsPanel({
     enabled: !!orgId && !!projectId,
   });
 
+  const { data: methods = [] } = useQuery({
+    queryKey: deliveryMethodsQueryKey(orgId),
+    queryFn: () => fetchDeliveryMethods(orgId!),
+    enabled: !!orgId,
+  });
+
+  const { data: gates = [] } = useQuery({
+    queryKey: ["stage_gates", orgId, projectId, "decisions"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("stage_gates")
+        .select("id,project_id,stream_id,gate_name,status")
+        .eq("project_id", projectId);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!orgId && !!projectId,
+  });
+
+  useEffect(() => {
+    if (!canEdit || !orgId || !projectId || !methods.length) return;
+    void ensureProjectLevelGates({
+      orgId,
+      projectId,
+      deliveryMethodId,
+      deliveryMethodName,
+      methods,
+    })
+      .then(() => {
+        void qc.invalidateQueries({ queryKey: ["stage_gates"] });
+      })
+      .catch(() => {
+        /* insert may be denied for view-only roles */
+      });
+  }, [canEdit, orgId, projectId, deliveryMethodId, deliveryMethodName, methods, qc]);
+
+  const methodGates = useMemo(
+    () => projectLevelGates(gates as never, projectId),
+    [gates, projectId],
+  );
+  const gateById = useMemo(
+    () => new Map((gates as { id: string }[]).map((g) => [g.id, g])),
+    [gates],
+  );
+
   const memberById = useMemo(
     () => new Map(members.map((m) => [m.id, m])),
     [members],
@@ -83,6 +142,7 @@ export function ProjectDecisionsPanel({
     approver_user_id: "",
     outcome: "In Review" as DecisionOutcome,
     decision_date: new Date().toISOString().slice(0, 10),
+    stage_gate_id: "",
   });
 
   const invalidate = () => {
@@ -112,13 +172,14 @@ export function ProjectDecisionsPanel({
         title: form.title.trim(),
         rationale: form.rationale || null,
         notes: form.notes || null,
+        stage_gate_id: form.stage_gate_id || null,
       } as never);
       if (error) throw error;
     },
     onSuccess: () => {
       invalidate();
       toast.success("Decision sent to approver");
-      setForm((f) => ({ ...f, title: "", rationale: "", notes: "" }));
+      setForm((f) => ({ ...f, title: "", rationale: "", notes: "", stage_gate_id: "" }));
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -156,6 +217,31 @@ export function ProjectDecisionsPanel({
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const setGateStatus = useMutation({
+    mutationFn: (vars: { gateId: string; status: string }) =>
+      setStageGateStatus({ gateId: vars.gateId, projectId, status: vars.status }),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Stage gate approval updated");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const setDecisionGate = useMutation({
+    mutationFn: async (vars: { id: string; stage_gate_id: string | null }) => {
+      const { error } = await supabase
+        .from("decisions")
+        .update({ stage_gate_id: vars.stage_gate_id } as never)
+        .eq("id", vars.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      invalidate();
+      toast.success("Stage gate approval linked");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const columns: ColumnarColumn<any>[] = useMemo(
     () => [
       { key: "title", label: "Title" },
@@ -168,9 +254,17 @@ export function ProjectDecisionsPanel({
         },
       },
       { key: "outcome", label: "Outcome" },
+      {
+        key: "stage_gate",
+        label: "Stage gate approval",
+        getValue: (d) => {
+          const gate = d.stage_gate_id ? gateById.get(d.stage_gate_id) : null;
+          return gate ? `${(gate as any).gate_name || ""} ${(gate as any).status || ""}` : "";
+        },
+      },
       { key: "decision_date", label: "Date" },
     ],
-    [memberById],
+    [memberById, gateById],
   );
 
   const table = useColumnarTable(decisions, columns);
@@ -180,7 +274,8 @@ export function ProjectDecisionsPanel({
       <SectionTitle>Key Decisions</SectionTitle>
       <p className="mb-3 text-xs text-muted-foreground">
         Assign an organisation user as approver. They receive an in-app notification and can
-        approve or reject from here or the Decisions Log.
+        approve or reject from here or the Decisions Log. Link a delivery-method stage gate and
+        set its approval status on the same row.
         {projectCode || projectName
           ? ` Showing decisions for ${projectCode ? `${projectCode} · ` : ""}${projectName || ""}.`
           : ""}
@@ -225,6 +320,19 @@ export function ProjectDecisionsPanel({
             </option>
           ))}
         </select>
+        <div className="md:col-span-2">
+          <label className="mb-1 block text-[11px] font-semibold text-muted-foreground">
+            Stage gate approval
+          </label>
+          <StageGateApprovalSelect
+            gates={methodGates}
+            gateId={form.stage_gate_id}
+            onGateId={(stage_gate_id) => setForm((f) => ({ ...f, stage_gate_id }))}
+            onStatus={(gateId, status) => setGateStatus.mutate({ gateId, status })}
+            canEdit={canEdit}
+            disabled={setGateStatus.isPending}
+          />
+        </div>
         <input
           className="st-input"
           placeholder="Forum"
@@ -300,7 +408,7 @@ export function ProjectDecisionsPanel({
                 <tbody>
                   {table.rows.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="py-6 text-center text-xs text-muted-foreground">
+                      <td colSpan={6} className="py-6 text-center text-xs text-muted-foreground">
                         No decisions match filters.
                       </td>
                     </tr>
@@ -336,6 +444,34 @@ export function ProjectDecisionsPanel({
                             >
                               {decisionOutcome(d)}
                             </span>
+                          </td>
+                          <td className="min-w-[14rem]">
+                            <StageGateApprovalSelect
+                              compact
+                              gates={(() => {
+                                const list = [...methodGates];
+                                if (
+                                  d.stage_gate_id &&
+                                  !list.some((g: any) => g.id === d.stage_gate_id)
+                                ) {
+                                  const extra = gateById.get(d.stage_gate_id);
+                                  if (extra) list.push(extra as never);
+                                }
+                                return list;
+                              })()}
+                              gateId={d.stage_gate_id || ""}
+                              onGateId={(id) =>
+                                setDecisionGate.mutate({
+                                  id: d.id,
+                                  stage_gate_id: id || null,
+                                })
+                              }
+                              onStatus={(gateId, status) =>
+                                setGateStatus.mutate({ gateId, status })
+                              }
+                              canEdit={canEdit}
+                              disabled={setGateStatus.isPending || setDecisionGate.isPending}
+                            />
                           </td>
                           <td className="whitespace-nowrap text-xs">{d.decision_date || "—"}</td>
                           <td>

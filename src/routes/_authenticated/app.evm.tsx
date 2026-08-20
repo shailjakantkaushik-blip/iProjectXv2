@@ -104,7 +104,18 @@ function EvmPage() {
     enabled: !!orgId,
   });
 
-  const filtered = useMemo(() => applyFilters(projects as any[], filters), [projects, filters]);
+  const { data: gates = [] } = useQuery({
+    queryKey: ["stage_gates", orgId],
+    queryFn: async () =>
+      (await supabase.from("stage_gates").select("id,project_id,stream_id,gate_name,status")).data ??
+      [],
+    enabled: !!orgId,
+  });
+
+  const filtered = useMemo(
+    () => applyFilters(projects as any[], filters, { gates }),
+    [projects, filters, gates],
+  );
 
   const wiByProject = useMemo(() => {
     const m = new Map<string, any[]>();

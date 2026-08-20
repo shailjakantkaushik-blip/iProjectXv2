@@ -156,8 +156,8 @@ function FinancialsPage() {
   }, [gateDefs]);
 
   const baseFiltered = useMemo(
-    () => applyFilters(projects, filters, { phaseMode: "ignore" }),
-    [projects, filters],
+    () => applyFilters(projects, filters, { phaseMode: "ignore", gates }),
+    [projects, filters, gates],
   );
 
   const phaseScopedMonthlyByProject = useMemo(() => {

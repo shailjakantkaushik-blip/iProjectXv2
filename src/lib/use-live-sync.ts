@@ -106,6 +106,8 @@ export const LIVE_SYNC_ROUTE_TABLES: Record<string, readonly string[]> = {
     "fy_allocations",
     "risks",
   ],
+  "/app/strategic-alignment": [...LIVE_SYNC_CORE_TABLES, "stage_gates", "risks", "actions", "issues", "decisions"],
+  "/app/decisions": [...LIVE_SYNC_CORE_TABLES, "decisions", "stage_gates"],
   "/app/my-work": [
     ...LIVE_SYNC_CORE_TABLES,
     "decisions",

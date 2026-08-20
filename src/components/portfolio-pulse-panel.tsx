@@ -100,7 +100,7 @@ export function PortfolioPulsePanel({
     queryFn: async () => {
       const { data, error } = await supabase
         .from("stage_gates")
-        .select("id,project_id,planned_date,actual_date,status")
+        .select("id,project_id,stream_id,gate_name,planned_date,actual_date,status")
         .eq("org_id", orgId!);
       if (error) throw error;
       return data ?? [];
@@ -218,8 +218,8 @@ export function PortfolioPulsePanel({
 
   const filteredProjects = useMemo(() => {
     const all = projectsQ.data ?? [];
-    return applyExecutivePortfolioFilters(all, filters, fyStartMonth);
-  }, [projectsQ.data, filters, fyStartMonth]);
+    return applyExecutivePortfolioFilters(all, filters, fyStartMonth, { gates: gatesQ.data ?? [] });
+  }, [projectsQ.data, filters, fyStartMonth, gatesQ.data]);
 
   const snapshotScope = useMemo(() => executiveFilterScopeKey(filters), [filters]);
 
