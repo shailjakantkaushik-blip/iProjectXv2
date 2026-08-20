@@ -46,6 +46,7 @@ import {
   type LogoDisplaySize,
 } from "@/lib/landing-config";
 import { StableBrandLogo } from "@/components/stable-brand-logo";
+import { LandingHeroFrame } from "@/components/landing-hero-frame";
 import { PageLoading } from "@/components/page-loading";
 import { lockDocumentScroll, unlockDocumentScroll } from "@/lib/document-scroll";
 
@@ -55,6 +56,11 @@ const EoiModal = lazy(() =>
 const LandingStoryWindow = lazy(() =>
   import("@/components/landing-story-window").then((m) => ({
     default: m.LandingStoryWindow,
+  })),
+);
+const LandingHeroIllustration = lazy(() =>
+  import("@/components/landing-hero-illustration").then((m) => ({
+    default: m.LandingHeroIllustration,
   })),
 );
 
@@ -828,7 +834,7 @@ function Hero({ cfg, onEoiClick }: { cfg: LandingConfig; onEoiClick?: () => void
                 scrollToLandingHash("#story");
               }}
             >
-              Watch the pitch
+              {cfg.hero.visual === "image" ? "See the product" : "Watch the pitch"}
               <ArrowRight className="ml-1.5 h-4 w-4" />
             </a>
             {cfg.hero.after_cta ? (
@@ -843,23 +849,39 @@ function Hero({ cfg, onEoiClick }: { cfg: LandingConfig; onEoiClick?: () => void
         </div>
 
         <div className="min-w-0 lg:col-span-7" id="story">
-          <Suspense
-            fallback={
-              <div
-                className="relative w-full overflow-hidden"
-                style={{ aspectRatio: "16 / 9" }}
-                aria-hidden
+          <LandingHeroFrame accent={p.accent} navy={p.navy}>
+            {cfg.hero.visual === "image" ? (
+              <Suspense
+                fallback={
+                  <div
+                    className="min-h-[320px] w-full"
+                    style={{ background: "rgba(8, 14, 32, 0.72)" }}
+                    aria-hidden
+                  />
+                }
               >
-                <img
-                  src="/landing/ipx-pitch-poster.jpg"
-                  alt=""
-                  className="absolute inset-0 h-full w-full object-cover"
-                />
-              </div>
-            }
-          >
-            <LandingStoryWindow cfg={cfg} />
-          </Suspense>
+                <LandingHeroIllustration cfg={cfg} />
+              </Suspense>
+            ) : (
+              <Suspense
+                fallback={
+                  <div
+                    className="relative w-full overflow-hidden"
+                    style={{ aspectRatio: "16 / 9" }}
+                    aria-hidden
+                  >
+                    <img
+                      src="/landing/ipx-pitch-poster.jpg"
+                      alt=""
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                  </div>
+                }
+              >
+                <LandingStoryWindow cfg={cfg} />
+              </Suspense>
+            )}
+          </LandingHeroFrame>
         </div>
       </div>
     </section>

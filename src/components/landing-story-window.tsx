@@ -112,7 +112,7 @@ export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
         <button
           type="button"
           onClick={playWithSound}
-          className="absolute right-3 top-3 inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[10px] font-bold sm:right-4 sm:top-4 sm:px-3 sm:py-1.5 sm:text-xs"
+          className="absolute right-3 top-3 z-20 inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[10px] font-bold sm:right-4 sm:top-4 sm:px-3 sm:py-1.5 sm:text-xs"
           style={{
             background: "rgba(8,14,32,0.82)",
             color: "#F8FAFC",
@@ -125,7 +125,7 @@ export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
       ) : null}
 
       <div
-        className="absolute bottom-3 right-3 flex items-center gap-2 rounded-full px-2 py-1.5 sm:bottom-4 sm:right-4"
+        className="absolute bottom-3 right-3 z-20 flex items-center gap-2 rounded-full px-2 py-1.5 sm:bottom-4 sm:right-4"
         style={{ background: "rgba(8,14,32,0.62)", border: "1px solid rgba(248,250,252,0.12)" }}
       >
         <button

@@ -30,6 +30,13 @@ export type LandingPalette = {
 
 export type LandingThemeMode = "light" | "dark";
 
+/** Public hero visual beside the headline. */
+export type LandingHeroVisual = "video" | "image";
+
+export function normalizeHeroVisual(v: unknown): LandingHeroVisual {
+  return v === "image" ? "image" : "video";
+}
+
 export type LandingItem = { title: string; desc: string; icon?: string };
 export type LandingCap = { title: string; desc: string; icon?: string };
 export type LandingStat = { value: number; suffix?: string; label: string };
@@ -267,6 +274,11 @@ export type LandingConfig = {
     primary_cta: string;
     secondary_cta: string;
     alert: string;
+    /**
+     * `video` — pitch film with voiceover.
+     * `image` — previous illustrated product window (no video download).
+     */
+    visual: LandingHeroVisual;
   };
   comparison: {
     heading: string;
@@ -650,6 +662,7 @@ export const DEFAULT_LANDING: LandingConfig = {
     secondary_cta: "See capabilities",
     alert:
       "Registers record the past. iProjectX surfaces pressure early, explains forecast variance, and puts the next decision in front of leaders — before the board pack is late.",
+    visual: "video",
   },
   comparison: {
     heading: "What a register cannot do. What portfolio intelligence does.",
@@ -1357,6 +1370,7 @@ export function mergeConfig(partial: any): LandingConfig {
       merged.hero?.primary_cta,
       DEFAULT_LANDING.hero.primary_cta,
     ),
+    visual: normalizeHeroVisual(merged.hero?.visual),
   };
   // Keep the classic "Master the Portfolio" opening; place intelligence copy under CTAs.
   if (

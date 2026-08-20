@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, Trash2, Save, RefreshCw, ExternalLink, Upload, Sparkles, UserPlus } from "lucide-react";
+import { Plus, Trash2, Save, RefreshCw, ExternalLink, Upload, Sparkles, UserPlus, Film, Image as ImageIcon } from "lucide-react";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -647,6 +647,54 @@ function LandingConfigPage() {
           <SectionFrame>
             <SectionTitle>Hero Section</SectionTitle>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <Field
+                label="Hero visual"
+                hint="Pitch film is the voiceover advertisement (~3 min, ~11 MB). Previous illustration is the original animated product window — no video file."
+                className="md:col-span-2"
+              >
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => patch("hero", { visual: "video" })}
+                    className="flex items-start gap-3 rounded-lg border px-4 py-3 text-left transition-colors"
+                    style={{
+                      borderColor:
+                        cfg.hero.visual !== "image" ? "hsl(var(--primary))" : undefined,
+                      background:
+                        cfg.hero.visual !== "image" ? "hsl(var(--primary) / 0.08)" : undefined,
+                    }}
+                    aria-pressed={cfg.hero.visual !== "image"}
+                  >
+                    <Film className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+                    <span>
+                      <span className="block text-sm font-medium">Pitch film</span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">
+                        Video with British voiceover, play / mute / volume.
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => patch("hero", { visual: "image" })}
+                    className="flex items-start gap-3 rounded-lg border px-4 py-3 text-left transition-colors"
+                    style={{
+                      borderColor:
+                        cfg.hero.visual === "image" ? "hsl(var(--primary))" : undefined,
+                      background:
+                        cfg.hero.visual === "image" ? "hsl(var(--primary) / 0.08)" : undefined,
+                    }}
+                    aria-pressed={cfg.hero.visual === "image"}
+                  >
+                    <ImageIcon className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+                    <span>
+                      <span className="block text-sm font-medium">Previous illustration</span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">
+                        Animated product / security window. No video download.
+                      </span>
+                    </span>
+                  </button>
+                </div>
+              </Field>
               <Field label="Eyebrow (small pill)">
                 <Input
                   value={cfg.hero.eyebrow}
