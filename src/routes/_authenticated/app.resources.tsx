@@ -23,9 +23,23 @@ import { ResourceAnalyticsPanels } from "@/components/resource-analytics-panels"
 import {
   entryHours,
   hoursFromAllocation,
+  displayProjectName,
+  displayStreamName,
+  displayPhaseName,
+  resolveLinkedProjectId,
+  resolveLinkedStreamId,
   type TimesheetEffortRow,
 } from "@/lib/resource-allocation-analytics";
-import { resourceHoursPerWeek } from "@/lib/resource-capacity";
+import {
+  effortUnitNoun,
+  effortUnitSuffix,
+  formatEffort,
+  formatEffortNumber,
+  hoursToEffortUnit,
+  resourceHoursPerWeek,
+  type EffortUnit,
+} from "@/lib/resource-capacity";
+import { EffortUnitCheckboxes } from "@/components/effort-unit-checkboxes";
 import {
   buildResourceUtilisationExport,
   exportResourceReportsExcel,
@@ -143,6 +157,9 @@ function heatColor(pct: number): string {
 function ResourcesPage() {
   const { organization } = useAuth();
   const [tab, setTab] = useState<ResTab>("pva");
+  const [effortUnit, setEffortUnit] = useState<EffortUnit>("hours");
+  const unitSuffix = effortUnitSuffix(effortUnit);
+  const unitNoun = effortUnitNoun(effortUnit);
 
   const { data: resourcesAll = [] } = useQuery({
     queryKey: ["resources", organization?.id],
@@ -254,6 +271,14 @@ function ResourcesPage() {
   const [monthTo, setMonthTo] = useState<string>("all");
 
   const projectsOrdered = useMemo(() => [...projects].sort(compareProjectsByCodeName), [projects]);
+  const projectsById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
+  const streamProjectById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const s of streams as any[]) {
+      if (s?.id && s?.project_id) m.set(s.id, s.project_id);
+    }
+    return m;
+  }, [streams]);
   const resByIdAll = useMemo(() => new Map(resourcesAll.map((r) => [r.id, r])), [resourcesAll]);
 
   const roleOptions = useMemo(
@@ -303,9 +328,18 @@ function ResourcesPage() {
         if (!list.includes(skillFilter)) return false;
       }
       if (projectFilter !== "all") {
-        const hasProj = allocationsAll.some(
-          (a) => a.resource_id === r.id && a.project_id === projectFilter,
-        );
+        const hasProj = allocationsAll.some((a) => {
+          if (a.resource_id !== r.id) return false;
+          if (a.project_id === projectFilter) return true;
+          return (
+            resolveLinkedProjectId({
+              projectId: a.project_id,
+              streamId: a.stream_id,
+              projectsById,
+              streamProjectById,
+            }) === projectFilter
+          );
+        });
         if (!hasProj) return false;
       }
       if (statusFilter !== "all") {
@@ -343,6 +377,8 @@ function ResourcesPage() {
     projectFilter,
     statusFilter,
     monthsInRange,
+    projectsById,
+    streamProjectById,
   ]);
 
   const resIdSet = useMemo(() => new Set(resources.map((r) => r.id)), [resources]);
@@ -352,14 +388,30 @@ function ResourcesPage() {
     return allocationsAll
       .filter((a) => {
         if (!resIdSet.has(a.resource_id)) return false;
-        if (projectFilter !== "all" && a.project_id !== projectFilter) return false;
+        if (projectFilter !== "all") {
+          const linked = resolveLinkedProjectId({
+            projectId: a.project_id,
+            streamId: a.stream_id,
+            projectsById,
+            streamProjectById,
+          });
+          if (a.project_id !== projectFilter && linked !== projectFilter) return false;
+        }
         const m = normMonth(a.period_month);
         if (from && m < from) return false;
         if (to && m > to) return false;
         return true;
       })
       .map((a) => ({ ...a, period_month: normMonth(a.period_month) }));
-  }, [allocationsAll, resIdSet, projectFilter, monthFrom, monthTo]);
+  }, [
+    allocationsAll,
+    resIdSet,
+    projectFilter,
+    monthFrom,
+    monthTo,
+    projectsById,
+    streamProjectById,
+  ]);
 
   const resById = resByIdAll;
 
@@ -379,16 +431,30 @@ function ResourcesPage() {
     return timesheetActuals.filter((a) => {
       if (!a.resource_id || !resIdSet.has(a.resource_id)) return false;
       if (projectFilter !== "all") {
-        const nonBillable = !a.project_id || a.billable === false;
+        const nonBillable = (!a.project_id && !a.stream_id) || a.billable === false;
         if (nonBillable) return false;
-        if (a.project_id !== projectFilter) return false;
+        const linked = resolveLinkedProjectId({
+          projectId: a.project_id,
+          streamId: a.stream_id,
+          projectsById,
+          streamProjectById,
+        });
+        if (a.project_id !== projectFilter && linked !== projectFilter) return false;
       }
       const m = normMonth(a.period_month || a.week_start);
       if (from && m < from) return false;
       if (to && m > to) return false;
       return true;
     });
-  }, [timesheetActuals, resIdSet, projectFilter, monthFrom, monthTo]);
+  }, [
+    timesheetActuals,
+    resIdSet,
+    projectFilter,
+    monthFrom,
+    monthTo,
+    projectsById,
+    streamProjectById,
+  ]);
 
   // Distinct months (sorted, normalized) — plan + actuals
   const months = useMemo(() => {
@@ -585,14 +651,29 @@ function ResourcesPage() {
     allocations.forEach((a) => {
       const r = resById.get(a.resource_id);
       const hours = hoursFromAllocation(a, resourceHoursPerWeek(r));
+      const pid =
+        resolveLinkedProjectId({
+          projectId: a.project_id,
+          streamId: a.stream_id,
+          projectsById,
+          streamProjectById,
+        }) || a.project_id;
       const row = planBy.get(a.resource_id) || new Map();
-      row.set(a.project_id, (row.get(a.project_id) || 0) + hours);
+      row.set(pid, (row.get(pid) || 0) + hours);
       planBy.set(a.resource_id, row);
     });
     filteredActuals.forEach((a) => {
-      if (!a.resource_id || !a.project_id || a.billable === false) return;
+      if (!a.resource_id || a.billable === false) return;
+      const pid =
+        resolveLinkedProjectId({
+          projectId: a.project_id,
+          streamId: a.stream_id,
+          projectsById,
+          streamProjectById,
+        }) || a.project_id;
+      if (!pid) return;
       const row = actualBy.get(a.resource_id) || new Map();
-      row.set(a.project_id, (row.get(a.project_id) || 0) + (Number(a.hours) || 0));
+      row.set(pid, (row.get(pid) || 0) + (Number(a.hours) || 0));
       actualBy.set(a.resource_id, row);
     });
     const cols = projectColumns.map((p) => ({
@@ -636,43 +717,72 @@ function ResourcesPage() {
       };
     });
     return { rows, cols };
-  }, [allocations, filteredActuals, resources, projectColumns, resById, months]);
+  }, [
+    allocations,
+    filteredActuals,
+    resources,
+    projectColumns,
+    resById,
+    months,
+    projectsById,
+    streamProjectById,
+  ]);
 
   const streamPhaseHours = useMemo(() => {
     const streamLabels = new Map<string, string>();
     for (const s of streams as any[]) streamLabels.set(s.id, formatStreamLabel(s));
     const gateLabels = new Map<string, string>();
     for (const g of gates as any[]) gateLabels.set(g.id, g.gate_name || "Phase");
-    const projectLabels = new Map<string, string>();
-    for (const p of projects) {
-      projectLabels.set(p.id, p.project_code ? `${p.project_code} — ${p.name}` : p.name);
-    }
-    const acc = new Map<string, { label: string; planHours: number; actualHours: number }>();
-    const touch = (key: string, label: string) => {
-      const cur = acc.get(key) || { label, planHours: 0, actualHours: 0 };
+    const acc = new Map<
+      string,
+      { key: string; label: string; planHours: number; actualHours: number }
+    >();
+    const idsFor = (a: {
+      project_id?: string | null;
+      stream_id?: string | null;
+      stage_gate_id?: string | null;
+    }) => {
+      const projectId = resolveLinkedProjectId({
+        projectId: a.project_id,
+        streamId: a.stream_id,
+        projectsById,
+        streamProjectById,
+      });
+      const streamId = resolveLinkedStreamId({
+        projectId: a.project_id,
+        streamId: a.stream_id,
+        streamProjectById,
+      });
+      return { projectId, streamId, stageGateId: a.stage_gate_id || null };
+    };
+    const touch = (
+      projectId: string | null,
+      streamId: string | null,
+      stageGateId: string | null,
+    ) => {
+      const pName = displayProjectName(
+        projectId ? projectsById.get(projectId) : undefined,
+        projectId,
+      );
+      const stream = displayStreamName(streamId, streamLabels);
+      const phase = displayPhaseName(stageGateId, gateLabels);
+      const label = `${pName} · ${stream} · ${phase}`;
+      const key = `${projectId || "unknown"}|${stream}|${phase}`;
+      const cur = acc.get(key) || { key, label, planHours: 0, actualHours: 0 };
       acc.set(key, cur);
       return cur;
     };
     for (const a of allocations) {
       const r = resById.get(a.resource_id);
       const hours = hoursFromAllocation(a, resourceHoursPerWeek(r));
-      const stream = a.stream_id ? streamLabels.get(a.stream_id) || "Stream" : "Project";
-      const phase = a.stage_gate_id
-        ? gateLabels.get(a.stage_gate_id) || "Phase"
-        : "Unassigned phase";
-      const proj = projectLabels.get(a.project_id) || a.project_id;
-      const key = `${a.project_id}|${a.stream_id || ""}|${a.stage_gate_id || ""}`;
-      touch(key, `${proj} · ${stream} · ${phase}`).planHours += hours;
+      const ids = idsFor(a);
+      touch(ids.projectId, ids.streamId, ids.stageGateId).planHours += hours;
     }
     for (const a of filteredActuals) {
-      if (!a.project_id || a.billable === false) continue;
-      const stream = a.stream_id ? streamLabels.get(a.stream_id) || "Stream" : "Project";
-      const phase = a.stage_gate_id
-        ? gateLabels.get(a.stage_gate_id) || "Phase"
-        : "Unassigned phase";
-      const proj = projectLabels.get(a.project_id) || a.project_id;
-      const key = `${a.project_id}|${a.stream_id || ""}|${a.stage_gate_id || ""}`;
-      touch(key, `${proj} · ${stream} · ${phase}`).actualHours += Number(a.hours) || 0;
+      if (a.billable === false) continue;
+      if (!a.project_id && !a.stream_id) continue;
+      const ids = idsFor(a);
+      touch(ids.projectId, ids.streamId, ids.stageGateId).actualHours += Number(a.hours) || 0;
     }
     return Array.from(acc.values())
       .map((r) => ({
@@ -682,19 +792,22 @@ function ResourcesPage() {
         variance: Math.round((r.planHours - r.actualHours) * 10) / 10,
       }))
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, [allocations, filteredActuals, streams, gates, projects, resById]);
+  }, [allocations, filteredActuals, streams, gates, projectsById, streamProjectById, resById]);
 
   return (
     <PageExport name="Resource_Capacity" title="Resource Capacity & Skill Intelligence">
       <PageHeading icon="👥">Resource Capacity & Skill Intelligence</PageHeading>
       <p className="mb-3 max-w-3xl text-sm text-muted-foreground">
-        <strong>Alloc h</strong> (Plan) come from Project Estimation Planning, applied per stream
-        and phase. <strong>Demand h</strong> come from work-item resource effort.{" "}
-        <strong>Actual h</strong> come from approved timesheets. Daily hours/day (Timesheets →
-        Resource setup) set weekly FTE capacity (hours/day × 5). Allocation % is only load vs
-        monthly FTE capacity — it is not Plan. The first tab compares all three layers; Utilisation
-        compares Alloc vs Actual for capacity.
+        <strong>Alloc</strong> (Plan) comes from Project Estimation Planning, applied per stream and
+        phase. <strong>Demand</strong> comes from work-item resource effort. <strong>Actual</strong>{" "}
+        comes from approved timesheets. Daily hours/day (Timesheets → Resource setup) set weekly FTE
+        capacity (hours/day × 5). Allocation % is only load vs monthly FTE capacity — it is not
+        Plan. Use Hours / Days / Weeks to change how effort quantities are shown (8h day, 5-day
+        week). Percent and $ are unchanged.
       </p>
+      <div className="mb-3">
+        <EffortUnitCheckboxes value={effortUnit} onChange={setEffortUnit} />
+      </div>
       <div className="mb-3 flex flex-wrap gap-2">
         {(
           [
@@ -724,6 +837,7 @@ function ResourcesPage() {
           projects={projects}
           resources={resourcesAll}
           allocations={allocationsAll}
+          effortUnit={effortUnit}
         />
       ) : null}
 
@@ -852,7 +966,7 @@ function ResourcesPage() {
 
           <SectionFrame>
             <ExpandableChart
-              title="Resource utilisation — alloc hours vs actual hours"
+              title={`Resource utilisation — alloc ${unitNoun.toLowerCase()} vs actual ${unitNoun.toLowerCase()}`}
               heightClass="h-80"
               legend={
                 <div className="mt-1 flex flex-wrap justify-end gap-3 text-xs">
@@ -861,7 +975,7 @@ function ResourcesPage() {
                       className="inline-block h-3 w-3 rounded-sm"
                       style={{ background: PLAN_BAR }}
                     />
-                    Alloc hours
+                    Alloc {unitNoun.toLowerCase()}
                   </span>
                   <span className="flex items-center gap-1">
                     <span
@@ -876,8 +990,8 @@ function ResourcesPage() {
               <BarChart
                 data={utilisation.map((u) => ({
                   resource: u.resource,
-                  planHours: u.planHours,
-                  actualHours: u.actualHours,
+                  planHours: hoursToEffortUnit(u.planHours, effortUnit),
+                  actualHours: hoursToEffortUnit(u.actualHours, effortUnit),
                 }))}
                 margin={{ top: 20, right: 60, left: 20, bottom: 60 }}
               >
@@ -893,11 +1007,16 @@ function ResourcesPage() {
                 />
                 <YAxis
                   fontSize={11}
-                  label={{ value: "Hours", angle: -90, position: "insideLeft", fontSize: 11 }}
+                  label={{ value: unitNoun, angle: -90, position: "insideLeft", fontSize: 11 }}
                 />
-                <Tooltip formatter={(v: number) => `${fmtHours(v)} h`} />
+                <Tooltip formatter={(v: number) => `${fmtHours(v)} ${unitSuffix}`} />
                 <Legend verticalAlign="top" wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="planHours" name="Alloc h" fill={PLAN_BAR} radius={[3, 3, 0, 0]}>
+                <Bar
+                  dataKey="planHours"
+                  name={`Alloc ${unitSuffix}`}
+                  fill={PLAN_BAR}
+                  radius={[3, 3, 0, 0]}
+                >
                   <LabelList
                     dataKey="planHours"
                     position="top"
@@ -905,7 +1024,12 @@ function ResourcesPage() {
                     fontSize={9}
                   />
                 </Bar>
-                <Bar dataKey="actualHours" name="Actual h" fill={ACTUAL_BAR} radius={[3, 3, 0, 0]}>
+                <Bar
+                  dataKey="actualHours"
+                  name={`Actual ${unitSuffix}`}
+                  fill={ACTUAL_BAR}
+                  radius={[3, 3, 0, 0]}
+                >
                   <LabelList
                     dataKey="actualHours"
                     position="top"
@@ -919,12 +1043,12 @@ function ResourcesPage() {
 
           <SectionFrame>
             <SectionTitle>
-              Month-wise heatmap (Resource × Month) — alloc / actual hours
+              Month-wise heatmap (Resource × Month) — alloc / actual {unitNoun.toLowerCase()}
             </SectionTitle>
             <p className="mb-2 text-[12px] text-muted-foreground">
-              Each cell shows <span style={{ color: PLAN_BAR }}>alloc h</span> /{" "}
-              <span style={{ color: ACTUAL_BAR }}>actual h</span>. Alloc hours come from estimation
-              planning (stream + phase). Colour is load vs monthly FTE capacity.
+              Each cell shows <span style={{ color: PLAN_BAR }}>alloc {unitSuffix}</span> /{" "}
+              <span style={{ color: ACTUAL_BAR }}>actual {unitSuffix}</span>. Alloc comes from
+              estimation planning (stream + phase). Colour is load vs monthly FTE capacity.
             </p>
             <div className="overflow-auto max-h-[420px]">
               <table className="border-collapse text-xs w-max">
@@ -959,10 +1083,16 @@ function ResourcesPage() {
                                 background: peak === 0 ? "rgba(148,163,184,0.25)" : heatColor(peak),
                                 color: peak === 0 ? "#64748b" : "#fff",
                               }}
-                              title={`${row.name} · ${monthLabel(c.month)}: plan ${fmtHours(c.planHours)} h · actual ${fmtHours(c.actualHours)} h`}
+                              title={`${row.name} · ${monthLabel(c.month)}: plan ${formatEffort(c.planHours, effortUnit)} · actual ${formatEffort(c.actualHours, effortUnit)}`}
                             >
-                              <span>{fmtHours(c.planHours)}h</span>
-                              <span className="opacity-90">{fmtHours(c.actualHours)}h</span>
+                              <span>
+                                {formatEffortNumber(c.planHours, effortUnit)}
+                                {unitSuffix}
+                              </span>
+                              <span className="opacity-90">
+                                {formatEffortNumber(c.actualHours, effortUnit)}
+                                {unitSuffix}
+                              </span>
                             </div>
                           </td>
                         );
@@ -1002,23 +1132,35 @@ function ResourcesPage() {
           </SectionFrame>
 
           <SectionFrame>
-            <ExpandableChart title="Monthly alloc vs actual hours" heightClass="h-80">
+            <ExpandableChart
+              title={`Monthly alloc vs actual ${unitNoun.toLowerCase()}`}
+              heightClass="h-80"
+            >
               <BarChart
-                data={monthlyPlanActual}
+                data={monthlyPlanActual.map((d) => ({
+                  ...d,
+                  planHours: hoursToEffortUnit(d.planHours, effortUnit),
+                  actualHours: hoursToEffortUnit(d.actualHours, effortUnit),
+                }))}
                 margin={{ top: 10, right: 20, left: 20, bottom: 20 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
                 <XAxis dataKey="month" fontSize={11} />
                 <YAxis
                   fontSize={11}
-                  label={{ value: "Hours", angle: -90, position: "insideLeft", fontSize: 11 }}
+                  label={{ value: unitNoun, angle: -90, position: "insideLeft", fontSize: 11 }}
                 />
-                <Tooltip formatter={(v: number) => `${fmtHours(v)} h`} />
+                <Tooltip formatter={(v: number) => `${fmtHours(v)} ${unitSuffix}`} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="planHours" name="Alloc hours" fill={PLAN_BAR} radius={[3, 3, 0, 0]} />
+                <Bar
+                  dataKey="planHours"
+                  name={`Alloc ${unitNoun.toLowerCase()}`}
+                  fill={PLAN_BAR}
+                  radius={[3, 3, 0, 0]}
+                />
                 <Bar
                   dataKey="actualHours"
-                  name="Actual hours"
+                  name={`Actual ${unitNoun.toLowerCase()}`}
                   fill={ACTUAL_BAR}
                   radius={[3, 3, 0, 0]}
                 />
@@ -1029,9 +1171,10 @@ function ResourcesPage() {
           <SectionFrame>
             <SectionTitle>Alloc vs actual by stream and phase</SectionTitle>
             <p className="mb-2 text-[12px] text-muted-foreground">
-              Alloc hours are estimation-planning effort per stream and stage-gate (phase). Actual
-              hours are approved timesheets on the same stream and phase. Work-item Demand hours are
-              on the Alloc vs demand vs actual tab — they are not Plan.
+              Alloc {unitNoun.toLowerCase()} are estimation-planning effort per stream and
+              stage-gate (phase). Actual {unitNoun.toLowerCase()} are approved timesheets on the
+              same stream and phase. Work-item Demand is on the Alloc vs demand vs actual tab — it
+              is not Plan.
             </p>
             <div className="overflow-auto max-h-[360px]">
               <table className="w-full min-w-[32rem] border-collapse text-[12.5px]">
@@ -1041,13 +1184,13 @@ function ResourcesPage() {
                       Project · stream · phase
                     </th>
                     <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">
-                      Alloc h
+                      Alloc {unitSuffix}
                     </th>
                     <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">
-                      Actual h
+                      Actual {unitSuffix}
                     </th>
                     <th className="w-24 px-2.5 py-2 text-right font-semibold tabular-nums">
-                      Var h
+                      Var {unitSuffix}
                     </th>
                   </tr>
                 </thead>
@@ -1060,16 +1203,16 @@ function ResourcesPage() {
                     </tr>
                   ) : (
                     streamPhaseHours.map((r) => (
-                      <tr key={r.label} className="border-b border-[#eef0f3]">
+                      <tr key={r.key} className="border-b border-[#eef0f3]">
                         <td className="px-2.5 py-1.5 font-medium">{r.label}</td>
                         <td className="px-2.5 py-1.5 text-right tabular-nums">
-                          {fmtHours(r.planHours)}
+                          {formatEffortNumber(r.planHours, effortUnit)}
                         </td>
                         <td className="px-2.5 py-1.5 text-right tabular-nums">
-                          {fmtHours(r.actualHours)}
+                          {formatEffortNumber(r.actualHours, effortUnit)}
                         </td>
                         <td className="px-2.5 py-1.5 text-right tabular-nums">
-                          {fmtHours(r.variance)}
+                          {formatEffortNumber(r.variance, effortUnit)}
                         </td>
                       </tr>
                     ))
@@ -1080,8 +1223,15 @@ function ResourcesPage() {
           </SectionFrame>
 
           <SectionFrame>
-            <ExpandableChart title="Hours by skill — alloc vs actual" heightClass="h-72">
-              <BarChart data={bySkill} margin={{ top: 28, right: 12, left: 8, bottom: 48 }}>
+            <ExpandableChart title={`${unitNoun} by skill — alloc vs actual`} heightClass="h-72">
+              <BarChart
+                data={bySkill.map((d) => ({
+                  ...d,
+                  planHours: hoursToEffortUnit(d.planHours, effortUnit),
+                  actualHours: hoursToEffortUnit(d.actualHours, effortUnit),
+                }))}
+                margin={{ top: 28, right: 12, left: 8, bottom: 48 }}
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,18,32,0.08)" />
                 <XAxis
                   dataKey="skill"
@@ -1094,14 +1244,19 @@ function ResourcesPage() {
                 <YAxis
                   fontSize={11}
                   domain={[0, (dataMax: number) => Math.ceil((dataMax || 0) * 1.18) || 10]}
-                  label={{ value: "Hours", angle: -90, position: "insideLeft", fontSize: 11 }}
+                  label={{ value: unitNoun, angle: -90, position: "insideLeft", fontSize: 11 }}
                 />
-                <Tooltip formatter={(v: number) => `${fmtHours(v)} h`} />
+                <Tooltip formatter={(v: number) => `${fmtHours(v)} ${unitSuffix}`} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="planHours" name="Alloc h" fill={PLAN_BAR} radius={[3, 3, 0, 0]} />
+                <Bar
+                  dataKey="planHours"
+                  name={`Alloc ${unitSuffix}`}
+                  fill={PLAN_BAR}
+                  radius={[3, 3, 0, 0]}
+                />
                 <Bar
                   dataKey="actualHours"
-                  name="Actual h"
+                  name={`Actual ${unitSuffix}`}
                   fill={ACTUAL_BAR}
                   radius={[3, 3, 0, 0]}
                 />
@@ -1110,12 +1265,14 @@ function ResourcesPage() {
           </SectionFrame>
 
           <SectionFrame>
-            <SectionTitle>Resource × Project — alloc / actual hours</SectionTitle>
+            <SectionTitle>
+              Resource × Project — alloc / actual {unitNoun.toLowerCase()}
+            </SectionTitle>
             <p className="mb-2 text-[12px] text-muted-foreground">
-              Cells show alloc h / actual h. Alloc is estimation-planning hours on the project.
-              Actual is approved timesheets. Demand (work items) is on the Alloc vs demand vs actual
-              tab. Non-billable column appears when unallocated timesheet hours exist. Colour is
-              average monthly load vs FTE capacity.
+              Cells show alloc {unitSuffix} / actual {unitSuffix}. Alloc is estimation-planning
+              effort on the project. Actual is approved timesheets. Demand (work items) is on the
+              Alloc vs demand vs actual tab. Non-billable column appears when unallocated timesheet
+              hours exist. Colour is average monthly load vs FTE capacity.
             </p>
             <div className="overflow-auto max-h-[480px]">
               <table className="border-collapse text-xs w-max">
@@ -1157,10 +1314,16 @@ function ResourcesPage() {
                                     : heatColor(Math.min(120, peak)),
                                 color: peak === 0 ? "#64748b" : "#fff",
                               }}
-                              title={`${row.name} → ${c.project}: plan ${fmtHours(c.planHours)} h · actual ${fmtHours(c.actualHours)} h`}
+                              title={`${row.name} → ${c.project}: plan ${formatEffort(c.planHours, effortUnit)} · actual ${formatEffort(c.actualHours, effortUnit)}`}
                             >
-                              <span>{fmtHours(c.planHours)}h</span>
-                              <span className="opacity-90">{fmtHours(c.actualHours)}h</span>
+                              <span>
+                                {formatEffortNumber(c.planHours, effortUnit)}
+                                {unitSuffix}
+                              </span>
+                              <span className="opacity-90">
+                                {formatEffortNumber(c.actualHours, effortUnit)}
+                                {unitSuffix}
+                              </span>
                             </div>
                           </td>
                         );
@@ -1177,9 +1340,9 @@ function ResourcesPage() {
               <div>
                 <SectionTitle>Utilisation — alloc vs timesheet actuals</SectionTitle>
                 <p className="text-[12px] text-muted-foreground">
-                  Alloc h from Project Estimation Planning (per stream and phase). Alloc % is those
-                  hours vs monthly FTE capacity. Actual / billable / non-billable from approved
-                  timesheets. Work-item Demand is not shown here.
+                  Alloc {unitSuffix} from Project Estimation Planning (per stream and phase). Alloc
+                  % is those hours vs monthly FTE capacity. Actual / billable / non-billable from
+                  approved timesheets. Work-item Demand is not shown here.
                 </p>
               </div>
               <div className="flex gap-2">
@@ -1225,10 +1388,10 @@ function ResourcesPage() {
                       Actual %
                     </th>
                     <th className="w-20 px-2.5 py-2 text-right font-semibold tabular-nums">
-                      Alloc h
+                      Alloc {unitSuffix}
                     </th>
                     <th className="w-20 px-2.5 py-2 text-right font-semibold tabular-nums">
-                      Actual h
+                      Actual {unitSuffix}
                     </th>
                     <th className="w-20 px-2.5 py-2 text-right font-semibold tabular-nums">
                       Billable
@@ -1248,15 +1411,17 @@ function ResourcesPage() {
                       <td className="px-2.5 py-1.5 font-medium">{u.resource}</td>
                       <td className="w-20 px-2.5 py-1.5 text-right tabular-nums">{u.pct}</td>
                       <td className="w-20 px-2.5 py-1.5 text-right tabular-nums">{u.actualPct}</td>
-                      <td className="w-20 px-2.5 py-1.5 text-right tabular-nums">{u.planHours}</td>
                       <td className="w-20 px-2.5 py-1.5 text-right tabular-nums">
-                        {u.actualHours}
+                        {formatEffortNumber(u.planHours, effortUnit)}
                       </td>
                       <td className="w-20 px-2.5 py-1.5 text-right tabular-nums">
-                        {u.billableHours}
+                        {formatEffortNumber(u.actualHours, effortUnit)}
+                      </td>
+                      <td className="w-20 px-2.5 py-1.5 text-right tabular-nums">
+                        {formatEffortNumber(u.billableHours, effortUnit)}
                       </td>
                       <td className="w-24 px-2.5 py-1.5 text-right tabular-nums">
-                        {u.nonBillableHours}
+                        {formatEffortNumber(u.nonBillableHours, effortUnit)}
                       </td>
                       <td className="w-24 px-2.5 py-1.5 text-right tabular-nums">
                         {u.utilVsPlan == null ? "—" : `${u.utilVsPlan}%`}
@@ -1279,7 +1444,7 @@ function ResourcesPage() {
           <SectionFrame>
             <SectionTitle>Monthly alloc / actual matrix</SectionTitle>
             <p className="mb-2 text-[12px] text-muted-foreground">
-              Same as the heatmap — each cell is alloc h / actual h.
+              Same as the heatmap — each cell is alloc {unitSuffix} / actual {unitSuffix}.
             </p>
             <div className="overflow-auto max-h-[420px]">
               <table className="border-collapse text-[12.5px] w-max">
@@ -1309,7 +1474,8 @@ function ResourcesPage() {
                           key={c.month}
                           className="w-16 px-1 py-1.5 text-center tabular-nums text-[11px]"
                         >
-                          {fmtHours(c.planHours)}/{fmtHours(c.actualHours)}
+                          {formatEffortNumber(c.planHours, effortUnit)}/
+                          {formatEffortNumber(c.actualHours, effortUnit)}
                         </td>
                       ))}
                     </tr>

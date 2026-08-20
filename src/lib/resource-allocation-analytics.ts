@@ -40,6 +40,76 @@ export type ProjectMeta = {
   portfolio?: string | null;
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function looksLikeUuid(v: string | null | undefined) {
+  return UUID_RE.test(String(v || "").trim());
+}
+
+export function displayProjectName(p?: ProjectMeta | null, projectId?: string | null) {
+  const code = String(p?.project_code || "").trim();
+  const name = String(p?.name || "").trim();
+  if (code && name && code !== name) return `${code} — ${name}`;
+  if (code || name) return code || name;
+  const id = String(projectId || "").trim();
+  if (!id || looksLikeUuid(id) || id === "__non_billable__") {
+    return id === "__non_billable__" ? "Non-billable" : "Unknown project";
+  }
+  return id;
+}
+
+export function displayStreamName(
+  streamId: string | null | undefined,
+  streamLabels?: Map<string, string>,
+) {
+  if (!streamId) return "Project";
+  const s = String(streamLabels?.get(streamId) || "").trim();
+  if (s && !looksLikeUuid(s)) return s;
+  return "Stream";
+}
+
+export function displayPhaseName(
+  gateId: string | null | undefined,
+  gateLabels?: Map<string, string>,
+  unassigned = "Unassigned phase",
+) {
+  if (!gateId) return unassigned;
+  const g = String(gateLabels?.get(gateId) || "").trim();
+  if (g && !looksLikeUuid(g)) return g;
+  return "Phase";
+}
+
+/** Prefer a real projects.id; if project_id is missing/unknown, use the stream's project. */
+export function resolveLinkedProjectId(opts: {
+  projectId?: string | null;
+  streamId?: string | null;
+  projectsById: Map<string, { id: string }>;
+  streamProjectById?: Map<string, string>;
+}): string | null {
+  const pid = opts.projectId || null;
+  if (pid && opts.projectsById.has(pid)) return pid;
+  const fromStream = opts.streamId ? opts.streamProjectById?.get(opts.streamId) : undefined;
+  if (fromStream && opts.projectsById.has(fromStream)) return fromStream;
+  if (pid && opts.streamProjectById?.has(pid)) {
+    const via = opts.streamProjectById.get(pid);
+    if (via && opts.projectsById.has(via)) return via;
+  }
+  return fromStream || pid;
+}
+
+/** If stream_id is missing/stale, recover it when project_id was actually a stream UUID. */
+export function resolveLinkedStreamId(opts: {
+  projectId?: string | null;
+  streamId?: string | null;
+  streamProjectById?: Map<string, string>;
+}): string | null {
+  const sid = opts.streamId || null;
+  if (sid && opts.streamProjectById?.has(sid)) return sid;
+  const pid = opts.projectId || null;
+  if (pid && opts.streamProjectById?.has(pid)) return pid;
+  return sid;
+}
+
 export type PvaGrain =
   "resource" | "project" | "stream" | "stage_gate" | "program" | "portfolio" | "month";
 
@@ -227,6 +297,8 @@ export function buildAllocationPva(opts: {
   streamLabels?: Map<string, string>;
   gateLabels?: Map<string, string>;
   capacityByResource?: Map<string, number>;
+  /** stream id → project id, to recover labels when timesheets store a stale project_id. */
+  streamProjectById?: Map<string, string>;
 }): AllocationPvaRow[] {
   const {
     grain,
@@ -238,6 +310,7 @@ export function buildAllocationPva(opts: {
     streamLabels,
     gateLabels,
     capacityByResource,
+    streamProjectById,
   } = opts;
   const acc = new Map<string, Agg>();
 
@@ -286,13 +359,24 @@ export function buildAllocationPva(opts: {
   };
 
   for (const a of plans) {
-    const p = projectsById.get(a.project_id);
+    const projectId = resolveLinkedProjectId({
+      projectId: a.project_id,
+      streamId: a.stream_id,
+      projectsById,
+      streamProjectById,
+    });
+    const streamId = resolveLinkedStreamId({
+      projectId: a.project_id,
+      streamId: a.stream_id,
+      streamProjectById,
+    });
+    const p = projectId ? projectsById.get(projectId) : undefined;
     const month = normMonth(a.period_month);
     const cap = capacityByResource?.get(a.resource_id) ?? 40;
     const key = grainKey(grain, {
       resourceId: a.resource_id,
-      projectId: a.project_id,
-      streamId: a.stream_id,
+      projectId,
+      streamId,
       stageGateId: a.stage_gate_id,
       program: p?.program,
       portfolio: p?.portfolio,
@@ -300,8 +384,8 @@ export function buildAllocationPva(opts: {
     });
     const label = labelFor(grain, {
       resourceId: a.resource_id,
-      projectId: a.project_id,
-      streamId: a.stream_id,
+      projectId,
+      streamId,
       stageGateId: a.stage_gate_id,
       program: p?.program,
       portfolio: p?.portfolio,
@@ -315,8 +399,8 @@ export function buildAllocationPva(opts: {
       key,
       label,
       resource_id: a.resource_id,
-      project_id: a.project_id,
-      stream_id: a.stream_id,
+      project_id: projectId,
+      stream_id: streamId,
       stage_gate_id: a.stage_gate_id,
       program: p?.program,
       portfolio: p?.portfolio,
@@ -328,12 +412,23 @@ export function buildAllocationPva(opts: {
 
   for (const d of demand) {
     if (!d.project_id && grain !== "resource" && grain !== "month") continue;
-    const p = d.project_id ? projectsById.get(d.project_id) : undefined;
+    const projectId = resolveLinkedProjectId({
+      projectId: d.project_id,
+      streamId: d.stream_id,
+      projectsById,
+      streamProjectById,
+    });
+    const streamId = resolveLinkedStreamId({
+      projectId: d.project_id,
+      streamId: d.stream_id,
+      streamProjectById,
+    });
+    const p = projectId ? projectsById.get(projectId) : undefined;
     const month = normMonth(d.period_month);
     const key = grainKey(grain, {
       resourceId: d.resource_id,
-      projectId: d.project_id,
-      streamId: d.stream_id,
+      projectId,
+      streamId,
       stageGateId: d.stage_gate_id,
       program: p?.program,
       portfolio: p?.portfolio,
@@ -341,8 +436,8 @@ export function buildAllocationPva(opts: {
     });
     const label = labelFor(grain, {
       resourceId: d.resource_id,
-      projectId: d.project_id,
-      streamId: d.stream_id,
+      projectId,
+      streamId,
       stageGateId: d.stage_gate_id,
       program: p?.program,
       portfolio: p?.portfolio,
@@ -356,8 +451,8 @@ export function buildAllocationPva(opts: {
       key,
       label,
       resource_id: d.resource_id,
-      project_id: d.project_id,
-      stream_id: d.stream_id,
+      project_id: projectId,
+      stream_id: streamId,
       stage_gate_id: d.stage_gate_id,
       program: p?.program,
       portfolio: p?.portfolio,
@@ -368,21 +463,35 @@ export function buildAllocationPva(opts: {
   }
 
   for (const e of actuals) {
-    const isBillable = e.billable !== false && Boolean(e.project_id);
+    const isBillable = e.billable !== false && Boolean(e.project_id || e.stream_id);
+    const linkedId = resolveLinkedProjectId({
+      projectId: e.project_id,
+      streamId: e.stream_id,
+      projectsById,
+      streamProjectById,
+    });
+    const linkedStreamId = resolveLinkedStreamId({
+      projectId: e.project_id,
+      streamId: e.stream_id,
+      streamProjectById,
+    });
     // Non-billable / unallocated (no project/work item) still rolls into resource & month grains,
     // and appears under a dedicated bucket for project/stream/gate views.
     const projectId =
+      linkedId ||
       e.project_id ||
       (grain === "project" || grain === "stream" || grain === "stage_gate"
         ? "__non_billable__"
         : null);
     if (!projectId && grain !== "resource" && grain !== "month") continue;
-    const p = e.project_id ? projectsById.get(e.project_id) : undefined;
+    const p =
+      projectId && projectId !== "__non_billable__" ? projectsById.get(projectId) : undefined;
     const month = normMonth(e.period_month);
+    const streamId = isBillable ? linkedStreamId : null;
     const key = grainKey(grain, {
       resourceId: e.resource_id,
       projectId,
-      streamId: isBillable ? e.stream_id : null,
+      streamId,
       stageGateId: isBillable ? e.stage_gate_id : null,
       program: p?.program ?? (projectId === "__non_billable__" ? "Non-billable" : null),
       portfolio: p?.portfolio ?? (projectId === "__non_billable__" ? "Non-billable" : null),
@@ -394,8 +503,8 @@ export function buildAllocationPva(opts: {
         ? "Non-billable / unallocated"
         : labelFor(grain, {
             resourceId: e.resource_id,
-            projectId: e.project_id,
-            streamId: e.stream_id,
+            projectId,
+            streamId,
             stageGateId: e.stage_gate_id,
             program: p?.program,
             portfolio: p?.portfolio,
@@ -410,8 +519,8 @@ export function buildAllocationPva(opts: {
       key,
       label,
       resource_id: e.resource_id,
-      project_id: projectId === "__non_billable__" ? null : e.project_id,
-      stream_id: isBillable ? e.stream_id : null,
+      project_id: projectId === "__non_billable__" ? null : projectId,
+      stream_id: streamId,
       stage_gate_id: isBillable ? e.stage_gate_id : null,
       program: p?.program ?? (projectId === "__non_billable__" ? "Non-billable" : null),
       portfolio: p?.portfolio ?? (projectId === "__non_billable__" ? "Non-billable" : null),
@@ -465,18 +574,24 @@ function labelFor(
   },
 ): string {
   const p = opts.projectId ? opts.projectsById.get(opts.projectId) : undefined;
-  const pName = p?.project_code || p?.name || opts.projectId || "—";
+  const pName = displayProjectName(p, opts.projectId);
   switch (grain) {
     case "resource":
-      return opts.resourceNames?.get(opts.resourceId || "") || opts.resourceId || "—";
+      return (
+        opts.resourceNames?.get(opts.resourceId || "") ||
+        (looksLikeUuid(opts.resourceId) ? "Unknown resource" : opts.resourceId) ||
+        "—"
+      );
     case "project":
       return pName;
     case "stream":
-      return `${pName} · ${opts.streamLabels?.get(opts.streamId || "") || opts.streamId || "Core"}`;
+      return `${pName} · ${displayStreamName(opts.streamId, opts.streamLabels)}`;
     case "stage_gate":
-      return `${pName} · ${opts.streamLabels?.get(opts.streamId || "") || "—"} · ${
-        opts.gateLabels?.get(opts.stageGateId || "") || opts.stageGateId || "Unassigned gate"
-      }`;
+      return `${pName} · ${displayStreamName(opts.streamId, opts.streamLabels)} · ${displayPhaseName(
+        opts.stageGateId,
+        opts.gateLabels,
+        "Unassigned gate",
+      )}`;
     case "program":
       return opts.program || "Unassigned";
     case "portfolio":
