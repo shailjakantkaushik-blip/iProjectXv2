@@ -14,10 +14,7 @@ import {
   remapGateIdForScope,
   setStageGateStatus,
 } from "@/lib/stage-gate-approval";
-import {
-  deliveryMethodsQueryKey,
-  fetchDeliveryMethods,
-} from "@/lib/delivery-methods";
+import { deliveryMethodsQueryKey, fetchDeliveryMethods } from "@/lib/delivery-methods";
 import { StageGateApprovalSelect } from "@/components/stage-gate-approval-select";
 import { RaidStreamSelect } from "@/components/raid-stream-select";
 import { fetchOrgStreams } from "@/lib/project-streams";
@@ -41,6 +38,8 @@ import { ExpandableChart } from "@/components/expandable-chart";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
+import { ForumSelect } from "@/components/forum-select";
+import { forumSelectNames, loadGovernanceChannels } from "@/lib/governance-forums";
 
 type DecisionsSearch = {
   awaiting?: "me" | "all";
@@ -125,6 +124,14 @@ function DecisionsPage() {
     enabled: !!orgId,
   });
 
+  const { data: channelPack } = useQuery({
+    queryKey: ["governance_channels", orgId],
+    queryFn: () => loadGovernanceChannels(),
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+  const forums = channelPack?.channels ?? [];
+
   const { data: decisions = [] } = useQuery({
     queryKey: ["decisions", orgId],
     queryFn: async () => {
@@ -185,7 +192,7 @@ function DecisionsPage() {
     project_id: "",
     stream_id: "",
     stage_gate_id: "",
-    forum: "Portfolio Board",
+    forum: "",
     sponsor: "",
     approver_user_id: "",
     owner: "",
@@ -200,6 +207,13 @@ function DecisionsPage() {
     rationale: "",
     notes: "",
   });
+
+  useEffect(() => {
+    const proj = form.project_id ? (projectById.get(form.project_id) as any) : null;
+    const names = forumSelectNames(forums, { project: proj || null });
+    if (!names.length) return;
+    setForm((f) => (f.forum && names.includes(f.forum) ? f : { ...f, forum: names[0] }));
+  }, [forums, form.project_id, projectById]);
 
   const createDecision = useMutation({
     mutationFn: async () => {
@@ -307,7 +321,8 @@ function DecisionsPage() {
 
   useEffect(() => {
     if (!orgId || !form.project_id || !methods.length) return;
-    const proj = projectById.get(form.project_id) as { delivery_method?: string | null } | undefined;
+    const proj = projectById.get(form.project_id) as
+      { delivery_method?: string | null } | undefined;
     void ensureProjectLevelGates({
       orgId,
       projectId: form.project_id,
@@ -522,11 +537,12 @@ function DecisionsPage() {
               disabled={!form.project_id || setGateStatus.isPending}
             />
           </div>
-          <input
-            className="st-input"
-            placeholder="Forum"
+          <ForumSelect
+            channels={forums}
+            project={form.project_id ? (projectById.get(form.project_id) as any) : null}
+            extra={[form.forum]}
             value={form.forum}
-            onChange={(e) => setForm((f) => ({ ...f, forum: e.target.value }))}
+            onChange={(forum) => setForm((f) => ({ ...f, forum }))}
           />
           <input
             className="st-input"
@@ -636,8 +652,8 @@ function DecisionsPage() {
         </form>
         <p className="mt-2 text-xs text-muted-foreground">
           Capture options, recommendation, owner, required date, and impact. Optionally record
-          against a stream. Approver is notified in-app. Stage-gate status stays in sync with
-          the Stage Gates page.
+          against a stream. Approver is notified in-app. Stage-gate status stays in sync with the
+          Stage Gates page.
         </p>
       </SectionFrame>
 
@@ -745,12 +761,19 @@ function DecisionsPage() {
                           />
                         </td>
                         <td>
-                          <EditableCell
-                            table="decisions"
-                            rowId={d.id}
-                            field="forum"
-                            value={d.forum}
-                            invalidateKeys={["decisions"]}
+                          <ForumSelect
+                            compact
+                            channels={forums}
+                            project={projectById.get(d.project_id) as any}
+                            extra={[d.forum]}
+                            value={d.forum || ""}
+                            disabled={updateDecision.isPending}
+                            onChange={(forum) =>
+                              updateDecision.mutate({
+                                id: d.id,
+                                patch: { forum: forum || null },
+                              })
+                            }
                           />
                         </td>
                         <td>

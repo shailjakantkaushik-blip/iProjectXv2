@@ -15,10 +15,7 @@ import {
   type DecisionOutcome,
   type OrgMember,
 } from "@/lib/decision-approval";
-import {
-  deliveryMethodsQueryKey,
-  fetchDeliveryMethods,
-} from "@/lib/delivery-methods";
+import { deliveryMethodsQueryKey, fetchDeliveryMethods } from "@/lib/delivery-methods";
 import {
   ensureProjectLevelGates,
   gatesForRaidScope,
@@ -31,12 +28,15 @@ import { fetchOrgStreams } from "@/lib/project-streams";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
+import { ForumSelect } from "@/components/forum-select";
+import { forumSelectNames, loadGovernanceChannels } from "@/lib/governance-forums";
 
 type Props = {
   projectId: string;
   projectCode?: string | null;
   projectName?: string | null;
   program?: string | null;
+  portfolio?: string | null;
   sponsor?: string | null;
   deliveryMethodId?: string | null;
   deliveryMethodName?: string | null;
@@ -48,6 +48,7 @@ export function ProjectDecisionsPanel({
   projectCode,
   projectName,
   program,
+  portfolio,
   sponsor,
   deliveryMethodId,
   deliveryMethodName,
@@ -111,6 +112,14 @@ export function ProjectDecisionsPanel({
     enabled: !!orgId && !!projectId,
   });
 
+  const { data: channelPack } = useQuery({
+    queryKey: ["governance_channels", orgId],
+    queryFn: () => loadGovernanceChannels(),
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+  const forums = channelPack?.channels ?? [];
+
   useEffect(() => {
     if (!canEdit || !orgId || !projectId || !methods.length) return;
     void ensureProjectLevelGates({
@@ -132,7 +141,7 @@ export function ProjectDecisionsPanel({
     title: "",
     rationale: "",
     notes: "",
-    forum: "Project Board",
+    forum: "",
     owner: profile?.full_name || "",
     approver_user_id: "",
     outcome: "In Review" as DecisionOutcome,
@@ -140,6 +149,14 @@ export function ProjectDecisionsPanel({
     stream_id: "",
     stage_gate_id: "",
   });
+
+  useEffect(() => {
+    const names = forumSelectNames(forums, {
+      project: { id: projectId, program: program || null, portfolio: portfolio || null },
+    });
+    if (!names.length) return;
+    setForm((f) => (f.forum && names.includes(f.forum) ? f : { ...f, forum: names[0] }));
+  }, [forums, projectId, program, portfolio]);
 
   const methodGates = useMemo(
     () => gatesForRaidScope(gates as never, projectId, form.stream_id || null),
@@ -150,10 +167,7 @@ export function ProjectDecisionsPanel({
     [gates],
   );
 
-  const memberById = useMemo(
-    () => new Map(members.map((m) => [m.id, m])),
-    [members],
-  );
+  const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["decisions"] });
@@ -191,19 +205,20 @@ export function ProjectDecisionsPanel({
     onSuccess: () => {
       invalidate();
       toast.success("Decision sent to approver");
-      setForm((f) => ({ ...f, title: "", rationale: "", notes: "", stream_id: "", stage_gate_id: "" }));
+      setForm((f) => ({
+        ...f,
+        title: "",
+        rationale: "",
+        notes: "",
+        stream_id: "",
+        stage_gate_id: "",
+      }));
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const setOutcome = useMutation({
-    mutationFn: async ({
-      id,
-      outcome,
-    }: {
-      id: string;
-      outcome: DecisionOutcome;
-    }) => {
+    mutationFn: async ({ id, outcome }: { id: string; outcome: DecisionOutcome }) => {
       const patch: Record<string, unknown> = {
         outcome,
         status: outcome,
@@ -213,7 +228,10 @@ export function ProjectDecisionsPanel({
         patch.approved_by = userId || null;
         patch.approved_at = new Date().toISOString();
       }
-      const { error } = await supabase.from("decisions").update(patch as never).eq("id", id);
+      const { error } = await supabase
+        .from("decisions")
+        .update(patch as never)
+        .eq("id", id);
       if (error) throw error;
     },
     onSuccess: (_d, vars) => {
@@ -244,11 +262,16 @@ export function ProjectDecisionsPanel({
       id: string;
       stage_gate_id?: string | null;
       stream_id?: string | null;
+      forum?: string | null;
     }) => {
       const patch: Record<string, unknown> = {};
       if ("stage_gate_id" in vars) patch.stage_gate_id = vars.stage_gate_id ?? null;
       if ("stream_id" in vars) patch.stream_id = vars.stream_id ?? null;
-      const { error } = await supabase.from("decisions").update(patch as never).eq("id", vars.id);
+      if ("forum" in vars) patch.forum = vars.forum ?? null;
+      const { error } = await supabase
+        .from("decisions")
+        .update(patch as never)
+        .eq("id", vars.id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -269,6 +292,7 @@ export function ProjectDecisionsPanel({
           return s ? `${s.name || ""} ${s.code || ""}` : "";
         },
       },
+      { key: "forum", label: "Forum" },
       {
         key: "approver",
         label: "Approver",
@@ -297,118 +321,119 @@ export function ProjectDecisionsPanel({
     <SectionFrame>
       <SectionTitle>Key Decisions</SectionTitle>
       <p className="mb-3 text-xs text-muted-foreground">
-        Assign an organisation user as approver. They receive an in-app notification and can
-        approve or reject from here or the Decisions Log. Optionally record against a stream.
-        Link a delivery-method stage gate and set its approval status — that status is kept in
-        sync with the Stage Gates page.
+        Assign an organisation user as approver. They receive an in-app notification and can approve
+        or reject from here or the Decisions Log. Optionally record against a stream. Link a
+        delivery-method stage gate and set its approval status — that status is kept in sync with
+        the Stage Gates page.
         {projectCode || projectName
           ? ` Showing decisions for ${projectCode ? `${projectCode} · ` : ""}${projectName || ""}.`
           : ""}
       </p>
 
       {canEdit ? (
-      <form
-        className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          createDecision.mutate();
-        }}
-      >
-        <input
-          className="st-input md:col-span-2"
-          placeholder="Decision title"
-          value={form.title}
-          onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-          required
-        />
-        <select
-          className="st-input"
-          value={form.approver_user_id}
-          onChange={(e) => setForm((f) => ({ ...f, approver_user_id: e.target.value }))}
-          required
+        <form
+          className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            createDecision.mutate();
+          }}
         >
-          <option value="">— Approver (required) —</option>
-          {members.map((m) => (
-            <option key={m.id} value={m.id}>
-              {memberLabel(m)}
-            </option>
-          ))}
-        </select>
-        <select
-          className="st-input"
-          value={form.outcome}
-          onChange={(e) => setForm((f) => ({ ...f, outcome: e.target.value as DecisionOutcome }))}
-        >
-          {DECISION_OUTCOMES.map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-        </select>
-        <div className="md:col-span-2 grid grid-cols-1 gap-2 md:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-[11px] font-semibold text-muted-foreground">
-              Stream (optional)
-            </label>
-            <RaidStreamSelect
-              streams={streams}
-              projectId={projectId}
-              value={form.stream_id}
-              onChange={(stream_id) =>
-                setForm((f) => ({
-                  ...f,
-                  stream_id,
-                  stage_gate_id: remapGateIdForScope(
-                    gates as never,
-                    projectId,
-                    stream_id || null,
-                    f.stage_gate_id,
-                  ),
-                }))
-              }
-            />
+          <input
+            className="st-input md:col-span-2"
+            placeholder="Decision title"
+            value={form.title}
+            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+            required
+          />
+          <select
+            className="st-input"
+            value={form.approver_user_id}
+            onChange={(e) => setForm((f) => ({ ...f, approver_user_id: e.target.value }))}
+            required
+          >
+            <option value="">— Approver (required) —</option>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>
+                {memberLabel(m)}
+              </option>
+            ))}
+          </select>
+          <select
+            className="st-input"
+            value={form.outcome}
+            onChange={(e) => setForm((f) => ({ ...f, outcome: e.target.value as DecisionOutcome }))}
+          >
+            {DECISION_OUTCOMES.map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </select>
+          <div className="md:col-span-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-[11px] font-semibold text-muted-foreground">
+                Stream (optional)
+              </label>
+              <RaidStreamSelect
+                streams={streams}
+                projectId={projectId}
+                value={form.stream_id}
+                onChange={(stream_id) =>
+                  setForm((f) => ({
+                    ...f,
+                    stream_id,
+                    stage_gate_id: remapGateIdForScope(
+                      gates as never,
+                      projectId,
+                      stream_id || null,
+                      f.stage_gate_id,
+                    ),
+                  }))
+                }
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-semibold text-muted-foreground">
+                Stage gate approval
+              </label>
+              <StageGateApprovalSelect
+                gates={methodGates}
+                gateId={form.stage_gate_id}
+                onGateId={(stage_gate_id) => setForm((f) => ({ ...f, stage_gate_id }))}
+                onStatus={(gateId, status) => setGateStatus.mutate({ gateId, status })}
+                canEdit={canEdit}
+                disabled={setGateStatus.isPending}
+              />
+            </div>
           </div>
-          <div>
-            <label className="mb-1 block text-[11px] font-semibold text-muted-foreground">
-              Stage gate approval
-            </label>
-            <StageGateApprovalSelect
-              gates={methodGates}
-              gateId={form.stage_gate_id}
-              onGateId={(stage_gate_id) => setForm((f) => ({ ...f, stage_gate_id }))}
-              onStatus={(gateId, status) => setGateStatus.mutate({ gateId, status })}
-              canEdit={canEdit}
-              disabled={setGateStatus.isPending}
-            />
-          </div>
-        </div>
-        <input
-          className="st-input"
-          placeholder="Forum"
-          value={form.forum}
-          onChange={(e) => setForm((f) => ({ ...f, forum: e.target.value }))}
-        />
-        <input
-          className="st-input"
-          type="date"
-          value={form.decision_date}
-          onChange={(e) => setForm((f) => ({ ...f, decision_date: e.target.value }))}
-        />
-        <textarea
-          className="st-input md:col-span-2"
-          placeholder="Rationale"
-          rows={2}
-          value={form.rationale}
-          onChange={(e) => setForm((f) => ({ ...f, rationale: e.target.value }))}
-        />
-        <button
-          type="submit"
-          className="st-btn-primary md:col-span-2"
-          disabled={createDecision.isPending}
-        >
-          {createDecision.isPending ? "Saving…" : "Submit decision"}
-        </button>
-      </form>
+          <ForumSelect
+            channels={forums}
+            project={{ id: projectId, program: program || null, portfolio: portfolio || null }}
+            extra={[form.forum]}
+            value={form.forum}
+            onChange={(forum) => setForm((f) => ({ ...f, forum }))}
+          />
+          <input
+            className="st-input"
+            type="date"
+            value={form.decision_date}
+            onChange={(e) => setForm((f) => ({ ...f, decision_date: e.target.value }))}
+          />
+          <textarea
+            className="st-input md:col-span-2"
+            placeholder="Rationale"
+            rows={2}
+            value={form.rationale}
+            onChange={(e) => setForm((f) => ({ ...f, rationale: e.target.value }))}
+          />
+          <button
+            type="submit"
+            className="st-btn-primary md:col-span-2"
+            disabled={createDecision.isPending}
+          >
+            {createDecision.isPending ? "Saving…" : "Submit decision"}
+          </button>
+        </form>
       ) : (
         <p className="mb-3 text-xs text-muted-foreground">
           View only — you do not have edit rights on Decisions. Approvers can still approve or
@@ -426,7 +451,7 @@ export function ProjectDecisionsPanel({
             shown={table.rows.length}
             total={table.total}
             dirty={table.isDirty}
-          onClear={table.clearAll}
+            onClear={table.clearAll}
             placeholder="Search decisions…"
           />
           {table.total === 0 ? (
@@ -457,7 +482,7 @@ export function ProjectDecisionsPanel({
                 <tbody>
                   {table.rows.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-6 text-center text-xs text-muted-foreground">
+                      <td colSpan={8} className="py-6 text-center text-xs text-muted-foreground">
                         No decisions match filters.
                       </td>
                     </tr>
@@ -495,6 +520,26 @@ export function ProjectDecisionsPanel({
                                       stream_id || null,
                                       d.stage_gate_id,
                                     ) || null,
+                                })
+                              }
+                            />
+                          </td>
+                          <td className="min-w-[10rem]">
+                            <ForumSelect
+                              compact
+                              channels={forums}
+                              project={{
+                                id: projectId,
+                                program: program || null,
+                                portfolio: portfolio || null,
+                              }}
+                              extra={[d.forum]}
+                              value={d.forum || ""}
+                              disabled={!canEdit || setDecisionGate.isPending}
+                              onChange={(forum) =>
+                                setDecisionGate.mutate({
+                                  id: d.id,
+                                  forum: forum || null,
                                 })
                               }
                             />

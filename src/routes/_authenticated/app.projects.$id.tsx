@@ -41,22 +41,22 @@ import {
 import { ProjectGovernanceForums } from "@/components/governance-hierarchy";
 
 type ProjectTab =
-  | "overview"
-  | "summary"
-  | "decisions"
-  | "work"
-  | "governance"
-  | "finance"
-  | "streams"
-  | "phases";
+  "overview" | "summary" | "decisions" | "work" | "governance" | "finance" | "streams" | "phases";
 
 export const Route = createFileRoute("/_authenticated/app/projects/$id")({
   validateSearch: (s: Record<string, unknown>): { tab?: ProjectTab } => {
     const raw = String(s.tab || "");
     if (
-      ["overview", "summary", "decisions", "work", "governance", "finance", "streams", "phases"].includes(
-        raw,
-      )
+      [
+        "overview",
+        "summary",
+        "decisions",
+        "work",
+        "governance",
+        "finance",
+        "streams",
+        "phases",
+      ].includes(raw)
     ) {
       return { tab: raw as ProjectTab };
     }
@@ -520,7 +520,10 @@ function ProjectDetail() {
       {tab === "summary" && (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            {canEdit ? "Edit the steering-meeting summary here." : "Steering-meeting summary (view only)."} The{" "}
+            {canEdit
+              ? "Edit the steering-meeting summary here."
+              : "Steering-meeting summary (view only)."}{" "}
+            The{" "}
             <Link
               to="/app/executive-cockpit"
               search={{ section: "summaries" }}
@@ -570,6 +573,7 @@ function ProjectDetail() {
           projectCode={project.project_code}
           projectName={project.name}
           program={project.program}
+          portfolio={project.portfolio}
           sponsor={project.sponsor}
           deliveryMethodId={project.delivery_method_id}
           deliveryMethodName={project.delivery_method}
@@ -707,7 +711,10 @@ function ProjectDetail() {
             <SectionFrame>
               <div className="mb-2 flex items-center justify-between">
                 <SectionTitle>Actions</SectionTitle>
-                <Link to="/app/actions" className="text-xs font-medium text-primary hover:underline">
+                <Link
+                  to="/app/actions"
+                  className="text-xs font-medium text-primary hover:underline"
+                >
                   Register
                 </Link>
               </div>
@@ -768,14 +775,14 @@ function ProjectDetail() {
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <SectionTitle>Financial baseline</SectionTitle>
             {canEdit ? (
-            <button
-              type="button"
-              className="st-btn-primary"
-              disabled={setBaseline.isPending}
-              onClick={() => setBaseline.mutate()}
-            >
-              {setBaseline.isPending ? "Saving…" : "Capture baseline from current figures"}
-            </button>
+              <button
+                type="button"
+                className="st-btn-primary"
+                disabled={setBaseline.isPending}
+                onClick={() => setBaseline.mutate()}
+              >
+                {setBaseline.isPending ? "Saving…" : "Capture baseline from current figures"}
+              </button>
             ) : null}
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

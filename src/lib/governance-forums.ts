@@ -112,12 +112,18 @@ export function channelScopeKey(c: GovernanceChannel) {
   return (c.portfolio || "").trim();
 }
 
+export type ForumProjectLike = {
+  id: string;
+  program?: string | null;
+  portfolio?: string | null;
+};
+
 /**
  * A forum belongs to a project only through the same buckets used elsewhere:
  * project row → program name → Strategic Alignment (`projects.portfolio`).
  * Org-wide forums (SA with no portfolio) are not mixed into every project.
  */
-export function inheritedForProject(c: GovernanceChannel, project: GovernanceProject | undefined) {
+export function inheritedForProject(c: GovernanceChannel, project: ForumProjectLike | undefined) {
   if (!project) return false;
   const level = c.scope_level || "strategic_alignment";
   if (level === "project") return c.project_id === project.id;
@@ -291,6 +297,43 @@ export function orgWideForums(
     ),
     membersByChannel,
   );
+}
+
+export function isActiveGovernanceChannel(c: GovernanceChannel) {
+  const st = String(c.status || "Active").toLowerCase();
+  return st !== "inactive" && st !== "closed" && st !== "archived";
+}
+
+function isOrgWideForum(c: GovernanceChannel) {
+  return (
+    (c.scope_level || "strategic_alignment") === "strategic_alignment" &&
+    !(c.portfolio || "").trim()
+  );
+}
+
+/**
+ * Unique governance forum names for a decision dropdown.
+ * Project rows get inherited forums plus org-wide ones (e.g. Investment Committee).
+ * Returns [] when no forums exist — callers should keep a free-text field.
+ */
+export function forumSelectNames(
+  channels: GovernanceChannel[],
+  opts?: {
+    project?: ForumProjectLike | null;
+    extra?: Array<string | null | undefined>;
+  },
+): string[] {
+  const names = new Set<string>();
+  const project = opts?.project ?? null;
+  const extras = (opts?.extra || []).map((e) => String(e || "").trim()).filter(Boolean);
+  for (const c of channels) {
+    const n = String(c.name || "").trim();
+    if (!n) continue;
+    if (!isActiveGovernanceChannel(c) && !extras.includes(n)) continue;
+    if (!project || inheritedForProject(c, project) || isOrgWideForum(c)) names.add(n);
+  }
+  for (const n of extras) names.add(n);
+  return [...names].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
 }
 
 export function filterGovernanceChannels(
@@ -612,7 +655,12 @@ export function withCadenceWindowDates<T extends Partial<GovernanceChannel>>(
 ): T {
   const today = opts?.today || localTodayIso();
   const window = resolveCadenceWindow(row);
-  const derived = lastAndNextFromCadence(window.cadence_start, window.cadence_end, row.cadence, today);
+  const derived = lastAndNextFromCadence(
+    window.cadence_start,
+    window.cadence_end,
+    row.cadence,
+    today,
+  );
   if (opts?.resetMeetings) {
     return { ...row, ...window, ...derived };
   }
@@ -665,9 +713,12 @@ export function expandCadenceMeetingsForChannel(
   const inRange = (iso: string) =>
     (!rangeStart || iso >= rangeStart) && (!rangeEnd || iso <= rangeEnd);
 
-  const past = expandCadenceMeetings(window.cadence_start, window.cadence_end, c.cadence, opts).filter(
-    (d) => !next || d < next,
-  );
+  const past = expandCadenceMeetings(
+    window.cadence_start,
+    window.cadence_end,
+    c.cadence,
+    opts,
+  ).filter((d) => !next || d < next);
   const futureOrigin = next || window.cadence_start;
   const future = expandCadenceMeetings(futureOrigin, window.cadence_end, c.cadence, opts);
   const set = new Set<string>([...past, ...future]);
