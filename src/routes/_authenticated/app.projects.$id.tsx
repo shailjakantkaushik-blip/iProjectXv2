@@ -166,6 +166,46 @@ function ProjectDetail() {
     enabled: !!organization?.id && tab === "governance",
   });
 
+  const { data: actions = [] } = useQuery({
+    queryKey: ["actions", organization?.id, id, "raid-tab"],
+    queryFn: async () => {
+      const wide = await supabase
+        .from("actions")
+        .select("id,raid_code,title,status,priority,due_date")
+        .eq("project_id", id);
+      if (wide.error && /raid_code/i.test(wide.error.message)) {
+        return (
+          (
+            await supabase
+              .from("actions")
+              .select("id,title,status,priority,due_date")
+              .eq("project_id", id)
+          ).data ?? []
+        );
+      }
+      return wide.data ?? [];
+    },
+    enabled: !!organization?.id && tab === "governance",
+  });
+
+  const { data: decisions = [] } = useQuery({
+    queryKey: ["decisions", organization?.id, id, "raid-tab"],
+    queryFn: async () => {
+      const wide = await supabase
+        .from("decisions")
+        .select("id,raid_code,title,status,outcome")
+        .eq("project_id", id);
+      if (wide.error && /raid_code/i.test(wide.error.message)) {
+        return (
+          (await supabase.from("decisions").select("id,title,status,outcome").eq("project_id", id))
+            .data ?? []
+        );
+      }
+      return wide.data ?? [];
+    },
+    enabled: !!organization?.id && tab === "governance",
+  });
+
   const submit = async (values: ProjectFormValues) => {
     if (!canEdit) {
       toast.error("You do not have edit rights for this project");
@@ -613,6 +653,61 @@ function ProjectDetail() {
                       </div>
                       <div className="text-[11px] text-muted-foreground">
                         {i.status} · {i.priority}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </SectionFrame>
+            <SectionFrame>
+              <div className="mb-2 flex items-center justify-between">
+                <SectionTitle>Actions</SectionTitle>
+                <Link to="/app/actions" className="text-xs font-medium text-primary hover:underline">
+                  Register
+                </Link>
+              </div>
+              {actions.length === 0 ? (
+                <div className="py-6 text-center text-xs text-muted-foreground">No actions</div>
+              ) : (
+                <ul className="space-y-2">
+                  {actions.slice(0, 8).map((a: any) => (
+                    <li key={a.id} className="rounded-md border border-border/70 px-3 py-2 text-sm">
+                      <div className="font-medium">
+                        {a.raid_code ? `${a.raid_code} · ` : ""}
+                        {a.title}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {a.status}
+                        {a.priority ? ` · ${a.priority}` : ""}
+                        {a.due_date ? ` · due ${String(a.due_date).slice(0, 10)}` : ""}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </SectionFrame>
+            <SectionFrame>
+              <div className="mb-2 flex items-center justify-between">
+                <SectionTitle>Decisions</SectionTitle>
+                <Link
+                  to="/app/decisions"
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  Register
+                </Link>
+              </div>
+              {decisions.length === 0 ? (
+                <div className="py-6 text-center text-xs text-muted-foreground">No decisions</div>
+              ) : (
+                <ul className="space-y-2">
+                  {decisions.slice(0, 8).map((d: any) => (
+                    <li key={d.id} className="rounded-md border border-border/70 px-3 py-2 text-sm">
+                      <div className="font-medium">
+                        {d.raid_code ? `${d.raid_code} · ` : ""}
+                        {d.title}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {d.outcome || d.status || "—"}
                       </div>
                     </li>
                   ))}
