@@ -11,13 +11,13 @@ const DEFAULT_VOLUME = 0.52;
 
 /**
  * Whiteboard slot fitted to public/landing/hero-room.jpg.
- * Kept 16:9 and above head-height so the panel never crops the team.
+ * Sized to the physical board so the 16:9 film covers the grey, above head-height.
  */
 const BOARD = {
-  left: "24%",
-  top: "13.2%",
-  width: "52.7%",
-  height: "29.7%",
+  left: "18.8%",
+  top: "12.4%",
+  width: "63.6%",
+  height: "46.2%",
 };
 
 export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
@@ -136,7 +136,7 @@ export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
           height: BOARD.height,
           background: "#0b1224",
           boxShadow:
-            "0 0 0 5px #d8dbe3, 0 0 0 6px #6b7280, inset 0 0 14px rgba(0,0,0,0.28)",
+            "0 0 0 3px #cfd3dc, 0 0 0 4px #4b5563, inset 0 0 10px rgba(0,0,0,0.22)",
         }}
       >
         <video
