@@ -31,10 +31,41 @@ export type LandingPalette = {
 export type LandingThemeMode = "light" | "dark";
 
 /** Public hero visual beside the headline. */
-export type LandingHeroVisual = "video" | "image";
+export type LandingHeroVisual = "video" | "animation" | "image";
+
+export const LANDING_HERO_VISUALS: {
+  id: LandingHeroVisual;
+  label: string;
+  hint: string;
+}[] = [
+  {
+    id: "video",
+    label: "Video",
+    hint: "Pitch film with British voiceover, play / mute / volume.",
+  },
+  {
+    id: "animation",
+    label: "Animation",
+    hint: "Illustrated product and security walkthrough. No video download.",
+  },
+  {
+    id: "image",
+    label: "Image",
+    hint: "Original static portfolio dashboard mock from before the film and walkthrough.",
+  },
+];
 
 export function normalizeHeroVisual(v: unknown): LandingHeroVisual {
-  return v === "image" ? "image" : "video";
+  if (v === "still" || v === "dashboard" || v === "photo") return "image";
+  if (v === "animation" || v === "illustration" || v === "image") return "animation";
+  return "video";
+}
+
+/** Persist Image as `still` so legacy `image` (animation) keeps working. */
+export function persistHeroVisual(v: LandingHeroVisual | unknown): "video" | "animation" | "still" {
+  if (v === "image" || v === "still" || v === "dashboard" || v === "photo") return "still";
+  if (v === "animation" || v === "illustration") return "animation";
+  return "video";
 }
 
 export type LandingItem = { title: string; desc: string; icon?: string };
@@ -155,9 +186,7 @@ export function resolveAppShellLogoUrl(opts: {
   > | null;
 }): string {
   const org =
-    typeof opts.orgLogoUrl === "string" && opts.orgLogoUrl.trim()
-      ? opts.orgLogoUrl.trim()
-      : "";
+    typeof opts.orgLogoUrl === "string" && opts.orgLogoUrl.trim() ? opts.orgLogoUrl.trim() : "";
   if (org) return org;
   if (!opts.brand) return "";
   // Prefer explicit App shell field; resolveBrandLogoUrl also falls back to legacy logo_url.
@@ -276,7 +305,8 @@ export type LandingConfig = {
     alert: string;
     /**
      * `video` — pitch film with voiceover.
-     * `image` — previous illustrated product window (no video download).
+     * `animation` — illustrated product / security walkthrough.
+     * `image` — original static portfolio dashboard mock.
      */
     visual: LandingHeroVisual;
   };
@@ -1108,10 +1138,7 @@ export function mergeConfig(partial: any): LandingConfig {
   merged.navigation = mergeNavigationConfig(merged.navigation);
   if (!merged.page_download || typeof merged.page_download !== "object") {
     merged.page_download = { pages: {} };
-  } else if (
-    !merged.page_download.pages ||
-    typeof merged.page_download.pages !== "object"
-  ) {
+  } else if (!merged.page_download.pages || typeof merged.page_download.pages !== "object") {
     merged.page_download = { pages: {} };
   }
   // Nested section arrays must come from saved config when present
@@ -1190,21 +1217,21 @@ export function mergeConfig(partial: any): LandingConfig {
     });
     const haveBullet = merged.security.bullets.map((b: string) => String(b).toLowerCase());
     for (const b of DEFAULT_LANDING.security.bullets) {
-      const key =
-        /in-house ai|external (model|ai)|approved open ai|chatgpt/i.test(b)
-          ? "ai"
-          : /BYOD|bring.?your.?own/i.test(b)
-            ? "byod"
-            : /IP-based|IP allowlist|CIDR/i.test(b)
-              ? "ip"
-              : /SSO/i.test(b)
-                ? "sso"
-                : /TOTP|authenticator|MFA/i.test(b)
-                  ? "mfa"
-                  : null;
+      const key = /in-house ai|external (model|ai)|approved open ai|chatgpt/i.test(b)
+        ? "ai"
+        : /BYOD|bring.?your.?own/i.test(b)
+          ? "byod"
+          : /IP-based|IP allowlist|CIDR/i.test(b)
+            ? "ip"
+            : /SSO/i.test(b)
+              ? "sso"
+              : /TOTP|authenticator|MFA/i.test(b)
+                ? "mfa"
+                : null;
       if (!key) continue;
       const already = haveBullet.some((h: string) => {
-        if (key === "ai") return /in-house ai|external (model|ai)|approved open ai|chatgpt/i.test(h);
+        if (key === "ai")
+          return /in-house ai|external (model|ai)|approved open ai|chatgpt/i.test(h);
         if (key === "byod") return /byod|bring.?your.?own/i.test(h);
         if (key === "ip") return /ip-based|ip allowlist|cidr/i.test(h);
         if (key === "sso") return /sso/i.test(h);
@@ -1318,9 +1345,7 @@ export function mergeConfig(partial: any): LandingConfig {
         typeof w.desc === "string" &&
         /no external model|no inference leak|without sending/i.test(w.desc)
       ) {
-        const def = DEFAULT_LANDING.comparison.wins.find((d) =>
-          /in-house ai/i.test(d.title),
-        );
+        const def = DEFAULT_LANDING.comparison.wins.find((d) => /in-house ai/i.test(d.title));
         return def ? { ...w, title: def.title, desc: def.desc } : w;
       }
       return w;
@@ -1366,10 +1391,7 @@ export function mergeConfig(partial: any): LandingConfig {
 
   merged.hero = {
     ...merged.hero,
-    primary_cta: normalizeEoiCtaLabel(
-      merged.hero?.primary_cta,
-      DEFAULT_LANDING.hero.primary_cta,
-    ),
+    primary_cta: normalizeEoiCtaLabel(merged.hero?.primary_cta, DEFAULT_LANDING.hero.primary_cta),
     visual: normalizeHeroVisual(merged.hero?.visual),
   };
   // Keep the classic "Master the Portfolio" opening; place intelligence copy under CTAs.
@@ -1408,10 +1430,7 @@ export function mergeConfig(partial: any): LandingConfig {
   ) {
     merged.hero.secondary_cta = DEFAULT_LANDING.hero.secondary_cta;
   }
-  if (
-    typeof merged.brand?.tagline === "string" &&
-    /command center/i.test(merged.brand.tagline)
-  ) {
+  if (typeof merged.brand?.tagline === "string" && /command center/i.test(merged.brand.tagline)) {
     merged.brand.tagline = DEFAULT_LANDING.brand.tagline;
   }
   if (
@@ -1441,10 +1460,7 @@ export function mergeConfig(partial: any): LandingConfig {
   }
   merged.final_cta = {
     ...merged.final_cta,
-    primary: normalizeEoiCtaLabel(
-      merged.final_cta?.primary,
-      DEFAULT_LANDING.final_cta.primary,
-    ),
+    primary: normalizeEoiCtaLabel(merged.final_cta?.primary, DEFAULT_LANDING.final_cta.primary),
   };
 
   return sanitizeLandingEmbeddedAssets(merged as LandingConfig);
@@ -1555,7 +1571,11 @@ export function readCachedLandingConfigForPaint(): LandingConfig | null {
 export function writeCachedLandingConfig(config: LandingConfig) {
   if (typeof window === "undefined") return;
   try {
-    const next = JSON.stringify(config);
+    const stored = {
+      ...config,
+      hero: { ...config.hero, visual: persistHeroVisual(config.hero.visual) },
+    };
+    const next = JSON.stringify(stored);
     const prev = window.localStorage.getItem(LANDING_CONFIG_CACHE_KEY);
     if (prev === next) return;
     window.localStorage.setItem(LANDING_CONFIG_CACHE_KEY, next);
@@ -1639,10 +1659,19 @@ export async function fetchLandingConfig(): Promise<LandingConfig> {
 }
 
 export async function saveLandingConfig(config: LandingConfig, userId?: string) {
-  const cleaned = sanitizeLandingEmbeddedAssets(mergeConfig(config));
+  const cleaned = sanitizeLandingEmbeddedAssets(
+    mergeConfig({
+      ...config,
+      hero: { ...config.hero, visual: persistHeroVisual(config.hero.visual) },
+    }),
+  );
+  const stored = {
+    ...cleaned,
+    hero: { ...cleaned.hero, visual: persistHeroVisual(cleaned.hero.visual) },
+  };
   const { error } = await supabase
     .from("landing_config" as any)
-    .upsert({ id: "singleton", config: cleaned as any, updated_by: userId ?? null });
+    .upsert({ id: "singleton", config: stored as any, updated_by: userId ?? null });
   if (error) throw error;
   invalidateLandingConfigMemory();
   writeCachedLandingConfig(cleaned);

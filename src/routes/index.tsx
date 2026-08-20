@@ -50,12 +50,15 @@ import { LandingHeroFrame } from "@/components/landing-hero-frame";
 import { PageLoading } from "@/components/page-loading";
 import { lockDocumentScroll, unlockDocumentScroll } from "@/lib/document-scroll";
 
-const EoiModal = lazy(() =>
-  import("@/components/eoi-form").then((m) => ({ default: m.EoiModal })),
-);
+const EoiModal = lazy(() => import("@/components/eoi-form").then((m) => ({ default: m.EoiModal })));
 const LandingStoryWindow = lazy(() =>
   import("@/components/landing-story-window").then((m) => ({
     default: m.LandingStoryWindow,
+  })),
+);
+const LandingHeroDashboard = lazy(() =>
+  import("@/components/landing-hero-dashboard").then((m) => ({
+    default: m.LandingHeroDashboard,
   })),
 );
 const LandingHeroIllustration = lazy(() =>
@@ -117,11 +120,7 @@ function LandingPending() {
   // DEFAULT_LANDING navy/accent (that was the reload colour-profile flash).
   const cached = typeof window !== "undefined" ? readCachedLandingConfigForPaint() : null;
   const theme = cached?.theme ?? "light";
-  const bg = cached
-    ? theme === "dark"
-      ? cached.palette.navy
-      : "#ffffff"
-    : "#ffffff";
+  const bg = cached ? (theme === "dark" ? cached.palette.navy : "#ffffff") : "#ffffff";
   return (
     <PageLoading
       label="Loading…"
@@ -521,13 +520,7 @@ function LandingPage() {
   );
 }
 
-function CtaPrimary({
-  children,
-  onClick,
-}: {
-  children: React.ReactNode;
-  onClick?: () => void;
-}) {
+function CtaPrimary({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) {
   const cls =
     "inline-flex items-center gap-2 rounded-md px-7 py-3.5 text-sm font-bold transition-transform duration-200 hover:-translate-y-0.5 active:translate-y-0";
   const style = {
@@ -834,7 +827,7 @@ function Hero({ cfg, onEoiClick }: { cfg: LandingConfig; onEoiClick?: () => void
                 scrollToLandingHash("#story");
               }}
             >
-              {cfg.hero.visual === "image" ? "See the product" : "Watch the pitch"}
+              {cfg.hero.visual === "video" ? "Watch the pitch" : "See the product"}
               <ArrowRight className="ml-1.5 h-4 w-4" />
             </a>
             {cfg.hero.after_cta ? (
@@ -851,6 +844,18 @@ function Hero({ cfg, onEoiClick }: { cfg: LandingConfig; onEoiClick?: () => void
         <div className="min-w-0 lg:col-span-7" id="story">
           <LandingHeroFrame accent={p.accent} navy={p.navy}>
             {cfg.hero.visual === "image" ? (
+              <Suspense
+                fallback={
+                  <div
+                    className="min-h-[280px] w-full"
+                    style={{ background: "rgba(8, 14, 32, 0.72)" }}
+                    aria-hidden
+                  />
+                }
+              >
+                <LandingHeroDashboard cfg={cfg} />
+              </Suspense>
+            ) : cfg.hero.visual === "animation" ? (
               <Suspense
                 fallback={
                   <div
@@ -908,9 +913,7 @@ function InsightBar({ cfg }: { cfg: LandingConfig }) {
 
 function TrustStrip({ cfg }: { cfg: LandingConfig }) {
   const labels =
-    cfg.trust_strip?.items?.length > 0
-      ? cfg.trust_strip.items
-      : DEFAULT_LANDING.trust_strip.items;
+    cfg.trust_strip?.items?.length > 0 ? cfg.trust_strip.items : DEFAULT_LANDING.trust_strip.items;
   return (
     <section
       className="border-y"
@@ -954,10 +957,7 @@ function TrustedBy({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string }
         </div>
         <div className="flex flex-wrap items-end justify-center gap-x-10 gap-y-8">
           {cfg.trusted.logos.map((l, i) => (
-            <div
-              key={`${l.name}-${i}`}
-              className="flex w-[140px] flex-col items-center gap-2"
-            >
+            <div key={`${l.name}-${i}`} className="flex w-[140px] flex-col items-center gap-2">
               {l.logo_url ? (
                 <img
                   src={l.logo_url}
@@ -993,7 +993,10 @@ function CeoMessage({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string 
   if (!m?.enabled || !m.message?.trim()) return null;
   const p = cfg.palette;
   return (
-    <section className="border-b py-16 sm:py-20" style={{ borderColor: p.surface, background: sectionBg }}>
+    <section
+      className="border-b py-16 sm:py-20"
+      style={{ borderColor: p.surface, background: sectionBg }}
+    >
       <div className="mx-auto max-w-5xl px-5 sm:px-6">
         <Reveal>
           <div className="grid items-center gap-10 md:grid-cols-[minmax(0,200px)_1fr] md:gap-14">
@@ -1003,7 +1006,11 @@ function CeoMessage({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string 
                 style={{ borderColor: p.surface, background: p.surface }}
               >
                 {m.photo_url ? (
-                  <img src={m.photo_url} alt={m.name || "CEO"} className="h-full w-full object-cover" />
+                  <img
+                    src={m.photo_url}
+                    alt={m.name || "CEO"}
+                    className="h-full w-full object-cover"
+                  />
                 ) : (
                   <div
                     className="flex h-full w-full items-center justify-center text-3xl font-bold"
@@ -1023,10 +1030,16 @@ function CeoMessage({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string 
                   {m.subtitle}
                 </div>
               )}
-              <h2 className="text-2xl font-bold tracking-tight sm:text-3xl" style={{ ...HEADING, color: p.textHeading }}>
+              <h2
+                className="text-2xl font-bold tracking-tight sm:text-3xl"
+                style={{ ...HEADING, color: p.textHeading }}
+              >
                 {m.title}
               </h2>
-              <p className="mt-5 text-base leading-relaxed whitespace-pre-line sm:text-lg" style={{ color: p.textBody }}>
+              <p
+                className="mt-5 text-base leading-relaxed whitespace-pre-line sm:text-lg"
+                style={{ color: p.textBody }}
+              >
                 {m.message}
               </p>
               {(m.name || m.role) && (
@@ -1057,11 +1070,17 @@ function Testimonials({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: strin
   if (!t?.enabled || items.length === 0) return null;
   const p = cfg.palette;
   return (
-    <section className="border-b py-16 sm:py-24" style={{ borderColor: p.surface, background: sectionBg }}>
+    <section
+      className="border-b py-16 sm:py-24"
+      style={{ borderColor: p.surface, background: sectionBg }}
+    >
       <div className="mx-auto max-w-7xl px-5 sm:px-6">
         <Reveal>
           <div className="mx-auto mb-12 max-w-2xl text-center">
-            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl" style={{ ...HEADING, color: p.textHeading }}>
+            <h2
+              className="text-3xl font-bold tracking-tight sm:text-4xl"
+              style={{ ...HEADING, color: p.textHeading }}
+            >
               {t.title}
             </h2>
             {t.subtitle && (
@@ -1081,7 +1100,10 @@ function Testimonials({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: strin
                 {(item.title || item.subtitle) && (
                   <div className="mb-4">
                     {item.title && (
-                      <h3 className="text-lg font-semibold" style={{ ...HEADING, color: p.textHeading }}>
+                      <h3
+                        className="text-lg font-semibold"
+                        style={{ ...HEADING, color: p.textHeading }}
+                      >
                         {item.title}
                       </h3>
                     )}
@@ -1092,10 +1114,16 @@ function Testimonials({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: strin
                     )}
                   </div>
                 )}
-                <p className="flex-1 text-sm leading-relaxed whitespace-pre-line" style={{ color: p.textBody }}>
+                <p
+                  className="flex-1 text-sm leading-relaxed whitespace-pre-line"
+                  style={{ color: p.textBody }}
+                >
                   “{item.message}”
                 </p>
-                <div className="mt-6 flex items-center gap-3 border-t pt-4" style={{ borderColor: p.surface }}>
+                <div
+                  className="mt-6 flex items-center gap-3 border-t pt-4"
+                  style={{ borderColor: p.surface }}
+                >
                   <div
                     className="h-12 w-12 shrink-0 overflow-hidden rounded-full border"
                     style={{ borderColor: p.surface, background: p.surface }}
@@ -1117,7 +1145,10 @@ function Testimonials({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: strin
                   </div>
                   <div className="min-w-0">
                     {(item.name || item.title) && (
-                      <div className="truncate text-sm font-semibold" style={{ color: p.textHeading }}>
+                      <div
+                        className="truncate text-sm font-semibold"
+                        style={{ color: p.textHeading }}
+                      >
                         {item.name || item.title}
                       </div>
                     )}
@@ -1147,7 +1178,10 @@ function BoardStatements({ cfg }: { cfg: LandingConfig }) {
       <div className="mx-auto max-w-7xl px-5 sm:px-6">
         <Reveal>
           <div className="mx-auto mb-12 max-w-2xl text-center">
-            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl" style={{ ...HEADING, color: p.textOnDark }}>
+            <h2
+              className="text-3xl font-bold tracking-tight sm:text-4xl"
+              style={{ ...HEADING, color: p.textOnDark }}
+            >
               {b.title}
             </h2>
             {b.subtitle && (
@@ -1586,7 +1620,10 @@ function RaidTour({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string })
             >
               {cfg.raid.title}
             </h2>
-            <p className="mt-4 text-base leading-relaxed sm:mt-5 sm:text-lg" style={{ color: p.textMuted }}>
+            <p
+              className="mt-4 text-base leading-relaxed sm:mt-5 sm:text-lg"
+              style={{ color: p.textMuted }}
+            >
               {cfg.raid.body}
             </p>
             <div className="mt-6 flex flex-wrap gap-2 sm:mt-8">
@@ -1641,14 +1678,14 @@ function RaidTour({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string })
                         className="inline-flex shrink-0 items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider"
                         style={{ background: r.tone + "18", color: r.tone }}
                       >
-                        <span
-                          className="h-1.5 w-1.5 rounded-full"
-                          style={{ background: r.tone }}
-                        />
+                        <span className="h-1.5 w-1.5 rounded-full" style={{ background: r.tone }} />
                         {r.status}
                       </span>
                     </div>
-                    <div className="text-sm font-medium leading-snug" style={{ color: p.textHeading }}>
+                    <div
+                      className="text-sm font-medium leading-snug"
+                      style={{ color: p.textHeading }}
+                    >
                       {r.title}
                     </div>
                     <div className="text-xs" style={{ color: p.textMuted }}>
@@ -1685,10 +1722,16 @@ function RaidTour({ cfg, sectionBg }: { cfg: LandingConfig; sectionBg: string })
                         <td className="py-3.5 text-xs font-bold" style={{ color: p.textMuted }}>
                           {r.type}
                         </td>
-                        <td className="max-w-[14rem] py-3.5 pr-3 lg:max-w-none" style={{ color: p.textHeading }}>
+                        <td
+                          className="max-w-[14rem] py-3.5 pr-3 lg:max-w-none"
+                          style={{ color: p.textHeading }}
+                        >
                           {r.title}
                         </td>
-                        <td className="py-3.5 text-xs whitespace-nowrap" style={{ color: p.textMuted }}>
+                        <td
+                          className="py-3.5 text-xs whitespace-nowrap"
+                          style={{ color: p.textMuted }}
+                        >
                           {r.owner}
                         </td>
                         <td className="pr-5 text-right">
@@ -1997,36 +2040,81 @@ function Footer({ cfg }: { cfg: LandingConfig }) {
           </div>
           <div className="grid grid-cols-2 gap-8 sm:grid-cols-3 md:col-span-7 md:justify-items-end">
             <div>
-              <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: p.textMuted }}>
+              <p
+                className="mb-3 text-[11px] font-bold uppercase tracking-[0.16em]"
+                style={{ color: p.textMuted }}
+              >
                 Product
               </p>
-              <div className="flex flex-col gap-2 text-sm font-medium" style={{ color: p.textBody }}>
-                <a href="#cockpit" className="transition-opacity hover:opacity-70">Cockpit</a>
-                <a href="#timeline" className="transition-opacity hover:opacity-70">Timeline</a>
-                <a href="#raid" className="transition-opacity hover:opacity-70">Governance</a>
-                <a href="#capabilities" className="transition-opacity hover:opacity-70">Capabilities</a>
+              <div
+                className="flex flex-col gap-2 text-sm font-medium"
+                style={{ color: p.textBody }}
+              >
+                <a href="#cockpit" className="transition-opacity hover:opacity-70">
+                  Cockpit
+                </a>
+                <a href="#timeline" className="transition-opacity hover:opacity-70">
+                  Timeline
+                </a>
+                <a href="#raid" className="transition-opacity hover:opacity-70">
+                  Governance
+                </a>
+                <a href="#capabilities" className="transition-opacity hover:opacity-70">
+                  Capabilities
+                </a>
               </div>
             </div>
             <div>
-              <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: p.textMuted }}>
+              <p
+                className="mb-3 text-[11px] font-bold uppercase tracking-[0.16em]"
+                style={{ color: p.textMuted }}
+              >
                 Company
               </p>
-              <div className="flex flex-col gap-2 text-sm font-medium" style={{ color: p.textBody }}>
-                <Link to="/contact" className="transition-opacity hover:opacity-70">Contact us</Link>
-                <Link to="/legal/about" className="transition-opacity hover:opacity-70">About</Link>
-                <Link to="/legal/support-help" className="transition-opacity hover:opacity-70">Support</Link>
-                <Link to="/auth" className="transition-opacity hover:opacity-70">Sign in</Link>
+              <div
+                className="flex flex-col gap-2 text-sm font-medium"
+                style={{ color: p.textBody }}
+              >
+                <Link to="/contact" className="transition-opacity hover:opacity-70">
+                  Contact us
+                </Link>
+                <Link to="/legal/about" className="transition-opacity hover:opacity-70">
+                  About
+                </Link>
+                <Link to="/legal/support-help" className="transition-opacity hover:opacity-70">
+                  Support
+                </Link>
+                <Link to="/auth" className="transition-opacity hover:opacity-70">
+                  Sign in
+                </Link>
               </div>
             </div>
             <div className="col-span-2 sm:col-span-1">
-              <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: p.textMuted }}>
+              <p
+                className="mb-3 text-[11px] font-bold uppercase tracking-[0.16em]"
+                style={{ color: p.textMuted }}
+              >
                 Resources
               </p>
-              <div className="flex flex-col gap-2 text-sm font-medium" style={{ color: p.textBody }}>
-                <Link to="/legal/pricing-plans" className="transition-opacity hover:opacity-70">Pricing</Link>
-                <Link to="/legal/sla" className="transition-opacity hover:opacity-70">SLA</Link>
-                <Link to="/legal/system-status" className="transition-opacity hover:opacity-70">Status</Link>
-                <Link to="/legal/information-security" className="transition-opacity hover:opacity-70">Security</Link>
+              <div
+                className="flex flex-col gap-2 text-sm font-medium"
+                style={{ color: p.textBody }}
+              >
+                <Link to="/legal/pricing-plans" className="transition-opacity hover:opacity-70">
+                  Pricing
+                </Link>
+                <Link to="/legal/sla" className="transition-opacity hover:opacity-70">
+                  SLA
+                </Link>
+                <Link to="/legal/system-status" className="transition-opacity hover:opacity-70">
+                  Status
+                </Link>
+                <Link
+                  to="/legal/information-security"
+                  className="transition-opacity hover:opacity-70"
+                >
+                  Security
+                </Link>
               </div>
             </div>
           </div>
@@ -2039,12 +2127,25 @@ function Footer({ cfg }: { cfg: LandingConfig }) {
           <p className="text-xs" style={{ color: p.textMuted }}>
             {cfg.footer.text || `© ${year} iProjectX. All rights reserved.`}
           </p>
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-medium" style={{ color: p.textMuted }}>
-            <Link to="/legal/privacy-policy" className="transition-opacity hover:opacity-70">Privacy</Link>
-            <Link to="/legal/terms-of-service" className="transition-opacity hover:opacity-70">Terms</Link>
-            <Link to="/legal/cookie-policy" className="transition-opacity hover:opacity-70">Cookies</Link>
-            <Link to="/legal/acceptable-use" className="transition-opacity hover:opacity-70">Acceptable use</Link>
-            <Link to="/contact" className="transition-opacity hover:opacity-70">Contact</Link>
+          <div
+            className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-medium"
+            style={{ color: p.textMuted }}
+          >
+            <Link to="/legal/privacy-policy" className="transition-opacity hover:opacity-70">
+              Privacy
+            </Link>
+            <Link to="/legal/terms-of-service" className="transition-opacity hover:opacity-70">
+              Terms
+            </Link>
+            <Link to="/legal/cookie-policy" className="transition-opacity hover:opacity-70">
+              Cookies
+            </Link>
+            <Link to="/legal/acceptable-use" className="transition-opacity hover:opacity-70">
+              Acceptable use
+            </Link>
+            <Link to="/contact" className="transition-opacity hover:opacity-70">
+              Contact
+            </Link>
           </div>
         </div>
       </div>
