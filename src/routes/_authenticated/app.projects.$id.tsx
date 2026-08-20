@@ -25,6 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 import { PageLoading } from "@/components/page-loading";
 import { ProjectStreamsPanel } from "@/components/project-streams-panel";
+import { ProjectPhaseTimeline } from "@/components/project-phase-timeline";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
@@ -39,13 +40,22 @@ import {
 import { ProjectGovernanceForums } from "@/components/governance-hierarchy";
 
 type ProjectTab =
-  "overview" | "summary" | "decisions" | "work" | "governance" | "finance" | "streams";
+  | "overview"
+  | "summary"
+  | "decisions"
+  | "work"
+  | "governance"
+  | "finance"
+  | "streams"
+  | "phases";
 
 export const Route = createFileRoute("/_authenticated/app/projects/$id")({
   validateSearch: (s: Record<string, unknown>): { tab?: ProjectTab } => {
     const raw = String(s.tab || "");
     if (
-      ["overview", "summary", "decisions", "work", "governance", "finance", "streams"].includes(raw)
+      ["overview", "summary", "decisions", "work", "governance", "finance", "streams", "phases"].includes(
+        raw,
+      )
     ) {
       return { tab: raw as ProjectTab };
     }
@@ -58,6 +68,7 @@ const TABS = [
   { id: "overview", label: "Overview" },
   { id: "summary", label: "Project Summary" },
   { id: "streams", label: "Streams" },
+  { id: "phases", label: "Phase timeline" },
   { id: "decisions", label: "Key Decisions" },
   { id: "work", label: "Work" },
   { id: "governance", label: "RAID" },
@@ -363,7 +374,7 @@ function ProjectDetail() {
     );
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5">
+    <div className={cn("mx-auto space-y-5", tab === "phases" ? "max-w-6xl" : "max-w-5xl")}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-xs font-mono text-muted-foreground">
@@ -518,6 +529,15 @@ function ProjectDetail() {
             actual_start_date: project.actual_start_date,
             actual_end_date: project.actual_end_date,
           }}
+        />
+      )}
+
+      {tab === "phases" && organization?.id && (
+        <ProjectPhaseTimeline
+          projectId={id}
+          project={project}
+          orgId={organization.id}
+          fyStartMonth={organization.fy_start_month || 4}
         />
       )}
 
