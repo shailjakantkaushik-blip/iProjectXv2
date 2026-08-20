@@ -47,6 +47,49 @@ export function resourceHoursPerWeek(r?: ResourceCapacityLike | null): number {
   return DEFAULT_HOURS_PER_DAY * DEFAULT_WORKDAYS_PER_WEEK;
 }
 
+export type EffortUnit = "hours" | "days" | "weeks";
+
+export const EFFORT_UNITS: { id: EffortUnit; label: string; short: string }[] = [
+  { id: "hours", label: "Hours", short: "h" },
+  { id: "days", label: "Days", short: "d" },
+  { id: "weeks", label: "Weeks", short: "w" },
+];
+
+/** Convert stored hours into hours / days / weeks (default day length 8). */
+export function hoursToEffortUnit(
+  hours: number,
+  unit: EffortUnit,
+  hoursPerDay = DEFAULT_HOURS_PER_DAY,
+): number {
+  const h = Number(hours) || 0;
+  const day = hoursPerDay > 0 ? hoursPerDay : DEFAULT_HOURS_PER_DAY;
+  if (unit === "days") return Math.round((h / day) * 100) / 100;
+  if (unit === "weeks") return Math.round((h / (day * DEFAULT_WORKDAYS_PER_WEEK)) * 1000) / 1000;
+  return Math.round(h * 10) / 10;
+}
+
+export function effortUnitSuffix(unit: EffortUnit) {
+  return unit === "days" ? "d" : unit === "weeks" ? "w" : "h";
+}
+
+export function effortUnitNoun(unit: EffortUnit) {
+  return EFFORT_UNITS.find((u) => u.id === unit)?.label ?? "Hours";
+}
+
+export function formatEffortNumber(
+  hours: number,
+  unit: EffortUnit,
+  hoursPerDay = DEFAULT_HOURS_PER_DAY,
+) {
+  const v = hoursToEffortUnit(hours, unit, hoursPerDay);
+  if (unit === "weeks") return Number.isInteger(v) ? String(v) : v.toFixed(2);
+  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}
+
+export function formatEffort(hours: number, unit: EffortUnit, hoursPerDay = DEFAULT_HOURS_PER_DAY) {
+  return `${formatEffortNumber(hours, unit, hoursPerDay)} ${effortUnitSuffix(unit)}`;
+}
+
 export function hoursLoadStatus(hours: number, cap: number): HoursLoadStatus {
   const h = Number(hours) || 0;
   const c = Number(cap) || 0;
@@ -84,10 +127,7 @@ export function worstHoursLoadStatus(
 }
 
 /** Inclusive Mon–Fri count between two ISO dates. Missing dates → 0 (caller supplies fallback). */
-export function countWeekdaysInclusive(
-  start?: string | null,
-  end?: string | null,
-): number {
+export function countWeekdaysInclusive(start?: string | null, end?: string | null): number {
   let from = (start || "").slice(0, 10);
   let to = (end || "").slice(0, 10);
   if (!from && !to) return 0;
@@ -95,7 +135,7 @@ export function countWeekdaysInclusive(
   if (!to) to = from;
   if (from > to) [from, to] = [to, from];
   let n = 0;
-  for (let d = from; d <= to; ) {
+  for (let d = from; d <= to;) {
     const [y, m, day] = d.split("-").map(Number);
     const dow = new Date(Date.UTC(y, m - 1, day)).getUTCDay();
     if (dow >= 1 && dow <= 5) n += 1;
@@ -116,7 +156,8 @@ export function workItemDailyHoursPerAssignee(opts: {
   const hours = Number(opts.estimateHours) || 0;
   if (!(hours > 0)) return 0;
   const people = Math.max(1, Number(opts.assigneeCount) || 1);
-  const days = countWeekdaysInclusive(opts.plannedStart, opts.plannedEnd) || DEFAULT_WORKDAYS_PER_WEEK;
+  const days =
+    countWeekdaysInclusive(opts.plannedStart, opts.plannedEnd) || DEFAULT_WORKDAYS_PER_WEEK;
   return Math.round((hours / people / days) * 100) / 100;
 }
 
@@ -128,10 +169,7 @@ export function accumulateDailyDemandByResource<
     planned_end?: string | null;
     status?: string | null;
   },
->(
-  items: T[],
-  assigneesByWorkItem: Map<string, string[]>,
-): Map<string, number> {
+>(items: T[], assigneesByWorkItem: Map<string, string[]>): Map<string, number> {
   const out = new Map<string, number>();
   for (const item of items) {
     const status = String(item.status || "");
@@ -153,13 +191,7 @@ export function accumulateDailyDemandByResource<
 }
 
 export type DayHoursKey =
-  | "hours_mon"
-  | "hours_tue"
-  | "hours_wed"
-  | "hours_thu"
-  | "hours_fri"
-  | "hours_sat"
-  | "hours_sun";
+  "hours_mon" | "hours_tue" | "hours_wed" | "hours_thu" | "hours_fri" | "hours_sat" | "hours_sun";
 
 export const DAY_HOUR_KEYS: DayHoursKey[] = [
   "hours_mon",

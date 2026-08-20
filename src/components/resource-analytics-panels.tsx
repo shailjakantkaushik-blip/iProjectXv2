@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -15,11 +15,14 @@ import {
   entryHours,
   hoursFromAllocation,
   normMonth,
+  resolveLinkedProjectId,
+  resolveLinkedStreamId,
   type AllocationPlanRow,
   type AllocationPvaRow,
   type PvaGrain,
   type TimesheetEffortRow,
 } from "@/lib/resource-allocation-analytics";
+import { effortUnitSuffix, formatEffortNumber, type EffortUnit } from "@/lib/resource-capacity";
 import {
   exportResourceReportsExcel,
   exportResourceUtilisationCsv,
@@ -90,6 +93,8 @@ type Props = {
     user_id?: string | null;
   }>;
   allocations: AllocationPlanRow[];
+  /** Hours / days / weeks for effort columns (default hours). */
+  effortUnit?: EffortUnit;
   /** Optional: expose latest PVA rows to parent for page-level exports. */
   onPvaRows?: (rows: AllocationPvaRow[]) => void;
 };
@@ -99,6 +104,7 @@ export function ResourceAnalyticsPanels({
   projects,
   resources,
   allocations,
+  effortUnit = "hours",
   onPvaRows,
 }: Props) {
   const { organization } = useAuth();
@@ -272,6 +278,54 @@ export function ResourceAnalyticsPanels({
     for (const s of streams as any[]) m.set(s.id, formatStreamLabel(s));
     return m;
   }, [streams]);
+  const streamProjectById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const s of streams as any[]) {
+      if (s?.id && s?.project_id) m.set(s.id, s.project_id);
+    }
+    return m;
+  }, [streams]);
+  const linkedProjectId = useCallback(
+    (row: { project_id?: string | null; stream_id?: string | null }) =>
+      resolveLinkedProjectId({
+        projectId: row.project_id,
+        streamId: row.stream_id,
+        projectsById,
+        streamProjectById,
+      }),
+    [projectsById, streamProjectById],
+  );
+  const linkedStreamId = useCallback(
+    (row: { project_id?: string | null; stream_id?: string | null }) =>
+      resolveLinkedStreamId({
+        projectId: row.project_id,
+        streamId: row.stream_id,
+        streamProjectById,
+      }),
+    [streamProjectById],
+  );
+  const isVisibleProject = useCallback(
+    (row: { project_id?: string | null; stream_id?: string | null }) => {
+      const linked = linkedProjectId(row);
+      if (linked && visibleProjectIds.has(linked)) return true;
+      return Boolean(row.project_id && visibleProjectIds.has(row.project_id));
+    },
+    [linkedProjectId, visibleProjectIds],
+  );
+  const matchesProjectFilter = useCallback(
+    (row: { project_id?: string | null; stream_id?: string | null }) => {
+      if (projectFilter === "all") return true;
+      return linkedProjectId(row) === projectFilter || row.project_id === projectFilter;
+    },
+    [linkedProjectId, projectFilter],
+  );
+  const matchesStreamFilter = useCallback(
+    (row: { project_id?: string | null; stream_id?: string | null }) => {
+      if (streamFilter === "all") return true;
+      return linkedStreamId(row) === streamFilter || (row.stream_id || null) === streamFilter;
+    },
+    [linkedStreamId, streamFilter],
+  );
   const gateLabels = useMemo(() => {
     const m = new Map<string, string>();
     for (const g of gates as any[]) m.set(g.id, g.gate_name || "Gate");
@@ -317,48 +371,51 @@ export function ResourceAnalyticsPanels({
     return new Set(gateIdsByName.get(gateFilter) || []);
   }, [gateFilter, gateIdsByName]);
 
-  const matchesGateFilter = (stageGateId: string | null | undefined) => {
-    if (!selectedGateIds) return true;
-    if (!stageGateId) return false;
-    if (selectedGateIds.has(stageGateId)) return true;
-    // Safety: also match by label if id set was empty/stale
-    return gateLabels.get(stageGateId) === gateFilter;
-  };
+  const matchesGateFilter = useCallback(
+    (stageGateId: string | null | undefined) => {
+      if (!selectedGateIds) return true;
+      if (!stageGateId) return false;
+      if (selectedGateIds.has(stageGateId)) return true;
+      // Safety: also match by label if id set was empty/stale
+      return gateLabels.get(stageGateId) === gateFilter;
+    },
+    [selectedGateIds, gateLabels, gateFilter],
+  );
 
   /** Scope to projects the caller can see (RLS / project visibility). */
   const scopedPlans = useMemo(
     () =>
       allocations.filter(
-        (a: AllocationPlanRow) => !a.project_id || visibleProjectIds.has(a.project_id),
+        (a: AllocationPlanRow) => (!a.project_id && !a.stream_id) || isVisibleProject(a),
       ),
-    [allocations, visibleProjectIds],
+    [allocations, isVisibleProject],
   );
 
   const scopedActuals = useMemo(
     () =>
       actualRows.filter((a: TimesheetEffortRow) => {
         // Non-billable / unallocated (no project) — keep for resource/month and PVA buckets.
-        if (!a.project_id || a.billable === false) {
+        if ((!a.project_id && !a.stream_id) || a.billable === false) {
           return grain === "resource" || grain === "month" || grain === "project";
         }
-        return visibleProjectIds.has(a.project_id);
+        return isVisibleProject(a);
       }),
-    [actualRows, visibleProjectIds, grain],
+    [actualRows, grain, isVisibleProject],
   );
 
   const scopedDemand = useMemo(
     () =>
       demandSlices.filter((d: WorkItemDemandSlice) => {
-        if (!d.project_id) return grain === "resource" || grain === "month";
-        return visibleProjectIds.has(d.project_id);
+        if (!d.project_id && !d.stream_id) return grain === "resource" || grain === "month";
+        return isVisibleProject(d);
       }),
-    [demandSlices, visibleProjectIds, grain],
+    [demandSlices, grain, isVisibleProject],
   );
 
   const filteredPlans = useMemo(() => {
     return scopedPlans.filter((a: AllocationPlanRow) => {
-      if (projectFilter !== "all" && a.project_id !== projectFilter) return false;
-      if (streamFilter !== "all" && (a.stream_id || null) !== streamFilter) return false;
+      if (!matchesProjectFilter(a)) return false;
+      if (!matchesStreamFilter(a)) return false;
       if (!matchesGateFilter(a.stage_gate_id)) return false;
       if (resourceFilter !== "all" && a.resource_id !== resourceFilter) return false;
       if (!inMonthRange(a.period_month, monthFrom, monthTo)) return false;
@@ -366,25 +423,23 @@ export function ResourceAnalyticsPanels({
     });
   }, [
     scopedPlans,
-    projectFilter,
-    streamFilter,
+    matchesProjectFilter,
+    matchesStreamFilter,
+    matchesGateFilter,
     resourceFilter,
     monthFrom,
     monthTo,
-    selectedGateIds,
-    gateFilter,
-    gateLabels,
   ]);
 
   const filteredActuals = useMemo(() => {
     return scopedActuals.filter((a: TimesheetEffortRow) => {
-      const nonBillable = !a.project_id || a.billable === false;
+      const nonBillable = (!a.project_id && !a.stream_id) || a.billable === false;
       if (projectFilter !== "all") {
         if (nonBillable) return false; // project filter hides unallocated bucket
-        if (a.project_id !== projectFilter) return false;
+        if (!matchesProjectFilter(a)) return false;
       }
       if (!nonBillable) {
-        if (streamFilter !== "all" && (a.stream_id || null) !== streamFilter) return false;
+        if (!matchesStreamFilter(a)) return false;
         if (!matchesGateFilter(a.stage_gate_id)) return false;
       } else if (streamFilter !== "all" || gateFilter !== "all") {
         return false;
@@ -397,18 +452,19 @@ export function ResourceAnalyticsPanels({
     scopedActuals,
     projectFilter,
     streamFilter,
+    gateFilter,
+    matchesProjectFilter,
+    matchesStreamFilter,
+    matchesGateFilter,
     resourceFilter,
     monthFrom,
     monthTo,
-    selectedGateIds,
-    gateFilter,
-    gateLabels,
   ]);
 
   const filteredDemand = useMemo(() => {
     return scopedDemand.filter((d: WorkItemDemandSlice) => {
-      if (projectFilter !== "all" && d.project_id !== projectFilter) return false;
-      if (streamFilter !== "all" && (d.stream_id || null) !== streamFilter) return false;
+      if (!matchesProjectFilter(d)) return false;
+      if (!matchesStreamFilter(d)) return false;
       if (!matchesGateFilter(d.stage_gate_id)) return false;
       if (resourceFilter !== "all" && d.resource_id !== resourceFilter) return false;
       if (!inMonthRange(d.period_month, monthFrom, monthTo)) return false;
@@ -416,14 +472,12 @@ export function ResourceAnalyticsPanels({
     });
   }, [
     scopedDemand,
-    projectFilter,
-    streamFilter,
+    matchesProjectFilter,
+    matchesStreamFilter,
+    matchesGateFilter,
     resourceFilter,
     monthFrom,
     monthTo,
-    selectedGateIds,
-    gateFilter,
-    gateLabels,
   ]);
 
   const rows = useMemo(
@@ -438,6 +492,7 @@ export function ResourceAnalyticsPanels({
         streamLabels,
         gateLabels,
         capacityByResource,
+        streamProjectById,
       }),
     [
       grain,
@@ -449,6 +504,7 @@ export function ResourceAnalyticsPanels({
       streamLabels,
       gateLabels,
       capacityByResource,
+      streamProjectById,
     ],
   );
 
@@ -554,11 +610,13 @@ export function ResourceAnalyticsPanels({
               : "Alloc vs demand vs actual"}
           </SectionTitle>
           <p className="text-xs text-muted-foreground">
-            Three separate layers — do not mix them. <strong>Alloc h</strong> is Plan: hours of work
-            from Project Estimation Planning, applied per stream and phase.{" "}
-            <strong>Demand h</strong> is work-item resource effort (estimate hours × assignees).{" "}
-            <strong>Actual h</strong> is approved timesheets. Gap h = Alloc − Demand. Var h = Alloc
-            − Actual. Demand never writes Plan columns.
+            Three separate layers — do not mix them.{" "}
+            <strong>Alloc {effortUnitSuffix(effortUnit)}</strong> is Plan: work from Project
+            Estimation Planning, applied per stream and phase.{" "}
+            <strong>Demand {effortUnitSuffix(effortUnit)}</strong> is work-item resource effort
+            (estimate hours × assignees). <strong>Actual {effortUnitSuffix(effortUnit)}</strong> is
+            approved timesheets. Gap = Alloc − Demand. Var = Alloc − Actual. Demand never writes
+            Plan columns. Days use 8h; weeks use 5 days.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -697,11 +755,31 @@ export function ResourceAnalyticsPanels({
           }`}
         >
           <KpiCard label="Period" value={periodLabel} accent="#8b5cf6" />
-          <KpiCard label="Alloc h" value={totAlloc.toFixed(1)} accent="#3b82f6" />
-          <KpiCard label="Demand h" value={totDemand.toFixed(1)} accent="#6366f1" />
-          <KpiCard label="Actual h" value={totAct.toFixed(1)} accent="#0ea5e9" />
-          <KpiCard label="Billable h" value={totBillable.toFixed(1)} accent="#059669" />
-          <KpiCard label="Non-billable h" value={totNonBillable.toFixed(1)} accent="#a855f7" />
+          <KpiCard
+            label={`Alloc ${effortUnitSuffix(effortUnit)}`}
+            value={formatEffortNumber(totAlloc, effortUnit)}
+            accent="#3b82f6"
+          />
+          <KpiCard
+            label={`Demand ${effortUnitSuffix(effortUnit)}`}
+            value={formatEffortNumber(totDemand, effortUnit)}
+            accent="#6366f1"
+          />
+          <KpiCard
+            label={`Actual ${effortUnitSuffix(effortUnit)}`}
+            value={formatEffortNumber(totAct, effortUnit)}
+            accent="#0ea5e9"
+          />
+          <KpiCard
+            label={`Billable ${effortUnitSuffix(effortUnit)}`}
+            value={formatEffortNumber(totBillable, effortUnit)}
+            accent="#059669"
+          />
+          <KpiCard
+            label={`Non-billable ${effortUnitSuffix(effortUnit)}`}
+            value={formatEffortNumber(totNonBillable, effortUnit)}
+            accent="#a855f7"
+          />
           {canViewCost ? (
             <>
               <KpiCard label="Demand FTE $" value={money(totPlanFte)} accent="#f59e0b" />
@@ -726,13 +804,13 @@ export function ResourceAnalyticsPanels({
           <thead className="sticky top-0 z-[1] bg-[#f1f3f6]">
             <tr>
               <th className="min-w-[12rem]">Dimension</th>
-              <th className="st-num whitespace-nowrap">Alloc h</th>
-              <th className="st-num whitespace-nowrap">Demand h</th>
-              <th className="st-num whitespace-nowrap">Gap h</th>
-              <th className="st-num whitespace-nowrap">Actual h</th>
+              <th className="st-num whitespace-nowrap">Alloc {effortUnitSuffix(effortUnit)}</th>
+              <th className="st-num whitespace-nowrap">Demand {effortUnitSuffix(effortUnit)}</th>
+              <th className="st-num whitespace-nowrap">Gap {effortUnitSuffix(effortUnit)}</th>
+              <th className="st-num whitespace-nowrap">Actual {effortUnitSuffix(effortUnit)}</th>
               <th className="st-num whitespace-nowrap">Billable</th>
               <th className="st-num whitespace-nowrap">Non-billable</th>
-              <th className="st-num whitespace-nowrap">Var h</th>
+              <th className="st-num whitespace-nowrap">Var {effortUnitSuffix(effortUnit)}</th>
               <th className="st-num whitespace-nowrap">Util%</th>
               <th className="whitespace-nowrap">Status</th>
               {showCost && <th className="st-num whitespace-nowrap">Demand FTE $</th>}
@@ -750,13 +828,27 @@ export function ResourceAnalyticsPanels({
               rows.map((r) => (
                 <tr key={r.key}>
                   <td className="font-medium whitespace-nowrap">{r.label}</td>
-                  <td className="st-num whitespace-nowrap">{r.planned_hours.toFixed(1)}</td>
-                  <td className="st-num whitespace-nowrap">{r.demand_hours.toFixed(1)}</td>
-                  <td className="st-num whitespace-nowrap">{r.demand_gap_hours.toFixed(1)}</td>
-                  <td className="st-num whitespace-nowrap">{r.actual_hours.toFixed(1)}</td>
-                  <td className="st-num whitespace-nowrap">{r.billable_hours.toFixed(1)}</td>
-                  <td className="st-num whitespace-nowrap">{r.non_billable_hours.toFixed(1)}</td>
-                  <td className="st-num whitespace-nowrap">{r.variance_hours.toFixed(1)}</td>
+                  <td className="st-num whitespace-nowrap">
+                    {formatEffortNumber(r.planned_hours, effortUnit)}
+                  </td>
+                  <td className="st-num whitespace-nowrap">
+                    {formatEffortNumber(r.demand_hours, effortUnit)}
+                  </td>
+                  <td className="st-num whitespace-nowrap">
+                    {formatEffortNumber(r.demand_gap_hours, effortUnit)}
+                  </td>
+                  <td className="st-num whitespace-nowrap">
+                    {formatEffortNumber(r.actual_hours, effortUnit)}
+                  </td>
+                  <td className="st-num whitespace-nowrap">
+                    {formatEffortNumber(r.billable_hours, effortUnit)}
+                  </td>
+                  <td className="st-num whitespace-nowrap">
+                    {formatEffortNumber(r.non_billable_hours, effortUnit)}
+                  </td>
+                  <td className="st-num whitespace-nowrap">
+                    {formatEffortNumber(r.variance_hours, effortUnit)}
+                  </td>
                   <td className="st-num whitespace-nowrap">
                     {r.utilization_pct == null ? "—" : `${r.utilization_pct}%`}
                   </td>
