@@ -7,8 +7,10 @@
 
 import {
   projectApprovedFunding,
+  projectCapexApproved,
   projectForecast,
   projectIncurred,
+  projectOpexApproved,
   type ProjectFinanceLike,
 } from "@/lib/project-finance";
 import { isActiveGateStatus } from "@/lib/project-phase";
@@ -149,6 +151,8 @@ export type IcSpendRow = {
   forecast: number;
   incurred: number;
   remaining: number;
+  capexApproved: number;
+  opexApproved: number;
 };
 
 export function inFlightSpendRows(projects: IcProject[]): IcSpendRow[] {
@@ -166,6 +170,8 @@ export function inFlightSpendRows(projects: IcProject[]): IcSpendRow[] {
         forecast,
         incurred,
         remaining: budget - incurred,
+        capexApproved: projectCapexApproved(p),
+        opexApproved: projectOpexApproved(p),
       };
     })
     .sort((a, b) => Math.abs(b.remaining) - Math.abs(a.remaining) || b.budget - a.budget);
@@ -202,6 +208,10 @@ export function buildInvestmentCommitteePack(opts: {
   const budget = spend.reduce((s, r) => s + r.budget, 0);
   const forecast = spend.reduce((s, r) => s + r.forecast, 0);
   const incurred = spend.reduce((s, r) => s + r.incurred, 0);
+  const capexApproved = spend.reduce((s, r) => s + r.capexApproved, 0);
+  const opexApproved = spend.reduce((s, r) => s + r.opexApproved, 0);
+  const demandCost = demandAsks.reduce((s, d) => s + Number(d.estimated_cost || 0), 0);
+  const demandBenefit = demandAsks.reduce((s, d) => s + Number(d.estimated_benefit || 0), 0);
 
   return {
     demandAsks,
@@ -214,10 +224,15 @@ export function buildInvestmentCommitteePack(opts: {
       demandAskCount: demandAsks.length,
       fundingAskCount: fundingAsks.length,
       awaitingDecisionCount: awaitingDecisions.length,
+      inFlightCount: spend.length,
       budget,
       forecast,
       incurred,
       remaining: budget - incurred,
+      capexApproved,
+      opexApproved,
+      demandCost,
+      demandBenefit,
     },
   };
 }

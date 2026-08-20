@@ -27,6 +27,8 @@ import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-tabl
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
 import { compareProjectsByCodeName } from "@/lib/project-sort";
+import { ExpandableChart } from "@/components/expandable-chart";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LabelList, Cell } from "recharts";
 
 export const Route = createFileRoute("/_authenticated/app/investment-committee")({
   head: () => ({
@@ -303,9 +305,21 @@ function InvestmentCommitteePage() {
       { key: "label", label: "Project" },
       {
         key: "budget",
-        label: "Budget",
+        label: "Approved funding",
         getValue: (r) => money(r.budget),
         getSortValue: (r) => r.budget,
+      },
+      {
+        key: "capexApproved",
+        label: "CAPEX",
+        getValue: (r) => money(r.capexApproved),
+        getSortValue: (r) => r.capexApproved,
+      },
+      {
+        key: "opexApproved",
+        label: "OPEX",
+        getValue: (r) => money(r.opexApproved),
+        getSortValue: (r) => r.opexApproved,
       },
       {
         key: "forecast",
@@ -363,6 +377,21 @@ function InvestmentCommitteePage() {
 
   const t = pack.totals;
   const spendRatio = t.budget > 0 ? (t.incurred / t.budget) * 100 : 0;
+  const financeBars = [
+    { name: "Approved", value: t.budget, color: "#1d4ed8" },
+    { name: "Incurred", value: t.incurred, color: "#15803d" },
+    { name: "Forecast", value: t.forecast, color: "#f59e0b" },
+    { name: "Remaining", value: t.remaining, color: t.remaining < 0 ? "#ef4444" : "#8b5cf6" },
+  ];
+  const spendShown = spendTable.rows;
+  const shownTot = {
+    budget: spendShown.reduce((s, r) => s + r.budget, 0),
+    capexApproved: spendShown.reduce((s, r) => s + r.capexApproved, 0),
+    opexApproved: spendShown.reduce((s, r) => s + r.opexApproved, 0),
+    forecast: spendShown.reduce((s, r) => s + r.forecast, 0),
+    incurred: spendShown.reduce((s, r) => s + r.incurred, 0),
+    remaining: spendShown.reduce((s, r) => s + r.remaining, 0),
+  };
 
   return (
     <PageExport name="Investment_Committee" title="Investment Committee">
@@ -395,6 +424,12 @@ function InvestmentCommitteePage() {
               className="rounded-md border border-border px-2 py-1 hover:bg-muted"
             >
               Prioritisation
+            </Link>
+            <Link
+              to="/app/executive-cockpit"
+              className="rounded-md border border-border px-2 py-1 hover:bg-muted"
+            >
+              Cockpit
             </Link>
             <Link
               to="/app/decisions"
@@ -461,18 +496,72 @@ function InvestmentCommitteePage() {
 
       <SectionFrame>
         <SectionTitle>This cycle</SectionTitle>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <KpiCard label="Demand asks" value={t.demandAskCount} accent="#8b5cf6" />
+          <KpiCard
+            label="Pipeline ask"
+            value={money(t.demandCost)}
+            sub={t.demandBenefit ? `Benefit ${money(t.demandBenefit)}` : undefined}
+            accent="#7c3aed"
+          />
           <KpiCard label="Funding gates" value={t.fundingAskCount} accent="#f59e0b" />
           <KpiCard label="IC decisions awaiting" value={t.awaitingDecisionCount} accent="#0ea5e9" />
-          <KpiCard label="In-flight budget" value={money(t.budget)} accent="#3b82f6" />
-          <KpiCard label="Forecast" value={money(t.forecast)} accent="#06b6d4" />
+        </div>
+      </SectionFrame>
+
+      <SectionFrame>
+        <SectionTitle>Overall financials</SectionTitle>
+        <p className="mb-2 text-xs text-muted-foreground">
+          In-flight portfolio using the same layers as Cockpit: Approved funding (budget), CAPEX /
+          OPEX approved, Incurred (actual), Forecast (FAC), Remaining. Closed projects are excluded.{" "}
+          {t.inFlightCount} in-flight project{t.inFlightCount === 1 ? "" : "s"}.
+        </p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <KpiCard label="Approved funding" value={money(t.budget)} accent="#1d4ed8" />
+          <KpiCard label="CAPEX approved" value={money(t.capexApproved)} accent="#2563eb" />
+          <KpiCard label="OPEX approved" value={money(t.opexApproved)} accent="#0ea5e9" />
           <KpiCard
-            label="Actual / budget"
-            value={`${spendRatio.toFixed(0)}%`}
-            sub={money(t.incurred)}
-            accent={spendRatio > 100 ? "#ef4444" : "#22c55e"}
+            label="Incurred"
+            value={money(t.incurred)}
+            sub={t.budget > 0 ? `${spendRatio.toFixed(0)}% of approved` : undefined}
+            accent="#15803d"
           />
+          <KpiCard
+            label="Forecast"
+            value={money(t.forecast)}
+            sub={
+              t.budget
+                ? `${t.forecast - t.budget >= 0 ? "+" : ""}${money(t.forecast - t.budget)} vs approved`
+                : undefined
+            }
+            accent="#f59e0b"
+          />
+          <KpiCard
+            label="Remaining"
+            value={money(t.remaining)}
+            accent={t.remaining < 0 ? "#ef4444" : "#8b5cf6"}
+          />
+        </div>
+        <div className="mt-4">
+          <ExpandableChart title="Approved · Incurred · Forecast · Remaining" heightClass="h-56">
+            <BarChart data={financeBars} margin={{ top: 24, right: 12, left: 4, bottom: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 10 }} tickFormatter={(v: number) => money(v)} />
+              <Tooltip formatter={(v: number) => money(Number(v))} />
+              <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                {financeBars.map((row) => (
+                  <Cell key={row.name} fill={row.color} />
+                ))}
+                <LabelList
+                  dataKey="value"
+                  position="top"
+                  formatter={(v: number) => money(Number(v))}
+                  style={{ fontSize: 11, fill: "#334155", fontWeight: 600 }}
+                />
+              </Bar>
+            </BarChart>
+          </ExpandableChart>
         </div>
       </SectionFrame>
 
@@ -682,10 +771,10 @@ function InvestmentCommitteePage() {
       </SectionFrame>
 
       <SectionFrame>
-        <SectionTitle>In-flight spend vs budget / forecast</SectionTitle>
+        <SectionTitle>In-flight spend vs approved / forecast</SectionTitle>
         <p className="mb-2 text-xs text-muted-foreground">
-          Live project finance layers: Budget (approved funding), Forecast (FAC), Actual (incurred).
-          Closed projects are excluded.
+          Live project finance: Approved funding, CAPEX / OPEX approved, Forecast (FAC), Actual
+          (incurred), Remaining. Closed projects are excluded.
         </p>
         <ColumnarToolbar
           globalQ={spendTable.globalQ}
@@ -697,7 +786,7 @@ function InvestmentCommitteePage() {
           placeholder="Search spend…"
         />
         <div className="st-table-wrap overflow-x-auto">
-          <table className="st-table min-w-[760px] text-xs">
+          <table className="st-table min-w-[920px] text-xs">
             <thead>
               <tr>
                 {spendColumns.map((col) => (
@@ -738,6 +827,8 @@ function InvestmentCommitteePage() {
                       </Link>
                     </td>
                     <td className="st-num tabular-nums">{money(r.budget)}</td>
+                    <td className="st-num tabular-nums">{money(r.capexApproved)}</td>
+                    <td className="st-num tabular-nums">{money(r.opexApproved)}</td>
                     <td className="st-num tabular-nums">{money(r.forecast)}</td>
                     <td className="st-num tabular-nums">{money(r.incurred)}</td>
                     <td
@@ -751,6 +842,24 @@ function InvestmentCommitteePage() {
                   </tr>
                 ))
               )}
+              {spendTable.rows.length > 0 ? (
+                <tr className="font-semibold">
+                  <td colSpan={2}>Total ({spendShown.length})</td>
+                  <td className="st-num tabular-nums">{money(shownTot.budget)}</td>
+                  <td className="st-num tabular-nums">{money(shownTot.capexApproved)}</td>
+                  <td className="st-num tabular-nums">{money(shownTot.opexApproved)}</td>
+                  <td className="st-num tabular-nums">{money(shownTot.forecast)}</td>
+                  <td className="st-num tabular-nums">{money(shownTot.incurred)}</td>
+                  <td
+                    className={
+                      "st-num tabular-nums " +
+                      (shownTot.remaining < 0 ? "text-red-600" : "text-emerald-700")
+                    }
+                  >
+                    {money(shownTot.remaining)}
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
