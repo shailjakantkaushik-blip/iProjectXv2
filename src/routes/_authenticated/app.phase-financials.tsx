@@ -2,7 +2,12 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { PROJECT_PORTFOLIO_SELECT, FINANCIALS_MONTHLY_SELECT, STAGE_GATES_SELECT, STAGE_GATE_DEFINITIONS_SELECT } from "@/lib/query-selects";
+import {
+  PROJECT_PORTFOLIO_SELECT,
+  FINANCIALS_MONTHLY_SELECT,
+  STAGE_GATES_SELECT,
+  STAGE_GATE_DEFINITIONS_SELECT,
+} from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -28,11 +33,7 @@ import {
 import { ChartLegendList, legendItemsFromCounts } from "@/components/chart-legend-list";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { groupGatesByProject } from "@/lib/project-phase";
-import {
-  formatProjectStreamRef,
-  formatStreamLabel,
-  fetchOrgStreams,
-} from "@/lib/project-streams";
+import { formatProjectStreamRef, formatStreamLabel, fetchOrgStreams } from "@/lib/project-streams";
 import {
   monthlyInWindow,
   monthlyTriple,
@@ -72,11 +73,13 @@ function PhaseFinancialsPage() {
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
     queryFn: async () =>
-      (await supabase
-        .from("projects")
-        .select(PROJECT_PORTFOLIO_SELECT as "*")
-        .order("project_code")
-        .order("name")).data ?? [],
+      (
+        await supabase
+          .from("projects")
+          .select(PROJECT_PORTFOLIO_SELECT as "*")
+          .order("project_code")
+          .order("name")
+      ).data ?? [],
     enabled: !!organization,
   });
 
@@ -96,7 +99,8 @@ function PhaseFinancialsPage() {
 
   const { data: gates = [] } = useQuery({
     queryKey: ["stage_gates", organization?.id],
-    queryFn: async () => (await supabase.from("stage_gates").select(STAGE_GATES_SELECT as "*")).data ?? [],
+    queryFn: async () =>
+      (await supabase.from("stage_gates").select(STAGE_GATES_SELECT as "*")).data ?? [],
     enabled: !!organization,
   });
 
@@ -109,7 +113,12 @@ function PhaseFinancialsPage() {
   const { data: monthly = [] } = useQuery({
     queryKey: ["financials_monthly", organization?.id],
     queryFn: async () =>
-      (await supabase.from("financials_monthly").select(FINANCIALS_MONTHLY_SELECT as "*").order("period_month")).data ?? [],
+      (
+        await supabase
+          .from("financials_monthly")
+          .select(FINANCIALS_MONTHLY_SELECT as "*")
+          .order("period_month")
+      ).data ?? [],
     enabled: !!organization,
   });
 
@@ -327,7 +336,11 @@ function PhaseFinancialsPage() {
 
   const detailColumns: ColumnarColumn<(typeof laneSpendRows)[number]>[] = useMemo(
     () => [
-      { key: "project", label: "Project", getValue: (r) => r.project.project_code || r.project.name },
+      {
+        key: "project",
+        label: "Project",
+        getValue: (r) => r.project.project_code || r.project.name,
+      },
       { key: "stream", label: "Stream", getValue: (r) => r.streamRef || r.streamLabel || "—" },
       { key: "stage", label: "Stage", getValue: (r) => r.stage },
       {
@@ -364,57 +377,6 @@ function PhaseFinancialsPage() {
     [],
   );
   const detailTable = useColumnarTable(laneSpendRows, detailColumns);
-
-  const phaseColumns: ColumnarColumn<(typeof byPhase)[number]>[] = useMemo(
-    () => [
-      { key: "stage", label: "Stage", getValue: (r) => r.stage },
-      { key: "count", label: "Lanes", getValue: (r) => r.count, getSortValue: (r) => r.count },
-      {
-        key: "planned",
-        label: "Planned",
-        getValue: (r) => moneyFilterValue(r.planned),
-        getSortValue: (r) => r.planned,
-      },
-      {
-        key: "forecast",
-        label: "Forecast",
-        getValue: (r) => moneyFilterValue(r.forecast),
-        getSortValue: (r) => r.forecast,
-      },
-      {
-        key: "actual",
-        label: "Actual",
-        getValue: (r) => moneyFilterValue(r.actual),
-        getSortValue: (r) => r.actual,
-      },
-      {
-        key: "ftePlan",
-        label: "FTE plan",
-        getValue: (r) => moneyFilterValue(r.ftePlan),
-        getSortValue: (r) => r.ftePlan,
-      },
-      {
-        key: "fteActual",
-        label: "FTE actual",
-        getValue: (r) => moneyFilterValue(r.fteActual),
-        getSortValue: (r) => r.fteActual,
-      },
-      {
-        key: "variance",
-        label: "Variance",
-        getValue: (r) => moneyFilterValue(r.variance),
-        getSortValue: (r) => r.variance,
-      },
-      {
-        key: "remaining",
-        label: "Remaining",
-        getValue: (r) => moneyFilterValue(r.remaining),
-        getSortValue: (r) => r.remaining,
-      },
-    ],
-    [],
-  );
-  const phaseTable = useColumnarTable(byPhase, phaseColumns);
 
   const totalPlanned = byPhase.reduce((s, r) => s + r.planned, 0);
   const totalActual = byPhase.reduce((s, r) => s + r.actual, 0);
@@ -466,8 +428,8 @@ function PhaseFinancialsPage() {
       <div className="text-sm text-muted-foreground mb-3">
         Planned vs actual vs forecast spend inside each stage-gate date window (from monthly
         cashflow), plus FTE plan (work items) vs FTE actual (timesheets). Attributed per project
-        stream when streams are configured. The phase filter scopes spend to that gate window —
-        not only projects whose current phase matches.
+        stream when streams are configured. The phase filter scopes spend to that gate window — not
+        only projects whose current phase matches.
       </div>
       <PortfolioFilters
         projects={projects}
@@ -562,104 +524,6 @@ function PhaseFinancialsPage() {
       </div>
 
       <SectionFrame>
-        <SectionTitle>Phase register</SectionTitle>
-        <ColumnarToolbar
-          globalQ={phaseTable.globalQ}
-          onGlobalQ={phaseTable.setGlobalQ}
-          shown={phaseTable.rows.length}
-          total={phaseTable.total}
-          dirty={phaseTable.isDirty}
-          onClear={phaseTable.clearAll}
-          placeholder="Search phase register…"
-        />
-        <div className="st-table-wrap overflow-x-auto">
-          <table className="st-table !w-max min-w-full text-xs">
-            <thead>
-              <tr>
-                {phaseColumns.map((col) => (
-                  <ColumnarTh
-                    key={col.key}
-                    column={col}
-                    filter={phaseTable.filters[col.key]}
-                    onFilter={(v) => phaseTable.setColumnFilter(col.key, v)}
-                    sortKey={phaseTable.sortKey}
-                    sortDir={phaseTable.sortDir}
-                    onToggleSort={phaseTable.toggleSort}
-                    align={col.key === "stage" ? "left" : "right"}
-                    className={
-                      col.key === "stage"
-                        ? "min-w-[8rem] whitespace-nowrap"
-                        : "st-num whitespace-nowrap"
-                    }
-                  />
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {phaseTable.rows.length === 0 ? (
-                <tr>
-                  <td colSpan={phaseColumns.length} className="py-6 text-center text-muted-foreground">
-                    No phase rows match filters
-                  </td>
-                </tr>
-              ) : (
-                phaseTable.rows.map((r) => (
-                  <tr key={r.stage}>
-                    {phaseColumns.map((col) => {
-                      if (col.key === "stage") {
-                        return (
-                          <td key={col.key} className="font-medium whitespace-nowrap">
-                            {r.stage}
-                          </td>
-                        );
-                      }
-                      if (col.key === "count") {
-                        return (
-                          <td key={col.key} className="st-num text-right tabular-nums whitespace-nowrap">
-                            {r.count}
-                          </td>
-                        );
-                      }
-                      if (col.key === "variance") {
-                        return (
-                          <td
-                            key={col.key}
-                            className={
-                              "st-num text-right tabular-nums whitespace-nowrap " +
-                              (r.variance < 0 ? "text-red-600" : "text-emerald-700")
-                            }
-                          >
-                            {fmtM(r.variance)}
-                          </td>
-                        );
-                      }
-                      const amount =
-                        col.key === "planned"
-                          ? r.planned
-                          : col.key === "forecast"
-                            ? r.forecast
-                            : col.key === "actual"
-                              ? r.actual
-                              : col.key === "ftePlan"
-                                ? r.ftePlan
-                                : col.key === "fteActual"
-                                  ? r.fteActual
-                                  : r.remaining;
-                      return (
-                        <td key={col.key} className="st-num text-right tabular-nums whitespace-nowrap">
-                          {fmtM(amount)}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </SectionFrame>
-
-      <SectionFrame>
         <SectionTitle>Phase · stream detail</SectionTitle>
         <ColumnarToolbar
           globalQ={detailTable.globalQ}
@@ -702,7 +566,10 @@ function PhaseFinancialsPage() {
             <tbody>
               {detailTable.rows.length === 0 ? (
                 <tr>
-                  <td colSpan={detailColumns.length} className="py-6 text-center text-muted-foreground">
+                  <td
+                    colSpan={detailColumns.length}
+                    className="py-6 text-center text-muted-foreground"
+                  >
                     No stream/phase spend rows match filters
                   </td>
                 </tr>
@@ -742,7 +609,10 @@ function PhaseFinancialsPage() {
                                 ? r.fteActual
                                 : r.actual;
                       return (
-                        <td key={col.key} className="st-num text-right tabular-nums whitespace-nowrap">
+                        <td
+                          key={col.key}
+                          className="st-num text-right tabular-nums whitespace-nowrap"
+                        >
                           {fmtM(amount)}
                         </td>
                       );

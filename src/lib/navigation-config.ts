@@ -70,6 +70,7 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
       { to: "/app/stage-gate-config", label: "Delivery Methods & Gates", icon: "Settings" },
       { to: "/app/agile", label: "Agile / Sprints", icon: "Zap" },
       { to: "/app/governance-channels", label: "Governance Channel", icon: "Radio" },
+      { to: "/app/investment-committee", label: "Investment Committee", icon: "Landmark" },
       { to: "/app/dependencies", label: "Dependencies", icon: "GitBranch" },
       { to: "/app/schedule-cpm", label: "Schedule CPM", icon: "GitBranch" },
       { to: "/app/resources", label: "Resources", icon: "Users" },
@@ -127,9 +128,7 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
   },
   {
     heading: "Legal",
-    items: [
-      { to: "/app/legal", label: "Legal & Policies", icon: "FileText" },
-    ],
+    items: [{ to: "/app/legal", label: "Legal & Policies", icon: "FileText" }],
   },
   {
     heading: "Platform",
@@ -377,9 +376,7 @@ export function mergeNavigationConfig(
   }
 
   const hidden = Array.isArray(partial.hidden)
-    ? (partial.hidden as unknown[])
-        .map(String)
-        .filter((p: string) => allPaths.has(p))
+    ? (partial.hidden as unknown[]).map(String).filter((p: string) => allPaths.has(p))
     : [];
 
   // Final scrub: never keep Platform (or its paths) when the catalog excludes it
@@ -431,11 +428,7 @@ export function hasCustomNavigation(config: unknown): boolean {
   if (!config || typeof config !== "object") return false;
   const c = config as Partial<NavigationConfig>;
   if (Array.isArray(c.group_order) && c.group_order.length > 0) return true;
-  if (
-    c.item_order &&
-    typeof c.item_order === "object" &&
-    Object.keys(c.item_order).length > 0
-  ) {
+  if (c.item_order && typeof c.item_order === "object" && Object.keys(c.item_order).length > 0) {
     return true;
   }
   if (Array.isArray(c.hidden) && c.hidden.length > 0) return true;
@@ -561,7 +554,7 @@ export function removeNavGroup(
   const target =
     fallbackHeading && group_order.includes(fallbackHeading)
       ? fallbackHeading
-      : group_order.find((h) => h !== "Platform") ?? group_order[0];
+      : (group_order.find((h) => h !== "Platform") ?? group_order[0]);
 
   if (target && moving.length) {
     item_order[target] = [...(item_order[target] ?? []), ...moving];
@@ -570,11 +563,7 @@ export function removeNavGroup(
   return { ...nav, group_order, item_order };
 }
 
-export function renameNavGroup(
-  nav: NavigationConfig,
-  from: string,
-  to: string,
-): NavigationConfig {
+export function renameNavGroup(nav: NavigationConfig, from: string, to: string): NavigationConfig {
   const name = to.trim();
   if (!name || name === from || nav.group_order.includes(name)) return nav;
   return {
