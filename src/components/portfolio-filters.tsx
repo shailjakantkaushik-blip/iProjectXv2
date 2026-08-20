@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { compareProjectsByCodeName } from "@/lib/project-options";
 import { fyOf, projectScheduleEnd, projectScheduleStart } from "@/lib/project-dates";
+import { projectTouchesSelectedFy, type FyAllocRowLike } from "@/lib/fy-allocation-scope";
 import { STRATEGIC_ALIGNMENT_LABEL, displayRag } from "@/lib/ops-enhancements";
 import { StageGateStatusFilter } from "@/components/stage-gate-status-filter";
 import {
@@ -601,7 +602,7 @@ export function applyExecutivePortfolioFilters<T extends Record<string, any>>(
   projects: T[],
   f: ExecutivePortfolioFilterState,
   fyStartMonth: number,
-  opts?: { gates?: StageGateApprovalLike[] },
+  opts?: { gates?: StageGateApprovalLike[]; fyAllocations?: FyAllocRowLike[] },
 ): T[] {
   const idSet = f.projectIds.length ? new Set(f.projectIds) : null;
   const fySet = f.fySelected.length ? new Set(f.fySelected) : null;
@@ -615,9 +616,11 @@ export function applyExecutivePortfolioFilters<T extends Record<string, any>>(
     if (f.priority !== "All" && p.priority !== f.priority) return false;
     if (f.status !== "All" && p.status !== f.status) return false;
     if (fySet) {
-      const a = fyOf(projectScheduleStart(p), fyStartMonth);
-      const b = fyOf(projectScheduleEnd(p), fyStartMonth);
-      if ((!a || !fySet.has(a)) && (!b || !fySet.has(b))) return false;
+      if (
+        !projectTouchesSelectedFy(p, f.fySelected, fyStartMonth, opts?.fyAllocations ?? [])
+      ) {
+        return false;
+      }
     }
     if (
       gateStatusFilterActive(gateFilter) &&

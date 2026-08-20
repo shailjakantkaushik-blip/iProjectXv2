@@ -94,6 +94,19 @@ export function useHealthEngineLookups(orgId: string | null | undefined) {
     enabled: !!orgId,
     staleTime: 60_000,
   });
+  const fyAllocQ = useQuery({
+    queryKey: ["fy_allocations", orgId, "health"],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("fy_allocations")
+          .select("id,project_id,fy,budget,forecast,capex,opex,benefits")
+          .eq("org_id", orgId!)
+          .limit(10000)
+      ).data ?? [],
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
   const benefitsQ = useQuery({
     queryKey: ["benefits", orgId],
     queryFn: async () =>
@@ -131,6 +144,10 @@ export function useHealthEngineLookups(orgId: string | null | undefined) {
     () => groupRowsByProjectId((benefitsQ.data ?? []) as { project_id?: string | null }[]),
     [benefitsQ.data],
   );
+  const fyAllocByProject = useMemo(
+    () => groupRowsByProjectId((fyAllocQ.data ?? []) as { project_id?: string | null }[]),
+    [fyAllocQ.data],
+  );
 
   return useMemo(
     () => ({
@@ -140,12 +157,14 @@ export function useHealthEngineLookups(orgId: string | null | undefined) {
       allocations: allocationsQ.data ?? [],
       changeRequests: crsQ.data ?? [],
       benefits: benefitsQ.data ?? [],
+      fyAllocations: fyAllocQ.data ?? [],
       risksByProject,
       depsByProject,
       workItemsByProject,
       allocationsByProject,
       crsByProject,
       benefitsByProject,
+      fyAllocByProject,
     }),
     [
       risksQ.data,
@@ -154,12 +173,14 @@ export function useHealthEngineLookups(orgId: string | null | undefined) {
       allocationsQ.data,
       crsQ.data,
       benefitsQ.data,
+      fyAllocQ.data,
       risksByProject,
       depsByProject,
       workItemsByProject,
       allocationsByProject,
       crsByProject,
       benefitsByProject,
+      fyAllocByProject,
     ],
   );
 }
@@ -168,9 +189,12 @@ export function healthExtrasForProject(
   projectId: string,
   lookups: ReturnType<typeof useHealthEngineLookups>,
   monthly: HealthEngineInput["monthly"] = [],
+  fyStartMonth?: number | null,
 ): Omit<Partial<HealthEngineInput>, "project" | "gates"> {
   return {
     monthly,
+    fyStartMonth,
+    fyAllocations: lookups.fyAllocByProject.get(projectId) || [],
     risks: lookups.risksByProject.get(projectId) || [],
     dependencies: lookups.depsByProject.get(projectId) || [],
     workItems: lookups.workItemsByProject.get(projectId) || [],
@@ -186,7 +210,8 @@ export function computeEngineHealth(
   gates: StageGateHealthLike[],
   lookups: ReturnType<typeof useHealthEngineLookups>,
   monthly: HealthEngineInput["monthly"] = [],
+  fyStartMonth?: number | null,
 ): ProjectHealthComputed {
   const id = String(project.id || "");
-  return computeProjectHealth(project, gates, healthExtrasForProject(id, lookups, monthly));
+  return computeProjectHealth(project, gates, healthExtrasForProject(id, lookups, monthly, fyStartMonth));
 }

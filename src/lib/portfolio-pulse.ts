@@ -72,6 +72,7 @@ export type PulseProjectInput = {
   allocations?: any[];
   monthly?: any[];
   benefitLines?: any[];
+  fyAllocations?: any[];
 };
 
 export type PulseSnapshot = {
@@ -176,6 +177,7 @@ export function buildPortfolioPulse(opts: {
   allDecisions?: any[];
   previous?: PulseSnapshot | null;
   nowMs?: number;
+  fyStartMonth?: number | null;
 }): PortfolioPulseResult {
   const nowMs = opts.nowMs ?? Date.now();
   const previous = opts.previous ?? null;
@@ -194,6 +196,8 @@ export function buildPortfolioPulse(opts: {
       allocations: row.allocations,
       monthly: row.monthly,
       benefitLines: row.benefitLines,
+      fyAllocations: row.fyAllocations,
+      fyStartMonth: opts.fyStartMonth,
       nowMs,
     });
     const approved = projectApprovedFunding(p);
@@ -374,6 +378,7 @@ export function evaluatePortfolioPulse(opts: {
   nowMs?: number;
   /** When filters are applied, scope week-over-week snapshots so deltas stay like-for-like. */
   snapshotScope?: string;
+  fyStartMonth?: number | null;
 }): { pulse: PortfolioPulseResult; snapshot: PulseSnapshot; snapshotScope: string } {
   const nowMs = opts.nowMs ?? Date.now();
   const snapshotScope = opts.snapshotScope || "all";

@@ -38,6 +38,10 @@ import {
   sumBenefitsTarget,
 } from "@/lib/project-finance";
 import {
+  fyScopedBudget,
+  monthlyInFyLabels,
+} from "@/lib/fy-allocation-scope";
+import {
   healthScoreHeatClass,
   portfolioSegmentLabels,
   projectPortfolio,
@@ -273,12 +277,6 @@ function ExecutiveCockpit() {
       ).data ?? [],
     enabled: !!orgId,
   });
-  const projects = useMemo(
-    () => applyExecutivePortfolioFilters(allProjects, filters, fyStartMonth, { gates }),
-    [allProjects, filters, fyStartMonth, gates],
-  );
-  const filteredIds = useMemo(() => new Set(projects.map((p: any) => p.id)), [projects]);
-  const filtersOn = executiveFiltersActive(filters);
   const { data: fyAlloc = [] } = useQuery({
     queryKey: ["fy_allocations", orgId],
     queryFn: async () =>
@@ -286,11 +284,21 @@ function ExecutiveCockpit() {
         await supabase
           .from("fy_allocations")
           .select(
-            "id,project_id,fy,budget,forecast,capex,opex,benefits,allocated_amount,forecast_amount",
+            "id,project_id,fy,budget,forecast,capex,opex,benefits",
           )
       ).data ?? [],
     enabled: !!orgId,
   });
+  const projects = useMemo(
+    () =>
+      applyExecutivePortfolioFilters(allProjects, filters, fyStartMonth, {
+        gates,
+        fyAllocations: fyAlloc as any[],
+      }),
+    [allProjects, filters, fyStartMonth, gates, fyAlloc],
+  );
+  const filteredIds = useMemo(() => new Set(projects.map((p: any) => p.id)), [projects]);
+  const filtersOn = executiveFiltersActive(filters);
   const { data: monthly = [] } = useQuery({
     queryKey: ["financials_monthly", orgId, "explain"],
     queryFn: async () =>
@@ -443,15 +451,6 @@ function ExecutiveCockpit() {
     };
   }, [projects, benefitsScoped, filtersOn, filteredIds]);
 
-  const useCache = Boolean(kpis?.from_cache) && !filtersOn;
-  const approvedFundingK = useCache ? kpis!.approved_funding : approvedFunding;
-  const actualSpendK = useCache ? kpis!.incurred : actualSpend;
-  const remainingK = Math.max(0, approvedFundingK - actualSpendK);
-  const facK = useCache ? kpis!.forecast_at_completion : fac;
-  const facDelta = facK - approvedFundingK;
-  const benefitsForecastK = useCache ? kpis!.benefits_target : benefitsForecast;
-  const benefitsRealisedK = useCache ? kpis!.benefits_realised : benefitsRealised;
-
   const explains = useMemo(
     () =>
       explainPortfolioSnapshot({
@@ -532,6 +531,44 @@ function ExecutiveCockpit() {
       .reduce((s, m) => s + num(m.capex_planned) + num(m.opex_planned), 0);
   }, [monthly, filtersOn, filteredIds]);
 
+  const fySelected = filters.fySelected;
+  const fyMoney = useMemo(() => {
+    if (!fySelected.length) return null;
+    const budget = projects.reduce((s: number, p: any) => {
+      const rows = (fyAlloc as any[]).filter((a: any) => a.project_id === p.id);
+      return (
+        s +
+        fyScopedBudget({
+          allocations: rows,
+          overallBudget: projectApprovedFunding(p),
+          fySelected,
+        })
+      );
+    }, 0);
+    const rows = monthlyInFyLabels(
+      (monthly as MonthlyFinanceRow[]).filter((m) => inScope((m as any).project_id)),
+      fySelected,
+      fyStartMonth,
+    );
+    const plan = rows.reduce((s, m) => s + num(m.capex_planned) + num(m.opex_planned), 0);
+    const actual = rows.reduce((s, m) => s + num(m.capex_actual) + num(m.opex_actual), 0);
+    const forecast = rows.reduce(
+      (s, m) => s + num(m.capex_forecast) + num(m.opex_forecast),
+      0,
+    );
+    return { budget, plan, actual, forecast };
+  }, [fySelected, projects, fyAlloc, monthly, fyStartMonth, filtersOn, filteredIds]);
+
+  const useCache = Boolean(kpis?.from_cache) && !filtersOn && !fyMoney;
+  const approvedFundingK = fyMoney ? fyMoney.budget : useCache ? kpis!.approved_funding : approvedFunding;
+  const actualSpendK = fyMoney ? fyMoney.actual : useCache ? kpis!.incurred : actualSpend;
+  const remainingK = Math.max(0, approvedFundingK - actualSpendK);
+  const facK = fyMoney ? fyMoney.forecast : useCache ? kpis!.forecast_at_completion : fac;
+  const planShown = fyMoney ? fyMoney.plan : planTotal;
+  const facDelta = facK - approvedFundingK;
+  const benefitsForecastK = useCache ? kpis!.benefits_target : benefitsForecast;
+  const benefitsRealisedK = useCache ? kpis!.benefits_realised : benefitsRealised;
+
   const projectsWithFY =
     new Set(fyAllocScoped.map((a: any) => a.project_id).filter(Boolean)).size ||
     projects.filter((p: any) => p.start_date).length;
@@ -549,6 +586,7 @@ function ExecutiveCockpit() {
           gatesByProject.get(p.id) || [],
           healthLookups,
           monthlyByProject.get(p.id) || [],
+          fyStartMonth,
         );
         const pm = p.pm_user_id ? profileById.get(p.pm_user_id) : null;
         const deliveryLead =
@@ -557,7 +595,7 @@ function ExecutiveCockpit() {
         return { ...p, ...health, delivery_lead: deliveryLead, shown_rag: shown };
       })
       .sort(compareProjectsByCodeName);
-  }, [projects, gatesByProject, profileById, monthlyByProject, healthLookups]);
+  }, [projects, gatesByProject, profileById, monthlyByProject, healthLookups, fyStartMonth]);
 
   const matrixRag = useMemo(() => countEngineRag(healthRows), [healthRows]);
   const mixRagByAlign = useMemo(() => {
@@ -845,39 +883,57 @@ function ExecutiveCockpit() {
           <EnvelopeBullet budget={approvedFundingK} incurred={actualSpendK} forecast={facK} />
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
             <ScoreStat
-              label="Budget"
+              label={fyMoney ? "FY allocation" : "Budget"}
               value={money(approvedFundingK)}
-              hint="Approved envelope"
+              hint={fyMoney ? "Year slice of overall budget" : "Approved envelope"}
               explain={explains.budget}
               to="/app/financials"
             />
             <ScoreStat
               label="Plan"
-              value={money(planTotal)}
-              hint={planTotal ? "Monthly CapEx + OpEx plan" : "No monthly plan yet"}
+              value={money(planShown)}
+              hint={
+                fyMoney
+                  ? "Estimation plan in selected FY"
+                  : planShown
+                    ? "Monthly CapEx + OpEx plan"
+                    : "No monthly plan yet"
+              }
             />
             <ScoreStat
               label="Incurred"
               value={money(actualSpendK)}
-              hint={`${pct(actualSpendK, approvedFundingK)} of envelope`}
+              hint={`${pct(actualSpendK, approvedFundingK)} of ${fyMoney ? "FY allocation" : "envelope"}`}
               explain={explains.actual}
             />
             <ScoreStat
               label="Forecast"
               value={money(facK)}
-              hint="At completion"
+              hint={fyMoney ? "FY outlook" : "At completion"}
               explain={explains.forecast}
             />
             <ScoreStat
               label="Remaining"
               value={money(remainingK)}
-              hint={`${pct(remainingK, approvedFundingK)} of envelope`}
+              hint={`${pct(remainingK, approvedFundingK)} of ${fyMoney ? "FY allocation" : "envelope"}`}
               explain={explains.remaining}
             />
             <ScoreStat
-              label="FAC vs envelope"
+              label={fyMoney ? "vs FY allocation" : "FAC vs envelope"}
               value={`${facDelta > 0 ? "+" : facDelta < 0 ? "−" : ""}${money(Math.abs(facDelta))}`}
-              hint={facDelta > 0 ? "over budget" : facDelta < 0 ? "under budget" : "on envelope"}
+              hint={
+                fyMoney
+                  ? facDelta > 0
+                    ? "over FY allocation"
+                    : facDelta < 0
+                      ? "under FY allocation"
+                      : "on FY allocation"
+                  : facDelta > 0
+                    ? "over budget"
+                    : facDelta < 0
+                      ? "under budget"
+                      : "on envelope"
+              }
               accent={facDelta > 0 ? "#dc2626" : facDelta < 0 ? "#15803d" : undefined}
             />
             <ScoreStat

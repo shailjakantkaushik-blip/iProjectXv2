@@ -2,12 +2,12 @@
  * Canonical project finance helpers — single source of truth for portfolio pages.
  *
  * Layers (do not mix write-paths):
- * 1. Budget   — stream `budget` in Data Editor (rolls up to the project)
+ * 1. Budget   — stream `budget` in Data Editor (lifetime envelope).
+ *               FY Allocation `budget` is the approved subset for that year.
  * 2. Plan     — Estimation Planning apply → dates, opex_planned, opex_labor_planned,
  *               resource_allocations. CapEx plan comes from FY budget CapEx.
  *               Same monthly row as Forecast — never a second financials_monthly record.
- * 3. Forecast — FY Allocation `forecast` by year → monthly *_forecast.
- *               Phase forecast starts equal to phase plan; slips can raise it.
+ * 3. Forecast — monthly *_forecast (starts = plan; FY forecast % can move the year outlook).
  * 4. Demand   — work-item estimate_hours × assignees (never writes Plan columns)
  * 5. Actual   — timesheets + other OpEx → monthly *_actual → incurred
  *

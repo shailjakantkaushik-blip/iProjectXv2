@@ -588,6 +588,17 @@ function InfographicPage() {
       ).data ?? [],
     enabled: !!project,
   });
+  const { data: fyAllocations = [] } = useQuery({
+    queryKey: ["fy_allocations", project?.id],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("fy_allocations")
+          .select("id,project_id,fy,budget,forecast,capex,opex,benefits")
+          .eq("project_id", project.id)
+      ).data ?? [],
+    enabled: !!project,
+  });
   const { data: benefits = [] } = useQuery({
     queryKey: ["benefits", project?.id],
     queryFn: async () =>
@@ -1209,8 +1220,10 @@ function InfographicPage() {
       workItems: workItems as any[],
       changeRequests: changeRequests as any[],
       benefitLines: benefits as any[],
+      fyAllocations: fyAllocations as any[],
+      fyStartMonth: organization?.fy_start_month || 4,
     });
-  }, [project, gates, risks, deps, monthly, projectAllocations, workItems, changeRequests, benefits]);
+  }, [project, gates, risks, deps, monthly, projectAllocations, workItems, changeRequests, benefits, fyAllocations, organization?.fy_start_month]);
 
   if (!projects.length) {
     return (

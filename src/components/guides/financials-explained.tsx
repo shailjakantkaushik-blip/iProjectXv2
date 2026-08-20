@@ -7,7 +7,7 @@ const LAYERS = [
     name: "Budget",
     color: "#1d4ed8",
     plain: "The approved envelope — how much this stream is allowed to spend.",
-    where: "Data Editor → Project Streams (rolls up to the project).",
+    where: "Data Editor → Project Streams (lifetime). FY Allocation is the approved subset for each financial year.",
     not: "Do not change this when a phase is late.",
   },
   {
@@ -80,6 +80,11 @@ export function FinancialsExplained({ showHouse = true }: { showHouse?: boolean 
           Forecast for that phase can rise — Budget and Plan stay put until someone formally
           changes them.
         </p>
+        <p className="mt-3 text-sm leading-relaxed">
+          FY Allocation is not Plan. It is the approved budget for that financial year — a subset
+          of the lifetime envelope. If Estimation Plan, Actuals, or Forecast for that year goes
+          above the allocation, the Financial health dimension flags Amber or Red.
+        </p>
       </SectionFrame>
 
       <SectionFrame>
@@ -101,7 +106,9 @@ export function FinancialsExplained({ showHouse = true }: { showHouse?: boolean 
             <Link to="/app/fy-allocation" className="font-medium text-primary hover:underline">
               FY Allocation
             </Link>{" "}
-            — split Budget and Forecast across financial years.
+            — split the overall envelope into a year budget (subset of overall). Filter Financials
+            or Cockpit to an FY to see that allocation, then Estimation Plan, Actuals, and Forecast
+            for those months. Going over a year&apos;s allocation flags Financial health.
           </li>
           <li>
             <Link to="/app/work-items" className="font-medium text-primary hover:underline">

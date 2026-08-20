@@ -16,6 +16,7 @@ import {
   PortfolioFilters,
   emptyFilters,
   applyFilters,
+  FyPicker,
   type PortfolioFilterState,
 } from "@/components/portfolio-filters";
 import { sortProjectsByCodeName } from "@/lib/project-sort";
@@ -45,6 +46,12 @@ import {
   projectRealisedRoi,
   projectForecast,
 } from "@/lib/project-finance";
+import {
+  fyLabelsSpanned,
+  fyScopedBudget,
+  monthlyInFyLabels,
+} from "@/lib/fy-allocation-scope";
+import { projectScheduleEnd, projectScheduleStart } from "@/lib/project-dates";
 import {
   monthlyRowsForPhaseFilter,
   monthlyTriple,
@@ -90,7 +97,9 @@ function FinancialsPage() {
   const { organization } = useAuth();
   const qc = useQueryClient();
   const [filters, setFilters] = useState<PortfolioFilterState>(emptyFilters);
+  const [fySelected, setFySelected] = useState<string[]>([]);
   const [syncing, setSyncing] = useState(false);
+  const fyStartMonth = organization?.fy_start_month || 4;
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", organization?.id],
@@ -128,6 +137,11 @@ function FinancialsPage() {
     queryFn: async () => (await supabase.from("stage_gates").select(STAGE_GATES_SELECT as "*")).data ?? [],
     enabled: !!organization,
   });
+  const { data: fyAlloc = [] } = useQuery({
+    queryKey: ["fy_allocations", organization?.id],
+    queryFn: async () => (await supabase.from("fy_allocations").select("*").order("fy")).data ?? [],
+    enabled: !!organization,
+  });
   const { data: milestones = [] } = useQuery({
     queryKey: ["milestones", organization?.id, "explain"],
     queryFn: async () =>
@@ -154,6 +168,23 @@ function FinancialsPage() {
     const configured = gateDefs.map((g: any) => g.gate_name).filter(Boolean);
     return configured.length ? configured : DEFAULT_STAGES;
   }, [gateDefs]);
+
+  const fyOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const a of fyAlloc as any[]) {
+      if (a.fy) s.add(String(a.fy));
+    }
+    for (const p of projects as any[]) {
+      for (const fy of fyLabelsSpanned(
+        projectScheduleStart(p),
+        projectScheduleEnd(p),
+        fyStartMonth,
+      )) {
+        s.add(fy);
+      }
+    }
+    return Array.from(s).sort();
+  }, [fyAlloc, projects, fyStartMonth]);
 
   const baseFiltered = useMemo(
     () => applyFilters(projects, filters, { phaseMode: "ignore", gates }),
@@ -205,15 +236,19 @@ function FinancialsPage() {
 
   const ids = useMemo(() => new Set(filtered.map((p: any) => p.id)), [filtered]);
   const mFiltered = useMemo(() => {
+    let rows: MonthlyFinanceRow[];
     if (filters.phase === "All") {
-      return monthly.filter((m: any) => ids.has(m.project_id)) as MonthlyFinanceRow[];
+      rows = monthly.filter((m: any) => ids.has(m.project_id)) as MonthlyFinanceRow[];
+    } else {
+      const out: MonthlyFinanceRow[] = [];
+      for (const id of ids) {
+        out.push(...(phaseScopedMonthlyByProject.get(id) || []));
+      }
+      rows = out;
     }
-    const out: MonthlyFinanceRow[] = [];
-    for (const id of ids) {
-      out.push(...(phaseScopedMonthlyByProject.get(id) || []));
-    }
-    return out;
-  }, [monthly, ids, filters.phase, phaseScopedMonthlyByProject]);
+    if (!fySelected.length) return rows;
+    return monthlyInFyLabels(rows, fySelected, fyStartMonth);
+  }, [monthly, ids, filters.phase, phaseScopedMonthlyByProject, fySelected, fyStartMonth]);
 
   const phaseTripleByProject = useMemo(() => {
     const map = new Map<string, ReturnType<typeof monthlyTriple>>();
@@ -222,6 +257,14 @@ function FinancialsPage() {
     }
     return map;
   }, [filtered, phaseScopedMonthlyByProject]);
+
+  const fyTripleByProject = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof monthlyTriple>>();
+    for (const p of filtered as any[]) {
+      map.set(p.id, monthlyTriple(mFiltered.filter((m) => m.project_id === p.id)));
+    }
+    return map;
+  }, [filtered, mFiltered]);
 
   const phaseScoped = filters.phase !== "All";
 
@@ -232,36 +275,71 @@ function FinancialsPage() {
       { key: "program", label: "Program" },
       {
         key: "budget",
-        label: phaseScoped ? "Phase Planned" : "Budget",
-        getValue: (p) =>
-          phaseScoped ? phaseTripleByProject.get(p.id)?.planned ?? 0 : projectApprovedFunding(p),
-      },
-      {
-        key: "capex_approved",
-        label: "CAPEX Appr.",
-        getValue: (p) => (phaseScoped ? 0 : Number(p.capex_approved || 0)),
-      },
-      {
-        key: "capex_incurred",
-        label: phaseScoped ? "Phase Actual" : "CAPEX Incd.",
+        label: phaseScoped ? "Phase Planned" : fySelected.length ? "FY allocation" : "Budget",
         getValue: (p) =>
           phaseScoped
-            ? phaseTripleByProject.get(p.id)?.actual ?? 0
-            : Number(p.capex_incurred || 0),
+            ? phaseTripleByProject.get(p.id)?.planned ?? 0
+            : fySelected.length
+              ? fyScopedBudget({
+                  allocations: (fyAlloc as any[]).filter((a: any) => a.project_id === p.id),
+                  overallBudget: projectApprovedFunding(p),
+                  fySelected,
+                })
+              : projectApprovedFunding(p),
       },
-      {
-        key: "opex_approved",
-        label: "OPEX Appr.",
-        getValue: (p) => (phaseScoped ? 0 : Number(p.opex_approved || 0)),
-      },
-      {
-        key: "opex_incurred",
-        label: phaseScoped ? "Phase Forecast" : "OPEX Incd.",
-        getValue: (p) =>
-          phaseScoped
-            ? phaseTripleByProject.get(p.id)?.forecast ?? 0
-            : Number(p.opex_incurred || 0),
-      },
+      ...(phaseScoped
+        ? [
+            {
+              key: "capex_incurred",
+              label: "Phase Actual",
+              getValue: (p: any) => phaseTripleByProject.get(p.id)?.actual ?? 0,
+            },
+            {
+              key: "opex_incurred",
+              label: "Phase Forecast",
+              getValue: (p: any) => phaseTripleByProject.get(p.id)?.forecast ?? 0,
+            },
+          ]
+        : fySelected.length
+          ? [
+              {
+                key: "plan",
+                label: "Plan",
+                getValue: (p: any) => fyTripleByProject.get(p.id)?.planned ?? 0,
+              },
+              {
+                key: "actual",
+                label: "Actual",
+                getValue: (p: any) => fyTripleByProject.get(p.id)?.actual ?? 0,
+              },
+              {
+                key: "forecast",
+                label: "Forecast",
+                getValue: (p: any) => fyTripleByProject.get(p.id)?.forecast ?? 0,
+              },
+            ]
+          : [
+              {
+                key: "capex_approved",
+                label: "CAPEX Appr.",
+                getValue: (p: any) => Number(p.capex_approved || 0),
+              },
+              {
+                key: "capex_incurred",
+                label: "CAPEX Incd.",
+                getValue: (p: any) => Number(p.capex_incurred || 0),
+              },
+              {
+                key: "opex_approved",
+                label: "OPEX Appr.",
+                getValue: (p: any) => Number(p.opex_approved || 0),
+              },
+              {
+                key: "opex_incurred",
+                label: "OPEX Incd.",
+                getValue: (p: any) => Number(p.opex_incurred || 0),
+              },
+            ]),
       {
         key: "benefits",
         label: "Benefits",
@@ -275,6 +353,14 @@ function FinancialsPage() {
             const t = phaseTripleByProject.get(p.id);
             return (t?.planned ?? 0) - (t?.actual ?? 0);
           }
+          if (fySelected.length) {
+            const allocated = fyScopedBudget({
+              allocations: (fyAlloc as any[]).filter((a: any) => a.project_id === p.id),
+              overallBudget: projectApprovedFunding(p),
+              fySelected,
+            });
+            return allocated - (fyTripleByProject.get(p.id)?.actual ?? 0);
+          }
           return projectApprovedFunding(p) - projectIncurred(p);
         },
       },
@@ -284,7 +370,7 @@ function FinancialsPage() {
         getValue: (p) => (phaseScoped ? 0 : projectRealisedRoi(p)),
       },
     ],
-    [phaseScoped, phaseTripleByProject],
+    [phaseScoped, phaseTripleByProject, fyTripleByProject, fySelected, fyAlloc],
   );
   const financeTable = useColumnarTable(filtered, financeColumns);
 
@@ -297,22 +383,37 @@ function FinancialsPage() {
   const opexIncurred = phaseScoped ? 0 : sum("opex_incurred");
   const totalBudget = phaseScoped
     ? filtered.reduce((s, p: any) => s + (phaseTripleByProject.get(p.id)?.planned ?? 0), 0)
-    : filtered.reduce((s, p: any) => s + projectApprovedFunding(p), 0);
+    : fySelected.length
+      ? filtered.reduce(
+          (s, p: any) =>
+            s +
+            fyScopedBudget({
+              allocations: (fyAlloc as any[]).filter((a: any) => a.project_id === p.id),
+              overallBudget: projectApprovedFunding(p),
+              fySelected,
+            }),
+          0,
+        )
+      : filtered.reduce((s, p: any) => s + projectApprovedFunding(p), 0);
   const benefitsRealised = phaseScoped
     ? 0
     : filtered.reduce((s, p: any) => s + projectBenefitsRealised(p), 0);
   const totalApproved = totalBudget;
-  const totalIncurred = phaseScoped
-    ? filtered.reduce((s, p: any) => s + (phaseTripleByProject.get(p.id)?.actual ?? 0), 0)
-    : filtered.reduce((s, p: any) => s + projectIncurred(p), 0);
-  const spendPct = totalApproved > 0 ? (totalIncurred / totalApproved) * 100 : 0;
-  const variance = totalApproved - totalIncurred;
-
-  // Execution layer (monthly) — Plan vs Actual vs Forecast
-  // These sums are totals across all monthly rows in the filter (should ≈ budget / FAC / incurred).
   const monthlyPlanned = sumMonthlyPlanned(mFiltered);
   const monthlyActual = sumMonthlyActual(mFiltered);
   const monthlyForecast = sumMonthlyForecast(mFiltered);
+  const totalIncurred = phaseScoped
+    ? filtered.reduce((s, p: any) => s + (phaseTripleByProject.get(p.id)?.actual ?? 0), 0)
+    : fySelected.length
+      ? monthlyActual
+      : filtered.reduce((s, p: any) => s + projectIncurred(p), 0);
+  const spendPct = totalApproved > 0 ? (totalIncurred / totalApproved) * 100 : 0;
+  const variance = totalApproved - totalIncurred;
+  const fyPeak = Math.max(monthlyPlanned, monthlyActual, monthlyForecast);
+  const fyOverPct = fySelected.length && totalBudget > 0 ? (fyPeak / totalBudget) * 100 : 0;
+
+  // Execution layer (monthly) — Plan vs Actual vs Forecast
+  // These sums are totals across all monthly rows in the filter (should ≈ budget / FAC / incurred).
   const registerFac = phaseScoped
     ? 0
     : filtered.reduce((s, p: any) => s + projectForecast(p), 0);
@@ -535,12 +636,10 @@ function FinancialsPage() {
       <PageHeading icon="💰">Financial Intelligence — Plan vs Actual</PageHeading>
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <p className="max-w-3xl text-sm text-muted-foreground">
-          <strong>Budget</strong> is the stream envelope. <strong>Plan</strong> is CapEx from FY
-          Allocation plus OpEx/FTE from Estimation Planning. <strong>Forecast</strong> is the FY
-          Allocation outlook (phase forecast starts equal to plan). <strong>Actual</strong> is
-          monthly spend after kickoff. <strong>Planned FTE $</strong> is Estimation Planning
-          allocations; <strong>Demand</strong> is work-item hours on Work Items;{" "}
-          <strong>Actual FTE $</strong> is approved timesheets.{" "}
+          <strong>Budget</strong> is the lifetime envelope. <strong>FY Allocation</strong> is the
+          approved slice of that envelope for a financial year. Select FY below to show that year&apos;s
+          allocation, then Estimation Plan, Actuals, and Forecast for those months. If Plan, Actual, or
+          Forecast exceeds the FY allocation, finance health flags Amber/Red.{" "}
           <Link to="/app/how-money-works" className="font-medium text-primary hover:underline">
             How money works
           </Link>{" "}
@@ -566,44 +665,67 @@ function FinancialsPage() {
         phaseOptions={orgPhases}
         phaseAllLabel="All phase windows"
       />
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <FyPicker options={fyOptions} selected={fySelected} onChange={setFySelected} />
+        {fySelected.length ? (
+          <span className="text-[11px] text-muted-foreground">
+            Budget is FY allocation (subset of overall). Plan / Actual / Forecast are months in{" "}
+            {fySelected.join(", ")}.
+          </span>
+        ) : null}
+      </div>
 
       <SectionFrame>
         <SectionTitle>Plan vs Actual vs Forecast (monthly cashflow)</SectionTitle>
         <p className="mb-3 text-xs text-muted-foreground">
-          The Σ totals below sum <em>every</em> month in the filter.{" "}
-          <strong>Σ Planned</strong> is CapEx plan (FY budget) plus OpEx plan (Estimation
-          Planning). <strong>Σ Forecast</strong> is the FY outlook (should ≈ Register FAC).
+          The Σ totals below sum months in the current filter
+          {fySelected.length ? ` (${fySelected.join(", ")})` : ""}.{" "}
+          <strong>Σ Planned</strong> is CapEx plan plus OpEx plan (Estimation Planning).{" "}
+          {fySelected.length ? (
+            <>
+              Compare those totals to <strong>FY allocation</strong> — going over flags Financial
+              health.
+            </>
+          ) : (
+            <>
+              <strong>Σ Forecast</strong> is the outlook (should ≈ Register FAC).
+            </>
+          )}{" "}
           Per-month values are in the chart and table.
         </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8">
           <KpiCard
-            label="Σ Planned (all months)"
+            label={fySelected.length ? "Σ Planned (FY months)" : "Σ Planned (all months)"}
             value={money(monthlyPlanned)}
             sub="CapEx plan + OpEx plan"
             accent="#93c5fd"
             explain={explainCtx.budget}
           />
           <KpiCard
-            label="Σ Actual (all months)"
+            label={fySelected.length ? "Σ Actual (FY months)" : "Σ Actual (all months)"}
             value={money(monthlyActual)}
-            sub="Should ≈ Total Incurred"
+            sub={fySelected.length ? "Estimation window actuals" : "Should ≈ Total Incurred"}
             accent="#1d4ed8"
             explain={explainCtx.actual}
           />
           <KpiCard
-            label="Σ Forecast (all months)"
+            label={fySelected.length ? "Σ Forecast (FY months)" : "Σ Forecast (all months)"}
             value={money(monthlyForecast)}
             sub={
-              !phaseScoped
-                ? Math.abs(monthlyForecast - registerFac) >= 1000
-                  ? `≠ Register FAC ${money(registerFac)} — monthly forecast sum`
-                  : "Matches Register FAC"
-                : undefined
+              fySelected.length
+                ? fyPeak > totalBudget
+                  ? "Above FY allocation"
+                  : "Within FY allocation"
+                : !phaseScoped
+                  ? Math.abs(monthlyForecast - registerFac) >= 1000
+                    ? `≠ Register FAC ${money(registerFac)} — monthly forecast sum`
+                    : "Matches Register FAC"
+                  : undefined
             }
             accent="#f59e0b"
             explain={explainCtx.forecast}
           />
-          {!phaseScoped ? (
+          {!phaseScoped && !fySelected.length ? (
             <KpiCard
               label="Register FAC"
               value={money(registerFac)}
@@ -653,14 +775,18 @@ function FinancialsPage() {
       </SectionFrame>
 
       <SectionFrame>
-        <SectionTitle>Approved funding vs incurred (project register)</SectionTitle>
+        <SectionTitle>
+          {fySelected.length
+            ? "FY allocation vs Plan / Actual / Forecast"
+            : "Approved funding vs incurred (project register)"}
+        </SectionTitle>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
           <KpiCard label="CAPEX Approved" value={money(capexApproved)} accent="#1d4ed8" />
           <KpiCard label="CAPEX Incurred" value={money(capexIncurred)} accent="#3b82f6" />
           <KpiCard label="OPEX Approved" value={money(opexApproved)} accent="#15803d" />
           <KpiCard label="OPEX Incurred" value={money(opexIncurred)} accent="#22c55e" />
           <KpiCard
-            label="Total Budget"
+            label={fySelected.length ? "FY allocation" : "Total Budget"}
             value={money(totalBudget)}
             accent="#8b5cf6"
             explain={explainCtx.budget}
@@ -684,6 +810,18 @@ function FinancialsPage() {
             accent={spendPct > 100 ? "#ef4444" : spendPct > 85 ? "#f59e0b" : "#22c55e"}
             explain={explainCtx.remaining}
           />
+          {fySelected.length ? (
+            <KpiCard
+              label="Plan/Actual/Forecast vs FY"
+              value={`${fyOverPct.toFixed(0)}%`}
+              sub={
+                fyPeak > totalBudget
+                  ? `Peak ${money(fyPeak)} exceeds allocation`
+                  : `Within FY allocation`
+              }
+              accent={fyPeak > totalBudget ? "#ef4444" : "#22c55e"}
+            />
+          ) : null}
           <KpiCard
             label="Benefits / Cost Ratio"
             value={benefitCostRatio.toFixed(2)}

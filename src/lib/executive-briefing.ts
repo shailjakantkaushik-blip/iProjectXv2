@@ -152,6 +152,8 @@ export function buildExecutiveBriefing(opts: {
   allocations?: HealthEngineInput["allocations"];
   changeRequests?: HealthEngineInput["changeRequests"];
   benefitLines?: HealthEngineInput["benefitLines"];
+  fyAllocations?: HealthEngineInput["fyAllocations"];
+  fyStartMonth?: number | null;
   now?: Date;
 }): {
   overallRag: RagTone;
@@ -211,6 +213,10 @@ export function buildExecutiveBriefing(opts: {
       benefitLines: (opts.benefitLines ?? []).filter(
         (b) => (b as { project_id?: string }).project_id === p.id,
       ),
+      fyAllocations: (opts.fyAllocations ?? []).filter(
+        (a) => (a as { project_id?: string }).project_id === p.id,
+      ),
+      fyStartMonth: opts.fyStartMonth,
     });
     healthByProject.set(p.id, engine);
     const money = projectOverrun(p);

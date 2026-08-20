@@ -13,8 +13,14 @@ import {
   sumBenefitsRealised,
   sumBenefitsTarget,
   type BenefitLineLike,
+  type FyAllocationLike,
   type ProjectFinanceLike,
 } from "@/lib/project-finance";
+import {
+  fyEnvelopeOverAllocation,
+  fyYearWatches,
+  worstFyOverAllocation,
+} from "@/lib/fy-allocation-scope";
 import { projectScheduleEnd, projectScheduleStart } from "@/lib/project-dates";
 import {
   computeProjectEvm,
@@ -129,6 +135,10 @@ export type HealthEngineInput = {
   changeRequests?: HealthChangeRequestLike[];
   allocations?: HealthAllocationLike[];
   monthly?: EvmMonthlyLike[];
+  /** FY Allocation rows — year slices of the project envelope. */
+  fyAllocations?: FyAllocationLike[];
+  /** Org FY start month (1–12). Used to map monthly cashflow onto FY labels. */
+  fyStartMonth?: number | null;
   /** Benefits register lines — canonical target/realised (same as Cockpit). */
   benefitLines?: BenefitLineLike[];
   /** Prior health score (e.g. last visit) for “dropped 82 → 72” copy. */
@@ -274,6 +284,37 @@ function scoreFinancial(approved: number, forecast: number, actual: number): {
         ? `FAC ${Math.round(fac).toLocaleString()} vs approved ${Math.round(approved).toLocaleString()} (+${Math.round(overrunPct * 100)}%)`
         : `FAC within approved funding (${Math.round((actual / approved) * 100)}% consumed)`,
   };
+}
+
+function mergeFinancialDetail(
+  current: { score: number; detail: string },
+  next: { score: number; detail: string },
+): { score: number; detail: string } {
+  const score = Math.min(current.score, next.score);
+  if (!next.detail || current.detail.includes(next.detail)) return { ...current, score };
+  if (!current.detail) return { score, detail: next.detail };
+  return { score, detail: `${current.detail} · ${next.detail}` };
+}
+
+function scoreFinancialFyAllocation(
+  lifetime: { score: number; detail: string },
+  watches: ReturnType<typeof fyYearWatches>,
+  overall: number,
+  allocations: FyAllocationLike[],
+): { score: number; detail: string } {
+  let result = lifetime;
+  const envelope = fyEnvelopeOverAllocation({ allocations, overallBudget: overall });
+  if (envelope) {
+    result = mergeFinancialDetail(result, {
+      score: scoreFinancial(envelope.overall, envelope.allocated, 0).score,
+      detail: `FY allocations $${Math.round(envelope.allocated).toLocaleString()} exceed overall budget $${Math.round(envelope.overall).toLocaleString()} (+${Math.round((envelope.overBy / envelope.overall) * 100)}%)`,
+    });
+  }
+  const worst = worstFyOverAllocation(watches);
+  if (!worst || worst.overBy <= 0 || worst.allocation <= 0) return result;
+  const fy = scoreFinancial(worst.allocation, worst.peak, worst.actual);
+  const detail = `${worst.fy} ${worst.peakSource} $${Math.round(worst.peak).toLocaleString()} exceeds FY allocation $${Math.round(worst.allocation).toLocaleString()} (+${Math.round((worst.overBy / worst.allocation) * 100)}%)`;
+  return mergeFinancialDetail(result, { score: fy.score, detail });
 }
 
 function scoreScope(items: EvmWorkItemLike[], crs: HealthChangeRequestLike[]): {
@@ -450,6 +491,8 @@ function buildEarlyWarnings(opts: {
   criticalRisks: number;
   gateLateDays: number;
   utilPct: number;
+  fyWatches?: ReturnType<typeof fyYearWatches>;
+  envelopeOver?: ReturnType<typeof fyEnvelopeOverAllocation>;
 }): EarlyWarning[] {
   const out: EarlyWarning[] = [];
   const ftePct = opts.ftePlan > 0 ? opts.fteActual / opts.ftePlan : 0;
@@ -493,6 +536,31 @@ function buildEarlyWarnings(opts: {
       potentialCostImpact: Math.round(opts.forecastFinal - opts.approved),
       recommendedAction: "Request funding or reduce scope before the next gate.",
       severity: opts.forecastFinal - opts.approved > opts.approved * 0.1 ? "Red" : "Amber",
+    });
+  }
+
+  if (opts.envelopeOver && opts.envelopeOver.overBy > 0 && opts.envelopeOver.overall > 0) {
+    out.push({
+      code: "fy_over_envelope",
+      title: "FY allocation early warning",
+      message: `${opts.projectName} FY allocations sum to $${Math.round(opts.envelopeOver.allocated).toLocaleString()} against $${Math.round(opts.envelopeOver.overall).toLocaleString()} overall budget.`,
+      potentialDelayWeeks: null,
+      potentialCostImpact: Math.round(opts.envelopeOver.overBy),
+      recommendedAction: "Rebalance year slices so FY allocation stays a subset of the overall envelope.",
+      severity: opts.envelopeOver.overBy > opts.envelopeOver.overall * 0.1 ? "Red" : "Amber",
+    });
+  }
+
+  const fyWorst = worstFyOverAllocation(opts.fyWatches ?? []);
+  if (fyWorst && fyWorst.overBy > 0 && fyWorst.allocation > 0) {
+    out.push({
+      code: "fy_over_allocation",
+      title: "FY allocation early warning",
+      message: `${opts.projectName} ${fyWorst.peakSource} in ${fyWorst.fy} is $${Math.round(fyWorst.peak).toLocaleString()} against $${Math.round(fyWorst.allocation).toLocaleString()} FY allocation.`,
+      potentialDelayWeeks: null,
+      potentialCostImpact: Math.round(fyWorst.overBy),
+      recommendedAction: "Rephase the estimate or raise the FY allocation before the next gate.",
+      severity: fyWorst.overBy > fyWorst.allocation * 0.1 ? "Red" : "Amber",
     });
   }
 
@@ -671,7 +739,23 @@ export function evaluateProjectHealth(input: HealthEngineInput): HealthEngineRes
   const facForFinancial = Math.max(statedFac, forecastBundle.forecastFinalCost);
 
   const schedule = scoreSchedule(workPct, schedulePct);
-  const financial = scoreFinancial(approved, facForFinancial, projectIncurred(project));
+  const fyWatches = fyYearWatches({
+    allocations: (input.fyAllocations ?? []) as FyAllocationLike[],
+    monthly: monthly as any,
+    fyStartMonth: input.fyStartMonth,
+    overallBudget: approved,
+  });
+  const fyAllocRows = (input.fyAllocations ?? []) as FyAllocationLike[];
+  const envelopeOver = fyEnvelopeOverAllocation({
+    allocations: fyAllocRows,
+    overallBudget: approved,
+  });
+  const financial = scoreFinancialFyAllocation(
+    scoreFinancial(approved, facForFinancial, projectIncurred(project)),
+    fyWatches,
+    approved,
+    fyAllocRows,
+  );
   const scope = scoreScope(workItems, changeRequests);
   const delivery = scoreDelivery(workPct, overdueGateDays(gates, nowMs), workItems);
   const resource = scoreResource(allocations, ftePlan, fteActual);
@@ -743,6 +827,8 @@ export function evaluateProjectHealth(input: HealthEngineInput): HealthEngineRes
     criticalRisks: risks.filter((r) => isOpenRisk(r) && isCriticalRisk(r)).length,
     gateLateDays: overdueGateDays(gates, nowMs),
     utilPct,
+    fyWatches,
+    envelopeOver,
   });
 
   return {
