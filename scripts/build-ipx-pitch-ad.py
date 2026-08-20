@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import math
+import re
 import shutil
 import subprocess
 import sys
@@ -23,10 +25,22 @@ LOGO_DIR = ROOT / "public/landing/logos"
 ASSETS = Path("/opt/cursor/artifacts/assets")
 BG_DIR = ROOT / "public/landing/story-bg"
 
+ACTOR_DIR = BG_DIR / "actors"
+
+
 def bg(name: str) -> Path:
     local = BG_DIR / f"{name}.jpg"
     art = ASSETS / f"bg-{name}.png"
     return local if local.exists() else art
+
+
+def resolve_still(spec: dict) -> Path | None:
+    if spec.get("still"):
+        p = ACTOR_DIR / f"{spec['still']}.jpg"
+        return p if p.exists() else None
+    if spec.get("bg"):
+        return BACKGROUNDS.get(spec["bg"])
+    return None
 
 # Atmosphere stills — product UI, not zooming photographs.
 BACKGROUNDS = {
@@ -41,14 +55,15 @@ BACKGROUNDS = {
     "trust": bg("trust"),
 }
 
-VOICE = "en-AU-WilliamMultilingualNeural"
-RATE = "-4%"
-PITCH = "-2Hz"
+VOICE = "en-US-AndrewMultilingualNeural"
+RATE = "+2%"
+VOLUME = "+12%"
+PITCH = "+0Hz"
 SR = 44100
 W, H = 1280, 720
 FPS = 24
-HOLD = 6.35
-FADE = 0.90
+HOLD = 6.20
+FADE = 1.00
 FONT_BOLD = Path("/usr/share/fonts/truetype/macos/Inter-Bold.ttf")
 FONT_SEMI = Path("/usr/share/fonts/truetype/macos/Inter-SemiBold.ttf")
 FONT_REG = Path("/usr/share/fonts/truetype/macos/Inter-Regular.ttf")
@@ -123,14 +138,19 @@ def compose_slide(
     body: str,
     chips: list[str] | None = None,
     wordmark: Path | None = None,
+    actor: bool = False,
 ) -> Image.Image:
     if bg_path and bg_path.exists():
         base = cover_resize(Image.open(bg_path), W, H)
-        base = base.filter(ImageFilter.GaussianBlur(radius=0.4))
-        # Slightly darken so type always reads
         dim = Image.new("RGB", (W, H), (7, 11, 24))
-        base = Image.blend(base, dim, 0.28)
-        base = bottom_gradient(base, 0.92)
+        if not actor:
+            base = base.filter(ImageFilter.GaussianBlur(radius=0.35))
+            base = Image.blend(base, dim, 0.28)
+            base = bottom_gradient(base, 0.92)
+        else:
+            # Keep faces sharp — no zoom, no blur. Grade only for type.
+            base = Image.blend(base, dim, 0.16)
+            base = bottom_gradient(base, 0.90)
     else:
         base = Image.new("RGB", (W, H), (7, 11, 24))
         # subtle vignette
@@ -214,31 +234,41 @@ def compose_slide(
 
 SLIDES = [
     {
-        "id": "fragment",
-        "bg": "fragment",
-        "kicker": "The real world",
-        "title": "Portfolios still fly blind.",
-        "body": "Decks, spreadsheets, email gates, and five tools that never agree.",
-        "chips": ["Excel RAG", "Late packs", "No live pulse"],
+        "id": "blind",
+        "still": "board",
+        "actor": True,
+        "kicker": "The cost",
+        "title": "They're still flying blind.",
+        "body": "Board packs land late. RAG is a guess. Nobody sees pressure until it is a crisis.",
+        "chips": ["Late packs", "Typed RAG", "No pulse"],
     },
     {
-        "id": "command",
-        "bg": "command",
-        "kicker": "iProjectX",
-        "title": "One command center.",
-        "body": "From Strategic Alignment to the work item — one data model. No drift.",
-        "chips": ["Agile + Waterfall", "White-label", "One truth"],
+        "id": "chaos",
+        "still": "inbox",
+        "actor": True,
+        "kicker": "The cost",
+        "title": "Money, gates, and RAID — in the dark.",
+        "body": "Overruns wait for year-end. Approvals live in email. Risks live in a forgotten file.",
+        "chips": ["Year-end shock", "Email gates", "RAID rot"],
+    },
+    {
+        "id": "better",
+        "still": "spokesperson",
+        "actor": True,
+        "kicker": "The pitch",
+        "title": "There is a better way.",
+        "body": "iProjectX is the command center they do not have.",
+        "chips": ["One platform", "One truth"],
     },
     {
         "id": "spine",
         "bg": "spine",
         "kicker": "The spine",
-        "title": "Strategy to work item.",
-        "body": "Strategic Alignment, programs, functional areas, projects, streams, work.",
+        "title": "Strategic Alignment to the work item.",
+        "body": "Programs, projects, streams, work. Agile and Waterfall. No drift.",
         "chips": [
             "Strategic Alignment",
             "Program",
-            "Area",
             "Project",
             "Stream",
             "Work item",
@@ -246,51 +276,46 @@ SLIDES = [
     },
     {
         "id": "health",
-        "bg": "health",
+        "still": "health",
+        "actor": True,
         "kicker": "Intelligence",
         "title": "Health is calculated. Pulse is live.",
-        "body": "Eight dimensions. Week-over-week change leaders can act on — before the board pack.",
-        "chips": ["Project Health", "Portfolio Pulse", "Explainable KPIs"],
-    },
-    {
-        "id": "cockpit",
-        "bg": "cockpit",
-        "kicker": "Command Center",
-        "title": "Executive Cockpit. Live, not a slideshow.",
-        "body": "Steering, financials, health mix, what-ifs — filterable, drillable, one truth.",
-        "chips": ["Cockpit", "Intelligence", "30-day outlook"],
+        "body": "Not a colour you type. Eight dimensions. What changed this week — in time to act.",
+        "chips": ["Project Health", "Portfolio Pulse"],
     },
     {
         "id": "money",
         "bg": "money",
-        "kicker": "Financials",
-        "title": "Budget. Plan. Forecast. Demand. Actual.",
-        "body": "Explainable money. Benefits from business case to realisation. EVM when you need it.",
+        "kicker": "The business",
+        "title": "Run the portfolio like a business.",
+        "body": "Live cockpit. Budget, Plan, Forecast, Demand, Actual. Explainable money.",
         "chips": ["Budget", "Plan", "Forecast", "Demand", "Actual"],
     },
     {
         "id": "govern",
         "bg": "govern",
         "kicker": "Governance",
-        "title": "Gates with evidence. RAID on the same spine.",
-        "body": "Approvals that audit. Risks, actions, issues, decisions tied to delivery — not a forgotten file.",
-        "chips": ["Stage gates", "RAID", "Forums", "Cadence"],
+        "title": "Gates that stick. RAID that lives.",
+        "body": "Evidence on every gate. Risks, actions, issues, decisions on the same spine as delivery.",
+        "chips": ["Stage gates", "RAID", "Cadence"],
     },
     {
         "id": "delivery",
-        "bg": "delivery",
+        "still": "delivery",
+        "actor": True,
         "kicker": "Delivery",
-        "title": "Work items. Capacity. Timesheets.",
-        "body": "The board, the timeline, Jira when you want it. People hours that match the plan.",
-        "chips": ["Work items", "Resources", "Timesheets", "Jira"],
+        "title": "From the work item to the timesheet.",
+        "body": "Capacity you can see. Hours that match the plan. Jira when you want it.",
+        "chips": ["Work items", "Timesheets", "Jira"],
     },
     {
         "id": "trust",
-        "bg": "trust",
+        "still": "security",
+        "actor": True,
         "kicker": "Trust",
-        "title": "Security enterprises can buy.",
-        "body": "Mandatory MFA. IP allowlisting. Bring Your Own Database. Isolation. In-house AI.",
-        "chips": ["MFA", "IP allowlist", "BYOD", "RLS", "In-house AI"],
+        "title": "Security a board will buy.",
+        "body": "Mandatory MFA. IP allowlisting. Bring Your Own Database. Your data stays yours.",
+        "chips": ["MFA", "IP allowlist", "BYOD", "RLS"],
     },
     {
         "id": "close",
@@ -329,14 +354,15 @@ def render_slides(mark_x: Path) -> list[Path]:
     WORK.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
     for i, spec in enumerate(SLIDES):
-        bg = BACKGROUNDS.get(spec["bg"]) if spec.get("bg") else None
+        still = resolve_still(spec)
         img = compose_slide(
-            bg,
+            still,
             spec["kicker"],
             spec["title"],
             spec["body"],
             spec.get("chips"),
             mark_x if spec.get("wordmark") else None,
+            actor=bool(spec.get("actor")),
         )
         dest = WORK / f"slide_{i:02d}.png"
         img.save(dest, "PNG", optimize=True)
@@ -427,17 +453,18 @@ def encode_visual(slides: list[Path]) -> Path:
     return visual
 
 
+# Selling script (spoken). Short, commercial lines timed to the picture.
 LINES: list[tuple[float, str]] = [
-    (0.55, "Portfolios still run on decks, spreadsheets, and disconnected tools."),
-    (6.10, "iProjectX is one command center — from Strategic Alignment to the work item."),
-    (11.80, "One spine — strategy to work. Agile and Waterfall."),
-    (17.40, "Health is calculated. Pulse tells leaders what changed this week."),
-    (22.90, "The Executive Cockpit is live intelligence — not a slideshow."),
-    (28.50, "Five money layers. Explainable forecast. Benefits that score."),
-    (34.00, "Stage gates with evidence. RAID on the same spine as delivery."),
-    (39.50, "Work items, capacity, timesheets. Jira when you need it."),
-    (45.10, "Mandatory MFA. IP allowlisting. Bring your own database."),
-    (51.40, "Stop flying blind."),
+    (0.40, "They're still flying blind."),
+    (5.80, "Board packs land late. RAG is a guess. The money shock waits for year-end."),
+    (11.90, "There is a better way. iProjectX is the command center they don't have."),
+    (17.55, "One platform. Strategic Alignment, all the way to the work item."),
+    (23.00, "Health isn't a colour you type. It's calculated. Pulse is live."),
+    (28.55, "Live cockpit. Five money layers. Every number, explainable."),
+    (33.95, "Gates with evidence. RAID on the same spine."),
+    (39.40, "Work items. Capacity. Timesheets. Jira, when you want it."),
+    (44.70, "Mandatory MFA. IP allowlisting. Bring your own database."),
+    (49.95, "iProjectX. Stop flying blind."),
 ]
 
 
@@ -445,7 +472,9 @@ async def synth_all() -> list[tuple[float, Path]]:
     placed: list[tuple[float, Path]] = []
     for i, (start, text) in enumerate(LINES):
         dest = WORK / f"vo_{i:02d}.mp3"
-        communicate = edge_tts.Communicate(text, VOICE, rate=RATE, pitch=PITCH)
+        communicate = edge_tts.Communicate(
+            text, VOICE, rate=RATE, volume=VOLUME, pitch=PITCH
+        )
         await communicate.save(str(dest))
         dur = ffprobe_duration(dest)
         print(f"  VO {start:5.2f} +{dur:4.2f}  {text}")
@@ -516,7 +545,7 @@ def mix_audio(placed: list[tuple[float, Path]], seconds: float, dest: Path) -> N
     mix = np.zeros((n, 2), dtype=np.float64)
     bed = music_bed(seconds + 0.4)
     m = min(n, len(bed))
-    mix[:m] += bed[:m] * 0.50
+    mix[:m] += bed[:m] * 0.18
     vo = np.zeros(n)
     for start, path in placed:
         pcm = WORK / f"{path.stem}.wav"
@@ -533,6 +562,12 @@ def mix_audio(placed: list[tuple[float, Path]], seconds: float, dest: Path) -> N
                 "1",
                 "-ar",
                 str(SR),
+                "-af",
+                "highpass=f=90,lowpass=f=12000,"
+                "equalizer=f=3500:t=q:w=1.0:g=3.5,"
+                "equalizer=f=8500:t=q:w=1.2:g=1.5,"
+                "acompressor=threshold=-18dB:ratio=3.5:attack=6:release=70:makeup=5,"
+                "volume=1.8dB",
                 str(pcm),
             ]
         )
@@ -541,18 +576,59 @@ def mix_audio(placed: list[tuple[float, Path]], seconds: float, dest: Path) -> N
         i0 = int(start * SR)
         i1 = min(n, i0 + len(buf))
         vo[i0:i1] += buf[: i1 - i0]
-    win = int(0.045 * SR)
+    win = int(0.04 * SR)
     mag = np.convolve(np.abs(vo), np.ones(win) / win, mode="same")
-    duck = 1.0 - 0.78 * np.clip(mag / 0.07, 0.0, 1.0)
+    duck = 1.0 - 0.92 * np.clip(mag / 0.05, 0.0, 1.0)
     mix[:, 0] *= duck
     mix[:, 1] *= duck
-    mix[:, 0] += vo * 0.80
-    mix[:, 1] += vo * 0.80
+    mix[:, 0] += vo * 0.88
+    mix[:, 1] += vo * 0.88
+    peak = float(np.max(np.abs(mix)))
+    if peak > 0.89:
+        mix *= 0.89 / peak
     wav_write(dest, mix)
+
+
+def measure_loudnorm(path: Path, seconds: float) -> dict:
+    proc = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-i",
+            str(path),
+            "-af",
+            f"apad,atrim=0:{seconds:.3f},loudnorm=I=-12:TP=-1.0:LRA=7:print_format=json",
+            "-f",
+            "null",
+            "-",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    match = re.search(r"\{[\s\S]*\}", proc.stderr)
+    if not match:
+        raise RuntimeError(proc.stderr[-2000:])
+    return json.loads(match.group(0))
 
 
 def mux(visual: Path, audio: Path) -> None:
     vdur = ffprobe_duration(visual)
+    stats = measure_loudnorm(audio, vdur)
+    # loudnorm rejects measured_I / measured_TP above 0 (clipping in the source mix).
+    stats = dict(stats)
+    stats["input_i"] = f"{min(float(stats['input_i']), -0.1):.2f}"
+    stats["input_tp"] = f"{min(float(stats['input_tp']), -0.1):.2f}"
+    print("loudnorm", {k: stats.get(k) for k in ("input_i", "input_tp", "input_lra", "target_offset")})
+    loud = (
+        "apad,atrim=0:{vdur:.3f},"
+        "loudnorm=I=-12:TP=-1.0:LRA=7:linear=true:"
+        "measured_I={input_i}:measured_TP={input_tp}:"
+        "measured_LRA={input_lra}:measured_thresh={input_thresh}:"
+        "offset={target_offset},"
+        "alimiter=limit=0.95,"
+        "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[a]"
+    ).format(vdur=vdur, **stats)
     tmp = WORK / "final.mp4"
     run(
         [
@@ -566,8 +642,7 @@ def mux(visual: Path, audio: Path) -> None:
             "-i",
             str(audio),
             "-filter_complex",
-            f"[1:a]apad,atrim=0:{vdur:.3f},loudnorm=I=-15:TP=-2.0:LRA=11,volume=-0.6dB,"
-            "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[a]",
+            f"[1:a]{loud}",
             "-map",
             "0:v:0",
             "-map",
@@ -585,7 +660,7 @@ def mux(visual: Path, audio: Path) -> None:
             "-c:a",
             "aac",
             "-b:a",
-            "160k",
+            "192k",
             "-movflags",
             "+faststart",
             str(tmp),
