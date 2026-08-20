@@ -28,6 +28,7 @@ import { Route as AuthenticatedAppAiAssistRouteImport } from './routes/_authenti
 import { Route as AuthenticatedAppAuditLogRouteImport } from './routes/_authenticated/app.audit-log'
 import { Route as AuthenticatedAppBenefitsRouteImport } from './routes/_authenticated/app.benefits'
 import { Route as AuthenticatedAppBillingRouteImport } from './routes/_authenticated/app.billing'
+import { Route as AuthenticatedAppBudgetVsPlanRouteImport } from './routes/_authenticated/app.budget-vs-plan'
 import { Route as AuthenticatedAppBusinessUnitsRouteImport } from './routes/_authenticated/app.business-units'
 import { Route as AuthenticatedAppChartThemeRouteImport } from './routes/_authenticated/app.chart-theme'
 import { Route as AuthenticatedAppConfigurationRouteImport } from './routes/_authenticated/app.configuration'
@@ -214,6 +215,12 @@ const AuthenticatedAppBillingRoute = AuthenticatedAppBillingRouteImport.update({
   path: '/billing',
   getParentRoute: () => AuthenticatedAppRoute,
 } as any)
+const AuthenticatedAppBudgetVsPlanRoute =
+  AuthenticatedAppBudgetVsPlanRouteImport.update({
+    id: '/budget-vs-plan',
+    path: '/budget-vs-plan',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
 const AuthenticatedAppBusinessUnitsRoute =
   AuthenticatedAppBusinessUnitsRouteImport.update({
     id: '/business-units',
@@ -752,6 +759,7 @@ export interface FileRoutesByFullPath {
   '/app/audit-log': typeof AuthenticatedAppAuditLogRoute
   '/app/benefits': typeof AuthenticatedAppBenefitsRoute
   '/app/billing': typeof AuthenticatedAppBillingRoute
+  '/app/budget-vs-plan': typeof AuthenticatedAppBudgetVsPlanRoute
   '/app/business-units': typeof AuthenticatedAppBusinessUnitsRoute
   '/app/chart-theme': typeof AuthenticatedAppChartThemeRoute
   '/app/configuration': typeof AuthenticatedAppConfigurationRoute
@@ -859,6 +867,7 @@ export interface FileRoutesByTo {
   '/app/audit-log': typeof AuthenticatedAppAuditLogRoute
   '/app/benefits': typeof AuthenticatedAppBenefitsRoute
   '/app/billing': typeof AuthenticatedAppBillingRoute
+  '/app/budget-vs-plan': typeof AuthenticatedAppBudgetVsPlanRoute
   '/app/business-units': typeof AuthenticatedAppBusinessUnitsRoute
   '/app/chart-theme': typeof AuthenticatedAppChartThemeRoute
   '/app/configuration': typeof AuthenticatedAppConfigurationRoute
@@ -968,6 +977,7 @@ export interface FileRoutesById {
   '/_authenticated/app/audit-log': typeof AuthenticatedAppAuditLogRoute
   '/_authenticated/app/benefits': typeof AuthenticatedAppBenefitsRoute
   '/_authenticated/app/billing': typeof AuthenticatedAppBillingRoute
+  '/_authenticated/app/budget-vs-plan': typeof AuthenticatedAppBudgetVsPlanRoute
   '/_authenticated/app/business-units': typeof AuthenticatedAppBusinessUnitsRoute
   '/_authenticated/app/chart-theme': typeof AuthenticatedAppChartThemeRoute
   '/_authenticated/app/configuration': typeof AuthenticatedAppConfigurationRoute
@@ -1078,6 +1088,7 @@ export interface FileRouteTypes {
     | '/app/audit-log'
     | '/app/benefits'
     | '/app/billing'
+    | '/app/budget-vs-plan'
     | '/app/business-units'
     | '/app/chart-theme'
     | '/app/configuration'
@@ -1185,6 +1196,7 @@ export interface FileRouteTypes {
     | '/app/audit-log'
     | '/app/benefits'
     | '/app/billing'
+    | '/app/budget-vs-plan'
     | '/app/business-units'
     | '/app/chart-theme'
     | '/app/configuration'
@@ -1293,6 +1305,7 @@ export interface FileRouteTypes {
     | '/_authenticated/app/audit-log'
     | '/_authenticated/app/benefits'
     | '/_authenticated/app/billing'
+    | '/_authenticated/app/budget-vs-plan'
     | '/_authenticated/app/business-units'
     | '/_authenticated/app/chart-theme'
     | '/_authenticated/app/configuration'
@@ -1532,6 +1545,13 @@ declare module '@tanstack/react-router' {
       path: '/billing'
       fullPath: '/app/billing'
       preLoaderRoute: typeof AuthenticatedAppBillingRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/app/budget-vs-plan': {
+      id: '/_authenticated/app/budget-vs-plan'
+      path: '/budget-vs-plan'
+      fullPath: '/app/budget-vs-plan'
+      preLoaderRoute: typeof AuthenticatedAppBudgetVsPlanRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
     '/_authenticated/app/business-units': {
@@ -2179,6 +2199,7 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppAuditLogRoute: typeof AuthenticatedAppAuditLogRoute
   AuthenticatedAppBenefitsRoute: typeof AuthenticatedAppBenefitsRoute
   AuthenticatedAppBillingRoute: typeof AuthenticatedAppBillingRoute
+  AuthenticatedAppBudgetVsPlanRoute: typeof AuthenticatedAppBudgetVsPlanRoute
   AuthenticatedAppBusinessUnitsRoute: typeof AuthenticatedAppBusinessUnitsRoute
   AuthenticatedAppChartThemeRoute: typeof AuthenticatedAppChartThemeRoute
   AuthenticatedAppConfigurationRoute: typeof AuthenticatedAppConfigurationRoute
@@ -2251,6 +2272,7 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppAuditLogRoute: AuthenticatedAppAuditLogRoute,
   AuthenticatedAppBenefitsRoute: AuthenticatedAppBenefitsRoute,
   AuthenticatedAppBillingRoute: AuthenticatedAppBillingRoute,
+  AuthenticatedAppBudgetVsPlanRoute: AuthenticatedAppBudgetVsPlanRoute,
   AuthenticatedAppBusinessUnitsRoute: AuthenticatedAppBusinessUnitsRoute,
   AuthenticatedAppChartThemeRoute: AuthenticatedAppChartThemeRoute,
   AuthenticatedAppConfigurationRoute: AuthenticatedAppConfigurationRoute,

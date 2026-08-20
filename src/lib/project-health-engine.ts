@@ -311,10 +311,25 @@ function scoreFinancialFyAllocation(
     });
   }
   const worst = worstFyOverAllocation(watches);
-  if (!worst || worst.overBy <= 0 || worst.allocation <= 0) return result;
-  const fy = scoreFinancial(worst.allocation, worst.peak, worst.actual);
-  const detail = `${worst.fy} ${worst.peakSource} $${Math.round(worst.peak).toLocaleString()} exceeds FY allocation $${Math.round(worst.allocation).toLocaleString()} (+${Math.round((worst.overBy / worst.allocation) * 100)}%)`;
-  return mergeFinancialDetail(result, { score: fy.score, detail });
+  if (!worst || worst.allocation <= 0) return result;
+  if (worst.overBy > 0) {
+    const fy = scoreFinancial(worst.allocation, worst.peak, worst.actual);
+    const detail = `${worst.fy} ${worst.peakSource} $${Math.round(worst.peak).toLocaleString()} exceeds FY allocation $${Math.round(worst.allocation).toLocaleString()} (+${Math.round((worst.overBy / worst.allocation) * 100)}%)`;
+    result = mergeFinancialDetail(result, { score: fy.score, detail });
+  }
+  const capexPeak = Math.max(worst.planCapex, worst.actualCapex, worst.forecastCapex);
+  if (worst.capexOverBy > 0 && worst.allocCapex > 0) {
+    const fy = scoreFinancial(worst.allocCapex, capexPeak, worst.actualCapex);
+    const detail = `${worst.fy} CapEx $${Math.round(capexPeak).toLocaleString()} exceeds FY CapEx allocation $${Math.round(worst.allocCapex).toLocaleString()}`;
+    result = mergeFinancialDetail(result, { score: fy.score, detail });
+  }
+  const opexPeak = Math.max(worst.planOpex, worst.actualOpex, worst.forecastOpex);
+  if (worst.opexOverBy > 0 && worst.allocOpex > 0) {
+    const fy = scoreFinancial(worst.allocOpex, opexPeak, worst.actualOpex);
+    const detail = `${worst.fy} OpEx $${Math.round(opexPeak).toLocaleString()} exceeds FY OpEx allocation $${Math.round(worst.allocOpex).toLocaleString()}`;
+    result = mergeFinancialDetail(result, { score: fy.score, detail });
+  }
+  return result;
 }
 
 function scoreScope(items: EvmWorkItemLike[], crs: HealthChangeRequestLike[]): {
@@ -552,15 +567,33 @@ function buildEarlyWarnings(opts: {
   }
 
   const fyWorst = worstFyOverAllocation(opts.fyWatches ?? []);
-  if (fyWorst && fyWorst.overBy > 0 && fyWorst.allocation > 0) {
+  if (
+    fyWorst &&
+    fyWorst.allocation > 0 &&
+    (fyWorst.overBy > 0 || fyWorst.capexOverBy > 0 || fyWorst.opexOverBy > 0)
+  ) {
+    const capexPeak = Math.max(fyWorst.planCapex, fyWorst.actualCapex, fyWorst.forecastCapex);
+    const opexPeak = Math.max(fyWorst.planOpex, fyWorst.actualOpex, fyWorst.forecastOpex);
+    const parts = [
+      fyWorst.overBy > 0
+        ? `${fyWorst.peakSource} $${Math.round(fyWorst.peak).toLocaleString()} vs $${Math.round(fyWorst.allocation).toLocaleString()} allocated`
+        : null,
+      fyWorst.capexOverBy > 0
+        ? `CapEx $${Math.round(capexPeak).toLocaleString()} vs $${Math.round(fyWorst.allocCapex).toLocaleString()} allocated`
+        : null,
+      fyWorst.opexOverBy > 0
+        ? `OpEx $${Math.round(opexPeak).toLocaleString()} vs $${Math.round(fyWorst.allocOpex).toLocaleString()} allocated`
+        : null,
+    ].filter(Boolean);
+    const impact = Math.max(fyWorst.overBy, fyWorst.capexOverBy, fyWorst.opexOverBy);
     out.push({
       code: "fy_over_allocation",
       title: "FY allocation early warning",
-      message: `${opts.projectName} ${fyWorst.peakSource} in ${fyWorst.fy} is $${Math.round(fyWorst.peak).toLocaleString()} against $${Math.round(fyWorst.allocation).toLocaleString()} FY allocation.`,
+      message: `${opts.projectName} in ${fyWorst.fy}: ${parts.join(" · ")}.`,
       potentialDelayWeeks: null,
-      potentialCostImpact: Math.round(fyWorst.overBy),
-      recommendedAction: "Rephase the estimate or raise the FY allocation before the next gate.",
-      severity: fyWorst.overBy > fyWorst.allocation * 0.1 ? "Red" : "Amber",
+      potentialCostImpact: Math.round(impact),
+      recommendedAction: "Rephase the estimate or raise the FY CapEx/OpEx allocation before the next gate.",
+      severity: impact > fyWorst.allocation * 0.1 ? "Red" : "Amber",
     });
   }
 
@@ -744,6 +777,7 @@ export function evaluateProjectHealth(input: HealthEngineInput): HealthEngineRes
     monthly: monthly as any,
     fyStartMonth: input.fyStartMonth,
     overallBudget: approved,
+    project,
   });
   const fyAllocRows = (input.fyAllocations ?? []) as FyAllocationLike[];
   const envelopeOver = fyEnvelopeOverAllocation({

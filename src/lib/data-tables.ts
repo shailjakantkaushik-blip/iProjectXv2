@@ -403,7 +403,7 @@ export const TABLES: TableDef[] = [
     orderBy: "period_month",
     description:
       "Execution cashflow. One row per project · stream · month: Plan and Forecast are columns, not two records. " +
-      "CapEx Plan and monthly Forecast cascade from FY Allocation. " +
+      "CapEx Plan comes from Estimation Planning further costs tagged CapEx (FY Allocation only fills empty CapEx plan). " +
       "OpEx Plan and Planned FTE cascade from Project Estimation Planning (Apply). " +
       "Enter Actual after kickoff. Demand lives on Work Items — do not put demand hours in Plan columns. " +
       "Use Financials → Sync incurred from actuals to roll CapEx/OpEx actuals up to the project register.",
@@ -473,8 +473,8 @@ export const TABLES: TableDef[] = [
     description:
       "Year slice of each project's approved envelope (subset of overall budget). " +
       "`budget` is the allocated $ for that FY; `forecast` is the in-flight year outlook. " +
-      "CapEx/OpEx/Benefits are the detail split of budget. Dashboards use these rows when an FY " +
-      "filter is selected. Plan/Actual/Forecast above this allocation flags finance health.",
+      "CapEx/OpEx/Benefits are the detail split of that year budget. Compare to Estimation Plan CapEx/OpEx " +
+      "on Budget vs Plan. Plan/Actual/Forecast above this allocation flags finance health.",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
       { key: "stream_id", label: "Stream", type: "text", fk: "stream" },

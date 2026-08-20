@@ -149,6 +149,11 @@ export const LIVE_SYNC_ROUTE_TABLES: Record<string, readonly string[]> = {
     "fy_allocations",
     "opex_other_costs",
   ],
+  "/app/budget-vs-plan": [
+    ...LIVE_SYNC_CORE_TABLES,
+    "financials_monthly",
+    "fy_allocations",
+  ],
   "/app/work-items": [
     ...LIVE_SYNC_CORE_TABLES,
     "work_items",

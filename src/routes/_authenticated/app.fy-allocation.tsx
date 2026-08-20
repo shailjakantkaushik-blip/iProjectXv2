@@ -232,6 +232,7 @@ function AllocateTab({
       monthly: monthly.filter((m: any) => m.project_id === project.id),
       fyStartMonth,
       overallBudget: totalBudget,
+      project,
     });
   }, [project, alloc, monthly, fyStartMonth, totalBudget]);
   const watchByFy = useMemo(() => {
@@ -239,7 +240,10 @@ function AllocateTab({
     for (const w of yearWatches) m.set(w.fy, w);
     return m;
   }, [yearWatches]);
-  const overYears = yearWatches.filter((w) => w.allocation > 0 && w.overBy > 0);
+  const overYears = yearWatches.filter(
+    (w) =>
+      w.allocation > 0 && (w.overBy > 0 || w.capexOverBy > 0 || w.opexOverBy > 0),
+  );
 
   // Derive FY suggestions from all allocations + org FY calendar
   const knownFYs = useMemo(() => {
@@ -534,8 +538,9 @@ function AllocateTab({
         <p className="mb-2 text-[11px] text-muted-foreground">
           Budget % phases the overall envelope across years (must stay a subset — totals 100%).
           That year&apos;s allocation is what Financials and Cockpit show when you filter to an FY.
-          CAPEX $ and OPEX $ default from the project mix. Plan for the year comes from Estimation
-          Planning months in that FY; exceeding the allocation flags finance health.
+          CAPEX $ and OPEX $ split that year&apos;s allocation. Plan CapEx / Plan OpEx come from
+          Estimation Planning (further costs tagged CapEx or OpEx, plus labor as OpEx). Exceeding
+          the matching allocation flags finance health.
         </p>
         <div className="mb-2 grid grid-cols-3 gap-2">
           <button
@@ -569,6 +574,8 @@ function AllocateTab({
                 <th className="text-right whitespace-nowrap">Forecast %</th>
                 <th className="text-right whitespace-nowrap">Forecast $</th>
                 <th className="text-right whitespace-nowrap">Plan $</th>
+                <th className="text-right whitespace-nowrap">Plan CapEx</th>
+                <th className="text-right whitespace-nowrap">Plan OpEx</th>
                 <th className="text-right whitespace-nowrap">Actual $</th>
                 <th className="text-right whitespace-nowrap">Monthly Fcst $</th>
                 <th className="text-left whitespace-nowrap">vs FY</th>
@@ -581,7 +588,18 @@ function AllocateTab({
                 const bAmt = budgetDollars(r.bp);
                 const fAmt = forecastDollars(r.fp);
                 const w = watchByFy.get(fy);
-                const over = !!(w && w.allocation > 0 && w.overBy > 0);
+                const over = !!(
+                  w &&
+                  w.allocation > 0 &&
+                  (w.overBy > 0 || w.capexOverBy > 0 || w.opexOverBy > 0)
+                );
+                const vsParts = [
+                  w?.capexOverBy && w.capexOverBy > 0 ? `CapEx +${fmt$(w.capexOverBy)}` : null,
+                  w?.opexOverBy && w.opexOverBy > 0 ? `OpEx +${fmt$(w.opexOverBy)}` : null,
+                  w?.overBy && w.overBy > 0 && !(w.capexOverBy > 0 || w.opexOverBy > 0)
+                    ? `${w.peakSource} +${fmt$(w.overBy)}`
+                    : null,
+                ].filter(Boolean);
                 return (
                   <tr key={fy} className={over ? "bg-rose-50" : undefined}>
                     <td className="font-medium text-left align-middle whitespace-nowrap">{fy}</td>
@@ -634,6 +652,16 @@ function AllocateTab({
                     <td className="align-middle text-right tabular-nums whitespace-nowrap">
                       {fmt$(w?.plan ?? 0)}
                     </td>
+                    <td
+                      className={`align-middle text-right tabular-nums whitespace-nowrap ${w && w.capexOverBy > 0 ? "font-semibold text-rose-700" : ""}`}
+                    >
+                      {fmt$(w?.planCapex ?? 0)}
+                    </td>
+                    <td
+                      className={`align-middle text-right tabular-nums whitespace-nowrap ${w && w.opexOverBy > 0 ? "font-semibold text-rose-700" : ""}`}
+                    >
+                      {fmt$(w?.planOpex ?? 0)}
+                    </td>
                     <td className="align-middle text-right tabular-nums whitespace-nowrap">
                       {fmt$(w?.actual ?? 0)}
                     </td>
@@ -643,9 +671,7 @@ function AllocateTab({
                     <td
                       className={`align-middle whitespace-nowrap text-[11px] font-medium ${over ? "text-rose-700" : "text-emerald-700"}`}
                     >
-                      {over
-                        ? `${w?.peakSource} +${fmt$(w?.overBy ?? 0)}`
-                        : "Within allocation"}
+                      {over ? vsParts.join(" · ") || "Over allocation" : "Within allocation"}
                     </td>
                     <td className="align-middle">
                       <input
@@ -660,7 +686,7 @@ function AllocateTab({
               })}
               {!selectedFYs.length && (
                 <tr>
-                  <td colSpan={12} className="p-4 text-center text-[12px] text-muted-foreground">
+                  <td colSpan={14} className="p-4 text-center text-[12px] text-muted-foreground">
                     Add one or more FYs above.
                   </td>
                 </tr>
@@ -741,6 +767,7 @@ function PortfolioViewTab({
         monthly: monthly.filter((row: any) => row.project_id === p.id),
         fyStartMonth,
         overallBudget: projectApprovedFunding(p),
+        project: p,
       });
       for (const w of watches) m.set(`${p.id}|${w.fy}`, w);
     }

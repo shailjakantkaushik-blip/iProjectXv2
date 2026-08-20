@@ -11,6 +11,8 @@
 import { fyOf } from "@/lib/project-dates";
 import {
   fyAllocBudget,
+  fyAllocCapex,
+  fyAllocOpex,
   projectApprovedFunding,
   type FyAllocationLike,
   type ProjectFinanceLike,
@@ -18,9 +20,6 @@ import {
 import {
   monthKey,
   monthsForFyLabel,
-  sumMonthlyActual,
-  sumMonthlyForecast,
-  sumMonthlyPlanned,
   type MonthlyFinanceRow,
 } from "@/lib/finance-lifecycle";
 
@@ -37,12 +36,22 @@ export type FyAllocRowLike = FyAllocationLike & {
 export type FyYearWatch = {
   fy: string;
   allocation: number;
+  allocCapex: number;
+  allocOpex: number;
   plan: number;
+  planCapex: number;
+  planOpex: number;
   actual: number;
+  actualCapex: number;
+  actualOpex: number;
   forecast: number;
+  forecastCapex: number;
+  forecastOpex: number;
   peak: number;
   peakSource: "plan" | "actual" | "forecast";
   overBy: number;
+  capexOverBy: number;
+  opexOverBy: number;
 };
 
 /** Lifetime envelope. FY allocations must not present as more than this. */
@@ -54,6 +63,43 @@ export function overallProjectBudget(p: ProjectFinanceLike | null | undefined): 
 export function capAllocationToOverall(allocated: number, overall: number): number {
   if (overall > 0) return Math.min(Math.max(0, allocated), overall);
   return Math.max(0, allocated);
+}
+
+export function monthlyLayerSplit(
+  rows: MonthlyFinanceRow[],
+  layer: "planned" | "actual" | "forecast",
+): { capex: number; opex: number; total: number } {
+  const capexKey =
+    layer === "planned" ? "capex_planned" : layer === "actual" ? "capex_actual" : "capex_forecast";
+  const opexKey =
+    layer === "planned" ? "opex_planned" : layer === "actual" ? "opex_actual" : "opex_forecast";
+  const capex = rows.reduce((s, r) => s + num((r as any)[capexKey]), 0);
+  const opex = rows.reduce((s, r) => s + num((r as any)[opexKey]), 0);
+  return { capex, opex, total: capex + opex };
+}
+
+export function sumFyAllocCapex(
+  rows: FyAllocRowLike[] | null | undefined,
+  fys?: string[] | null,
+  project?: ProjectFinanceLike | null,
+): number {
+  const set = fys?.length ? new Set(fys) : null;
+  return (rows ?? []).reduce((s, a) => {
+    if (set && !set.has(String(a.fy || ""))) return s;
+    return s + fyAllocCapex(a, project);
+  }, 0);
+}
+
+export function sumFyAllocOpex(
+  rows: FyAllocRowLike[] | null | undefined,
+  fys?: string[] | null,
+  project?: ProjectFinanceLike | null,
+): number {
+  const set = fys?.length ? new Set(fys) : null;
+  return (rows ?? []).reduce((s, a) => {
+    if (set && !set.has(String(a.fy || ""))) return s;
+    return s + fyAllocOpex(a, project);
+  }, 0);
 }
 
 export function sumFyAllocBudget(
@@ -158,23 +204,29 @@ export function fyYearWatches(opts: {
   monthly: MonthlyFinanceRow[];
   fyStartMonth?: number | null;
   overallBudget?: number;
+  project?: ProjectFinanceLike | null;
 }): FyYearWatch[] {
   const fyStartMonth = opts.fyStartMonth ?? 4;
   const overall = num(opts.overallBudget);
-  const byFy = new Map<string, { allocation: number; months: MonthlyFinanceRow[] }>();
+  const byFy = new Map<
+    string,
+    { allocation: number; allocCapex: number; allocOpex: number; months: MonthlyFinanceRow[] }
+  >();
 
   for (const a of opts.allocations) {
     const fy = String(a.fy || "").trim();
     if (!fy) continue;
-    const cur = byFy.get(fy) || { allocation: 0, months: [] };
+    const cur = byFy.get(fy) || { allocation: 0, allocCapex: 0, allocOpex: 0, months: [] };
     cur.allocation += fyAllocBudget(a);
+    cur.allocCapex += fyAllocCapex(a, opts.project);
+    cur.allocOpex += fyAllocOpex(a, opts.project);
     byFy.set(fy, cur);
   }
 
   for (const row of opts.monthly) {
     const fy = fyLabelForMonth(String(row.period_month || ""), fyStartMonth);
     if (!fy) continue;
-    const cur = byFy.get(fy) || { allocation: 0, months: [] };
+    const cur = byFy.get(fy) || { allocation: 0, allocCapex: 0, allocOpex: 0, months: [] };
     cur.months.push(row);
     byFy.set(fy, cur);
   }
@@ -182,20 +234,41 @@ export function fyYearWatches(opts: {
   const watches: FyYearWatch[] = [];
   for (const [fy, cur] of byFy) {
     const allocation = capAllocationToOverall(cur.allocation, overall || cur.allocation);
-    const plan = sumMonthlyPlanned(cur.months);
-    const actual = sumMonthlyActual(cur.months);
-    const forecast = sumMonthlyForecast(cur.months);
-    if (allocation <= 0 && plan <= 0 && actual <= 0 && forecast <= 0) continue;
-    const { peak, peakSource } = peakOf(plan, actual, forecast);
+    const allocCapex = capAllocationToOverall(cur.allocCapex, overall || cur.allocCapex);
+    const allocOpex = capAllocationToOverall(cur.allocOpex, overall || cur.allocOpex);
+    const planSplit = monthlyLayerSplit(cur.months, "planned");
+    const actualSplit = monthlyLayerSplit(cur.months, "actual");
+    const forecastSplit = monthlyLayerSplit(cur.months, "forecast");
+    if (
+      allocation <= 0 &&
+      planSplit.total <= 0 &&
+      actualSplit.total <= 0 &&
+      forecastSplit.total <= 0
+    ) {
+      continue;
+    }
+    const { peak, peakSource } = peakOf(planSplit.total, actualSplit.total, forecastSplit.total);
+    const capexPeak = Math.max(planSplit.capex, actualSplit.capex, forecastSplit.capex);
+    const opexPeak = Math.max(planSplit.opex, actualSplit.opex, forecastSplit.opex);
     watches.push({
       fy,
       allocation,
-      plan,
-      actual,
-      forecast,
+      allocCapex,
+      allocOpex,
+      plan: planSplit.total,
+      planCapex: planSplit.capex,
+      planOpex: planSplit.opex,
+      actual: actualSplit.total,
+      actualCapex: actualSplit.capex,
+      actualOpex: actualSplit.opex,
+      forecast: forecastSplit.total,
+      forecastCapex: forecastSplit.capex,
+      forecastOpex: forecastSplit.opex,
       peak,
       peakSource,
       overBy: peak - allocation,
+      capexOverBy: capexPeak - allocCapex,
+      opexOverBy: opexPeak - allocOpex,
     });
   }
   return watches.sort((a, b) => a.fy.localeCompare(b.fy));
@@ -203,10 +276,19 @@ export function fyYearWatches(opts: {
 
 export function worstFyOverAllocation(watches: FyYearWatch[]): FyYearWatch | null {
   let worst: FyYearWatch | null = null;
+  let worstRatio = 0;
   for (const w of watches) {
-    if (w.allocation <= 0 || w.overBy <= 0) continue;
-    if (!worst || w.overBy / w.allocation > worst.overBy / Math.max(worst.allocation, 1)) {
+    if (w.allocation <= 0) continue;
+    const totalRatio = w.overBy > 0 ? w.overBy / w.allocation : 0;
+    const capexRatio =
+      w.capexOverBy > 0 ? w.capexOverBy / Math.max(w.allocCapex, w.allocation * 0.01) : 0;
+    const opexRatio =
+      w.opexOverBy > 0 ? w.opexOverBy / Math.max(w.allocOpex, w.allocation * 0.01) : 0;
+    const ratio = Math.max(totalRatio, capexRatio, opexRatio);
+    if (ratio <= 0) continue;
+    if (!worst || ratio > worstRatio) {
       worst = w;
+      worstRatio = ratio;
     }
   }
   return worst;

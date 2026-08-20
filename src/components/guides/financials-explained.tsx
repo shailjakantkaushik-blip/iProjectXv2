@@ -14,7 +14,7 @@ const LAYERS = [
     name: "Plan",
     color: "#15803d",
     plain: "The baseline: how we intend to spend that envelope, by month and by person.",
-    where: "Project Estimation Planning → Apply planned baseline. CapEx plan also comes from FY Allocation.",
+    where: "Project Estimation Planning → Apply planned baseline. Labor is OpEx; further costs tagged CapEx/OpEx write those planned buckets. FY Allocation fills empty CapEx plan only.",
     not: "Plan stays frozen unless a sponsor unlocks it.",
   },
   {
@@ -106,9 +106,13 @@ export function FinancialsExplained({ showHouse = true }: { showHouse?: boolean 
             <Link to="/app/fy-allocation" className="font-medium text-primary hover:underline">
               FY Allocation
             </Link>{" "}
-            — split the overall envelope into a year budget (subset of overall). Filter Financials
-            or Cockpit to an FY to see that allocation, then Estimation Plan, Actuals, and Forecast
-            for those months. Going over a year&apos;s allocation flags Financial health.
+            — split the overall envelope into a year budget (subset of overall), including CapEx
+            and OpEx. Tag Estimation further costs as CapEx or OpEx so Plan lands in the matching
+            bucket.{" "}
+            <Link to="/app/budget-vs-plan" className="font-medium text-primary hover:underline">
+              Budget vs Plan
+            </Link>{" "}
+            shows allocated vs planned vs forecast vs actuals by project.
           </li>
           <li>
             <Link to="/app/work-items" className="font-medium text-primary hover:underline">
@@ -127,6 +131,13 @@ export function FinancialsExplained({ showHouse = true }: { showHouse?: boolean 
               Financials
             </Link>{" "}
             — Plan vs Actual vs Forecast on one page.
+          </li>
+          <li>
+            <Link to="/app/budget-vs-plan" className="font-medium text-primary hover:underline">
+              Budget vs Plan
+            </Link>{" "}
+            — overall budget, FY allocation, Estimation Plan, Forecast, and Actuals by project and
+            year (CapEx and OpEx).
           </li>
         </ul>
       </SectionFrame>

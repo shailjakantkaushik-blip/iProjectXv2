@@ -491,7 +491,14 @@ ALTER TABLE public.project_forecast_phase_resources
 
 ALTER TABLE public.project_forecast_other_costs
   ADD COLUMN IF NOT EXISTS category text,
-  ADD COLUMN IF NOT EXISTS forecast_phase_id uuid REFERENCES public.project_forecast_phases(id) ON DELETE SET NULL;
+  ADD COLUMN IF NOT EXISTS forecast_phase_id uuid REFERENCES public.project_forecast_phases(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS cost_type text NOT NULL DEFAULT 'opex';
+
+ALTER TABLE public.project_forecast_other_costs
+  DROP CONSTRAINT IF EXISTS project_forecast_other_costs_cost_type_check;
+ALTER TABLE public.project_forecast_other_costs
+  ADD CONSTRAINT project_forecast_other_costs_cost_type_check
+  CHECK (cost_type IN ('capex', 'opex'));
 
 ALTER TABLE public.project_meeting_summaries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.project_forecasts ENABLE ROW LEVEL SECURITY;

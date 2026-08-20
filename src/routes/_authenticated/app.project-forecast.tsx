@@ -16,6 +16,8 @@ import {
   daysToMonths,
   ensureStageGatesForStreams,
   FORECAST_COST_CATEGORIES,
+  FORECAST_COST_TYPES,
+  forecastCostType,
   forecastPhaseKey,
   formatForecastStreamPhase,
   groupForecastRowsByStream,
@@ -353,6 +355,11 @@ function ProjectForecastPage() {
 
   const laborTotal = phaseRes.reduce((s, r) => s + Number(r.labor_cost || 0), 0);
   const otherTotal = otherCosts.reduce((s, r) => s + Number(r.amount || 0), 0);
+  const otherCapex = otherCosts
+    .filter((c) => forecastCostType(c.cost_type) === "capex")
+    .reduce((s, r) => s + Number(r.amount || 0), 0);
+  const otherOpex = otherTotal - otherCapex;
+  const plannedOpex = laborTotal + otherOpex;
   const grand = laborTotal + otherTotal;
   const lastPersisted = useRef({ id: "", labor: 0, other: 0 });
 
@@ -470,6 +477,7 @@ function ProjectForecastPage() {
         project_id: projectId,
         heading: "Other cost",
         category: "Other",
+        cost_type: "opex",
         amount: 0,
         sort_order: otherCosts.length,
       };
@@ -477,6 +485,7 @@ function ProjectForecastPage() {
       if (first.error) {
         delete payload.category;
         delete payload.forecast_phase_id;
+        delete payload.cost_type;
         const { error } = await supabase.from("project_forecast_other_costs" as any).insert(payload);
         if (error) throw error;
       }
@@ -490,14 +499,24 @@ function ProjectForecastPage() {
       heading?: string;
       amount?: number;
       category?: string;
+      cost_type?: string;
       forecast_phase_id?: string | null;
     }) => {
       const { id, ...rest } = patch;
-      const { error } = await supabase
+      const first = await supabase
         .from("project_forecast_other_costs" as any)
         .update(rest)
         .eq("id", id);
-      if (error) throw error;
+      if (first.error && rest.cost_type != null) {
+        const { cost_type: _t, ...withoutType } = rest;
+        const { error } = await supabase
+          .from("project_forecast_other_costs" as any)
+          .update(withoutType)
+          .eq("id", id);
+        if (error) throw error;
+        return;
+      }
+      if (first.error) throw first.error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["project_forecast_other_costs"] }),
   });
@@ -660,7 +679,7 @@ function ProjectForecastPage() {
       <PageHeading
         icon="📊"
         title="Project Estimation Planning"
-        subtitle="Build the planned baseline by stream and phase (people, effort, other OpEx). Apply writes Plan and Planned FTE onto the same monthly row FY Allocation uses for Forecast — not a second record. Forecast starts equal to this plan until you save FY Allocation. Actuals come from timesheets and never overwrite this page."
+        subtitle="Build the planned baseline by stream and phase (people, effort, CapEx/OpEx further costs). Apply writes Plan and Planned FTE onto the same monthly row FY Allocation uses for Forecast — not a second record. Forecast starts equal to this plan until you save FY Allocation. Actuals come from timesheets and never overwrite this page."
       />
 
       <SectionFrame>
@@ -748,7 +767,7 @@ function ProjectForecastPage() {
           <p className="mt-2 text-xs text-muted-foreground">
             {kickedOff
               ? "Project has started. This page is the planned baseline (dates, cost, and FTE). Actual dates and incurred cost come from streams, gates, and timesheets — they are not overwritten here. Changing the plan needs sponsor or admin unlock."
-              : "Not started yet. Apply planned baseline writes phase dates, OpEx cost, and resource FTE as Plan. Forecast starts equal to that plan (FY Allocation can move Forecast later). Actuals start when the PM records Actual Start."}
+              : "Not started yet. Apply planned baseline writes phase dates, CapEx/OpEx plan, and resource FTE as Plan. Forecast starts equal to that plan (FY Allocation can move Forecast later). Actuals start when the PM records Actual Start."}
           </p>
         )}
         {!project && (
@@ -1016,6 +1035,19 @@ function ProjectForecastPage() {
                   ))}
                 </select>
                 <select
+                  className="st-input !w-32"
+                  defaultValue={forecastCostType(c.cost_type)}
+                  disabled={!canEdit}
+                  onChange={(e) => patchOther.mutate({ id: c.id, cost_type: e.target.value })}
+                  title="CapEx writes capex_planned; OpEx writes opex_planned"
+                >
+                  {FORECAST_COST_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t === "capex" ? "CapEx" : "OpEx"}
+                    </option>
+                  ))}
+                </select>
+                <select
                   className="st-input !w-48"
                   defaultValue={c.forecast_phase_id || ""}
                   disabled={!canEdit}
@@ -1055,8 +1087,8 @@ function ProjectForecastPage() {
             ))}
                 {otherCosts.length === 0 && (
                   <p className="text-sm text-muted-foreground">
-                    No further cost lines yet. Add travel, vendors, software, or other non-labor
-                    costs.
+                    No further cost lines yet. Add travel, vendors, hardware, or other non-labor
+                    costs and tag each as CapEx or OpEx so Apply writes the matching planned bucket.
                   </p>
                 )}
               </>
@@ -1065,9 +1097,10 @@ function ProjectForecastPage() {
 
           <SectionFrame>
             <SectionTitle>Total project cost estimation</SectionTitle>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <KpiCard label="Planned labor" value={money(laborTotal)} />
-              <KpiCard label="Planned other" value={money(otherTotal)} />
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+              <KpiCard label="Planned labor (OpEx)" value={money(laborTotal)} />
+              <KpiCard label="Planned other OpEx" value={money(otherOpex)} />
+              <KpiCard label="Planned CapEx" value={money(otherCapex)} accent="#1d4ed8" />
               <KpiCard label="Planned total" value={money(grand)} accent="#1d4ed8" />
               <KpiCard
                 label="Actual incurred"
@@ -1082,8 +1115,9 @@ function ProjectForecastPage() {
               />
             </div>
             <p className="mt-3 text-xs text-muted-foreground">
-              This total is the planned OpEx estimate (labor + other). It does not overwrite Budget
-              or Forecast at completion — those stay on stream Budget and FY Allocation Forecast.
+              Labor is always OpEx. Further costs tagged OpEx add to OpEx planned; tagged CapEx add
+              to CapEx planned. Apply writes those buckets — it does not overwrite Budget or FY
+              Allocation. Those stay on stream Budget and FY Allocation.
             </p>
             <Button
               className="mt-3"
