@@ -828,7 +828,7 @@ function Hero({ cfg, onEoiClick }: { cfg: LandingConfig; onEoiClick?: () => void
                 scrollToLandingHash("#story");
               }}
             >
-              Watch the 50-second story
+              Watch the pitch
               <ArrowRight className="ml-1.5 h-4 w-4" />
             </a>
             {cfg.hero.after_cta ? (
