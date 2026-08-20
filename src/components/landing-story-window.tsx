@@ -10,14 +10,14 @@ const ROOM_SRC = "/landing/hero-room.jpg";
 const DEFAULT_VOLUME = 0.52;
 
 /**
- * Whiteboard slot fitted to public/landing/hero-room.jpg.
- * Sized to the physical board so the 16:9 film covers the grey, above head-height.
+ * Film slot fitted to the glowing wall display in public/landing/hero-room.jpg.
+ * Stops above the seated team. The board is wider than 16:9; object-cover fills it.
  */
 const BOARD = {
-  left: "18.8%",
-  top: "12.4%",
-  width: "63.6%",
-  height: "46.2%",
+  left: "4.5%",
+  top: "8.6%",
+  width: "90.8%",
+  height: "47.8%",
 };
 
 export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
@@ -115,12 +115,12 @@ export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
       <div
         className="pointer-events-none absolute inset-0"
         style={{
-          boxShadow: `inset 90px 36px 90px ${p.navy}, inset -48px -40px 80px ${p.navy}`,
+          boxShadow: `inset 24px 8px 40px ${p.navy}, inset -24px -32px 48px ${p.navy}`,
         }}
         aria-hidden
       />
       <div
-        className="pointer-events-none absolute inset-y-0 left-0 w-24 sm:w-36"
+        className="pointer-events-none absolute inset-y-0 left-0 w-6 sm:w-10"
         style={{
           background: `linear-gradient(to right, ${p.navy} 0%, transparent 100%)`,
         }}
@@ -135,8 +135,6 @@ export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
           width: BOARD.width,
           height: BOARD.height,
           background: "#0b1224",
-          boxShadow:
-            "0 0 0 3px #cfd3dc, 0 0 0 4px #4b5563, inset 0 0 10px rgba(0,0,0,0.22)",
         }}
       >
         <video

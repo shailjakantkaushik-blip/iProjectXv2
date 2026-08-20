@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import math
 import re
@@ -19,6 +20,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 WORK = Path("/tmp/ipx-ad3")
+VO_CACHE = Path("/tmp/ipx-ad-vo-cache")
 OUT_MP4 = ROOT / "public/landing/ipx-pitch.mp4"
 OUT_POSTER = ROOT / "public/landing/ipx-pitch-poster.jpg"
 LOGO_DIR = ROOT / "public/landing/logos"
@@ -730,29 +732,29 @@ BEATS: list[dict] = [
     B("p3", "actor", "Leadership is left connecting the dots, after the fact.", still="command-team", era="before", tension="full", kicker="The cost"),
     B("p4", "actor", "Stop flying blind.", still="fragment", era="before", tension="full", kicker="The cost", title="Stop flying blind."),
     B("m1", "logo", "This is iProjectX. The PMO command centre they don't have."),
-    B("m2", "flow", "One platform. From Strategic Alignment, all the way to the work item.", kicker="The platform", title="Strategic Alignment to the work item.", nodes=["Strategic Alignment", "Program", "Project", "Stream", "Work item"]),
-    B("d1", "flow", "Start with Strategic Alignment.", kicker="Delivery engine", title="Start with Strategic Alignment.", nodes=SPINE, active=0),
-    B("d2", "flow", "Turn it into programs, then into projects you can actually run.", kicker="Delivery engine", title="Programs, then projects.", nodes=SPINE, active=2),
-    B("d3", "flow", "Estimate cost, effort, and time, with dependencies in view.", kicker="Delivery engine", title="Estimate cost, effort, and time.", nodes=["Scope", "Effort", "Cost", "Duration", "Resources", "Dependencies"]),
-    B("d4", "flow", "Then break the work into phases, streams, and work items.", kicker="Delivery engine", title="Phases, streams, work items.", nodes=SPINE, active=6),
+    B("m2", "actor", "One platform. From Strategic Alignment, all the way to the work item.", still="team-alignment", kicker="The platform", title="Strategic Alignment to the work item.", chips=["Strategic Alignment", "Program", "Project", "Stream", "Work item"]),
+    B("d1", "actor", "Start with Strategic Alignment.", still="team-alignment", kicker="Delivery engine", title="Start with Strategic Alignment.", chips=["Strategic Alignment"]),
+    B("d2", "actor", "Turn it into programs, then into projects you can actually run.", still="team-programs", kicker="Delivery engine", title="Programs, then projects.", chips=["Programs", "Projects"]),
+    B("d3", "actor", "Estimate cost, effort, and time, with dependencies in view.", still="team-estimate", kicker="Delivery engine", title="Estimate cost, effort, and time.", chips=["Effort", "Cost", "Duration", "Dependencies"]),
+    B("d4", "actor", "Then break the work into phases, streams, and work items.", still="team-phases", kicker="Delivery engine", title="Phases, streams, work items.", chips=["Phases", "Streams", "Work items"]),
     B("d5", "actor", "Timesheets capture what really happened. Delivery stays on the same spine.", still="team-timesheets", kicker="Delivery engine", chips=["Work items", "Timesheets", "Delivery"]),
     B("t1", "actor", "See the whole portfolio on a live timeline.", still="team-timeline", kicker="Timeline", chips=["Programs", "Projects", "Phases", "Milestones"]),
     B("t2", "actor", "What is happening. What is next. What could slip.", still="team-slip", kicker="Timeline", chips=["Dependencies", "Delivery dates"]),
-    B("r1", "flow", "Shape demand before it becomes delivery.", kicker="Demand", title="Shape demand before delivery.", nodes=DEMAND, active=0, atmosphere="demand"),
+    B("r1", "actor", "Shape demand before it becomes delivery.", still="team-demand", kicker="Demand", title="Shape demand before delivery.", chips=["Demand", "Assessment", "Approval"]),
     B("r2", "actor", "See capacity, and put the right people on the right work.", still="team-capacity", kicker="Resources", chips=["Capacity", "Allocation", "Demand"]),
-    B("g1", "gate", "Govern with stage gates. Discovery, Design, Build, Testing, Deployment, Benefit Realisation.", title="Discovery to Benefit Realisation."),
-    B("f1", "layers", "Budget, Plan, Forecast, Demand, Actual. Five money layers. Every number explainable.", layer_mode="money", title="Five money layers. Every number explainable."),
-    B("f2", "layers", "RAID — Risks, Actions, Issues, Decisions. Benefits and resources, on the same spine.", layer_mode="raid", title="RAID. Benefits. Resources."),
+    B("g1", "actor", "Govern with stage gates. Discovery, Design, Build, Testing, Deployment, Benefit Realisation.", still="team-gates", kicker="Stage gates", title="Discovery to Benefit Realisation.", chips=["Discovery", "Design", "Build", "Testing", "Deployment", "Benefit Realisation"]),
+    B("f1", "actor", "Budget, Plan, Forecast, Demand, Actual. Five money layers. Every number explainable.", still="team-money", kicker="Money", title="Five money layers. Every number explainable.", chips=["Budget", "Plan", "Forecast", "Demand", "Actual"]),
+    B("f2", "actor", "RAID — Risks, Actions, Issues, Decisions. Benefits and resources, on the same spine.", still="team-raid", kicker="RAID", title="RAID. Benefits. Resources.", chips=["Risks", "Actions", "Issues", "Decisions"]),
     B("i1", "actor", "iProjectX doesn't just collect data.", still="team-pulse", kicker="Intelligence"),
-    B("i2", "pulse", "It makes sense of it.", pulse="score"),
-    B("i3", "pulse", "Portfolio Pulse. Calculated health. Not a colour someone typed.", pulse="full", title="Portfolio Pulse. Calculated health."),
-    B("di1", "whatif", "Deep Intelligence is built into the application.", title="Deep Intelligence. Built in."),
-    B("di2", "whatif", "What-if scenarios. Predictions from current execution.", title="What-if. Predictions from execution."),
-    B("i4", "pulse", "The issues that need leadership attention. Now.", pulse="focus"),
+    B("i2", "actor", "It makes sense of it.", still="team-pulse", kicker="Intelligence", title="It makes sense of it."),
+    B("i3", "actor", "Portfolio Pulse. Calculated health. Not a colour someone typed.", still="team-pulse", kicker="Intelligence", title="Portfolio Pulse. Calculated health.", chips=["Calculated health"]),
+    B("di1", "actor", "Deep Intelligence is built into the application.", still="team-whatif", kicker="Deep Intelligence", title="Deep Intelligence. Built in."),
+    B("di2", "actor", "What-if scenarios. Predictions from current execution.", still="team-whatif", kicker="Deep Intelligence", title="What-if. Predictions from execution."),
+    B("i4", "actor", "The issues that need leadership attention. Now.", still="team-pulse", kicker="Intelligence", title="The issues that need leadership attention. Now."),
     B("v1", "actor", "Executives get the picture.", still="team-exec", kicker="The right view"),
     B("v2", "actor", "Leaders get the insight. Teams get the detail.", still="team-leaders", kicker="The right view"),
     B("c1", "actor", "So when the board asks, what needs my attention?", still="team-resolved", kicker="The question", title="What needs my attention?"),
-    B("c2", "pulse", "You already know.", pulse="focus", title="These three."),
+    B("c2", "actor", "You already know.", still="team-pulse", kicker="The question", title="These three."),
     B("c3", "actor", "And you can act.", still="s14-action", kicker="The answer", title="Let's fix them."),
     B("s1", "security", "Safety and security is the highest priority for iProjectX. Mandatory MFA. IP Whitelisting. Bring your own database.", title="Safety and security is the highest priority."),
     B("s2", "brand", "White label. iProjectX is designed to be one of the customer's immutable products.", title="One of the customer's immutable products."),
@@ -960,8 +962,16 @@ def encode_visual(slides: list[tuple[float, Path]]) -> Path:
 
 
 async def tts(text: str, dest: Path) -> None:
+    VO_CACHE.mkdir(parents=True, exist_ok=True)
+    key = hashlib.sha1(f"{VOICE}|{RATE}|{VOLUME}|{PITCH}|{text}".encode()).hexdigest()
+    cached = VO_CACHE / f"{key}.mp3"
+    if cached.exists() and cached.stat().st_size > 800:
+        shutil.copy2(cached, dest)
+        return
     communicate = edge_tts.Communicate(text, VOICE, rate=RATE, volume=VOLUME, pitch=PITCH)
     await communicate.save(str(dest))
+    if dest.exists() and dest.stat().st_size > 800:
+        shutil.copy2(dest, cached)
 
 
 async def synth(beats: list[dict]) -> tuple[list[tuple[float, Path]], list[tuple[float, dict]]]:
