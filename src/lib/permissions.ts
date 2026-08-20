@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { canEditProjects, useAuth } from "@/lib/auth-context";
+import { canEditProjects, useAuth, type AppRole } from "@/lib/auth-context";
 
 export const EDITABLE_TABLES: { name: string; label: string }[] = [
   { name: "projects", label: "Projects" },
@@ -43,7 +43,8 @@ export const CAPABILITIES: {
   {
     id: "template_upload",
     label: "Upload template / workbook",
-    description: "Upload Excel workbooks on Data Editor and import project templates (Edit or Other).",
+    description:
+      "Upload Excel workbooks on Data Editor and import project templates (Edit or Other).",
   },
   {
     id: "timesheet_cost_view",
@@ -190,25 +191,48 @@ function emptyFlags(canEdit: boolean, canOther = canEdit): PermFlags {
   return { can_view: true, can_edit: canEdit, can_other: canOther };
 }
 
+/** Same roles as demand_pipeline RLS (admin / org_admin / pm / bu_lead). */
+function isDemandPipelineWriter(roles: string[]) {
+  return canEditProjects(roles as AppRole[]);
+}
+
+/** Default matrix flags when the org has not saved a row for this table+role. */
+export function defaultTableFlags(tableName: string, roles: string[]): PermFlags {
+  const isAdmin = roles.some((r) => r === "admin" || r === "org_admin");
+  if (isAdmin) return emptyFlags(true, true);
+  const pmish = canEditProjects(roles as AppRole[]);
+  const defaultEdit =
+    tableName === "projects" ||
+    tableName === "project_streams" ||
+    tableName === "decisions" ||
+    tableName === "demand_pipeline"
+      ? pmish
+      : false;
+  return emptyFlags(defaultEdit, false);
+}
+
 /** Returns { canView, canEdit, canOther } for the current user for a given table. */
 export function useTablePermission(tableName: string) {
   const { roles } = useAuth();
   const { data: rows = [] } = useRolePermissions();
   const relevant = rows.filter((r) => roles.includes(r.role as any) && r.table_name === tableName);
   const isAdmin = roles.some((r) => r === "admin" || r === "org_admin");
+  const pipelineWriter = tableName === "demand_pipeline" && isDemandPipelineWriter(roles);
   if (relevant.length === 0) {
     // Unconfigured matrix: admins edit everything; PMs keep project-page edit (legacy).
-    const pmish = canEditProjects(roles);
-    const defaultEdit =
-      tableName === "projects" || tableName === "project_streams" || tableName === "decisions"
-        ? pmish
-        : isAdmin;
-    return { canView: true, canEdit: defaultEdit, canOther: isAdmin };
+    const defaults = defaultTableFlags(tableName, roles);
+    return {
+      canView: defaults.can_view,
+      canEdit: defaults.can_edit,
+      canOther: defaults.can_other || isAdmin,
+    };
   }
+  // Pipeline writers keep register edit even if a saved matrix omitted/denied the table —
+  // RLS already allows admin / PM / BU lead to write demand_pipeline.
   return {
-    canView: relevant.some((r) => r.can_view),
-    canEdit: relevant.some((r) => r.can_edit),
-    canOther: relevant.some((r) => r.can_other),
+    canView: relevant.some((r) => r.can_view) || pipelineWriter,
+    canEdit: relevant.some((r) => r.can_edit) || pipelineWriter,
+    canOther: relevant.some((r) => r.can_other) || isAdmin || pipelineWriter,
   };
 }
 

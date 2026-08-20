@@ -675,7 +675,7 @@ export const TABLES: TableDef[] = [
         key: "status",
         label: "Status",
         type: "select",
-        options: ["Idea", "Under Review", "Approved", "Rejected", "Deferred"],
+        options: ["Idea", "Screening", "Business Case", "Approved", "Rejected", "On Hold"],
       },
       { key: "submitted_date", label: "Submitted", type: "date" },
     ],

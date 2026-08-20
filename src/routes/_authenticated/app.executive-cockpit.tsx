@@ -12,7 +12,17 @@ import { ExpandablePanel } from "@/components/expandable-panel";
 import { ExecutiveQuickView } from "@/components/executive-quick-view";
 import { ProjectMeetingSummary } from "@/components/project-meeting-summary";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LabelList, Legend, ResponsiveContainer } from "recharts";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  LabelList,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 import { fyLabel } from "@/lib/fiscal-year";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { CategoryTick } from "@/components/chart-category-tick";
@@ -28,14 +38,14 @@ import {
   sumBenefitsTarget,
 } from "@/lib/project-finance";
 import {
-  computeProjectHealth,
   healthScoreHeatClass,
   portfolioSegmentLabels,
   projectPortfolio,
 } from "@/lib/project-health";
+import { computeEngineHealth, useHealthEngineLookups } from "@/hooks/use-health-engine-lookups";
 import { getPortfolioKpis, listPortfolioProjects } from "@/lib/portfolio.functions";
 import { MAX_PAGE_SIZE } from "@/lib/portfolio-paging";
-import { FINANCIALS_MONTHLY_SELECT, HEALTH_ENGINE_RISKS_SELECT } from "@/lib/query-selects";
+import { FINANCIALS_MONTHLY_SELECT } from "@/lib/query-selects";
 import { explainPortfolioSnapshot, explainRag, type MetricExplanation } from "@/lib/explain-metric";
 import { displayRag, effectiveRag, isRagOverridden } from "@/lib/ops-enhancements";
 import type { MonthlyFinanceRow } from "@/lib/finance-lifecycle";
@@ -58,7 +68,10 @@ export const Route = createFileRoute("/_authenticated/app/executive-cockpit")({
   head: () => ({
     meta: [
       { title: "Executive Cockpit — PMO Enterprise" },
-      { name: "description", content: "Steering pack, portfolio scoreboard, and project summaries." },
+      {
+        name: "description",
+        content: "Steering pack, portfolio scoreboard, and project summaries.",
+      },
     ],
   }),
   component: ExecutiveCockpit,
@@ -128,7 +141,10 @@ function ScoreStat({
         </div>
         {explain ? <ExplainThis explanation={explain} size="xs" /> : null}
       </div>
-      <div className="mt-1 text-lg font-bold tabular-nums leading-tight" style={accent ? { color: accent } : undefined}>
+      <div
+        className="mt-1 text-lg font-bold tabular-nums leading-tight"
+        style={accent ? { color: accent } : undefined}
+      >
         {value}
       </div>
       {hint ? <div className="mt-0.5 text-[11px] text-muted-foreground">{hint}</div> : null}
@@ -224,7 +240,9 @@ function ExecutiveCockpit() {
     if (section !== "summaries") return;
     setSummariesCollapsed(false);
     const t = window.setTimeout(() => {
-      document.getElementById("project-summaries")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document
+        .getElementById("project-summaries")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 80);
     return () => window.clearTimeout(t);
   }, [section]);
@@ -261,23 +279,15 @@ function ExecutiveCockpit() {
   );
   const filteredIds = useMemo(() => new Set(projects.map((p: any) => p.id)), [projects]);
   const filtersOn = executiveFiltersActive(filters);
-  const { data: benefits = [] } = useQuery({
-    queryKey: ["benefits", orgId],
-    queryFn: async () =>
-      (
-        await supabase
-          .from("benefits")
-          .select("id,project_id,target_value,realised_value")
-      ).data ?? [],
-    enabled: !!orgId,
-  });
   const { data: fyAlloc = [] } = useQuery({
     queryKey: ["fy_allocations", orgId],
     queryFn: async () =>
       (
         await supabase
           .from("fy_allocations")
-          .select("id,project_id,fy,budget,forecast,capex,opex,benefits,allocated_amount,forecast_amount")
+          .select(
+            "id,project_id,fy,budget,forecast,capex,opex,benefits,allocated_amount,forecast_amount",
+          )
       ).data ?? [],
     enabled: !!orgId,
   });
@@ -319,81 +329,13 @@ function ExecutiveCockpit() {
   });
   const { data: profiles = [] } = useQuery({
     queryKey: ["profiles", orgId],
-    queryFn: async () =>
-      (await supabase.from("profiles").select("id,full_name,email")).data ?? [],
+    queryFn: async () => (await supabase.from("profiles").select("id,full_name,email")).data ?? [],
     enabled: !!orgId,
   });
-  const { data: risks = [] } = useQuery({
-    queryKey: ["risks", orgId, "cockpit-health"],
-    queryFn: async () =>
-      (
-        await supabase
-          .from("risks")
-          .select(HEALTH_ENGINE_RISKS_SELECT)
-          .eq("org_id", orgId!)
-          .limit(10000)
-      ).data ?? [],
-    enabled: !!orgId,
-    staleTime: 60_000,
-  });
-  const { data: dependencies = [] } = useQuery({
-    queryKey: ["dependencies", orgId, "portfolio-pulse"],
-    queryFn: async () =>
-      (
-        await supabase
-          .from("dependencies")
-          .select("id,project_id,status,dep_type,needed_by")
-          .eq("org_id", orgId!)
-          .limit(10000)
-      ).data ?? [],
-    enabled: !!orgId,
-    staleTime: 60_000,
-  });
-  const { data: workItems = [] } = useQuery({
-    queryKey: ["work_items", orgId, "portfolio-pulse"],
-    queryFn: async () =>
-      (
-        await supabase
-          .from("work_items" as never)
-          .select("id,project_id,status,percent_complete,estimate_hours")
-          .eq("org_id", orgId!)
-          .limit(10000)
-      ).data ?? [],
-    enabled: !!orgId,
-    staleTime: 60_000,
-  });
-  const { data: allocations = [] } = useQuery({
-    queryKey: ["resource_allocations", orgId, "portfolio-pulse"],
-    queryFn: async () =>
-      (
-        await supabase
-          .from("resource_allocations")
-          .select("id,project_id,allocation_percent,allocated_hours")
-          .eq("org_id", orgId!)
-          .limit(10000)
-      ).data ?? [],
-    enabled: !!orgId,
-    staleTime: 60_000,
-  });
-  const { data: changeRequests = [] } = useQuery({
-    queryKey: ["change_requests", orgId, "cockpit-health"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("change_requests" as never)
-        .select("id,project_id,status,change_type,impact_cost,impact_schedule_days")
-        .eq("org_id", orgId!)
-        .limit(10000);
-      if (error) return [];
-      return data ?? [];
-    },
-    enabled: !!orgId,
-    staleTime: 60_000,
-  });
+  const healthLookups = useHealthEngineLookups(orgId);
+  const benefits = healthLookups.benefits;
 
-  const profileById = useMemo(
-    () => new Map((profiles as any[]).map((p) => [p.id, p])),
-    [profiles],
-  );
+  const profileById = useMemo(() => new Map((profiles as any[]).map((p) => [p.id, p])), [profiles]);
 
   const inScope = (projectId?: string | null) =>
     !filtersOn || (!!projectId && filteredIds.has(projectId));
@@ -412,11 +354,6 @@ function ExecutiveCockpit() {
   );
 
   const gatesByProject = useMemo(() => byProjectId(gatesScoped as any[]), [gatesScoped]);
-  const risksByProject = useMemo(() => byProjectId(risks as any[]), [risks]);
-  const depsByProject = useMemo(() => byProjectId(dependencies as any[]), [dependencies]);
-  const workItemsByProject = useMemo(() => byProjectId(workItems as any[]), [workItems]);
-  const allocationsByProject = useMemo(() => byProjectId(allocations as any[]), [allocations]);
-  const crsByProject = useMemo(() => byProjectId(changeRequests as any[]), [changeRequests]);
   const monthlyByProject = useMemo(() => byProjectId(monthly as any[]), [monthly]);
 
   const {
@@ -458,8 +395,14 @@ function ExecutiveCockpit() {
 
     const total = projects.length;
 
-    const benefitsForecast = benefitsScoped.reduce((s: number, b: any) => s + num(b.target_value), 0);
-    const benefitsRealised = benefitsScoped.reduce((s: number, b: any) => s + num(b.realised_value), 0);
+    const benefitsForecast = benefitsScoped.reduce(
+      (s: number, b: any) => s + num(b.target_value),
+      0,
+    );
+    const benefitsRealised = benefitsScoped.reduce(
+      (s: number, b: any) => s + num(b.realised_value),
+      0,
+    );
 
     const segLabels = portfolioSegmentLabels(projects as any[]);
     const segRows = segLabels.map((cat) => {
@@ -484,12 +427,12 @@ function ExecutiveCockpit() {
     });
 
     return {
-    totalValue,
-    capexApproved,
-    opexApproved,
-    capexIncurred,
-    opexIncurred,
-    approvedFunding,
+      totalValue,
+      capexApproved,
+      opexApproved,
+      capexIncurred,
+      opexIncurred,
+      approvedFunding,
       actualSpend,
       remaining,
       fac,
@@ -545,7 +488,20 @@ function ExecutiveCockpit() {
   }, [fyAllocScoped, projects, fyStartMonth]);
 
   const monthlySpend = useMemo(() => {
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const monthNames = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
     const rows = (monthly as any[]).filter((m) => inScope(m.project_id));
     const buckets = new Map<string, { actual: number; forecast: number }>();
     rows.forEach((r: any) => {
@@ -588,15 +544,12 @@ function ExecutiveCockpit() {
     return projects
       .slice()
       .map((p: any) => {
-        const health = computeProjectHealth(p, gatesByProject.get(p.id) || [], {
-          monthly: monthlyByProject.get(p.id) || [],
-          risks: risksByProject.get(p.id) || [],
-          dependencies: depsByProject.get(p.id) || [],
-          workItems: workItemsByProject.get(p.id) || [],
-          allocations: allocationsByProject.get(p.id) || [],
-          changeRequests: crsByProject.get(p.id) || [],
-          benefitLines: (benefitsScoped as any[]).filter((b) => b.project_id === p.id),
-        });
+        const health = computeEngineHealth(
+          p,
+          gatesByProject.get(p.id) || [],
+          healthLookups,
+          monthlyByProject.get(p.id) || [],
+        );
         const pm = p.pm_user_id ? profileById.get(p.pm_user_id) : null;
         const deliveryLead =
           (pm?.full_name || pm?.email || p.delivery_lead || p.pm_name || "").trim() || "—";
@@ -604,18 +557,7 @@ function ExecutiveCockpit() {
         return { ...p, ...health, delivery_lead: deliveryLead, shown_rag: shown };
       })
       .sort(compareProjectsByCodeName);
-  }, [
-    projects,
-    benefitsScoped,
-    gatesByProject,
-    profileById,
-    monthlyByProject,
-    risksByProject,
-    depsByProject,
-    workItemsByProject,
-    allocationsByProject,
-    crsByProject,
-  ]);
+  }, [projects, gatesByProject, profileById, monthlyByProject, healthLookups]);
 
   const matrixRag = useMemo(() => countEngineRag(healthRows), [healthRows]);
   const mixRagByAlign = useMemo(() => {
@@ -736,10 +678,10 @@ function ExecutiveCockpit() {
             </p>
           </div>
           <p className="mb-2 text-[11px] text-muted-foreground">
-            All in-scope projects, sorted by project code. Click a row
-            for the infographic. The mix bar uses Health Engine bands (Green ≥ 80, Amber 65–79,
-            Red &lt; 65) — the same colour as the Health score. The RAG column uses a manual
-            override when set (M). Financials live in Mix by Strategic Alignment.
+            All in-scope projects, sorted by project code. Click a row for the infographic. The mix
+            bar uses Health Engine bands (Green ≥ 80, Amber 65–79, Red &lt; 65) — the same colour as
+            the Health score. The RAG column uses a manual override when set (M). Financials live in
+            Mix by Strategic Alignment.
           </p>
           <p className="mb-2 text-[11px] text-muted-foreground md:hidden">
             Swipe sideways to see all columns.
@@ -833,28 +775,44 @@ function ExecutiveCockpit() {
                         <RagChip
                           rag={p.schedule_rag}
                           label={p.schedule_rag}
-                          explain={explainRag({ rag: p.schedule_rag, engine: p.engine, dimension: "schedule" })}
+                          explain={explainRag({
+                            rag: p.schedule_rag,
+                            engine: p.engine,
+                            dimension: "schedule",
+                          })}
                         />
                       </td>
                       <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                         <RagChip
                           rag={p.financial_rag}
                           label={p.financial_rag}
-                          explain={explainRag({ rag: p.financial_rag, engine: p.engine, dimension: "financial" })}
+                          explain={explainRag({
+                            rag: p.financial_rag,
+                            engine: p.engine,
+                            dimension: "financial",
+                          })}
                         />
                       </td>
                       <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                         <RagChip
                           rag={p.delivery_rag}
                           label={p.delivery_rag}
-                          explain={explainRag({ rag: p.delivery_rag, engine: p.engine, dimension: "delivery" })}
+                          explain={explainRag({
+                            rag: p.delivery_rag,
+                            engine: p.engine,
+                            dimension: "delivery",
+                          })}
                         />
                       </td>
                       <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                         <RagChip
                           rag={p.benefit_rag}
                           label={p.benefit_rag}
-                          explain={explainRag({ rag: p.benefit_rag, engine: p.engine, dimension: "benefits" })}
+                          explain={explainRag({
+                            rag: p.benefit_rag,
+                            engine: p.engine,
+                            dimension: "benefits",
+                          })}
                         />
                       </td>
                       <td className="px-3 py-2 text-xs">{p.portfolio || "—"}</td>
@@ -884,11 +842,7 @@ function ExecutiveCockpit() {
           {explains.budget ? <ExplainThis explanation={explains.budget} size="xs" /> : null}
         </div>
         <div className="space-y-3">
-          <EnvelopeBullet
-            budget={approvedFundingK}
-            incurred={actualSpendK}
-            forecast={facK}
-          />
+          <EnvelopeBullet budget={approvedFundingK} incurred={actualSpendK} forecast={facK} />
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
             <ScoreStat
               label="Budget"
@@ -936,10 +890,7 @@ function ExecutiveCockpit() {
               value={money(capexIncurred)}
               hint={`${pct(capexIncurred, capexApproved)} of CapEx`}
             />
-            <ScoreStat
-              label="OpEx approved"
-              value={money(opexApproved)}
-            />
+            <ScoreStat label="OpEx approved" value={money(opexApproved)} />
             <ScoreStat
               label="OpEx incurred"
               value={money(opexIncurred)}
@@ -978,10 +929,7 @@ function ExecutiveCockpit() {
               <BarChart data={fyData} margin={{ top: 20, right: 12, left: 0, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="fy" fontSize={11} />
-                <YAxis
-                  fontSize={10}
-                  tickFormatter={(v: number) => money(v)}
-                />
+                <YAxis fontSize={10} tickFormatter={(v: number) => money(v)} />
                 <Tooltip formatter={(v: number) => money(v)} />
                 <Legend verticalAlign="top" />
                 <Bar dataKey="budget" name="Budget" fill="#3b82f6">
@@ -1017,110 +965,128 @@ function ExecutiveCockpit() {
               </Link>
             }
           >
-        <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <ScoreStat
-            label="Target"
-            value={money(benefitsForecastK)}
-            explain={explains.benefits}
-          />
-          <ScoreStat
-            label="Realised"
-            value={money(benefitsRealisedK)}
-            hint={`${benefitsPct}% of target`}
-          />
-          <ScoreStat
-            label="Gap"
-            value={money(Math.abs(benefitsGap))}
-            hint={benefitsGap > 0 ? "still to realise" : benefitsGap < 0 ? "ahead of target" : "on target"}
-            accent={benefitsGap > 0 ? "#d97706" : benefitsGap < 0 ? "#15803d" : undefined}
-          />
-          <ScoreStat
-            label="Realisation"
-            value={`${benefitsPct}%`}
-            hint={`${benefitRows.length} project${benefitRows.length === 1 ? "" : "s"} with benefits`}
-          />
-        </div>
-        {benefitChart.length === 0 ? (
-          <p className="py-6 text-sm text-muted-foreground">No benefit target or realised value in this filter.</p>
-        ) : (
-            <div className="space-y-3">
-              <div className="h-56 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={benefitChart}
-                    isAnimationActive={false}
-                    margin={{ top: 24, right: 12, left: 4, bottom: 40 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" interval={0} minTickGap={0} tick={<CategoryTick />} height={44} />
-                    <YAxis fontSize={10} tickFormatter={(v: number) => money(v)} />
-                    <Tooltip formatter={(v: number, n: string) => [money(v), n]} />
-                    <Legend verticalAlign="top" />
-                    <Bar dataKey="Target" name="Target" fill="#1d4ed8" radius={[4, 4, 0, 0]}>
-                      <LabelList
-                        dataKey="Target"
-                        position="top"
-                        style={{ fontSize: 10 }}
-                        formatter={(v: number) => money(v)}
-                      />
-                    </Bar>
-                    <Bar dataKey="Realised" name="Realised" fill="#10b981" radius={[4, 4, 0, 0]}>
-                      <LabelList
-                        dataKey="Realised"
-                        position="top"
-                        style={{ fontSize: 10 }}
-                        formatter={(v: number) => money(v)}
-                      />
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="st-table-wrap overflow-x-auto">
-                <table className="w-full min-w-[640px] text-sm">
-                  <thead className="text-xs uppercase text-muted-foreground">
-                    <tr>
-                      <th className="px-2 py-1.5 text-left">Project</th>
-                      <th className="px-2 py-1.5 text-right">Target</th>
-                      <th className="px-2 py-1.5 text-right">Realised</th>
-                      <th className="px-2 py-1.5 text-right">Gap</th>
-                      <th className="px-2 py-1.5 text-right">Rate</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {benefitRows.map((r) => (
-                      <tr key={r.id} className="border-t border-border">
-                        <td className="px-2 py-2">
-                          <Link
-                            to="/app/projects/$id"
-                            params={{ id: r.id }}
-                            search={{ tab: "summary" }}
-                            className="font-medium text-primary hover:underline"
-                          >
-                            {r.code ? `${r.code} · ${r.name}` : r.name}
-                          </Link>
-                        </td>
-                        <td className="px-2 py-2 text-right tabular-nums">{money(r.target)}</td>
-                        <td className="px-2 py-2 text-right tabular-nums">{money(r.realised)}</td>
-                        <td className="px-2 py-2 text-right tabular-nums">
-                          <span className={r.gap > 0 ? "text-amber-700" : r.gap < 0 ? "text-emerald-700" : ""}>
-                            {money(Math.abs(r.gap))}
-                            {r.gap < 0 ? " ahead" : ""}
-                          </span>
-                        </td>
-                        <td className="px-2 py-2 text-right tabular-nums">{r.rate}%</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {benefitRows.length > 10 ? (
-                <p className="text-[11px] text-muted-foreground">
-                  Chart shows the top 10 by target. Table lists all {benefitRows.length} projects with
-                  benefits.
-                </p>
-              ) : null}
+            <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <ScoreStat
+                label="Target"
+                value={money(benefitsForecastK)}
+                explain={explains.benefits}
+              />
+              <ScoreStat
+                label="Realised"
+                value={money(benefitsRealisedK)}
+                hint={`${benefitsPct}% of target`}
+              />
+              <ScoreStat
+                label="Gap"
+                value={money(Math.abs(benefitsGap))}
+                hint={
+                  benefitsGap > 0
+                    ? "still to realise"
+                    : benefitsGap < 0
+                      ? "ahead of target"
+                      : "on target"
+                }
+                accent={benefitsGap > 0 ? "#d97706" : benefitsGap < 0 ? "#15803d" : undefined}
+              />
+              <ScoreStat
+                label="Realisation"
+                value={`${benefitsPct}%`}
+                hint={`${benefitRows.length} project${benefitRows.length === 1 ? "" : "s"} with benefits`}
+              />
             </div>
-        )}
+            {benefitChart.length === 0 ? (
+              <p className="py-6 text-sm text-muted-foreground">
+                No benefit target or realised value in this filter.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                <div className="h-56 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={benefitChart}
+                      isAnimationActive={false}
+                      margin={{ top: 24, right: 12, left: 4, bottom: 40 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="name"
+                        interval={0}
+                        minTickGap={0}
+                        tick={<CategoryTick />}
+                        height={44}
+                      />
+                      <YAxis fontSize={10} tickFormatter={(v: number) => money(v)} />
+                      <Tooltip formatter={(v: number, n: string) => [money(v), n]} />
+                      <Legend verticalAlign="top" />
+                      <Bar dataKey="Target" name="Target" fill="#1d4ed8" radius={[4, 4, 0, 0]}>
+                        <LabelList
+                          dataKey="Target"
+                          position="top"
+                          style={{ fontSize: 10 }}
+                          formatter={(v: number) => money(v)}
+                        />
+                      </Bar>
+                      <Bar dataKey="Realised" name="Realised" fill="#10b981" radius={[4, 4, 0, 0]}>
+                        <LabelList
+                          dataKey="Realised"
+                          position="top"
+                          style={{ fontSize: 10 }}
+                          formatter={(v: number) => money(v)}
+                        />
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="st-table-wrap overflow-x-auto">
+                  <table className="w-full min-w-[640px] text-sm">
+                    <thead className="text-xs uppercase text-muted-foreground">
+                      <tr>
+                        <th className="px-2 py-1.5 text-left">Project</th>
+                        <th className="px-2 py-1.5 text-right">Target</th>
+                        <th className="px-2 py-1.5 text-right">Realised</th>
+                        <th className="px-2 py-1.5 text-right">Gap</th>
+                        <th className="px-2 py-1.5 text-right">Rate</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {benefitRows.map((r) => (
+                        <tr key={r.id} className="border-t border-border">
+                          <td className="px-2 py-2">
+                            <Link
+                              to="/app/projects/$id"
+                              params={{ id: r.id }}
+                              search={{ tab: "summary" }}
+                              className="font-medium text-primary hover:underline"
+                            >
+                              {r.code ? `${r.code} · ${r.name}` : r.name}
+                            </Link>
+                          </td>
+                          <td className="px-2 py-2 text-right tabular-nums">{money(r.target)}</td>
+                          <td className="px-2 py-2 text-right tabular-nums">{money(r.realised)}</td>
+                          <td className="px-2 py-2 text-right tabular-nums">
+                            <span
+                              className={
+                                r.gap > 0 ? "text-amber-700" : r.gap < 0 ? "text-emerald-700" : ""
+                              }
+                            >
+                              {money(Math.abs(r.gap))}
+                              {r.gap < 0 ? " ahead" : ""}
+                            </span>
+                          </td>
+                          <td className="px-2 py-2 text-right tabular-nums">{r.rate}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {benefitRows.length > 10 ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    Chart shows the top 10 by target. Table lists all {benefitRows.length} projects
+                    with benefits.
+                  </p>
+                ) : null}
+              </div>
+            )}
           </ExpandablePanel>
           <ExpandablePanel
             title="Mix by Strategic Alignment"
@@ -1132,98 +1098,110 @@ function ExecutiveCockpit() {
                 : "No alignment mix yet. Click Show or Expand."
             }
           >
-        {segRows.length === 0 ? (
-          <p className="py-6 text-sm text-muted-foreground">No alignment mix yet.</p>
-        ) : (
-          <div className="space-y-4">
-            <ExpandableChart
-              title="Budget, incurred, and forecast by Strategic Alignment"
-              heightClass="h-72"
-            >
-              <BarChart data={segRows} margin={{ top: 28, right: 16, left: 8, bottom: 40 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" interval={0} minTickGap={0} tick={<CategoryTick />} height={44} />
-                <YAxis fontSize={10} tickFormatter={(v: number) => money(v)} />
-                <Tooltip
-                  formatter={(v: number, n: string) => [money(v), n]}
-                  labelFormatter={(label) => String(label)}
-                />
-                <Legend verticalAlign="top" />
-                <Bar dataKey="approved" name="Budget" fill="#3b82f6" radius={[4, 4, 0, 0]}>
-                  <LabelList
-                    dataKey="approved"
-                    position="top"
-                    style={{ fontSize: 10 }}
-                    formatter={(v: number) => money(v)}
-                  />
-                </Bar>
-                <Bar dataKey="actual" name="Incurred" fill="#10b981" radius={[4, 4, 0, 0]}>
-                  <LabelList
-                    dataKey="actual"
-                    position="top"
-                    style={{ fontSize: 10 }}
-                    formatter={(v: number) => money(v)}
-                  />
-                </Bar>
-                <Bar dataKey="forecast" name="Forecast" fill="#f59e0b" radius={[4, 4, 0, 0]}>
-                  <LabelList
-                    dataKey="forecast"
-                    position="top"
-                    style={{ fontSize: 10 }}
-                    formatter={(v: number) => money(v)}
-                  />
-                </Bar>
-              </BarChart>
-            </ExpandableChart>
-            <div className="st-table-wrap overflow-x-auto">
-              <table className="w-full min-w-[960px] text-sm">
-                <thead className="text-xs uppercase text-muted-foreground">
-                  <tr>
-                    <th className="px-2 py-1.5 text-left">Strategic Alignment</th>
-                    <th className="px-2 py-1.5 text-right">Projects</th>
-                    <th className="px-2 py-1.5 text-right">Budget</th>
-                    <th className="px-2 py-1.5 text-right">CapEx</th>
-                    <th className="px-2 py-1.5 text-right">OpEx</th>
-                    <th className="px-2 py-1.5 text-right">Incurred</th>
-                    <th className="px-2 py-1.5 text-right">Remaining</th>
-                    <th className="px-2 py-1.5 text-right">Forecast</th>
-                    <th className="px-2 py-1.5 text-left">Health</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {segRows.map((r) => (
-                    <tr key={r.name} className="border-t border-border">
-                      <td className="px-2 py-2 font-medium">{r.name}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{r.initiatives}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{money(r.approved)}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{money(r.capex)}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{money(r.opex)}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{money(r.actual)}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{money(r.remaining)}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">
-                        <span className={r.forecast > r.approved ? "font-semibold text-red-600" : ""}>
-                          {money(r.forecast)}
-                        </span>
-                      </td>
-                      <td className="px-2 py-2">
-                        <MixBar
-                          green={mixRagByAlign.get(r.name)?.green ?? 0}
-                          amber={mixRagByAlign.get(r.name)?.amber ?? 0}
-                          red={mixRagByAlign.get(r.name)?.red ?? 0}
-                          compact
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              Budget, CapEx, OpEx, Incurred, Remaining, and Forecast. Forecast over envelope is
-              shown in red.
-            </p>
-          </div>
-        )}
+            {segRows.length === 0 ? (
+              <p className="py-6 text-sm text-muted-foreground">No alignment mix yet.</p>
+            ) : (
+              <div className="space-y-4">
+                <ExpandableChart
+                  title="Budget, incurred, and forecast by Strategic Alignment"
+                  heightClass="h-72"
+                >
+                  <BarChart data={segRows} margin={{ top: 28, right: 16, left: 8, bottom: 40 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="name"
+                      interval={0}
+                      minTickGap={0}
+                      tick={<CategoryTick />}
+                      height={44}
+                    />
+                    <YAxis fontSize={10} tickFormatter={(v: number) => money(v)} />
+                    <Tooltip
+                      formatter={(v: number, n: string) => [money(v), n]}
+                      labelFormatter={(label) => String(label)}
+                    />
+                    <Legend verticalAlign="top" />
+                    <Bar dataKey="approved" name="Budget" fill="#3b82f6" radius={[4, 4, 0, 0]}>
+                      <LabelList
+                        dataKey="approved"
+                        position="top"
+                        style={{ fontSize: 10 }}
+                        formatter={(v: number) => money(v)}
+                      />
+                    </Bar>
+                    <Bar dataKey="actual" name="Incurred" fill="#10b981" radius={[4, 4, 0, 0]}>
+                      <LabelList
+                        dataKey="actual"
+                        position="top"
+                        style={{ fontSize: 10 }}
+                        formatter={(v: number) => money(v)}
+                      />
+                    </Bar>
+                    <Bar dataKey="forecast" name="Forecast" fill="#f59e0b" radius={[4, 4, 0, 0]}>
+                      <LabelList
+                        dataKey="forecast"
+                        position="top"
+                        style={{ fontSize: 10 }}
+                        formatter={(v: number) => money(v)}
+                      />
+                    </Bar>
+                  </BarChart>
+                </ExpandableChart>
+                <div className="st-table-wrap overflow-x-auto">
+                  <table className="w-full min-w-[960px] text-sm">
+                    <thead className="text-xs uppercase text-muted-foreground">
+                      <tr>
+                        <th className="px-2 py-1.5 text-left">Strategic Alignment</th>
+                        <th className="px-2 py-1.5 text-right">Projects</th>
+                        <th className="px-2 py-1.5 text-right">Budget</th>
+                        <th className="px-2 py-1.5 text-right">CapEx</th>
+                        <th className="px-2 py-1.5 text-right">OpEx</th>
+                        <th className="px-2 py-1.5 text-right">Incurred</th>
+                        <th className="px-2 py-1.5 text-right">Remaining</th>
+                        <th className="px-2 py-1.5 text-right">Forecast</th>
+                        <th className="px-2 py-1.5 text-left">Health</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {segRows.map((r) => (
+                        <tr key={r.name} className="border-t border-border">
+                          <td className="px-2 py-2 font-medium">{r.name}</td>
+                          <td className="px-2 py-2 text-right tabular-nums">{r.initiatives}</td>
+                          <td className="px-2 py-2 text-right tabular-nums">{money(r.approved)}</td>
+                          <td className="px-2 py-2 text-right tabular-nums">{money(r.capex)}</td>
+                          <td className="px-2 py-2 text-right tabular-nums">{money(r.opex)}</td>
+                          <td className="px-2 py-2 text-right tabular-nums">{money(r.actual)}</td>
+                          <td className="px-2 py-2 text-right tabular-nums">
+                            {money(r.remaining)}
+                          </td>
+                          <td className="px-2 py-2 text-right tabular-nums">
+                            <span
+                              className={
+                                r.forecast > r.approved ? "font-semibold text-red-600" : ""
+                              }
+                            >
+                              {money(r.forecast)}
+                            </span>
+                          </td>
+                          <td className="px-2 py-2">
+                            <MixBar
+                              green={mixRagByAlign.get(r.name)?.green ?? 0}
+                              amber={mixRagByAlign.get(r.name)?.amber ?? 0}
+                              red={mixRagByAlign.get(r.name)?.red ?? 0}
+                              compact
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Budget, CapEx, OpEx, Incurred, Remaining, and Forecast. Forecast over envelope is
+                  shown in red.
+                </p>
+              </div>
+            )}
           </ExpandablePanel>
         </div>
       </SectionFrame>

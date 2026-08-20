@@ -11,6 +11,7 @@ import {
   PAGES,
   capabilityKey,
   defaultCapabilityFlags,
+  defaultTableFlags,
   pageKey,
   useRolePermissions,
 } from "@/lib/permissions";
@@ -153,10 +154,10 @@ function PermissionsPage() {
     <div>
       <PageHeading icon="🔐">Role Permissions</PageHeading>
       <p className="mb-3 text-sm text-muted-foreground">
-        Configure who can view, edit, and perform other actions (add/delete, upload, delete
-        project) for each data table, Data Editor tools, and pages. Add custom roles for your
-        organisation — the matrices below update automatically. To limit which projects each role
-        or user can see (Strategic Alignment, program, functional area, project, stream), use{" "}
+        Configure who can view, edit, and perform other actions (add/delete, upload, delete project)
+        for each data table, Data Editor tools, and pages. Add custom roles for your organisation —
+        the matrices below update automatically. To limit which projects each role or user can see
+        (Strategic Alignment, program, functional area, project, stream), use{" "}
         <Link to="/app/project-access" className="text-primary underline-offset-2 hover:underline">
           Project data access
         </Link>
@@ -325,11 +326,9 @@ function PermissionsPage() {
                     <div className="text-[10px] text-muted-foreground">{t.name}</div>
                   </td>
                   {roles.map((r) => {
-                    const cur = map.get(`${r.role_key}::${t.name}`) ?? {
-                      can_view: true,
-                      can_edit: false,
-                      can_other: false,
-                    };
+                    const cur =
+                      map.get(`${r.role_key}::${t.name}`) ??
+                      defaultTableFlags(t.name, [r.role_key]);
                     return (
                       <td key={r.role_key} className="p-2 border-l">
                         <div className="flex justify-around">
