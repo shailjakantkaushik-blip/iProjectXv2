@@ -35,6 +35,7 @@ import { ExpandableChart } from "@/components/expandable-chart";
 import { groupGatesByProject } from "@/lib/project-phase";
 import { formatProjectStreamRef, formatStreamLabel, fetchOrgStreams } from "@/lib/project-streams";
 import {
+  monthKey,
   monthlyInWindow,
   monthlyTriple,
   phaseWindowsFromGates,
@@ -151,18 +152,23 @@ function PhaseFinancialsPage() {
   }, [streams, filteredIds]);
 
   /** Monthly rows keyed by lane: stream_id when set, else project_id.
-   * Blank-stream leftovers are ignored once the project has stream-scoped months
-   * (FY Allocation and Estimation share those stream rows as Plan vs Forecast columns). */
+   * Skip a blank-stream month only when that same period already has a stream row
+   * (Plan + Forecast columns). Other blank months still attach to Core. */
   const monthlyByLane = useMemo(() => {
     const m = new Map<string, MonthlyFinanceRow[]>();
-    const projectsWithStreamMonthly = new Set<string>();
+    const streamMonths = new Set<string>();
     for (const row of monthly as MonthlyFinanceRow[]) {
-      if (!filteredIds.has(row.project_id)) continue;
-      if (row.stream_id) projectsWithStreamMonthly.add(row.project_id);
+      if (!filteredIds.has(row.project_id) || !row.stream_id) continue;
+      streamMonths.add(`${row.project_id}|${monthKey(row.period_month)}`);
     }
     for (const row of monthly as MonthlyFinanceRow[]) {
       if (!filteredIds.has(row.project_id)) continue;
-      if (!row.stream_id && projectsWithStreamMonthly.has(row.project_id)) continue;
+      if (
+        !row.stream_id &&
+        streamMonths.has(`${row.project_id}|${monthKey(row.period_month)}`)
+      ) {
+        continue;
+      }
       const key = row.stream_id || row.project_id;
       const list = m.get(key) || [];
       list.push(row);

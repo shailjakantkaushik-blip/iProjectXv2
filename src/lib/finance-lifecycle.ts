@@ -101,13 +101,53 @@ export type MonthlyLaneLike = {
   period_month: string;
   capex_planned?: number | null;
   opex_planned?: number | null;
+  opex_labor_planned?: number | null;
   capex_forecast?: number | null;
   opex_forecast?: number | null;
   capex_actual?: number | null;
   opex_actual?: number | null;
+  opex_labor_actual?: number | null;
+  opex_other_actual?: number | null;
   benefits_planned?: number | null;
   benefits_actual?: number | null;
 };
+
+function shareOf(v: unknown, share: number) {
+  return Math.round(num(v) * share * 100) / 100;
+}
+
+/** Prefer the lane that already has a value; otherwise take the blank-stream share. */
+function preferLane(streamVal: unknown, blankVal: unknown, share: number) {
+  return num(streamVal) > 0 ? num(streamVal) : shareOf(blankVal, share);
+}
+
+/**
+ * Fold a leftover project-level (blank stream) month into a stream-scoped row.
+ * Forecast on the blank row is the FY outlook — it wins when set.
+ * Plan stays with the stream when Estimation already wrote it.
+ * Actuals are summed so deleting the blank row does not drop incurred $.
+ */
+export function mergeBlankMonthlyIntoStream(
+  blank: MonthlyLaneLike,
+  stream: MonthlyLaneLike,
+  share: number,
+): Record<string, number> {
+  return {
+    capex_forecast:
+      num(blank.capex_forecast) > 0 ? shareOf(blank.capex_forecast, share) : num(stream.capex_forecast),
+    opex_forecast:
+      num(blank.opex_forecast) > 0 ? shareOf(blank.opex_forecast, share) : num(stream.opex_forecast),
+    capex_planned: preferLane(stream.capex_planned, blank.capex_planned, share),
+    opex_planned: preferLane(stream.opex_planned, blank.opex_planned, share),
+    opex_labor_planned: preferLane(stream.opex_labor_planned, blank.opex_labor_planned, share),
+    capex_actual: num(stream.capex_actual) + shareOf(blank.capex_actual, share),
+    opex_actual: num(stream.opex_actual) + shareOf(blank.opex_actual, share),
+    opex_labor_actual: num(stream.opex_labor_actual) + shareOf(blank.opex_labor_actual, share),
+    opex_other_actual: num(stream.opex_other_actual) + shareOf(blank.opex_other_actual, share),
+    benefits_planned: preferLane(stream.benefits_planned, blank.benefits_planned, share),
+    benefits_actual: num(stream.benefits_actual) + shareOf(blank.benefits_actual, share),
+  };
+}
 
 /**
  * Prefer the exact stream·month row. If FY already created a blank-stream month
@@ -337,15 +377,14 @@ export async function cascadeMonthlyFromFyPlan(opts: {
 }
 
 /**
- * If a blank-stream month sits beside stream-scoped months, copy empty Forecast
- * (and empty CapEx plan) onto the stream rows, then drop the blank record.
+ * If a blank-stream month sits beside stream-scoped months for the same period,
+ * merge Plan / Forecast / Actuals onto those stream rows, then drop the blank
+ * record so Phase · stream detail does not show two lanes.
  */
 export async function absorbBlankMonthlyIntoStreams(projectId: string): Promise<number> {
   const { data, error } = await supabase
     .from("financials_monthly")
-    .select(
-      "id,stream_id,period_month,capex_planned,opex_planned,capex_forecast,opex_forecast",
-    )
+    .select("*")
     .eq("project_id", projectId);
   if (error) throw error;
 
@@ -361,32 +400,32 @@ export async function absorbBlankMonthlyIntoStreams(projectId: string): Promise<
   let deleted = 0;
   for (const { blank, streams } of byMonth.values()) {
     if (!blank?.id || !streams.length) continue;
-    const streamFc = streams.reduce(
-      (s, r) => s + num(r.capex_forecast) + num(r.opex_forecast),
-      0,
-    );
-    const blankFc = num(blank.capex_forecast) + num(blank.opex_forecast);
     const shares = fyCascadeStreamShares(
       streams.map((s) => s.stream_id || null),
       streams,
       [blank.period_month],
     );
-    if (blankFc > 0 && streamFc <= 0) {
-      for (const s of streams) {
-        if (!s.id) continue;
-        const share = shares.get(s.stream_id || null) ?? 1 / streams.length;
-        const patch: Record<string, number> = {
-          capex_forecast: Math.round(num(blank.capex_forecast) * share * 100) / 100,
-          opex_forecast: Math.round(num(blank.opex_forecast) * share * 100) / 100,
-        };
-        if (num(s.capex_planned) <= 0 && num(blank.capex_planned) > 0) {
-          patch.capex_planned = Math.round(num(blank.capex_planned) * share * 100) / 100;
-        }
-        const { error: uerr } = await supabase
+    for (const s of streams) {
+      if (!s.id) continue;
+      const share = shares.get(s.stream_id || null) ?? 1 / streams.length;
+      const patch = mergeBlankMonthlyIntoStream(blank, s, share);
+      const { error: uerr } = await supabase
+        .from("financials_monthly")
+        .update(patch as never)
+        .eq("id", s.id);
+      if (uerr && !/opex_labor|opex_other|schema cache|column/i.test(uerr.message)) throw uerr;
+      if (uerr) {
+        const {
+          opex_labor_planned: _lp,
+          opex_labor_actual: _la,
+          opex_other_actual: _oa,
+          ...withoutLabor
+        } = patch;
+        const retry = await supabase
           .from("financials_monthly")
-          .update(patch as never)
+          .update(withoutLabor as never)
           .eq("id", s.id);
-        if (uerr) throw uerr;
+        if (retry.error) throw retry.error;
       }
     }
     const { error: derr } = await supabase.from("financials_monthly").delete().eq("id", blank.id);
