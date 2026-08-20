@@ -846,13 +846,16 @@ function Hero({ cfg, onEoiClick }: { cfg: LandingConfig; onEoiClick?: () => void
           <Suspense
             fallback={
               <div
-                className="aspect-video overflow-hidden rounded-xl border"
-                style={{
-                  borderColor: "rgba(255,255,255,0.12)",
-                  background: "rgba(8, 14, 32, 0.72)",
-                }}
+                className="relative w-full overflow-hidden"
+                style={{ aspectRatio: "3 / 2" }}
                 aria-hidden
-              />
+              >
+                <img
+                  src="/landing/hero-room.jpg"
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              </div>
             }
           >
             <LandingStoryWindow cfg={cfg} />

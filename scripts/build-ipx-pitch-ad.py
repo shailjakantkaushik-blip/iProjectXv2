@@ -296,7 +296,7 @@ def labeled_flow(
     nodes: list[str],
     note: str = "",
     active: int | None = None,
-    atmosphere: str = "spine",
+    atmosphere: str | None = None,
 ) -> Image.Image:
     base, draw, layer = ui_base(atmosphere)
     fk, ft, fn, fb = font(FONT_SEMI, 13), font(FONT_BOLD, 30), font(FONT_BOLD, 16), font(FONT_REG, 16)
@@ -380,6 +380,35 @@ def pulse_frame(mode: str = "full", caption: str = "Portfolio Pulse") -> Image.I
             draw.ellipse([76, y + 17, 90, y + 31], fill=(*RED, 255))
             draw.text((106, y + 12), item, font=fb, fill=(*WHITE, 255))
             y += 56
+    return Image.alpha_composite(base.convert("RGBA"), layer).convert("RGB")
+
+
+def whatif_frame(caption: str = "What-if from current execution") -> Image.Image:
+    base, draw, layer = ui_base("intel")
+    fk, ft, fs, fb = font(FONT_SEMI, 13), font(FONT_BOLD, 28), font(FONT_SEMI, 16), font(FONT_REG, 16)
+    draw.text((56, 24), "DEEP INTELLIGENCE", font=fk, fill=(*CYAN, 255))
+    y = 46
+    for line in wrap(draw, caption, ft, W - 120):
+        draw.text((56, y), line, font=ft, fill=(*WHITE, 255))
+        y += 36
+    y += 10
+    cards = [
+        ("CURRENT EXECUTION", "72", "At Risk", AMBER, "Score from live delivery.\nNot a typed RAG."),
+        ("30-DAY PREDICTION", "64", "More pressure", RED, "If execution continues\non the current path."),
+        ("WHAT-IF SCENARIO", "+3w", "Delay cascade", CYAN, "Slip, capacity, and cost\nmodelled on live data."),
+    ]
+    x = 56
+    for title, big, sub, col, note in cards:
+        draw.rounded_rectangle([x, y, x + 380, y + 320], radius=16, fill=(12, 22, 44, 225), outline=(*col, 170), width=2)
+        draw.text((x + 24, y + 22), title, font=fk, fill=(*col, 255))
+        draw.text((x + 24, y + 58), big, font=font(FONT_BOLD, 64), fill=(*WHITE, 255))
+        draw.text((x + 24, y + 140), sub, font=font(FONT_BOLD, 22), fill=(*col, 255))
+        ny = y + 188
+        for line in note.split("\n"):
+            draw.text((x + 24, ny), line, font=fb, fill=(*MUTED, 255))
+            ny += 26
+        x += 400
+    draw.text((56, H - 52), "Built into the application. Predictions from how the work is actually running.", font=fs, fill=(*MUTED, 255))
     return Image.alpha_composite(base.convert("RGBA"), layer).convert("RGB")
 
 
@@ -688,11 +717,11 @@ BEATS: list[dict] = [
     B("p3", "actor", "Leadership is left connecting the dots, after the fact.", still="command-team", era="before", tension="full", kicker="The cost"),
     B("p4", "actor", "Stop flying blind.", still="fragment", era="before", tension="full", kicker="The cost", title="Stop flying blind."),
     B("m1", "logo", "This is iProjectX. The PMO command centre they don't have."),
-    B("m2", "flow", "One platform. From Strategic Alignment, all the way to the work item.", kicker="The platform", title="Strategic Alignment to the work item.", nodes=["Strategic Alignment", "Program", "Project", "Stream", "Work item"], atmosphere="spine"),
-    B("d1", "flow", "Start with Strategic Alignment.", kicker="Delivery engine", title="Start with Strategic Alignment.", nodes=SPINE, active=0, atmosphere="spine"),
-    B("d2", "flow", "Turn it into programs, then into projects you can actually run.", kicker="Delivery engine", title="Programs, then projects.", nodes=SPINE, active=2, atmosphere="spine"),
-    B("d3", "flow", "Estimate cost, effort, and time, with dependencies in view.", kicker="Delivery engine", title="Estimate cost, effort, and time.", nodes=["Scope", "Effort", "Cost", "Duration", "Resources", "Dependencies"], atmosphere="spine"),
-    B("d4", "flow", "Then break the work into phases, streams, and work items.", kicker="Delivery engine", title="Phases, streams, work items.", nodes=SPINE, active=6, atmosphere="spine"),
+    B("m2", "flow", "One platform. From Strategic Alignment, all the way to the work item.", kicker="The platform", title="Strategic Alignment to the work item.", nodes=["Strategic Alignment", "Program", "Project", "Stream", "Work item"]),
+    B("d1", "flow", "Start with Strategic Alignment.", kicker="Delivery engine", title="Start with Strategic Alignment.", nodes=SPINE, active=0),
+    B("d2", "flow", "Turn it into programs, then into projects you can actually run.", kicker="Delivery engine", title="Programs, then projects.", nodes=SPINE, active=2),
+    B("d3", "flow", "Estimate cost, effort, and time, with dependencies in view.", kicker="Delivery engine", title="Estimate cost, effort, and time.", nodes=["Scope", "Effort", "Cost", "Duration", "Resources", "Dependencies"]),
+    B("d4", "flow", "Then break the work into phases, streams, and work items.", kicker="Delivery engine", title="Phases, streams, work items.", nodes=SPINE, active=6),
     B("d5", "actor", "Timesheets capture what really happened. Delivery stays on the same spine.", still="team-timesheets", kicker="Delivery engine", chips=["Work items", "Timesheets", "Delivery"]),
     B("t1", "actor", "See the whole portfolio on a live timeline.", still="team-timeline", kicker="Timeline", chips=["Programs", "Projects", "Phases", "Milestones"]),
     B("t2", "actor", "What is happening. What is next. What could slip.", still="team-slip", kicker="Timeline", chips=["Dependencies", "Delivery dates"]),
@@ -704,6 +733,8 @@ BEATS: list[dict] = [
     B("i1", "actor", "iProjectX doesn't just collect data.", still="team-pulse", kicker="Intelligence"),
     B("i2", "pulse", "It makes sense of it.", pulse="score"),
     B("i3", "pulse", "Portfolio Pulse. Calculated health. Not a colour someone typed.", pulse="full", title="Portfolio Pulse. Calculated health."),
+    B("di1", "whatif", "Deep Intelligence is built into the application.", title="Deep Intelligence. Built in."),
+    B("di2", "whatif", "What-if scenarios. Predictions from current execution.", title="What-if. Predictions from execution."),
     B("i4", "pulse", "The issues that need leadership attention. Now.", pulse="focus"),
     B("v1", "actor", "Executives get the picture.", still="team-exec", kicker="The right view"),
     B("v2", "actor", "Leaders get the insight. Teams get the detail.", still="team-leaders", kicker="The right view"),
@@ -716,8 +747,18 @@ BEATS: list[dict] = [
 ]
 
 
-def add_chrome(img: Image.Image, index: int, total: int, *, end: bool = False, era: str = "after") -> Image.Image:
-    """Progress bar. Problem scenes stay analog (no LIVE). Product scenes read as a live command centre."""
+def add_chrome(
+    img: Image.Image,
+    index: int,
+    total: int,
+    *,
+    end: bool = False,
+    era: str = "after",
+    mark_x: Image.Image | None = None,
+) -> Image.Image:
+    """Progress bar, era badge, and the X mark top-right on every picture except the close plate."""
+    if mark_x is not None and not end:
+        img = paste_mark_top_right(img, mark_x, height=64)
     rgba = img.convert("RGBA")
     layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(layer)
@@ -786,10 +827,12 @@ def render_beat(beat: dict, mark_x: Image.Image, wordmark: Path) -> Image.Image:
             beat["nodes"],
             beat.get("note", ""),
             beat.get("active"),
-            beat.get("atmosphere", "spine"),
+            beat.get("atmosphere"),
         )
     if kind == "pulse":
         return pulse_frame(beat.get("pulse", "full"), beat.get("title", "Portfolio Pulse"))
+    if kind == "whatif":
+        return whatif_frame(beat.get("title", "What-if from current execution"))
     if kind == "gate":
         return gate_frame(beat.get("title", "Stage gate — ready for decision"))
     if kind == "layers":
@@ -1101,7 +1144,7 @@ async def main() -> None:
     slides: list[tuple[float, Path]] = []
     for i, (hold, beat) in enumerate(plan):
         img = render_beat(beat, mark_x, word_path)
-        img = add_chrome(img, i, len(plan), end=beat["kind"] == "end", era=beat.get("era", "after"))
+        img = add_chrome(img, i, len(plan), end=beat["kind"] == "end", era=beat.get("era", "after"), mark_x=mark_x)
         dest = WORK / f"slide_{i:02d}.png"
         img.save(dest, "PNG", optimize=True)
         slides.append((hold, dest))

@@ -4,12 +4,23 @@ import type { LandingConfig } from "@/lib/landing-config";
 
 const VIDEO_SRC = "/landing/ipx-pitch.mp4";
 const POSTER_SRC = "/landing/ipx-pitch-poster.jpg";
+const ROOM_SRC = "/landing/hero-room.jpg";
 
 /**
- * Lightweight advert player. Captions are burned into the MP4 so this
- * component does not re-render on every timeupdate (that janked landing scroll).
- * One female narrator. Opening X mark top-right. Close: wordmark on a light plate.
+ * The film plays on the whiteboard in a meeting room that sits in the hero.
+ * Captions are burned into the MP4 so this component does not re-render on
+ * timeupdate (that janked landing scroll).
+ *
+ * Whiteboard slot is fitted to public/landing/hero-room.jpg (team looking
+ * at a blank board). Percentages are of the room photograph, not the video.
  */
+const BOARD = {
+  left: "19.1%",
+  top: "15.3%",
+  width: "62.6%",
+  height: "45.6%",
+};
+
 export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
   const p = cfg.palette;
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -68,16 +79,40 @@ export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
   return (
     <div
       ref={rootRef}
-      className="overflow-hidden rounded-xl border"
+      className="relative w-full overflow-hidden"
       role="region"
-      aria-label="iProjectX advertisement"
+      aria-label="iProjectX advertisement playing on the team whiteboard"
       style={{
-        borderColor: "rgba(255,255,255,0.12)",
-        background: "#070b18",
+        aspectRatio: "3 / 2",
         contain: "layout paint style",
       }}
     >
-      <div className="relative aspect-video overflow-hidden bg-black">
+      <img
+        src={ROOM_SRC}
+        alt=""
+        className="absolute inset-0 h-full w-full object-cover"
+        draggable={false}
+      />
+      <div
+        className="pointer-events-none absolute inset-y-0 left-0 w-20 sm:w-28"
+        style={{
+          background: `linear-gradient(to right, ${p.navy} 0%, transparent 100%)`,
+        }}
+        aria-hidden
+      />
+
+      <div
+        className="absolute overflow-hidden"
+        style={{
+          left: BOARD.left,
+          top: BOARD.top,
+          width: BOARD.width,
+          height: BOARD.height,
+          background: "#0b1224",
+          boxShadow:
+            "0 0 0 7px #e8e8ec, 0 0 0 8px #9aa0aa, inset 0 0 18px rgba(0,0,0,0.28), 0 18px 40px rgba(0,0,0,0.35)",
+        }}
+      >
         <video
           ref={videoRef}
           className="h-full w-full object-cover"
@@ -95,41 +130,33 @@ export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
           <button
             type="button"
             onClick={playWithSound}
-            className="absolute right-3 top-3 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold"
+            className="absolute right-2 top-2 inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[10px] font-bold sm:right-3 sm:top-3 sm:px-3 sm:py-1.5 sm:text-xs"
             style={{
               background: "rgba(8,14,32,0.82)",
               color: "#F8FAFC",
               border: "1px solid rgba(248,250,252,0.28)",
             }}
           >
-            <Volume2 className="h-3.5 w-3.5" />
+            <Volume2 className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
             Play with sound
           </button>
         ) : null}
       </div>
-      <div
-        className="flex items-center gap-3 border-t px-3 py-2.5 sm:px-4"
-        style={{ borderColor: "rgba(255,255,255,0.08)", color: "#F8FAFC" }}
-      >
+
+      <div className="absolute bottom-[7%] right-[8%] flex items-center gap-2">
         <button
           type="button"
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full shadow-lg"
           style={{ background: p.accent, color: p.textOnAccent || "#F8FAFC" }}
           aria-label={userPlaying ? "Pause advertisement" : "Play advertisement"}
           onClick={() => setUserPlaying((v) => !v)}
         >
           {userPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
         </button>
-        <p
-          className="min-w-0 flex-1 truncate text-[11px] font-semibold tracking-wide"
-          style={{ color: "#E8EEF8" }}
-        >
-          Stop flying blind — from strategy to delivery
-        </p>
         <button
           type="button"
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
-          style={{ background: "rgba(255,255,255,0.1)", color: "#F8FAFC" }}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full shadow-lg"
+          style={{ background: "rgba(8,14,32,0.72)", color: "#F8FAFC" }}
           aria-label={muted ? "Unmute advertisement" : "Mute advertisement"}
           onClick={() => (muted ? playWithSound() : setMuted(true))}
         >
