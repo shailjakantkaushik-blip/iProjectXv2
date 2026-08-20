@@ -903,7 +903,7 @@ export const DEFAULT_LANDING: LandingConfig = {
     { value: 100, suffix: "%", label: "MFA-enforced" },
     { value: 1, label: "Truth · Agile & Waterfall" },
   ],
-  trusted: { heading: "Built for enterprise PMOs that need intelligence, not another register", logos: [] },
+  trusted: { heading: "Customers using iProjectX", logos: [] },
   ceo_message: {
     enabled: false,
     title: "A message from our CEO",
@@ -1432,6 +1432,12 @@ export function mergeConfig(partial: any): LandingConfig {
     merged.stats.some((s: { label?: string }) => /core registers/i.test(String(s?.label || "")))
   ) {
     merged.stats = [...DEFAULT_LANDING.stats];
+  }
+  if (
+    typeof merged.trusted?.heading === "string" &&
+    /built for enterprise pmos that need intelligence/i.test(merged.trusted.heading)
+  ) {
+    merged.trusted = { ...merged.trusted, heading: DEFAULT_LANDING.trusted.heading };
   }
   merged.final_cta = {
     ...merged.final_cta,
