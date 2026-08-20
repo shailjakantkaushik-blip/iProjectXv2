@@ -843,22 +843,20 @@ function Hero({ cfg, onEoiClick }: { cfg: LandingConfig; onEoiClick?: () => void
         </div>
 
         <div className="min-w-0 lg:col-span-7" id="story">
-          <Reveal delay={120}>
-            <Suspense
-              fallback={
-                <div
-                  className="min-h-[380px] overflow-hidden rounded-xl border"
-                  style={{
-                    borderColor: "rgba(255,255,255,0.12)",
-                    background: "rgba(8, 14, 32, 0.72)",
-                  }}
-                  aria-hidden
-                />
-              }
-            >
-              <LandingStoryWindow cfg={cfg} />
-            </Suspense>
-          </Reveal>
+          <Suspense
+            fallback={
+              <div
+                className="aspect-video overflow-hidden rounded-xl border"
+                style={{
+                  borderColor: "rgba(255,255,255,0.12)",
+                  background: "rgba(8, 14, 32, 0.72)",
+                }}
+                aria-hidden
+              />
+            }
+          >
+            <LandingStoryWindow cfg={cfg} />
+          </Suspense>
         </div>
       </div>
     </section>
