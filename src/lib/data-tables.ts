@@ -402,7 +402,8 @@ export const TABLES: TableDef[] = [
     matchOn: ["project_code", "stream_code", "period_month"],
     orderBy: "period_month",
     description:
-      "Execution cashflow. CapEx Plan and monthly Forecast cascade from FY Allocation. " +
+      "Execution cashflow. One row per project · stream · month: Plan and Forecast are columns, not two records. " +
+      "CapEx Plan and monthly Forecast cascade from FY Allocation. " +
       "OpEx Plan and Planned FTE cascade from Project Estimation Planning (Apply). " +
       "Enter Actual after kickoff. Demand lives on Work Items — do not put demand hours in Plan columns. " +
       "Use Financials → Sync incurred from actuals to roll CapEx/OpEx actuals up to the project register.",
@@ -472,8 +473,8 @@ export const TABLES: TableDef[] = [
     description:
       "Split each project's Budget and Forecast across financial years. " +
       "`budget` is the year split of the approved envelope; `forecast` is the in-flight outlook (register FAC). " +
-      "CapEx/OpEx/Benefits are the detail split of budget. Saving writes CapEx plan + monthly forecast; " +
-      "OpEx plan is left to Estimation Planning after it has been applied.",
+      "CapEx/OpEx/Benefits are the detail split of budget. Saving writes CapEx plan + monthly forecast columns " +
+      "on the existing stream · month row (Estimation Planning owns OpEx plan / FTE — not a second record).",
     fields: [
       { key: "project_id", label: "Project", type: "text", fk: "project", required: true },
       { key: "stream_id", label: "Stream", type: "text", fk: "stream" },

@@ -6,13 +6,15 @@ import { SectionFrame, SectionTitle } from "@/components/streamlit";
 import {
   deliveryMethodsQueryKey,
   fetchDeliveryMethods,
+  fetchGateNamesForMethod,
+  findDeliveryMethod,
   methodUsesStageGates,
 } from "@/lib/delivery-methods";
 import {
   GATE_APPROVAL_STATUSES,
   ensureProjectLevelGates,
   normalizeGateStatus,
-  projectLevelGates,
+  projectApprovalGates,
   setStageGateStatus,
 } from "@/lib/stage-gate-approval";
 import { GATE_STATUS_COLORS } from "@/lib/chart-theme";
@@ -42,6 +44,16 @@ export function ProjectStageGateApproval({
     methods.find((m) => m.id === deliveryMethodId) || undefined,
     deliveryMethodName,
   );
+
+  const method =
+    (deliveryMethodId && methods.find((m) => m.id === deliveryMethodId)) ||
+    findDeliveryMethod(methods, deliveryMethodName);
+
+  const { data: methodGateNames = [] } = useQuery({
+    queryKey: ["stage_gate_definitions", orgId, method?.id, "approval-names"],
+    queryFn: () => fetchGateNamesForMethod(orgId, method?.id),
+    enabled: !!orgId && usesGates && !!method?.id,
+  });
 
   const { data: gates = [] } = useQuery({
     queryKey: ["stage_gates", orgId, projectId, "project-level"],
@@ -73,7 +85,7 @@ export function ProjectStageGateApproval({
       });
   }, [canEdit, usesGates, orgId, projectId, deliveryMethodId, deliveryMethodName, methods, qc]);
 
-  const rows = projectLevelGates(gates as never, projectId);
+  const rows = projectApprovalGates(gates as never, projectId, methodGateNames);
 
   const setStatus = useMutation({
     mutationFn: (vars: { gateId: string; status: string }) =>
@@ -102,8 +114,9 @@ export function ProjectStageGateApproval({
     <SectionFrame exportName="stage-gate-approval" exportTitle="Stage gate approval">
       <SectionTitle>Stage gate approval</SectionTitle>
       <p className="mt-1 text-sm text-muted-foreground">
-        Project-level approval for each gate on this delivery method. Changing status updates
-        every matching gate on this project (including streams) so the Stage Gates page stays
+        Gates that exist on this project, in{" "}
+        {method?.name || deliveryMethodName || "delivery method"} order. Changing status updates
+        every matching gate name on this project (including streams) so the Stage Gates page stays
         in lockstep.
       </p>
       <div className="mt-3 overflow-x-auto">
@@ -118,7 +131,8 @@ export function ProjectStageGateApproval({
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={2} className="py-4 text-center text-xs text-muted-foreground">
-                  No project-level gates yet. They are created from the delivery method template.
+                  No stage gates on this project yet. They come from the delivery method template
+                  when the project (or a stream) is created.
                 </td>
               </tr>
             ) : (

@@ -21,7 +21,7 @@ const LAYERS = [
     name: "Forecast",
     color: "#c2410c",
     plain: "What we think the bill will be now. It starts equal to Plan. It can move if a phase slips.",
-    where: "FY Allocation → Forecast %. Stage Gate Detail shows live phase forecast.",
+    where: "FY Allocation → Forecast %. Same monthly row as Plan (Forecast columns). Stage Gate Detail shows live phase forecast.",
     not: "Forecast is not the estimate page, and it is not Budget.",
   },
   {
