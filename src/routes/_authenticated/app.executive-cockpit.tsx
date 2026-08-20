@@ -29,6 +29,7 @@ import {
 } from "@/lib/project-finance";
 import {
   computeProjectHealth,
+  healthScoreHeatClass,
   portfolioSegmentLabels,
   projectPortfolio,
 } from "@/lib/project-health";
@@ -87,10 +88,7 @@ function byProjectId<T extends { project_id?: string | null }>(rows: T[]) {
 }
 
 function healthHeat(score: number) {
-  if (!Number.isFinite(score) || score <= 0) return "bg-muted text-muted-foreground";
-  if (score >= 75) return "bg-emerald-50 text-emerald-800";
-  if (score >= 50) return "bg-amber-50 text-amber-900";
-  return "bg-rose-50 text-rose-800";
+  return healthScoreHeatClass(score);
 }
 
 function packWhy(p: {
@@ -740,9 +738,9 @@ function ExecutiveCockpit() {
           </div>
           <p className="mb-2 text-[11px] text-muted-foreground">
             All in-scope projects, sorted by project code. Click a row
-            for the infographic. The mix bar is Health Engine colour (same as the Health score).
-            The RAG column uses a manual override when set (M). Financials live in Mix by Strategic
-            Alignment.
+            for the infographic. The mix bar uses Health Engine bands (Green ≥ 80, Amber 65–79,
+            Red &lt; 65) — the same colour as the Health score. The RAG column uses a manual
+            override when set (M). Financials live in Mix by Strategic Alignment.
           </p>
           <p className="mb-2 text-[11px] text-muted-foreground md:hidden">
             Swipe sideways to see all columns.

@@ -23,8 +23,10 @@ export const Route = createFileRoute("/_authenticated/app/data-editor")({ compon
 function Page() {
   const { organization, roles } = useAuth();
   const canEdit = canEditProjects(roles);
-  const canUpload = useCapabilityPermission("template_upload").canEdit;
-  const canDataEdit = useCapabilityPermission("data_editor").canEdit;
+  const uploadCap = useCapabilityPermission("template_upload");
+  const editorCap = useCapabilityPermission("data_editor");
+  const canUpload = uploadCap.canEdit || uploadCap.canOther;
+  const canDataEdit = editorCap.canEdit || editorCap.canOther;
   const [busy, setBusy] = useState<"export" | "import" | "async" | null>(null);
   const [report, setReport] = useState<ImportReport[] | null>(null);
   const [asyncJobId, setAsyncJobId] = useState<string | null>(null);

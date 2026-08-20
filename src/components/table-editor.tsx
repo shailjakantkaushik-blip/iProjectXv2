@@ -44,6 +44,7 @@ export function TableEditor({ def }: { def: TableDef }) {
   const dataEditorCap = useCapabilityPermission("data_editor");
   const tablePerm = useTablePermission(def.key);
   const canEdit = dataEditorCap.canEdit || tablePerm.canEdit;
+  const canMutateRows = dataEditorCap.canOther || tablePerm.canOther || canEdit;
   const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
 
@@ -250,7 +251,7 @@ export function TableEditor({ def }: { def: TableDef }) {
           <Button size="sm" variant="ghost" onClick={table.clearAll}>Clear filters</Button>
         )}
         <div className="ml-auto flex gap-2">
-          {canEdit && (
+          {canMutateRows && (
             <Button size="sm" variant="outline" onClick={() => setShowAdd((s) => !s)}>
               <Plus className="mr-1 h-4 w-4" />{showAdd ? "Cancel" : "Add row"}
             </Button>
@@ -258,7 +259,7 @@ export function TableEditor({ def }: { def: TableDef }) {
         </div>
       </div>
 
-      {showAdd && canEdit && lookups && (
+      {showAdd && canMutateRows && lookups && (
         <AddRowForm
           def={def}
           lookups={lookups}
@@ -295,7 +296,7 @@ export function TableEditor({ def }: { def: TableDef }) {
                   onToggleSort={table.toggleSort}
                 />
               ))}
-              {canEdit && <th className="w-10"></th>}
+              {canMutateRows && <th className="w-10"></th>}
             </tr>
           </thead>
           <tbody>
@@ -314,7 +315,7 @@ export function TableEditor({ def }: { def: TableDef }) {
                     />
                   </td>
                 ))}
-                {canEdit && (
+                {canMutateRows && (
                   <td>
                     <button onClick={() => removeRow(row.id)} className="text-muted-foreground hover:text-destructive" title="Delete">
                       <Trash2 className="h-3.5 w-3.5" />

@@ -14,6 +14,7 @@ import { projectScheduleEnd, projectScheduleStart } from "@/lib/project-dates";
 import { scheduleCompletionPct } from "@/lib/schedule-progress";
 import {
   evaluateProjectHealth,
+  scoreToRag,
   type HealthEngineInput,
   type HealthEngineResult,
 } from "@/lib/project-health-engine";
@@ -25,6 +26,15 @@ export {
   HEALTH_DIMENSION_LABELS,
 } from "@/lib/project-health-engine";
 export type { HealthEngineResult, HealthEngineInput } from "@/lib/project-health-engine";
+
+/** Chip classes for a Health Engine score (Green ≥ 80, Amber 65–79, Red < 65). */
+export function healthScoreHeatClass(score: number): string {
+  if (!Number.isFinite(score) || score <= 0) return "bg-muted text-muted-foreground";
+  const rag = scoreToRag(score);
+  if (rag === "Green") return "bg-emerald-50 text-emerald-800";
+  if (rag === "Amber") return "bg-amber-50 text-amber-900";
+  return "bg-rose-50 text-rose-800";
+}
 
 export const PORTFOLIO_CATEGORIES = [
   "Business Strategic",

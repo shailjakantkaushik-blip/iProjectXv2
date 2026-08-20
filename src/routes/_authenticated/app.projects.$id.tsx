@@ -2,7 +2,8 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth, canEditProjects, isAdmin } from "@/lib/auth-context";
+import { useAuth, isAdmin } from "@/lib/auth-context";
+import { useTablePermission } from "@/lib/permissions";
 import { ProjectForm, type ProjectFormValues } from "@/components/project-form";
 import { ProjectDecisionsPanel } from "@/components/project-decisions-panel";
 import { Button } from "@/components/ui/button";
@@ -69,7 +70,11 @@ function ProjectDetail() {
   const tab: ProjectTab = search.tab || "overview";
   const { roles, organization } = useAuth();
   const admin = isAdmin(roles);
-  const canEdit = canEditProjects(roles);
+  const projectPerm = useTablePermission("projects");
+  const streamPerm = useTablePermission("project_streams");
+  const decisionPerm = useTablePermission("decisions");
+  const canEdit = projectPerm.canEdit;
+  const canOther = admin || projectPerm.canOther;
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
@@ -162,6 +167,10 @@ function ProjectDetail() {
   });
 
   const submit = async (values: ProjectFormValues) => {
+    if (!canEdit) {
+      toast.error("You do not have edit rights for this project");
+      return;
+    }
     setBusy(true);
     const { error } = await supabase
       .from("projects")
@@ -208,6 +217,10 @@ function ProjectDetail() {
   };
 
   const remove = async () => {
+    if (!canOther) {
+      toast.error("You do not have permission to delete this project");
+      return;
+    }
     if (!confirm("Delete this project? This cannot be undone.")) return;
     const { error } = await supabase.from("projects").delete().eq("id", id);
     if (error) return toast.error(error.message);
@@ -224,6 +237,7 @@ function ProjectDetail() {
 
   const setBaseline = useMutation({
     mutationFn: async () => {
+      if (!canEdit) throw new Error("You do not have edit rights for this project");
       if (!project) return;
       const { error } = await supabase
         .from("projects")
@@ -346,7 +360,7 @@ function ProjectDetail() {
               </Link>
             </Button>
           )}
-          {admin && (
+          {canOther && (
             <Button variant="destructive" size="sm" onClick={remove}>
               <Trash2 className="mr-2 h-4 w-4" />
               Delete
@@ -394,7 +408,7 @@ function ProjectDetail() {
                 search={{ tab: "summary" }}
                 className="font-medium text-primary hover:underline"
               >
-                Edit Project Summary
+                {canEdit ? "Edit Project Summary" : "View Project Summary"}
               </Link>
               <span className="text-muted-foreground">
                 {" "}
@@ -424,6 +438,7 @@ function ProjectDetail() {
             onSubmit={submit}
             busy={busy}
             submitLabel="Save changes"
+            readOnly={!canEdit}
           />
         </div>
       )}
@@ -431,7 +446,7 @@ function ProjectDetail() {
       {tab === "summary" && (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            Edit the steering-meeting summary here. The{" "}
+            {canEdit ? "Edit the steering-meeting summary here." : "Steering-meeting summary (view only)."} The{" "}
             <Link
               to="/app/executive-cockpit"
               search={{ section: "summaries" }}
@@ -444,7 +459,7 @@ function ProjectDetail() {
               Open estimation planning
             </Link>
           </p>
-          <ProjectMeetingSummary projectId={id} project={project} />
+          <ProjectMeetingSummary projectId={id} project={project} readOnly={!canEdit} />
         </div>
       )}
 
@@ -454,6 +469,8 @@ function ProjectDetail() {
           projectCode={project.project_code}
           orgId={organization.id}
           streamsEnabled={!!project.streams_enabled}
+          canEdit={streamPerm.canEdit}
+          canOther={streamPerm.canOther || admin}
           projectRollup={{
             budget: project.budget,
             planned_start_date: project.planned_start_date,
@@ -471,6 +488,7 @@ function ProjectDetail() {
           projectName={project.name}
           program={project.program}
           sponsor={project.sponsor}
+          canEdit={decisionPerm.canEdit}
         />
       )}
 
@@ -609,6 +627,7 @@ function ProjectDetail() {
         <SectionFrame>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <SectionTitle>Financial baseline</SectionTitle>
+            {canEdit ? (
             <button
               type="button"
               className="st-btn-primary"
@@ -617,6 +636,7 @@ function ProjectDetail() {
             >
               {setBaseline.isPending ? "Saving…" : "Capture baseline from current figures"}
             </button>
+            ) : null}
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <KpiCard label="Current budget" value={money(Number(project.budget || 0))} />

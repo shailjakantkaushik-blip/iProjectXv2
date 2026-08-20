@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/lib/auth-context";
+import { canEditProjects, useAuth } from "@/lib/auth-context";
 
 export const EDITABLE_TABLES: { name: string; label: string }[] = [
   { name: "projects", label: "Projects" },
@@ -38,18 +38,18 @@ export const CAPABILITIES: {
   {
     id: "data_editor",
     label: "Data Editor changes",
-    description: "Edit rows in Data Editor (inline cells, add/delete)",
+    description: "Edit rows in Data Editor (inline cells). Other = add/delete rows.",
   },
   {
     id: "template_upload",
     label: "Upload template / workbook",
-    description: "Upload Excel workbooks on Data Editor and import project templates",
+    description: "Upload Excel workbooks on Data Editor and import project templates (Edit or Other).",
   },
   {
     id: "timesheet_cost_view",
     label: "Timesheet / resource cost view",
     description:
-      "View FTE labor cost (Cost quick view, Org reporting) and access Resource setup rates. Default: Org Admin + Project Manager. Data is limited to projects the role can view.",
+      "View FTE labor cost (Cost quick view, Org reporting) and access Resource setup rates. Tick View. Default: Org Admin + Project Manager.",
   },
 ];
 
@@ -158,71 +158,104 @@ export function useAllowedPages(): { isReady: boolean; canView: (path: string) =
   return { isReady: isSuccess || roles.length === 0, canView };
 }
 
-type Row = { role: string; table_name: string; can_view: boolean; can_edit: boolean };
+type PermFlags = { can_view: boolean; can_edit: boolean; can_other: boolean };
+type Row = { role: string; table_name: string } & PermFlags;
 
 export function useRolePermissions() {
   const { organization } = useAuth();
   return useQuery({
     queryKey: ["role_table_permissions", organization?.id],
     queryFn: async () => {
+      const full = await (supabase as any)
+        .from("role_table_permissions")
+        .select("role,table_name,can_view,can_edit,can_other")
+        .eq("org_id", organization!.id);
+      if (!full.error) return (full.data ?? []) as Row[];
       const { data } = await (supabase as any)
         .from("role_table_permissions")
         .select("role,table_name,can_view,can_edit")
         .eq("org_id", organization!.id);
-      return (data ?? []) as Row[];
+      return ((data ?? []) as Array<Omit<Row, "can_other">>).map((r) => ({
+        ...r,
+        can_other: false,
+      }));
     },
     enabled: !!organization,
     staleTime: 60_000,
   });
 }
 
-/** Returns { canView, canEdit } for the current user for a given table. */
+function emptyFlags(canEdit: boolean, canOther = canEdit): PermFlags {
+  return { can_view: true, can_edit: canEdit, can_other: canOther };
+}
+
+/** Returns { canView, canEdit, canOther } for the current user for a given table. */
 export function useTablePermission(tableName: string) {
   const { roles } = useAuth();
   const { data: rows = [] } = useRolePermissions();
   const relevant = rows.filter((r) => roles.includes(r.role as any) && r.table_name === tableName);
+  const isAdmin = roles.some((r) => r === "admin" || r === "org_admin");
   if (relevant.length === 0) {
-    // If admin roles exist but no rows yet, default to edit for admins.
-    const isAdmin = roles.some((r) => r === "admin" || r === "org_admin");
-    return { canView: true, canEdit: isAdmin };
+    // Unconfigured matrix: admins edit everything; PMs keep project-page edit (legacy).
+    const pmish = canEditProjects(roles);
+    const defaultEdit =
+      tableName === "projects" || tableName === "project_streams" || tableName === "decisions"
+        ? pmish
+        : isAdmin;
+    return { canView: true, canEdit: defaultEdit, canOther: isAdmin };
   }
   return {
     canView: relevant.some((r) => r.can_view),
     canEdit: relevant.some((r) => r.can_edit),
+    canOther: relevant.some((r) => r.can_other),
   };
 }
 
 /**
  * Org-admin-configurable capabilities (Data Editor, template upload, …).
- * Stored as capability::<id> in role_table_permissions (uses can_edit as "allowed").
- * Default when unconfigured: see defaultCapabilityAllowed().
+ * Stored as capability::<id> in role_table_permissions.
+ * View / Edit / Other map to can_view / can_edit / can_other.
+ * Default when unconfigured: see defaultCapabilityFlags().
  */
 export function defaultCapabilityAllowed(capabilityId: string, roles: string[]): boolean {
+  const flags = defaultCapabilityFlags(capabilityId, roles);
+  return flags.can_view || flags.can_edit || flags.can_other;
+}
+
+export function defaultCapabilityFlags(capabilityId: string, roles: string[]): PermFlags {
   const isAdmin = roles.some((r) => r === "admin" || r === "org_admin");
-  if (isAdmin) return true;
-  // Cost / resource setup / org reporting — org admin + PM by default
+  if (isAdmin) return emptyFlags(true, true);
   if (capabilityId === "timesheet_cost_view") {
-    return roles.includes("pm");
+    const allowed = roles.includes("pm");
+    return { can_view: allowed, can_edit: false, can_other: false };
   }
-  return false;
+  return { can_view: false, can_edit: false, can_other: false };
 }
 
 export function useCapabilityPermission(capabilityId: string): {
+  canView: boolean;
   canEdit: boolean;
+  canOther: boolean;
   isReady: boolean;
 } {
   const { roles } = useAuth();
   const { data: rows = [], isSuccess } = useRolePermissions();
   const key = capabilityKey(capabilityId);
   const relevant = rows.filter((r) => roles.includes(r.role as any) && r.table_name === key);
+  const isReady = isSuccess || roles.length === 0;
   if (relevant.length === 0) {
+    const flags = defaultCapabilityFlags(capabilityId, roles);
     return {
-      canEdit: defaultCapabilityAllowed(capabilityId, roles),
-      isReady: isSuccess || roles.length === 0,
+      canView: flags.can_view,
+      canEdit: flags.can_edit,
+      canOther: flags.can_other,
+      isReady,
     };
   }
   return {
+    canView: relevant.some((r) => r.can_view),
     canEdit: relevant.some((r) => r.can_edit),
-    isReady: isSuccess || roles.length === 0,
+    canOther: relevant.some((r) => r.can_other),
+    isReady,
   };
 }

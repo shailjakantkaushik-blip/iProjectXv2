@@ -28,7 +28,7 @@ import {
   projectOpexApproved,
   projectRemaining,
 } from "@/lib/project-finance";
-import { projectPortfolio } from "@/lib/project-health";
+import { healthScoreHeatClass, projectPortfolio } from "@/lib/project-health";
 import { explainRag } from "@/lib/explain-metric";
 import { isRagOverridden } from "@/lib/ops-enhancements";
 import { isDecisionAwaiting } from "@/lib/decision-approval";
@@ -77,10 +77,7 @@ function pct(n: number, d: number) {
 }
 
 function healthHeat(score: number) {
-  if (!Number.isFinite(score) || score <= 0) return "bg-muted text-muted-foreground";
-  if (score >= 75) return "bg-emerald-50 text-emerald-800";
-  if (score >= 50) return "bg-amber-50 text-amber-900";
-  return "bg-rose-50 text-rose-800";
+  return healthScoreHeatClass(score);
 }
 
 function kindLabel(kind: string) {

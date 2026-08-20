@@ -102,7 +102,8 @@ export function ResourceAnalyticsPanels({
   onPvaRows,
 }: Props) {
   const { organization } = useAuth();
-  const { canEdit: canViewCost } = useCapabilityPermission("timesheet_cost_view");
+  const costCap = useCapabilityPermission("timesheet_cost_view");
+  const canViewCost = costCap.canView || costCap.canEdit;
   const [grain, setGrain] = useState<PvaGrain>(mode === "cost" ? "resource" : "stage_gate");
   const [projectFilter, setProjectFilter] = useState("all");
   const [streamFilter, setStreamFilter] = useState("all");

@@ -25,6 +25,7 @@ type Props = {
   projectName?: string | null;
   program?: string | null;
   sponsor?: string | null;
+  canEdit?: boolean;
 };
 
 export function ProjectDecisionsPanel({
@@ -33,6 +34,7 @@ export function ProjectDecisionsPanel({
   projectName,
   program,
   sponsor,
+  canEdit = true,
 }: Props) {
   const { organization, session, profile } = useAuth();
   const orgId = organization?.id;
@@ -184,6 +186,7 @@ export function ProjectDecisionsPanel({
           : ""}
       </p>
 
+      {canEdit ? (
       <form
         className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-2"
         onSubmit={(e) => {
@@ -249,6 +252,12 @@ export function ProjectDecisionsPanel({
           {createDecision.isPending ? "Saving…" : "Submit decision"}
         </button>
       </form>
+      ) : (
+        <p className="mb-3 text-xs text-muted-foreground">
+          View only — you do not have edit rights on Decisions. Approvers can still approve or
+          reject items assigned to them.
+        </p>
+      )}
 
       {isLoading ? (
         <div className="py-6 text-center text-xs text-muted-foreground">Loading decisions…</div>

@@ -54,7 +54,8 @@ export function ProjectRegister() {
   const { organization, roles, loading: authLoading } = useAuth();
   const canEdit = canEditProjects(roles);
   const admin = isAdmin(roles);
-  const canUploadTemplate = useCapabilityPermission("template_upload").canEdit;
+  const uploadCap = useCapabilityPermission("template_upload");
+  const canUploadTemplate = uploadCap.canEdit || uploadCap.canOther;
   const [offset, setOffset] = useState(0);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);

@@ -26,6 +26,8 @@ export const Route = createFileRoute("/_authenticated/app/audit-log")({
   component: AuditLogPage,
 });
 
+const RAID_ENTITY_TYPES = ["risk", "action", "issue", "decision"] as const;
+
 function AuditLogPage() {
   const { organization, roles } = useAuth();
   const orgId = organization?.id;
@@ -65,7 +67,7 @@ function AuditLogPage() {
   });
 
   const types = useMemo(() => {
-    const s = new Set<string>();
+    const s = new Set<string>(RAID_ENTITY_TYPES);
     (events as any[]).forEach((e) => {
       if (e.entity_type) s.add(e.entity_type);
     });
@@ -118,7 +120,7 @@ function AuditLogPage() {
     <PageExport name="Audit_Log" title="Audit Log">
       <PageHeading
         title="Audit Log"
-        subtitle="Admin-only trail of governance and privileged actions in this organisation"
+        subtitle="Admin-only trail of governance and privileged actions in this organisation, including RAID registers (Risk, Action, Issue, Decision)"
       />
 
       <SectionFrame>
@@ -197,8 +199,8 @@ function AuditLogPage() {
           <PageLoading label="Loading audit log…" fullScreen={false} size="sm" />
         ) : table.total === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No audit events yet. Role changes, user admin actions, and governed updates will appear
-            here.
+            No audit events yet. RAID register changes (risk, action, issue, decision), role
+            changes, user admin actions, and governed updates will appear here.
           </p>
         ) : table.rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">No events match filters.</p>

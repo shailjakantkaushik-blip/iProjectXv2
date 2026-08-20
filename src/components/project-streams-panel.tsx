@@ -61,6 +61,7 @@ function StreamEditor({
   onDuplicate,
   busy,
   canDelete,
+  canEdit = true,
 }: {
   stream: ProjectStream | (Partial<ProjectStream> & { org_id: string; project_id: string; name: string });
   projectCode?: string | null;
@@ -69,6 +70,7 @@ function StreamEditor({
   onDuplicate?: () => Promise<void>;
   busy?: boolean;
   canDelete?: boolean;
+  canEdit?: boolean;
 }) {
   const [draft, setDraft] = useState(() => ({ ...stream }));
   const set = (key: string, value: unknown) => setDraft((d) => ({ ...d, [key]: value }));
@@ -127,6 +129,7 @@ function StreamEditor({
               Delete
             </Button>
           ) : null}
+          {canEdit ? (
           <Button
             type="button"
             size="sm"
@@ -159,9 +162,11 @@ function StreamEditor({
             <Save className="mr-1 h-3.5 w-3.5" />
             Save
           </Button>
+          ) : null}
         </div>
       </div>
 
+      <fieldset disabled={!canEdit} className="space-y-3 disabled:opacity-80">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Field label="Name">
           <Input className={inputCls} value={draft.name || ""} onChange={(e) => set("name", e.target.value)} />
@@ -297,6 +302,7 @@ function StreamEditor({
           onChange={(e) => set("description", e.target.value)}
         />
       </Field>
+      </fieldset>
     </div>
   );
 }
@@ -307,6 +313,8 @@ export function ProjectStreamsPanel({
   orgId,
   streamsEnabled: _streamsEnabled = true,
   projectRollup,
+  canEdit = true,
+  canOther = false,
 }: {
   projectId: string;
   /** Optional project code for `PRJ-001 · CORE` identity labels. */
@@ -321,10 +329,14 @@ export function ProjectStreamsPanel({
     actual_start_date?: string | null;
     actual_end_date?: string | null;
   };
+  canEdit?: boolean;
+  /** Add / delete / duplicate streams. Defaults to same as canEdit when omitted at call sites. */
+  canOther?: boolean;
 }) {
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+  const canMutate = canEdit || canOther;
 
   const { data: streams = [], isLoading } = useQuery({
     queryKey: ["project_streams", projectId],
@@ -406,6 +418,7 @@ export function ProjectStreamsPanel({
       <SectionFrame>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <SectionTitle>Stream register</SectionTitle>
+          {canMutate ? (
           <Button
             type="button"
             size="sm"
@@ -416,6 +429,7 @@ export function ProjectStreamsPanel({
             <Plus className="mr-1 h-3.5 w-3.5" />
             Add stream
           </Button>
+          ) : null}
         </div>
 
         {isLoading ? (
@@ -428,8 +442,11 @@ export function ProjectStreamsPanel({
                 stream={s}
                 projectCode={projectCode}
                 busy={duplicatingId === s.id}
-                canDelete={!s.is_default && streams.length > 1}
-                onDuplicate={async () => {
+                canEdit={canEdit}
+                canDelete={canMutate && !s.is_default && streams.length > 1}
+                onDuplicate={
+                  canMutate
+                    ? async () => {
                   setDuplicatingId(s.id);
                   try {
                     const result = await duplicateProjectStream(s.id, { existingStreams: streams });
@@ -450,7 +467,9 @@ export function ProjectStreamsPanel({
                   } finally {
                     setDuplicatingId(null);
                   }
-                }}
+                }
+                    : undefined
+                }
                 onDelete={async () => {
                   if (!confirm(`Delete stream “${s.name}”? Child gates/finance on this stream will be removed.`)) {
                     return;
@@ -475,10 +494,11 @@ export function ProjectStreamsPanel({
               />
             ))}
 
-            {adding ? (
+            {adding && canMutate ? (
               <StreamEditor
                 stream={emptyDraft(orgId, projectId, streams.length)}
                 projectCode={projectCode}
+                canEdit={true}
                 onSave={async (patch) => {
                   try {
                     await createProjectStream({

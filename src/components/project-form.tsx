@@ -88,11 +88,13 @@ export function ProjectForm({
   onSubmit,
   busy,
   submitLabel,
+  readOnly,
 }: {
   defaultValues?: Partial<ProjectFormValues> & { brief?: Record<string, unknown> };
   onSubmit: (v: ProjectFormValues & { brief?: Record<string, unknown> }) => void | Promise<void>;
   busy?: boolean;
   submitLabel: string;
+  readOnly?: boolean;
 }) {
   const { organization } = useAuth();
   const { data: bus = [] } = useQuery({
@@ -166,6 +168,13 @@ export function ProjectForm({
     <Card>
       <CardContent className="pt-6">
         <form onSubmit={submit} className="space-y-8">
+          {readOnly ? (
+            <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              View only — you do not have edit rights for this project. Ask an org admin to grant
+              Edit on Projects in Role Permissions.
+            </p>
+          ) : null}
+          <fieldset disabled={!!readOnly} className="space-y-8 disabled:opacity-80">
           <Section title="1 · Project Basics">
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Project code *"><Input {...register("project_code", { required: true })} placeholder="PRJ-001" /></Field>
@@ -266,10 +275,13 @@ export function ProjectForm({
           <Section title="9 · Description">
             <Field label="Short description"><Textarea rows={4} {...register("description")} /></Field>
           </Section>
+          </fieldset>
 
+          {!readOnly ? (
           <div className="flex justify-end">
             <Button type="submit" disabled={busy} size="lg">{busy ? "Saving…" : submitLabel}</Button>
           </div>
+          ) : null}
         </form>
       </CardContent>
     </Card>

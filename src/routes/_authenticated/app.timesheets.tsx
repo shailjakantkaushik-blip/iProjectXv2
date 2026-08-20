@@ -186,7 +186,8 @@ function TimesheetsPage() {
   // Full sync + link-user on setup remains org admin only.
   const isOrgAdmin = roles.some((r) => r === "admin" || r === "org_admin");
   const isPm = roles.includes("pm");
-  const { canEdit: canViewCost } = useCapabilityPermission("timesheet_cost_view");
+  const costCap = useCapabilityPermission("timesheet_cost_view");
+  const canViewCost = costCap.canView || costCap.canEdit;
   const canAccessSetup = canViewCost && (isOrgAdmin || isPm);
   const canEditAllResources = isOrgAdmin;
   const setupOnlyTabs: TimesheetTab[] = ["setup"];

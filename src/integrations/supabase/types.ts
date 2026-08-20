@@ -2206,6 +2206,7 @@ export type Database = {
       role_table_permissions: {
         Row: {
           can_edit: boolean
+          can_other: boolean
           can_view: boolean
           created_at: string
           id: string
@@ -2216,6 +2217,7 @@ export type Database = {
         }
         Insert: {
           can_edit?: boolean
+          can_other?: boolean
           can_view?: boolean
           created_at?: string
           id?: string
@@ -2226,6 +2228,7 @@ export type Database = {
         }
         Update: {
           can_edit?: boolean
+          can_other?: boolean
           can_view?: boolean
           created_at?: string
           id?: string
