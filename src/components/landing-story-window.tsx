@@ -8,7 +8,7 @@ const POSTER_SRC = "/landing/ipx-pitch-poster.jpg";
 /**
  * Lightweight advert player. Captions are burned into the MP4 so this
  * component does not re-render on every timeupdate (that janked landing scroll).
- * No Ken Burns / no intro logo — the file is a designed dissolve film.
+ * No Ken Burns. Opening frame has the X mark top-right; close uses the wordmark.
  */
 export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
   const p = cfg.palette;
@@ -124,7 +124,7 @@ export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
           className="min-w-0 flex-1 truncate text-[11px] font-semibold tracking-wide"
           style={{ color: "#E8EEF8" }}
         >
-          From Strategic Alignment to the work item
+          Stop flying blind — from strategy to delivery
         </p>
         <button
           type="button"
