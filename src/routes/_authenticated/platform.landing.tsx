@@ -2,7 +2,16 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, Trash2, Save, RefreshCw, ExternalLink, Upload, Sparkles, UserPlus, Film, Image as ImageIcon } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  Save,
+  RefreshCw,
+  ExternalLink,
+  Upload,
+  Sparkles,
+  UserPlus,
+} from "lucide-react";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,7 +37,7 @@ import {
   applyPalettePreset,
   fetchLandingConfig,
   saveLandingConfig,
-  type LandingConfig,
+  LANDING_HERO_VISUALS,
   type LandingItem,
   type LandingLogo,
   type LandingPalette,
@@ -38,6 +47,7 @@ import {
   type LogoCustomDims,
   type LogoDisplaySize,
 } from "@/lib/landing-config";
+import { Checkbox } from "@/components/ui/checkbox";
 import { LogoSizeControls } from "@/components/logo-size-controls";
 import { PageLoading } from "@/components/page-loading";
 
@@ -197,8 +207,8 @@ function LandingConfigPage() {
                 <div>
                   <div className="text-sm font-medium">Show animated cartoons in the app</div>
                   <div className="text-xs text-muted-foreground">
-                    Save &amp; publish, then open Home (/app) to see the guide. Users can dismiss the
-                    floating companion for the session.
+                    Save &amp; publish, then open Home (/app) to see the guide. Users can dismiss
+                    the floating companion for the session.
                   </div>
                 </div>
               </div>
@@ -229,8 +239,8 @@ function LandingConfigPage() {
           <SectionFrame>
             <SectionTitle>Navigation sequence</SectionTitle>
             <p className="mt-1 mb-4 text-sm text-muted-foreground">
-              Add or remove section headers, move links between sections, and reorder
-              platform-wide. Save &amp; publish to apply for all users.
+              Add or remove section headers, move links between sections, and reorder platform-wide.
+              Save &amp; publish to apply for all users.
             </p>
             <NavSequenceEditor
               value={cfg.navigation ?? defaultNavigationConfig()}
@@ -365,11 +375,7 @@ function LandingConfigPage() {
                       </Field>
                       <div className="flex min-w-[140px] items-center justify-center rounded border bg-[#0f1b3d] p-4">
                         {url ? (
-                          <img
-                            src={url}
-                            alt=""
-                            className="max-h-12 max-w-full object-contain"
-                          />
+                          <img src={url} alt="" className="max-h-12 max-w-full object-contain" />
                         ) : (
                           <span className="text-center text-[11px] text-white/60">No logo</span>
                         )}
@@ -399,8 +405,8 @@ function LandingConfigPage() {
 
             <p className="mt-4 text-xs text-muted-foreground">
               Per-organisation white-label logos (and their sizes) are configured under{" "}
-              <b>Branding &amp; White Label</b>. Share each org’s dedicated sign-in link so only that
-              org’s logo appears on login — never from a cached generic session.
+              <b>Branding &amp; White Label</b>. Share each org’s dedicated sign-in link so only
+              that org’s logo appears on login — never from a cached generic session.
             </p>
           </SectionFrame>
         </TabsContent>
@@ -649,50 +655,28 @@ function LandingConfigPage() {
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <Field
                 label="Hero visual"
-                hint="Pitch film is the voiceover advertisement (~3 min, ~11 MB). Previous illustration is the original animated product window — no video file."
+                hint="Choose one: video (pitch film), animation (illustrated walkthrough), or image (original static dashboard)."
                 className="md:col-span-2"
               >
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => patch("hero", { visual: "video" })}
-                    className="flex items-start gap-3 rounded-lg border px-4 py-3 text-left transition-colors"
-                    style={{
-                      borderColor:
-                        cfg.hero.visual !== "image" ? "hsl(var(--primary))" : undefined,
-                      background:
-                        cfg.hero.visual !== "image" ? "hsl(var(--primary) / 0.08)" : undefined,
-                    }}
-                    aria-pressed={cfg.hero.visual !== "image"}
-                  >
-                    <Film className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
-                    <span>
-                      <span className="block text-sm font-medium">Pitch film</span>
-                      <span className="mt-0.5 block text-xs text-muted-foreground">
-                        Video with British voiceover, play / mute / volume.
+                <div className="flex flex-wrap items-start gap-5">
+                  {LANDING_HERO_VISUALS.map((opt) => (
+                    <label
+                      key={opt.id}
+                      className="inline-flex max-w-xs cursor-pointer items-start gap-2 text-sm"
+                    >
+                      <Checkbox
+                        className="mt-0.5"
+                        checked={cfg.hero.visual === opt.id}
+                        onCheckedChange={() => patch("hero", { visual: opt.id })}
+                      />
+                      <span>
+                        <span className="block font-medium">{opt.label}</span>
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          {opt.hint}
+                        </span>
                       </span>
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => patch("hero", { visual: "image" })}
-                    className="flex items-start gap-3 rounded-lg border px-4 py-3 text-left transition-colors"
-                    style={{
-                      borderColor:
-                        cfg.hero.visual === "image" ? "hsl(var(--primary))" : undefined,
-                      background:
-                        cfg.hero.visual === "image" ? "hsl(var(--primary) / 0.08)" : undefined,
-                    }}
-                    aria-pressed={cfg.hero.visual === "image"}
-                  >
-                    <ImageIcon className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
-                    <span>
-                      <span className="block text-sm font-medium">Previous illustration</span>
-                      <span className="mt-0.5 block text-xs text-muted-foreground">
-                        Animated product / security window. No video download.
-                      </span>
-                    </span>
-                  </button>
+                    </label>
+                  ))}
                 </div>
               </Field>
               <Field label="Eyebrow (small pill)">
@@ -1009,7 +993,8 @@ function LandingConfigPage() {
                           if (!file) return;
                           void (async () => {
                             try {
-                              const { readSafeLogoDataUrl } = await import("@/lib/safe-logo-upload");
+                              const { readSafeLogoDataUrl } =
+                                await import("@/lib/safe-logo-upload");
                               const dataUrl = await readSafeLogoDataUrl(file);
                               updateArr(cfg.trusted.logos, i, { logo_url: dataUrl }, (a) =>
                                 patch("trusted", { logos: a }),
@@ -1071,7 +1056,9 @@ function LandingConfigPage() {
             <label className="mt-4 flex items-center justify-between gap-4 rounded-lg border px-4 py-3">
               <div>
                 <div className="text-sm font-medium">Show CEO message section</div>
-                <div className="text-xs text-muted-foreground">Hidden until enabled and message is set.</div>
+                <div className="text-xs text-muted-foreground">
+                  Hidden until enabled and message is set.
+                </div>
               </div>
               <Switch
                 checked={cfg.ceo_message.enabled}
@@ -1136,7 +1123,9 @@ function LandingConfigPage() {
             <label className="mt-4 flex items-center justify-between gap-4 rounded-lg border px-4 py-3">
               <div>
                 <div className="text-sm font-medium">Show testimonials section</div>
-                <div className="text-xs text-muted-foreground">Needs at least one item with a message.</div>
+                <div className="text-xs text-muted-foreground">
+                  Needs at least one item with a message.
+                </div>
               </div>
               <Switch
                 checked={cfg.testimonials.enabled}
@@ -1180,10 +1169,7 @@ function LandingConfigPage() {
                 size="sm"
                 onClick={() =>
                   patch("testimonials", {
-                    items: [
-                      ...cfg.testimonials.items,
-                      emptyPersonCard("New testimonial"),
-                    ],
+                    items: [...cfg.testimonials.items, emptyPersonCard("New testimonial")],
                   })
                 }
               >
@@ -1203,7 +1189,9 @@ function LandingConfigPage() {
             <label className="mt-4 flex items-center justify-between gap-4 rounded-lg border px-4 py-3">
               <div>
                 <div className="text-sm font-medium">Show iProjectX Board section</div>
-                <div className="text-xs text-muted-foreground">Needs at least one statement with a message.</div>
+                <div className="text-xs text-muted-foreground">
+                  Needs at least one statement with a message.
+                </div>
               </div>
               <Switch
                 checked={cfg.board_statements.enabled}
@@ -1247,10 +1235,7 @@ function LandingConfigPage() {
                 size="sm"
                 onClick={() =>
                   patch("board_statements", {
-                    items: [
-                      ...cfg.board_statements.items,
-                      emptyPersonCard("Board statement"),
-                    ],
+                    items: [...cfg.board_statements.items, emptyPersonCard("Board statement")],
                   })
                 }
               >
