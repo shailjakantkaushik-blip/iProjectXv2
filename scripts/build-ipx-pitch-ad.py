@@ -521,11 +521,14 @@ def layers_frame(caption: str = "Work item to portfolio", mode: str = "money") -
     return Image.alpha_composite(base.convert("RGBA"), layer).convert("RGB")
 
 
-def security_frame() -> Image.Image:
+def security_frame(caption: str = "Safety and security is the highest priority.") -> Image.Image:
     base, draw, layer = ui_base("trust")
-    fk, ft, fs = font(FONT_SEMI, 13), font(FONT_BOLD, 30), font(FONT_SEMI, 17)
-    draw.text((56, 28), "TRUST", font=fk, fill=(*CYAN, 255))
-    draw.text((56, 52), "Security a board will buy", font=ft, fill=(*WHITE, 255))
+    fk, ft, fs = font(FONT_SEMI, 13), font(FONT_BOLD, 28), font(FONT_SEMI, 17)
+    draw.text((56, 28), "SAFETY", font=fk, fill=(*CYAN, 255))
+    y = 50
+    for line in wrap(draw, caption, ft, W - 120):
+        draw.text((56, y), line, font=ft, fill=(*WHITE, 255))
+        y += 34
     items = [
         ("MFA", "Mandatory MFA"),
         ("SSO", "Optional SSO"),
@@ -544,11 +547,14 @@ def security_frame() -> Image.Image:
     return Image.alpha_composite(base.convert("RGBA"), layer).convert("RGB")
 
 
-def brand_frame() -> Image.Image:
+def brand_frame(caption: str = "One of the customer's immutable products.") -> Image.Image:
     base, draw, layer = ui_base("command")
-    fk, ft, fb = font(FONT_SEMI, 13), font(FONT_BOLD, 32), font(FONT_REG, 18)
-    draw.text((56, 28), "YOUR ORGANISATION", font=fk, fill=(*CYAN, 255))
-    draw.text((56, 54), "Make it yours.", font=ft, fill=(*WHITE, 255))
+    fk, ft, fb = font(FONT_SEMI, 13), font(FONT_BOLD, 28), font(FONT_REG, 18)
+    draw.text((56, 28), "WHITE LABEL", font=fk, fill=(*CYAN, 255))
+    y = 50
+    for line in wrap(draw, caption, ft, W - 80):
+        draw.text((56, y), line, font=ft, fill=(*WHITE, 255))
+        y += 34
     palettes = [((14, 116, 144), (8, 47, 73)), ((88, 28, 135), (24, 16, 48)), ((15, 118, 110), (8, 40, 36))]
     labels = ["Your logo", "Your colours", "Your login"]
     x = 56
@@ -738,11 +744,11 @@ BEATS: list[dict] = [
     B("i4", "pulse", "The issues that need leadership attention. Now.", pulse="focus"),
     B("v1", "actor", "Executives get the picture.", still="team-exec", kicker="The right view"),
     B("v2", "actor", "Leaders get the insight. Teams get the detail.", still="team-leaders", kicker="The right view"),
-    B("s1", "security", "Mandatory MFA. IP Whitelisting. Bring your own database."),
-    B("s2", "brand", "White label. Your brand. Your organisation.", title="Make it yours."),
     B("c1", "actor", "So when the board asks, what needs my attention?", still="team-resolved", kicker="The question", title="What needs my attention?"),
     B("c2", "pulse", "You already know.", pulse="focus", title="These three."),
     B("c3", "actor", "And you can act.", still="s14-action", kicker="The answer", title="Let's fix them."),
+    B("s1", "security", "Safety and security is the highest priority for iProjectX. Mandatory MFA. IP Whitelisting. Bring your own database.", title="Safety and security is the highest priority."),
+    B("s2", "brand", "White label. iProjectX is designed to be one of the customer's immutable products.", title="One of the customer's immutable products."),
     B("end", "end", "iProjectX. Stop flying blind.", hold=4.8),
 ]
 
@@ -838,9 +844,9 @@ def render_beat(beat: dict, mark_x: Image.Image, wordmark: Path) -> Image.Image:
     if kind == "layers":
         return layers_frame(beat.get("title", "Work item to portfolio"), beat.get("layer_mode", "money"))
     if kind == "security":
-        return security_frame()
+        return security_frame(beat.get("title", "Safety and security is the highest priority."))
     if kind == "brand":
-        return brand_frame()
+        return brand_frame(beat.get("title", "One of the customer's immutable products."))
     if kind == "network":
         return labeled_flow(
             beat.get("kicker", "THE MODEL"),

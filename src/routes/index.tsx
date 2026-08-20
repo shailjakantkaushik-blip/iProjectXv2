@@ -847,7 +847,7 @@ function Hero({ cfg, onEoiClick }: { cfg: LandingConfig; onEoiClick?: () => void
             fallback={
               <div
                 className="relative w-full overflow-hidden"
-                style={{ aspectRatio: "3 / 2" }}
+                style={{ aspectRatio: "16 / 9" }}
                 aria-hidden
               >
                 <img

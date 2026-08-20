@@ -6,19 +6,18 @@ const VIDEO_SRC = "/landing/ipx-pitch.mp4";
 const POSTER_SRC = "/landing/ipx-pitch-poster.jpg";
 const ROOM_SRC = "/landing/hero-room.jpg";
 
+/** Conversational default — the file is already loudnormed; 1.0 feels too hot. */
+const DEFAULT_VOLUME = 0.52;
+
 /**
- * The film plays on the whiteboard in a meeting room that sits in the hero.
- * Captions are burned into the MP4 so this component does not re-render on
- * timeupdate (that janked landing scroll).
- *
- * Whiteboard slot is fitted to public/landing/hero-room.jpg (team looking
- * at a blank board). Percentages are of the room photograph, not the video.
+ * Whiteboard slot fitted to public/landing/hero-room.jpg.
+ * Kept 16:9 and above head-height so the panel never crops the team.
  */
 const BOARD = {
-  left: "19.1%",
-  top: "15.3%",
-  width: "62.6%",
-  height: "45.6%",
+  left: "24%",
+  top: "13.2%",
+  width: "52.7%",
+  height: "29.7%",
 };
 
 export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
@@ -27,6 +26,7 @@ export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [userPlaying, setUserPlaying] = useState(true);
   const [muted, setMuted] = useState(true);
+  const [volume, setVolume] = useState(DEFAULT_VOLUME);
   const [reduced, setReduced] = useState(false);
 
   useEffect(() => {
@@ -43,11 +43,17 @@ export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
 
   useEffect(() => {
     const video = videoRef.current;
+    if (video) video.volume = volume;
+  }, [volume]);
+
+  useEffect(() => {
+    const video = videoRef.current;
     const root = rootRef.current;
     if (!video || !root) return;
 
     const sync = (inView: boolean) => {
       video.muted = muted;
+      video.volume = volume;
       if (userPlaying && inView && !reduced) {
         void video.play().catch(() => setUserPlaying(false));
       } else {
@@ -65,7 +71,7 @@ export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
     io.observe(root);
     sync(true);
     return () => io.disconnect();
-  }, [userPlaying, muted, reduced]);
+  }, [userPlaying, muted, reduced, volume]);
 
   const playWithSound = () => {
     setMuted(false);
@@ -73,7 +79,20 @@ export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
     const video = videoRef.current;
     if (!video) return;
     video.muted = false;
+    video.volume = volume;
     void video.play().catch(() => {});
+  };
+
+  const onVolume = (next: number) => {
+    const v = Math.min(1, Math.max(0, next));
+    setVolume(v);
+    if (v > 0 && muted) setMuted(false);
+    if (v === 0) setMuted(true);
+    const video = videoRef.current;
+    if (video) {
+      video.volume = v;
+      video.muted = v === 0;
+    }
   };
 
   return (
@@ -83,7 +102,7 @@ export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
       role="region"
       aria-label="iProjectX advertisement playing on the team whiteboard"
       style={{
-        aspectRatio: "3 / 2",
+        aspectRatio: "16 / 9",
         contain: "layout paint style",
       }}
     >
@@ -94,7 +113,14 @@ export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
         draggable={false}
       />
       <div
-        className="pointer-events-none absolute inset-y-0 left-0 w-20 sm:w-28"
+        className="pointer-events-none absolute inset-0"
+        style={{
+          boxShadow: `inset 90px 36px 90px ${p.navy}, inset -48px -40px 80px ${p.navy}`,
+        }}
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute inset-y-0 left-0 w-24 sm:w-36"
         style={{
           background: `linear-gradient(to right, ${p.navy} 0%, transparent 100%)`,
         }}
@@ -110,7 +136,7 @@ export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
           height: BOARD.height,
           background: "#0b1224",
           boxShadow:
-            "0 0 0 7px #e8e8ec, 0 0 0 8px #9aa0aa, inset 0 0 18px rgba(0,0,0,0.28), 0 18px 40px rgba(0,0,0,0.35)",
+            "0 0 0 5px #d8dbe3, 0 0 0 6px #6b7280, inset 0 0 14px rgba(0,0,0,0.28)",
         }}
       >
         <video
@@ -143,10 +169,13 @@ export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
         ) : null}
       </div>
 
-      <div className="absolute bottom-[7%] right-[8%] flex items-center gap-2">
+      <div
+        className="absolute bottom-[6%] right-[6%] flex items-center gap-2 rounded-full px-2 py-1.5"
+        style={{ background: "rgba(8,14,32,0.62)", border: "1px solid rgba(248,250,252,0.12)" }}
+      >
         <button
           type="button"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-full shadow-lg"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full"
           style={{ background: p.accent, color: p.textOnAccent || "#F8FAFC" }}
           aria-label={userPlaying ? "Pause advertisement" : "Play advertisement"}
           onClick={() => setUserPlaying((v) => !v)}
@@ -155,13 +184,33 @@ export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
         </button>
         <button
           type="button"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-full shadow-lg"
-          style={{ background: "rgba(8,14,32,0.72)", color: "#F8FAFC" }}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full"
+          style={{ background: "rgba(255,255,255,0.08)", color: "#F8FAFC" }}
           aria-label={muted ? "Unmute advertisement" : "Mute advertisement"}
           onClick={() => (muted ? playWithSound() : setMuted(true))}
         >
           {muted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
         </button>
+        <label className="flex items-center gap-2 pr-1">
+          <span className="sr-only">Volume</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={muted ? 0 : volume}
+            onChange={(e) => onVolume(Number(e.target.value))}
+            className="h-1.5 w-20 cursor-pointer appearance-none rounded-full sm:w-28"
+            style={{
+              background: `linear-gradient(to right, ${p.accent} ${(muted ? 0 : volume) * 100}%, rgba(248,250,252,0.22) ${(muted ? 0 : volume) * 100}%)`,
+              accentColor: p.accent,
+            }}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round((muted ? 0 : volume) * 100)}
+            aria-label="Advertisement volume"
+          />
+        </label>
       </div>
     </div>
   );
