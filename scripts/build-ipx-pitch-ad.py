@@ -26,7 +26,7 @@ BG_DIR = ROOT / "public/landing/story-bg"
 ACTOR_DIR = BG_DIR / "actors"
 
 VOICE = "en-GB-SoniaNeural"
-RATE = "-8%"
+RATE = "-4%"
 VOLUME = "+0%"
 PITCH = "-2Hz"
 SR = 44100
@@ -383,24 +383,69 @@ def pulse_frame(mode: str = "full", caption: str = "Portfolio Pulse") -> Image.I
     return Image.alpha_composite(base.convert("RGBA"), layer).convert("RGB")
 
 
-def gate_frame(caption: str = "Stage gate — ready for decision") -> Image.Image:
-    base, draw, layer = ui_base("govern")
-    fk, ft, fb = font(FONT_SEMI, 13), font(FONT_BOLD, 28), font(FONT_SEMI, 17)
-    draw.text((56, 28), "GOVERNANCE", font=fk, fill=(*CYAN, 255))
-    y = 50
+# Waterfall defaults in the product. Advert shows the path the board recognises.
+STAGE_GATES = [
+    ("Discovery", "done"),
+    ("Design", "done"),
+    ("Build", "now"),
+    ("Testing", "next"),
+    ("Deployment", "next"),
+    ("Benefit Realisation", "next"),
+]
+STAGE_GATE_ALSO = ["Seed funding", "Full funding", "Handover"]
+
+
+def gate_frame(caption: str = "Stage gates that demand evidence.") -> Image.Image:
+    atmosphere = "gates" if (BG_DIR / "gates.jpg").exists() else "govern"
+    base, draw, layer = ui_base(atmosphere)
+    fk, ft, fb, fs = font(FONT_SEMI, 13), font(FONT_BOLD, 28), font(FONT_SEMI, 16), font(FONT_BOLD, 15)
+    draw.text((56, 24), "GOVERNANCE", font=fk, fill=(*CYAN, 255))
+    y = 46
     for line in wrap(draw, caption, ft, W - 120):
         draw.text((56, y), line, font=ft, fill=(*WHITE, 255))
         y += 36
-    items = ["Business case", "Financials", "Risks", "Benefits", "Resources", "Dependencies", "Approvals"]
-    y = 140
-    for item in items:
-        draw.rounded_rectangle([56, y, 620, y + 52], radius=10, fill=(10, 36, 28, 220), outline=(52, 211, 153, 150), width=1)
-        draw.text((76, y + 14), "✓   " + item, font=fb, fill=(*WHITE, 255))
-        y += 60
-    draw.rounded_rectangle([680, 200, 1224, 430], radius=18, fill=(8, 48, 36, 230), outline=(52, 211, 153, 220), width=2)
-    draw.text((712, 236), "READY FOR DECISION", font=fk, fill=(*GREEN, 255))
-    draw.text((712, 276), "Approve", font=font(FONT_BOLD, 42), fill=(*WHITE, 255))
-    draw.text((712, 340), "Evidence on the gate.\nNot in email.", font=fb, fill=(*MUTED, 255))
+    y += 8
+    n = len(STAGE_GATES)
+    gap = 12
+    card_w = (W - 112 - gap * (n - 1)) // n
+    card_h = 168
+    for i, (name, state) in enumerate(STAGE_GATES):
+        x = 56 + i * (card_w + gap)
+        if state == "now":
+            fill, outline, width = (8, 48, 36, 235), (52, 211, 153, 240), 2
+        elif state == "done":
+            fill, outline, width = (10, 36, 28, 220), (52, 211, 153, 140), 1
+        else:
+            fill, outline, width = (12, 22, 44, 210), (125, 211, 252, 90), 1
+        draw.rounded_rectangle([x, y, x + card_w, y + card_h], radius=14, fill=fill, outline=outline, width=width)
+        num = f"{i + 1:02d}"
+        draw.text((x + 14, y + 14), num, font=fk, fill=(*CYAN, 255))
+        ny = y + 44
+        for line in wrap(draw, name, fs, card_w - 24):
+            draw.text((x + 14, ny), line, font=fs, fill=(*WHITE, 255))
+            ny += 22
+        if state == "done":
+            draw.text((x + 14, y + card_h - 36), "Passed", font=fb, fill=(*GREEN, 255))
+        elif state == "now":
+            draw.text((x + 14, y + card_h - 36), "In gate", font=fb, fill=(*GREEN, 255))
+        else:
+            draw.text((x + 14, y + card_h - 36), "Next", font=fb, fill=(*MUTED, 255))
+        if i < n - 1:
+            ax = x + card_w + 1
+            mid = y + card_h // 2
+            draw.polygon([(ax, mid - 6), (ax + 10, mid), (ax, mid + 6)], fill=(*CYAN, 200))
+    y += card_h + 28
+    draw.rounded_rectangle([56, y, 760, y + 168], radius=16, fill=(8, 48, 36, 230), outline=(52, 211, 153, 220), width=2)
+    draw.text((80, y + 22), "BUILD  ·  READY FOR DECISION", font=fk, fill=(*GREEN, 255))
+    draw.text((80, y + 52), "Approve", font=font(FONT_BOLD, 40), fill=(*WHITE, 255))
+    draw.text((80, y + 108), "Evidence on the gate. Not in email.", font=fb, fill=(*MUTED, 255))
+    draw.rounded_rectangle([784, y, 1224, y + 168], radius=16, fill=(12, 22, 44, 220), outline=(125, 211, 252, 120), width=1)
+    draw.text((808, y + 22), "ALSO ON THE PATH", font=fk, fill=(*CYAN, 255))
+    ty = y + 56
+    for extra in STAGE_GATE_ALSO:
+        draw.ellipse([808, ty + 6, 822, ty + 20], fill=(*CYAN, 255))
+        draw.text((834, ty), extra, font=fb, fill=(*WHITE, 255))
+        ty += 34
     return Image.alpha_composite(base.convert("RGBA"), layer).convert("RGB")
 
 
@@ -557,6 +602,23 @@ def endcard(wordmark: Path) -> Image.Image:
     return rgba.convert("RGB")
 
 
+def create_still(name: str, dest: Path) -> None:
+    """If a named still is missing, paint a usable cinematic card so the film still builds."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    img = Image.new("RGB", (W, H), NAVY)
+    g = ImageDraw.Draw(img)
+    for i in range(8):
+        g.ellipse([80 + i * 90, 40 + (i % 3) * 70, 420 + i * 70, 480 + (i % 2) * 40], outline=(18, 36, 68), width=2)
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    d.rounded_rectangle([48, H - 160, W - 48, H - 36], radius=16, fill=(8, 12, 26, 210))
+    label = name.replace("-", " ").replace("_", " ").title()
+    d.text((72, H - 124), label, font=font(FONT_BOLD, 32), fill=(*WHITE, 255))
+    img = Image.alpha_composite(img.convert("RGBA"), layer).convert("RGB")
+    img.save(dest, "JPEG", quality=84, optimize=True)
+    print(f"created still {dest}")
+
+
 def load_still(name: str) -> Path:
     p = ACTOR_DIR / f"{name}.jpg"
     if p.exists():
@@ -564,7 +626,9 @@ def load_still(name: str) -> Path:
     q = BG_DIR / f"{name}.jpg"
     if q.exists():
         return q
-    sys.exit(f"Missing still {name}")
+    dest = ACTOR_DIR / f"{name}.jpg"
+    create_still(name, dest)
+    return dest
 
 
 def B(bid: str, kind: str, text: str, **kw) -> dict:
@@ -618,37 +682,37 @@ NETWORK = [
 BEATS: list[dict] = [
     B("h1", "actor", "Every board asks the same question.", still="team-board", era="before", tension="light", kicker="The boardroom", title="Are we on track?"),
     B("h2", "actor", "Are we on track?", still="board", era="before", tension="light", kicker="The boardroom"),
-    B("h3", "actor", "And too often, the honest answer is, mostly.", still="team-board", era="before", tension="light", kicker="The boardroom", title="Mostly."),
+    B("h3", "actor", "And too often, the honest answer is, mostly.", still="team-mostly", era="before", tension="light", kicker="The boardroom", title="Mostly."),
     B("p1", "actor", "Mostly is how portfolios fail.", still="team-chaos", era="before", tension="full", kicker="The cost", chips=["Excel", "Email", "Teams"]),
     B("p2", "actor", "Strategy in one file. Delivery in another. Money, risk, and people telling different stories.", still="team-numbers", era="before", tension="full", kicker="The cost", title="Different stories.", chips=["Budget", "RAID", "Plan"]),
     B("p3", "actor", "Leadership is left connecting the dots, after the fact.", still="command-team", era="before", tension="full", kicker="The cost"),
     B("p4", "actor", "Stop flying blind.", still="fragment", era="before", tension="full", kicker="The cost", title="Stop flying blind."),
     B("m1", "logo", "This is iProjectX. The PMO command centre they don't have."),
     B("m2", "flow", "One platform. From Strategic Alignment, all the way to the work item.", kicker="The platform", title="Strategic Alignment to the work item.", nodes=["Strategic Alignment", "Program", "Project", "Stream", "Work item"], atmosphere="spine"),
-    B("d1", "flow", "Start with Strategic Alignment.", kicker="Delivery engine", nodes=SPINE, active=0, atmosphere="spine"),
-    B("d2", "flow", "Turn it into programs, then into projects you can actually run.", kicker="Delivery engine", nodes=SPINE, active=2, atmosphere="spine"),
-    B("d3", "flow", "Estimate cost, effort, and time, with dependencies in view.", kicker="Delivery engine", nodes=["Scope", "Effort", "Cost", "Duration", "Resources", "Dependencies"], atmosphere="spine"),
-    B("d4", "flow", "Then break the work into phases, streams, and work items.", kicker="Delivery engine", nodes=SPINE, active=6, atmosphere="spine"),
-    B("d5", "actor", "Timesheets capture what really happened. Delivery stays on the same spine.", still="delivery", kicker="Delivery engine", chips=["Work items", "Timesheets", "Delivery"]),
+    B("d1", "flow", "Start with Strategic Alignment.", kicker="Delivery engine", title="Start with Strategic Alignment.", nodes=SPINE, active=0, atmosphere="spine"),
+    B("d2", "flow", "Turn it into programs, then into projects you can actually run.", kicker="Delivery engine", title="Programs, then projects.", nodes=SPINE, active=2, atmosphere="spine"),
+    B("d3", "flow", "Estimate cost, effort, and time, with dependencies in view.", kicker="Delivery engine", title="Estimate cost, effort, and time.", nodes=["Scope", "Effort", "Cost", "Duration", "Resources", "Dependencies"], atmosphere="spine"),
+    B("d4", "flow", "Then break the work into phases, streams, and work items.", kicker="Delivery engine", title="Phases, streams, work items.", nodes=SPINE, active=6, atmosphere="spine"),
+    B("d5", "actor", "Timesheets capture what really happened. Delivery stays on the same spine.", still="team-timesheets", kicker="Delivery engine", chips=["Work items", "Timesheets", "Delivery"]),
     B("t1", "actor", "See the whole portfolio on a live timeline.", still="team-timeline", kicker="Timeline", chips=["Programs", "Projects", "Phases", "Milestones"]),
-    B("t2", "actor", "What is happening. What is next. What could slip.", still="team-timeline", kicker="Timeline", chips=["Dependencies", "Delivery dates"]),
-    B("r1", "flow", "Shape demand before it becomes delivery.", kicker="Demand", nodes=DEMAND, active=0, atmosphere="cockpit"),
-    B("r2", "actor", "See capacity, and put the right people on the right work.", still="delivery", kicker="Resources"),
-    B("g1", "gate", "Govern with stage gates that demand evidence, not another email.", title="Stage gates that demand evidence."),
+    B("t2", "actor", "What is happening. What is next. What could slip.", still="team-slip", kicker="Timeline", chips=["Dependencies", "Delivery dates"]),
+    B("r1", "flow", "Shape demand before it becomes delivery.", kicker="Demand", title="Shape demand before delivery.", nodes=DEMAND, active=0, atmosphere="demand"),
+    B("r2", "actor", "See capacity, and put the right people on the right work.", still="team-capacity", kicker="Resources", chips=["Capacity", "Allocation", "Demand"]),
+    B("g1", "gate", "Govern with stage gates. Discovery, Design, Build, Testing, Deployment, Benefit Realisation.", title="Discovery to Benefit Realisation."),
     B("f1", "layers", "Budget, Plan, Forecast, Demand, Actual. Five money layers. Every number explainable.", layer_mode="money", title="Five money layers. Every number explainable."),
     B("f2", "layers", "RAID — Risks, Actions, Issues, Decisions. Benefits and resources, on the same spine.", layer_mode="raid", title="RAID. Benefits. Resources."),
     B("i1", "actor", "iProjectX doesn't just collect data.", still="team-pulse", kicker="Intelligence"),
     B("i2", "pulse", "It makes sense of it.", pulse="score"),
     B("i3", "pulse", "Portfolio Pulse. Calculated health. Not a colour someone typed.", pulse="full", title="Portfolio Pulse. Calculated health."),
     B("i4", "pulse", "The issues that need leadership attention. Now.", pulse="focus"),
-    B("v1", "actor", "Executives get the picture.", still="team-pulse", kicker="The right view"),
-    B("v2", "actor", "Leaders get the insight. Teams get the detail.", still="delivery", kicker="The right view"),
+    B("v1", "actor", "Executives get the picture.", still="team-exec", kicker="The right view"),
+    B("v2", "actor", "Leaders get the insight. Teams get the detail.", still="team-leaders", kicker="The right view"),
     B("s1", "security", "Mandatory MFA. IP Whitelisting. Bring your own database."),
     B("s2", "brand", "White label. Your brand. Your organisation.", title="Make it yours."),
     B("c1", "actor", "So when the board asks, what needs my attention?", still="team-resolved", kicker="The question", title="What needs my attention?"),
     B("c2", "pulse", "You already know.", pulse="focus", title="These three."),
     B("c3", "actor", "And you can act.", still="s14-action", kicker="The answer", title="Let's fix them."),
-    B("end", "end", "iProjectX. Stop flying blind.", hold=5.4),
+    B("end", "end", "iProjectX. Stop flying blind.", hold=4.8),
 ]
 
 
@@ -861,7 +925,7 @@ async def synth(beats: list[dict]) -> tuple[list[tuple[float, Path]], list[tuple
             n += 1
             t += d + (0.18 if i < len(lines) - 1 else 0.0)
         vo_end = t if lines else pic
-        hold = max(float(beat.get("hold", 2.15)), (vo_end - pic) + 0.28)
+        hold = max(float(beat.get("hold", 2.15)), (vo_end - pic) + 0.18)
         hold = max(hold, FADE + 1.05)
         plan.append((hold, beat))
         pic += hold - FADE
