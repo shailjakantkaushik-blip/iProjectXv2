@@ -1,6 +1,21 @@
 import { useEffect } from "react";
 
-/** Registers the lightweight service worker + ensures manifest link exists. */
+const SW_CLEARED_KEY = "pmo:sw-public-cleared";
+
+function isPublicMarketingPath(pathname: string) {
+  return (
+    pathname === "/" ||
+    pathname.startsWith("/contact") ||
+    pathname.startsWith("/legal") ||
+    pathname.startsWith("/auth") ||
+    pathname.startsWith("/o/") ||
+    pathname.startsWith("/mfa") ||
+    pathname.startsWith("/reset") ||
+    pathname.startsWith("/force-password-change")
+  );
+}
+
+/** Registers the lightweight service worker for the workspace only — not the public landing. */
 export function PwaRegister() {
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -18,6 +33,28 @@ export function PwaRegister() {
       document.head.appendChild(meta);
     }
     if (!("serviceWorker" in navigator)) return;
+
+    const path = window.location.pathname;
+    if (isPublicMarketingPath(path)) {
+      void (async () => {
+        try {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          const keys = await caches.keys();
+          if (!regs.length && !keys.length) return;
+          await Promise.all(regs.map((r) => r.unregister()));
+          await Promise.all(keys.map((k) => caches.delete(k)));
+          const hadController = Boolean(navigator.serviceWorker.controller);
+          if (hadController && !sessionStorage.getItem(SW_CLEARED_KEY)) {
+            sessionStorage.setItem(SW_CLEARED_KEY, "1");
+            window.location.reload();
+          }
+        } catch {
+          /* ignore — SW optional */
+        }
+      })();
+      return;
+    }
+
     const register = () => {
       navigator.serviceWorker.register("/sw.js").catch(() => {
         /* ignore — SW optional */

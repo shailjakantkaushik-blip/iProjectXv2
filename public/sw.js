@@ -1,5 +1,5 @@
-/* Minimal offline shell for iProjectX PWA */
-const CACHE = "iprojectx-shell-v3";
+/* Workspace PWA shell — public landing is never intercepted. */
+const CACHE = "iprojectx-shell-v4";
 const PRECACHE = ["/manifest.webmanifest", "/favicon.png"];
 
 self.addEventListener("install", (event) => {
@@ -22,7 +22,22 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // Hashed build assets — cache-first (immutable filenames).
+  // Never intercept the marketing site — stale HTML here blanks phones after deploys.
+  if (req.mode === "navigate") {
+    const path = url.pathname;
+    if (
+      path === "/" ||
+      path.startsWith("/contact") ||
+      path.startsWith("/legal") ||
+      path.startsWith("/auth") ||
+      path.startsWith("/o/")
+    ) {
+      return;
+    }
+    event.respondWith(fetch(req));
+    return;
+  }
+
   if (url.pathname.startsWith("/assets/")) {
     event.respondWith(
       caches.match(req).then(
@@ -36,31 +51,6 @@ self.addEventListener("fetch", (event) => {
             return res;
           }),
       ),
-    );
-    return;
-  }
-
-  // Navigations: network-first. Serving a cached HTML document after a deploy
-  // points at missing JS chunks and blanks the site — common on mobile Safari.
-  if (req.mode === "navigate") {
-    event.respondWith(
-      (async () => {
-        try {
-          const res = await fetch(req);
-          if (res.ok) {
-            const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(req, copy));
-          }
-          return res;
-        } catch {
-          return (
-            (await caches.match(req)) ||
-            (await caches.match("/")) ||
-            (await caches.match("/app/")) ||
-            Response.error()
-          );
-        }
-      })(),
     );
   }
 });
