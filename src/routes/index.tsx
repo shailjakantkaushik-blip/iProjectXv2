@@ -87,7 +87,9 @@ export const Route = createFileRoute("/")({
       return { cfg: { ...DEFAULT_LANDING, signup_enabled: false }, needsRevalidate: true };
     }
     try {
-      return { cfg: await fetchLandingConfig(), needsRevalidate: false };
+      // Always revalidate after SSR: server config has data: URLs stripped so
+      // hydrate stays valid; the client fetch restores logos after first paint.
+      return { cfg: await fetchLandingConfig(), needsRevalidate: true };
     } catch {
       return { cfg: { ...DEFAULT_LANDING, signup_enabled: false }, needsRevalidate: true };
     }

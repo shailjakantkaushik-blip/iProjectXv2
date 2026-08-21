@@ -64,9 +64,7 @@ export function normalizeHeroVisual(v: unknown): LandingHeroVisual {
 }
 
 /** Persist Image as `still` and Video as `film` so legacy `image`/`video` stay distinct. */
-export function persistHeroVisual(
-  v: LandingHeroVisual | unknown,
-): "film" | "animation" | "still" {
+export function persistHeroVisual(v: LandingHeroVisual | unknown): "film" | "animation" | "still" {
   if (v === "image" || v === "still" || v === "dashboard" || v === "photo") return "still";
   if (v === "animation" || v === "illustration") return "animation";
   if (v === "video" || v === "film") return "film";
@@ -162,15 +160,22 @@ export function resolveBrandLogoUrl(
  * A multi-MB base64 logo was duplicated in the landing SSR payload (~14MB),
  * corrupting TanStack's dehydrated `lastMatchId` and blanking the page after hydrate.
  * Matches safe-logo-upload (~400KB file → ~550KB data URL).
+ *
+ * Even ~360KB logos still blow the dehydrate script past Safari's ~64KB line
+ * limit (private windows show a white screen). SSR must strip data: URLs
+ * entirely — see stripLandingEmbeddedDataUrls.
  */
 export const MAX_LANDING_DATA_URL_CHARS = 550_000;
 
-export function sanitizeEmbeddedAssetUrl(url: unknown): string {
+export function sanitizeEmbeddedAssetUrl(url: unknown, opts?: { allowDataUrls?: boolean }): string {
   if (typeof url !== "string") return "";
   const u = url.trim();
   if (!u) return "";
-  if (u.startsWith("data:image/svg")) return "";
-  if (u.startsWith("data:") && u.length > MAX_LANDING_DATA_URL_CHARS) return "";
+  if (u.startsWith("data:")) {
+    if (opts?.allowDataUrls === false) return "";
+    if (u.startsWith("data:image/svg")) return "";
+    if (u.length > MAX_LANDING_DATA_URL_CHARS) return "";
+  }
   return u;
 }
 
@@ -1472,13 +1477,17 @@ export function mergeConfig(partial: any): LandingConfig {
 }
 
 /** Drop oversized data: URLs so SSR/dehydrate stays valid (see MAX_LANDING_DATA_URL_CHARS). */
-export function sanitizeLandingEmbeddedAssets(cfg: LandingConfig): LandingConfig {
+export function sanitizeLandingEmbeddedAssets(
+  cfg: LandingConfig,
+  opts?: { allowDataUrls?: boolean },
+): LandingConfig {
+  const clean = (url: unknown) => sanitizeEmbeddedAssetUrl(url, opts);
   const brand = {
     ...cfg.brand,
-    logo_url: sanitizeEmbeddedAssetUrl(cfg.brand.logo_url),
-    logo_url_landing: sanitizeEmbeddedAssetUrl(cfg.brand.logo_url_landing),
-    logo_url_auth: sanitizeEmbeddedAssetUrl(cfg.brand.logo_url_auth),
-    logo_url_app: sanitizeEmbeddedAssetUrl(cfg.brand.logo_url_app),
+    logo_url: clean(cfg.brand.logo_url),
+    logo_url_landing: clean(cfg.brand.logo_url_landing),
+    logo_url_auth: clean(cfg.brand.logo_url_auth),
+    logo_url_app: clean(cfg.brand.logo_url_app),
   };
 
   const trusted = cfg.trusted
@@ -1487,7 +1496,7 @@ export function sanitizeLandingEmbeddedAssets(cfg: LandingConfig): LandingConfig
         logos: Array.isArray(cfg.trusted.logos)
           ? cfg.trusted.logos.map((l) => ({
               ...l,
-              logo_url: sanitizeEmbeddedAssetUrl(l?.logo_url),
+              logo_url: clean(l?.logo_url),
             }))
           : cfg.trusted.logos,
       }
@@ -1496,7 +1505,7 @@ export function sanitizeLandingEmbeddedAssets(cfg: LandingConfig): LandingConfig
   const ceo_message = cfg.ceo_message
     ? {
         ...cfg.ceo_message,
-        photo_url: sanitizeEmbeddedAssetUrl(cfg.ceo_message.photo_url),
+        photo_url: clean(cfg.ceo_message.photo_url),
       }
     : cfg.ceo_message;
 
@@ -1506,7 +1515,7 @@ export function sanitizeLandingEmbeddedAssets(cfg: LandingConfig): LandingConfig
         items: Array.isArray(cfg.testimonials.items)
           ? cfg.testimonials.items.map((it) => ({
               ...it,
-              photo_url: sanitizeEmbeddedAssetUrl((it as { photo_url?: string })?.photo_url),
+              photo_url: clean((it as { photo_url?: string })?.photo_url),
             }))
           : cfg.testimonials.items,
       }
@@ -1518,7 +1527,7 @@ export function sanitizeLandingEmbeddedAssets(cfg: LandingConfig): LandingConfig
         items: Array.isArray(cfg.board_statements.items)
           ? cfg.board_statements.items.map((it) => ({
               ...it,
-              photo_url: sanitizeEmbeddedAssetUrl((it as { photo_url?: string })?.photo_url),
+              photo_url: clean((it as { photo_url?: string })?.photo_url),
             }))
           : cfg.board_statements.items,
       }
@@ -1532,6 +1541,20 @@ export function sanitizeLandingEmbeddedAssets(cfg: LandingConfig): LandingConfig
     testimonials,
     board_statements,
   };
+}
+
+/**
+ * SSR/dehydrate must not embed data: URLs. A ~360KB platform logo was inlined
+ * five times (~1.7MB HTML, 64KB script lines) and zeroed `lastMatchId`, which
+ * whitescreens private Safari after hydrate. Client fetch restores logos.
+ */
+export function stripLandingEmbeddedDataUrls(cfg: LandingConfig): LandingConfig {
+  return sanitizeLandingEmbeddedAssets(cfg, { allowDataUrls: false });
+}
+
+function forSsrPayload(cfg: LandingConfig): LandingConfig {
+  if (typeof window !== "undefined") return cfg;
+  return stripLandingEmbeddedDataUrls(cfg);
 }
 
 export function applyPalettePreset(cfg: LandingConfig, presetId: string): LandingConfig {
@@ -1640,9 +1663,9 @@ export function resolveLandingCfgForPaint(loaderCfg: LandingConfig): LandingConf
 export async function fetchLandingConfig(): Promise<LandingConfig> {
   const now = Date.now();
   if (landingConfigMemory && now - landingConfigMemory.at < LANDING_CONFIG_MEMORY_TTL_MS) {
-    return landingConfigMemory.cfg;
+    return forSsrPayload(landingConfigMemory.cfg);
   }
-  if (landingConfigInflight) return landingConfigInflight;
+  if (landingConfigInflight) return landingConfigInflight.then(forSsrPayload);
 
   landingConfigInflight = (async () => {
     try {
@@ -1668,7 +1691,7 @@ export async function fetchLandingConfig(): Promise<LandingConfig> {
     }
   })();
 
-  return landingConfigInflight;
+  return landingConfigInflight.then(forSsrPayload);
 }
 
 export async function saveLandingConfig(config: LandingConfig, userId?: string) {
