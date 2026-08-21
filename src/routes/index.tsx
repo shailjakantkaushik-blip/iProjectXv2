@@ -47,6 +47,7 @@ import {
 } from "@/lib/landing-config";
 import { StableBrandLogo } from "@/components/stable-brand-logo";
 import { LandingHeroFrame } from "@/components/landing-hero-frame";
+import { LandingHeroDashboard } from "@/components/landing-hero-dashboard";
 import { PageLoading } from "@/components/page-loading";
 import { lockDocumentScroll, unlockDocumentScroll } from "@/lib/document-scroll";
 
@@ -54,11 +55,6 @@ const EoiModal = lazy(() => import("@/components/eoi-form").then((m) => ({ defau
 const LandingStoryWindow = lazy(() =>
   import("@/components/landing-story-window").then((m) => ({
     default: m.LandingStoryWindow,
-  })),
-);
-const LandingHeroDashboard = lazy(() =>
-  import("@/components/landing-hero-dashboard").then((m) => ({
-    default: m.LandingHeroDashboard,
   })),
 );
 const LandingHeroIllustration = lazy(() =>
@@ -74,6 +70,7 @@ type LandingLoaderData = {
 };
 
 export const Route = createFileRoute("/")({
+  ssr: false,
   loader: async (): Promise<LandingLoaderData> => {
     // Instant paint on repeat visits from memory/localStorage (logos + palette kept).
     // Prefer in-memory (updated by /auth fetch) over a stale localStorage edge case.
@@ -86,7 +83,11 @@ export const Route = createFileRoute("/")({
         return { cfg: { ...cached, signup_enabled: false }, needsRevalidate: true };
       }
     }
-    return { cfg: await fetchLandingConfig(), needsRevalidate: false };
+    try {
+      return { cfg: await fetchLandingConfig(), needsRevalidate: false };
+    } catch {
+      return { cfg: { ...DEFAULT_LANDING, signup_enabled: false }, needsRevalidate: true };
+    }
   },
   staleTime: 0,
   // Only show pending when the loader is slow (first visit / cold network).
@@ -634,7 +635,7 @@ function Nav({ cfg, signupEnabled }: { cfg: LandingConfig; signupEnabled: boolea
   return (
     <nav
       data-landing-nav
-      className="fixed inset-x-0 top-0 z-50 w-full border-b pt-[env(safe-area-inset-top)] backdrop-blur-sm transition-[background,box-shadow] duration-300 print:absolute md:backdrop-blur-xl"
+      className="fixed inset-x-0 top-0 z-50 w-full border-b pt-[env(safe-area-inset-top)] backdrop-blur-xl transition-[background,box-shadow] duration-300 print:absolute"
       style={{
         borderColor: scrolled ? p.surface : "transparent",
         background: navBg,
@@ -779,7 +780,7 @@ function Hero({ cfg, onEoiClick }: { cfg: LandingConfig; onEoiClick?: () => void
   const p = cfg.palette;
   return (
     <section
-      className="relative min-h-0 overflow-hidden sm:min-h-[min(92vh,880px)]"
+      className="relative min-h-[min(92vh,880px)] overflow-hidden"
       style={{ background: p.navy, color: p.textOnDark }}
     >
       {/* Atmosphere: soft gradient + grid, not flat fill */}
@@ -836,18 +837,6 @@ function Hero({ cfg, onEoiClick }: { cfg: LandingConfig; onEoiClick?: () => void
                 {cfg.hero.secondary_cta}
               </CtaSecondary>
             </div>
-            <a
-              href="#story"
-              className="mt-5 inline-flex items-center text-sm font-semibold tracking-tight lg:hidden"
-              style={{ color: p.accent }}
-              onClick={(e) => {
-                e.preventDefault();
-                scrollToLandingHash("#story");
-              }}
-            >
-              {cfg.hero.visual === "video" ? "Watch the pitch" : "See the product"}
-              <ArrowRight className="ml-1.5 h-4 w-4" />
-            </a>
             {cfg.hero.after_cta ? (
               <p
                 className="mt-10 max-w-lg text-sm leading-relaxed sm:mt-12 sm:text-[15px]"
@@ -859,19 +848,11 @@ function Hero({ cfg, onEoiClick }: { cfg: LandingConfig; onEoiClick?: () => void
           </Reveal>
         </div>
 
-        <div className="min-w-0 lg:col-span-7" id="story">
+        <div className="min-w-0 lg:col-span-7">
           {cfg.hero.visual === "image" ? (
-            <Suspense
-              fallback={
-                <div
-                  className="min-h-[240px] w-full rounded-2xl"
-                  style={{ background: "rgba(8, 14, 32, 0.55)" }}
-                  aria-hidden
-                />
-              }
-            >
+            <Reveal delay={120}>
               <LandingHeroDashboard cfg={cfg} />
-            </Suspense>
+            </Reveal>
           ) : (
             <LandingHeroFrame accent={p.accent} navy={p.navy}>
               {cfg.hero.visual === "animation" ? (

@@ -34,7 +34,7 @@ export function PageLoading({
       className={cn(
         "bg-background px-4",
         fullScreen
-          ? "fixed inset-0 z-[200] h-[100dvh] w-[100dvw]"
+          ? "fixed inset-0 z-[200] h-full w-full"
           : "relative w-full min-h-[min(60vh,28rem)] flex-1 py-10",
         className,
       )}

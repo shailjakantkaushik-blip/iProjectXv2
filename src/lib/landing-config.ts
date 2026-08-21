@@ -1069,7 +1069,7 @@ export function applyElegantFontContrast(cfg: LandingConfig): LandingConfig {
 
 // Deep merge with defaults so partial saved configs still render fully.
 export function mergeConfig(partial: any): LandingConfig {
-  const merged: any = structuredClone(DEFAULT_LANDING);
+  const merged: any = JSON.parse(JSON.stringify(DEFAULT_LANDING));
   if (!partial || typeof partial !== "object") return merged;
   for (const k of Object.keys(DEFAULT_LANDING) as (keyof LandingConfig)[]) {
     const v = (partial as any)[k];
@@ -1646,15 +1646,23 @@ export async function fetchLandingConfig(): Promise<LandingConfig> {
 
   landingConfigInflight = (async () => {
     try {
-      const { data } = await supabase
+      const query = supabase
         .from("landing_config" as any)
         .select("config")
         .eq("id", "singleton")
         .maybeSingle();
+      const { data } = await Promise.race([
+        query,
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("landing_config timeout")), 2000);
+        }),
+      ]);
       const cfg = mergeConfig((data as any)?.config);
       writeCachedLandingConfig(cfg);
       landingConfigMemory = { cfg, at: Date.now() };
       return cfg;
+    } catch {
+      return readCachedLandingConfig() ?? mergeConfig(null);
     } finally {
       landingConfigInflight = null;
     }

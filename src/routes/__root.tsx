@@ -89,6 +89,7 @@ function RootShell({ children }: { children: ReactNode }) {
     <html lang="en">
       <head>
         <HeadContent />
+        <script src="/boot/kill-sw.js" />
         <script src="/boot/favicon.js" />
         <script src="/boot/platform-theme.js" />
         <script src="/boot/org-theme.js" />
