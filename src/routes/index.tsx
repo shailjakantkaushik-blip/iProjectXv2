@@ -70,7 +70,6 @@ type LandingLoaderData = {
 };
 
 export const Route = createFileRoute("/")({
-  ssr: false,
   loader: async (): Promise<LandingLoaderData> => {
     // Instant paint on repeat visits from memory/localStorage (logos + palette kept).
     // Prefer in-memory (updated by /auth fetch) over a stale localStorage edge case.
