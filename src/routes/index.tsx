@@ -77,9 +77,13 @@ export const Route = createFileRoute("/")({
     // First visit (no cache): await live config so we never flash DEFAULT branding.
     // staleTime: 0 so auth→home always re-reads this snapshot (no 60s-old logo).
     if (typeof window !== "undefined") {
-      const cached = getFreshLandingConfigSnapshot();
-      if (cached) {
-        return { cfg: { ...cached, signup_enabled: false }, needsRevalidate: true };
+      try {
+        const cached = getFreshLandingConfigSnapshot();
+        if (cached) {
+          return { cfg: { ...cached, signup_enabled: false }, needsRevalidate: true };
+        }
+      } catch {
+        /* private browser with blocked storage */
       }
     }
     try {
