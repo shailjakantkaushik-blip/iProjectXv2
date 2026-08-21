@@ -39,17 +39,6 @@
           return [];
         }
       })
-      .then(function () {
-        try {
-          if (
-            navigator.serviceWorker.controller &&
-            !sessionStorage.getItem("pmo:sw-public-cleared")
-          ) {
-            sessionStorage.setItem("pmo:sw-public-cleared", "1");
-            location.reload();
-          }
-        } catch (e) {}
-      })
       .catch(function () {});
   } catch (e) {}
 })();

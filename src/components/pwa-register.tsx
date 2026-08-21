@@ -1,7 +1,5 @@
 import { useEffect } from "react";
 
-const SW_CLEARED_KEY = "pmo:sw-public-cleared";
-
 function isPublicMarketingPath(pathname: string) {
   return (
     pathname === "/" ||
@@ -43,11 +41,6 @@ export function PwaRegister() {
           if (!regs.length && !keys.length) return;
           await Promise.all(regs.map((r) => r.unregister()));
           await Promise.all(keys.map((k) => caches.delete(k)));
-          const hadController = Boolean(navigator.serviceWorker.controller);
-          if (hadController && !sessionStorage.getItem(SW_CLEARED_KEY)) {
-            sessionStorage.setItem(SW_CLEARED_KEY, "1");
-            window.location.reload();
-          }
         } catch {
           /* ignore — SW optional */
         }

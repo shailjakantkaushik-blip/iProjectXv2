@@ -37,12 +37,40 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
   });
 }
 
+async function sanitizeHtmlForSafari(response: Response): Promise<Response> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("text/html")) return response;
+
+  const html = await response.text();
+  if (!html.includes("\0")) {
+    return new Response(html, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+  }
+
+  // TanStack encodes route ids by replacing "/" with U+0000. Safari (especially
+  // iOS private) will not execute a classic <script> that contains NUL, so
+  // hydration never starts and the page stays white. U+FFFD is already mapped
+  // back to "/" in hydrateSsrMatchId.
+  const safe = html.replaceAll("\0", "\uFFFD");
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+  return new Response(safe, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
+      const normalized = await normalizeCatastrophicSsrResponse(response);
+      return await sanitizeHtmlForSafari(normalized);
     } catch (error) {
       console.error(error);
       return new Response(renderErrorPage(), {
