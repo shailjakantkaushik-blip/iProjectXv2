@@ -10,7 +10,7 @@
  * loader when creating the Supabase client. Always fall back to memory.
  */
 
-function memoryStorage(): Storage {
+export function memoryStorage(): Storage {
   const mem = new Map<string, string>();
   return {
     get length() {
@@ -36,7 +36,7 @@ function memoryStorage(): Storage {
 
 function wrapStorage(backing: Storage): Storage {
   const mem = memoryStorage();
-  const safe = <T,>(fn: () => T, fallback: () => T): T => {
+  const safe = <T>(fn: () => T, fallback: () => T): T => {
     try {
       return fn();
     } catch {
@@ -45,7 +45,10 @@ function wrapStorage(backing: Storage): Storage {
   };
   return {
     get length() {
-      return safe(() => backing.length, () => mem.length);
+      return safe(
+        () => backing.length,
+        () => mem.length,
+      );
     },
     clear() {
       safe(

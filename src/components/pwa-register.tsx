@@ -39,7 +39,7 @@ export function PwaRegister() {
       void (async () => {
         try {
           const regs = await navigator.serviceWorker.getRegistrations();
-          const keys = await caches.keys();
+          const keys = typeof caches !== "undefined" ? await caches.keys() : [];
           if (!regs.length && !keys.length) return;
           await Promise.all(regs.map((r) => r.unregister()));
           await Promise.all(keys.map((k) => caches.delete(k)));

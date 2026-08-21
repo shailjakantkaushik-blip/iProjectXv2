@@ -40,7 +40,6 @@ import {
   resolveBrandLogoUrl,
   getFreshLandingConfigSnapshot,
   resolveLandingCfgForPaint,
-  readCachedLandingConfigForPaint,
   type LandingConfig,
   type LandingItem,
   type LogoDisplaySize,
@@ -48,7 +47,6 @@ import {
 import { StableBrandLogo } from "@/components/stable-brand-logo";
 import { LandingHeroFrame } from "@/components/landing-hero-frame";
 import { LandingHeroDashboard } from "@/components/landing-hero-dashboard";
-import { PageLoading } from "@/components/page-loading";
 import { lockDocumentScroll, unlockDocumentScroll } from "@/lib/document-scroll";
 
 const EoiModal = lazy(() => import("@/components/eoi-form").then((m) => ({ default: m.EoiModal })));
@@ -74,7 +72,8 @@ export const Route = createFileRoute("/")({
     // Instant paint on repeat visits from memory/localStorage (logos + palette kept).
     // Prefer in-memory (updated by /auth fetch) over a stale localStorage edge case.
     // Never trust cached signup_enabled (avoids Get started flash).
-    // First visit (no cache): await live config so we never flash DEFAULT branding.
+    // Client first visit / private mode has no cache — never await Supabase here.
+    // Awaiting used to overlay a full-screen spinner (or hang) instead of the page.
     // staleTime: 0 so auth→home always re-reads this snapshot (no 60s-old logo).
     if (typeof window !== "undefined") {
       try {
@@ -85,6 +84,7 @@ export const Route = createFileRoute("/")({
       } catch {
         /* private browser with blocked storage */
       }
+      return { cfg: { ...DEFAULT_LANDING, signup_enabled: false }, needsRevalidate: true };
     }
     try {
       return { cfg: await fetchLandingConfig(), needsRevalidate: false };
@@ -93,9 +93,6 @@ export const Route = createFileRoute("/")({
     }
   },
   staleTime: 0,
-  // Only show pending when the loader is slow (first visit / cold network).
-  pendingMs: 120,
-  pendingComponent: LandingPending,
   component: LandingPage,
   head: () => ({
     meta: [
@@ -118,22 +115,6 @@ export const Route = createFileRoute("/")({
     ],
   }),
 });
-
-function LandingPending() {
-  // Prefer cached brand palette/theme. With no cache, stay neutral — never paint
-  // DEFAULT_LANDING navy/accent (that was the reload colour-profile flash).
-  const cached = typeof window !== "undefined" ? readCachedLandingConfigForPaint() : null;
-  const theme = cached?.theme ?? "light";
-  const bg = cached ? (theme === "dark" ? cached.palette.navy : "#ffffff") : "#ffffff";
-  return (
-    <PageLoading
-      label="Loading…"
-      fullScreen
-      style={{ background: bg }}
-      className={theme === "dark" && cached ? "text-white" : undefined}
-    />
-  );
-}
 
 const HEADING = { fontFamily: "'Sora', system-ui, sans-serif" as const };
 const BODY = { fontFamily: "'Manrope', system-ui, sans-serif" as const };
@@ -240,6 +221,10 @@ function useCountUp(target: number, duration = 1400) {
   const started = useRef(false);
   useEffect(() => {
     if (!ref.current) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setVal(target);
+      return;
+    }
     const io = new IntersectionObserver(
       (entries) => {
         entries.forEach((e) => {
@@ -272,40 +257,15 @@ function Reveal({
   delay?: number;
   className?: string;
 }) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [shown, setShown] = useState(false);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const show = () => setShown(true);
-    const rect = el.getBoundingClientRect();
-    if (rect.bottom > 0 && rect.top < (window.innerHeight || 800)) show();
-    let io: IntersectionObserver | null = null;
-    if (typeof IntersectionObserver !== "undefined") {
-      io = new IntersectionObserver(
-        (es) => {
-          if (es.some((e) => e.isIntersecting)) show();
-        },
-        { threshold: 0.01, rootMargin: "120px 0px" },
-      );
-      io.observe(el);
-    } else {
-      show();
-    }
-    // iOS Safari sometimes never fires IO for above-the-fold nodes.
-    const t = window.setTimeout(show, 450);
-    return () => {
-      io?.disconnect();
-      window.clearTimeout(t);
-    };
-  }, []);
+  // Visible by default so SSR and private/no-JS browsers never render a blank page.
+  // IntersectionObserver used to start at opacity 0; if JS was delayed or crashed
+  // (Safari/Chrome private storage), the hero stayed invisible.
   return (
     <div
-      ref={ref}
       className={className}
       style={{
-        opacity: shown ? 1 : 0,
-        transform: shown ? "translateY(0)" : "translateY(18px)",
+        opacity: 1,
+        transform: "translateY(0)",
         transition: `opacity 750ms ease ${delay}ms, transform 750ms cubic-bezier(.2,.7,.2,1) ${delay}ms`,
       }}
     >

@@ -11,19 +11,45 @@
     ) {
       return;
     }
-    navigator.serviceWorker.getRegistrations().then(function (regs) {
-      return Promise.all(regs.map(function (r) { return r.unregister(); })).then(function () {
-        return caches.keys();
-      });
-    }).then(function (keys) {
-      return Promise.all((keys || []).map(function (k) { return caches.delete(k); }));
-    }).then(function () {
-      try {
-        if (navigator.serviceWorker.controller && !sessionStorage.getItem("pmo:sw-public-cleared")) {
-          sessionStorage.setItem("pmo:sw-public-cleared", "1");
-          location.reload();
+    navigator.serviceWorker
+      .getRegistrations()
+      .then(function (regs) {
+        return Promise.all(
+          regs.map(function (r) {
+            return r.unregister();
+          }),
+        ).then(function () {
+          try {
+            if (typeof caches === "undefined" || !caches.keys) return [];
+            return caches.keys();
+          } catch (_e) {
+            return [];
+          }
+        });
+      })
+      .then(function (keys) {
+        try {
+          if (typeof caches === "undefined") return [];
+          return Promise.all(
+            (keys || []).map(function (k) {
+              return caches.delete(k);
+            }),
+          );
+        } catch (_e) {
+          return [];
         }
-      } catch (e) {}
-    }).catch(function () {});
+      })
+      .then(function () {
+        try {
+          if (
+            navigator.serviceWorker.controller &&
+            !sessionStorage.getItem("pmo:sw-public-cleared")
+          ) {
+            sessionStorage.setItem("pmo:sw-public-cleared", "1");
+            location.reload();
+          }
+        } catch (e) {}
+      })
+      .catch(function () {});
   } catch (e) {}
 })();

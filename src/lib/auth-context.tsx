@@ -282,54 +282,66 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    const { data: sub } = supabase.auth.onAuthStateChange((evt, s) => {
-      if (evt === "INITIAL_SESSION") {
-        // Same local session as getSession — finishBoot is idempotent.
-        finishBoot(s);
-        return;
-      }
+    let sub: { unsubscribe: () => void } | null = null;
+    try {
+      const { data } = supabase.auth.onAuthStateChange((evt, s) => {
+        if (evt === "INITIAL_SESSION") {
+          // Same local session as getSession — finishBoot is idempotent.
+          finishBoot(s);
+          return;
+        }
 
-      setSession(s);
-      if (s?.user) {
-        const sameUser = loadedUserIdRef.current === s.user.id;
-        if (evt === "TOKEN_REFRESHED") return;
-        if (sameUser && evt === "SIGNED_IN") return;
+        setSession(s);
+        if (s?.user) {
+          const sameUser = loadedUserIdRef.current === s.user.id;
+          if (evt === "TOKEN_REFRESHED") return;
+          if (sameUser && evt === "SIGNED_IN") return;
 
-        const switchingUser =
-          loadedUserIdRef.current != null && loadedUserIdRef.current !== s.user.id;
-        if (switchingUser) {
+          const switchingUser =
+            loadedUserIdRef.current != null && loadedUserIdRef.current !== s.user.id;
+          if (switchingUser) {
+            clearCachedAuthChrome();
+            setProfile(null);
+            setOrganization(null);
+            setRoles([]);
+            setLoading(true);
+          }
+
+          const blockUi = switchingUser || loadedUserIdRef.current == null;
+          if (blockUi) setLoading(true);
+          setTimeout(() => {
+            void loadProfile(s.user.id).finally(() => {
+              if (!cancelled && blockUi) setLoading(false);
+            });
+          }, 0);
+        } else {
+          loadedUserIdRef.current = null;
           clearCachedAuthChrome();
           setProfile(null);
           setOrganization(null);
           setRoles([]);
-          setLoading(true);
+          setLoading(false);
         }
+      });
+      sub = data.subscription;
 
-        const blockUi = switchingUser || loadedUserIdRef.current == null;
-        if (blockUi) setLoading(true);
-        setTimeout(() => {
-          void loadProfile(s.user.id).finally(() => {
-            if (!cancelled && blockUi) setLoading(false);
-          });
-        }, 0);
-      } else {
-        loadedUserIdRef.current = null;
-        clearCachedAuthChrome();
-        setProfile(null);
-        setOrganization(null);
-        setRoles([]);
-        setLoading(false);
-      }
-    });
-
-    // getSession is a local storage read; unlock UI as soon as it returns.
-    void supabase.auth.getSession().then(({ data }) => {
-      finishBoot(data.session);
-    });
+      // getSession is a local storage read; unlock UI as soon as it returns.
+      void supabase.auth
+        .getSession()
+        .then(({ data: sessionData }) => {
+          finishBoot(sessionData.session);
+        })
+        .catch(() => {
+          finishBoot(null);
+        });
+    } catch {
+      // Private browsing can throw while creating BroadcastChannel / storage.
+      finishBoot(null);
+    }
 
     return () => {
       cancelled = true;
-      sub.subscription.unsubscribe();
+      sub?.unsubscribe();
     };
   }, []);
 
