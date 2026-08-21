@@ -35,7 +35,8 @@ export const Route = createFileRoute("/legal/$slug")({
   loader: async ({ params }): Promise<LegalLoaderData> => {
     // Policy body is required for content; brand cfg prefers browser cache
     // on repeat visits to avoid re-dehydrating the full landing JSON (FOT).
-    const cachedCfg = typeof window !== "undefined" ? getFreshLandingConfigSnapshot() : null;
+    const cachedCfg =
+      typeof window !== "undefined" ? getFreshLandingConfigSnapshot() : null;
     const [{ data: policy, error }, cfg] = await Promise.all([
       (supabase as any)
         .from("legal_policies")
@@ -43,7 +44,9 @@ export const Route = createFileRoute("/legal/$slug")({
         .eq("slug", params.slug)
         .eq("published", true)
         .maybeSingle(),
-      cachedCfg ? Promise.resolve(cachedCfg) : fetchLandingConfig(),
+      cachedCfg
+        ? Promise.resolve(cachedCfg)
+        : fetchLandingConfig(),
     ]);
     if (error) throw error;
     return {
@@ -112,7 +115,10 @@ function stripRedundantHeader(md: string): string {
 }
 
 function markdownToHtml(md: string): string {
-  let html = md.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  let html = md
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 
   html = html.replace(/^######\s(.+)$/gm, "<h6>$1</h6>");
   html = html.replace(/^#####\s(.+)$/gm, "<h5>$1</h5>");
@@ -207,12 +213,7 @@ function LegalPolicyPage() {
         .eq("published", true)
         .order("category")
         .order("sort_order");
-      return (data ?? []) as {
-        slug: string;
-        title: string;
-        category: string;
-        sort_order: number;
-      }[];
+      return (data ?? []) as { slug: string; title: string; category: string; sort_order: number }[];
     },
   });
 
@@ -226,10 +227,7 @@ function LegalPolicyPage() {
 
   if (!policy) {
     return (
-      <div
-        className="flex min-h-screen flex-col items-center justify-center px-5"
-        style={{ ...BODY, background: pageBg }}
-      >
+      <div className="flex min-h-screen flex-col items-center justify-center px-5" style={{ ...BODY, background: pageBg }}>
         <h1 className="text-2xl font-bold" style={{ ...HEADING, color: p.textHeading }}>
           Policy not found
         </h1>
@@ -243,18 +241,12 @@ function LegalPolicyPage() {
     );
   }
 
-  const html = DOMPurify.sanitize(
-    markdownToHtml(stripRedundantHeader(policy.body_markdown ?? "")),
-    {
-      USE_PROFILES: { html: true },
-    },
-  );
+  const html = DOMPurify.sanitize(markdownToHtml(stripRedundantHeader(policy.body_markdown ?? "")), {
+    USE_PROFILES: { html: true },
+  });
 
   return (
-    <div
-      className="min-h-screen antialiased"
-      style={{ ...BODY, background: pageBg, color: p.textBody }}
-    >
+    <div className="min-h-screen antialiased" style={{ ...BODY, background: pageBg, color: p.textBody }}>
       {/* Landing-aligned atmosphere */}
       <div
         className="pointer-events-none fixed inset-0 -z-10"
@@ -282,10 +274,7 @@ function LegalPolicyPage() {
             <span className="hidden text-sm sm:inline" style={{ color: p.surface }}>
               /
             </span>
-            <span
-              className="hidden truncate text-sm font-medium sm:inline"
-              style={{ color: p.textMuted }}
-            >
+            <span className="hidden truncate text-sm font-medium sm:inline" style={{ color: p.textMuted }}>
               {policy.title}
             </span>
           </div>
@@ -321,10 +310,7 @@ function LegalPolicyPage() {
               </p>
               {Object.entries(byCategory).map(([cat, items]) => (
                 <div key={cat} className="mb-5">
-                  <p
-                    className="mb-1.5 text-[10px] font-bold uppercase tracking-wider"
-                    style={{ color: p.textMuted }}
-                  >
+                  <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: p.textMuted }}>
                     {cat}
                   </p>
                   <ul className="space-y-0.5">
@@ -338,11 +324,7 @@ function LegalPolicyPage() {
                             className="block rounded-md px-3 py-1.5 text-sm transition-colors"
                             style={{
                               color: active ? p.accent : p.textMuted,
-                              background: active
-                                ? isDark
-                                  ? `${p.accent}22`
-                                  : `${p.accent}12`
-                                : "transparent",
+                              background: active ? (isDark ? `${p.accent}22` : `${p.accent}12`) : "transparent",
                               fontWeight: active ? 600 : 400,
                             }}
                           >
@@ -376,10 +358,7 @@ function LegalPolicyPage() {
                   : `linear-gradient(135deg, ${p.navy}08 0%, transparent 60%)`,
               }}
             >
-              <p
-                className="text-[11px] font-bold uppercase tracking-[0.18em]"
-                style={{ color: p.accent }}
-              >
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: p.accent }}>
                 {policy.category}
               </p>
               <h1
@@ -414,25 +393,13 @@ function LegalPolicyPage() {
         <div className="mx-auto flex max-w-7xl flex-col items-center gap-3 sm:flex-row sm:justify-between">
           <span>© {new Date().getFullYear()} iProjectX</span>
           <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
-            <Link
-              to="/legal/privacy-policy"
-              className="hover:opacity-70"
-              style={{ color: p.textMuted }}
-            >
+            <Link to="/legal/privacy-policy" className="hover:opacity-70" style={{ color: p.textMuted }}>
               Privacy
             </Link>
-            <Link
-              to="/legal/terms-of-service"
-              className="hover:opacity-70"
-              style={{ color: p.textMuted }}
-            >
+            <Link to="/legal/terms-of-service" className="hover:opacity-70" style={{ color: p.textMuted }}>
               Terms
             </Link>
-            <Link
-              to="/legal/cookie-policy"
-              className="hover:opacity-70"
-              style={{ color: p.textMuted }}
-            >
+            <Link to="/legal/cookie-policy" className="hover:opacity-70" style={{ color: p.textMuted }}>
               Cookies
             </Link>
             <Link to="/contact" className="hover:opacity-70" style={{ color: p.textMuted }}>
