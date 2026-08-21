@@ -271,16 +271,29 @@ function Reveal({
   const ref = useRef<HTMLDivElement | null>(null);
   const [shown, setShown] = useState(false);
   useEffect(() => {
-    if (!ref.current) return;
-    const io = new IntersectionObserver(
-      (es) =>
-        es.forEach((e) => {
-          if (e.isIntersecting) setShown(true);
-        }),
-      { threshold: 0.12 },
-    );
-    io.observe(ref.current);
-    return () => io.disconnect();
+    const el = ref.current;
+    if (!el) return;
+    const show = () => setShown(true);
+    const rect = el.getBoundingClientRect();
+    if (rect.bottom > 0 && rect.top < (window.innerHeight || 800)) show();
+    let io: IntersectionObserver | null = null;
+    if (typeof IntersectionObserver !== "undefined") {
+      io = new IntersectionObserver(
+        (es) => {
+          if (es.some((e) => e.isIntersecting)) show();
+        },
+        { threshold: 0.01, rootMargin: "120px 0px" },
+      );
+      io.observe(el);
+    } else {
+      show();
+    }
+    // iOS Safari sometimes never fires IO for above-the-fold nodes.
+    const t = window.setTimeout(show, 450);
+    return () => {
+      io?.disconnect();
+      window.clearTimeout(t);
+    };
   }, []);
   return (
     <div
@@ -374,6 +387,10 @@ function LandingPage() {
   const [eoiOpen, setEoiOpen] = useState(false);
   // Mount heavier below-fold sections after first paint so Hero can appear sooner.
   const [belowFoldReady, setBelowFoldReady] = useState(false);
+
+  useEffect(() => {
+    unlockDocumentScroll();
+  }, []);
 
   useEffect(() => {
     setCfg(resolveLandingCfgForPaint(loaderCfg));
@@ -474,7 +491,7 @@ function LandingPage() {
 
   return (
     <div
-      className="w-full max-w-[100vw] overflow-x-clip antialiased"
+      className="w-full max-w-[100vw] overflow-x-hidden antialiased"
       data-theme={cfg.theme}
       style={{ ...cssVars, ...BODY, color: p.textBody, background: pageBg }}
     >
@@ -617,7 +634,7 @@ function Nav({ cfg, signupEnabled }: { cfg: LandingConfig; signupEnabled: boolea
   return (
     <nav
       data-landing-nav
-      className="fixed inset-x-0 top-0 z-50 w-full border-b pt-[env(safe-area-inset-top)] backdrop-blur-xl transition-[background,box-shadow] duration-300 print:absolute"
+      className="fixed inset-x-0 top-0 z-50 w-full border-b pt-[env(safe-area-inset-top)] backdrop-blur-sm transition-[background,box-shadow] duration-300 print:absolute md:backdrop-blur-xl"
       style={{
         borderColor: scrolled ? p.surface : "transparent",
         background: navBg,
@@ -762,7 +779,7 @@ function Hero({ cfg, onEoiClick }: { cfg: LandingConfig; onEoiClick?: () => void
   const p = cfg.palette;
   return (
     <section
-      className="relative min-h-[min(92vh,880px)] overflow-hidden"
+      className="relative min-h-0 overflow-hidden sm:min-h-[min(92vh,880px)]"
       style={{ background: p.navy, color: p.textOnDark }}
     >
       {/* Atmosphere: soft gradient + grid, not flat fill */}
@@ -781,6 +798,7 @@ function Hero({ cfg, onEoiClick }: { cfg: LandingConfig; onEoiClick?: () => void
         style={{
           backgroundImage: `linear-gradient(${p.textOnDark} 1px, transparent 1px), linear-gradient(90deg, ${p.textOnDark} 1px, transparent 1px)`,
           backgroundSize: "64px 64px",
+          WebkitMaskImage: "linear-gradient(to bottom, black 20%, transparent 95%)",
           maskImage: "linear-gradient(to bottom, black 20%, transparent 95%)",
         }}
       />
@@ -842,51 +860,53 @@ function Hero({ cfg, onEoiClick }: { cfg: LandingConfig; onEoiClick?: () => void
         </div>
 
         <div className="min-w-0 lg:col-span-7" id="story">
-          <LandingHeroFrame accent={p.accent} navy={p.navy}>
-            {cfg.hero.visual === "image" ? (
-              <Suspense
-                fallback={
-                  <div
-                    className="min-h-[280px] w-full"
-                    style={{ background: "rgba(8, 14, 32, 0.72)" }}
-                    aria-hidden
-                  />
-                }
-              >
-                <LandingHeroDashboard cfg={cfg} />
-              </Suspense>
-            ) : cfg.hero.visual === "animation" ? (
-              <Suspense
-                fallback={
-                  <div
-                    className="min-h-[320px] w-full"
-                    style={{ background: "rgba(8, 14, 32, 0.72)" }}
-                    aria-hidden
-                  />
-                }
-              >
-                <LandingHeroIllustration cfg={cfg} />
-              </Suspense>
-            ) : (
-              <Suspense
-                fallback={
-                  <div
-                    className="relative w-full overflow-hidden"
-                    style={{ aspectRatio: "16 / 9" }}
-                    aria-hidden
-                  >
-                    <img
-                      src="/landing/ipx-pitch-poster.jpg"
-                      alt=""
-                      className="absolute inset-0 h-full w-full object-cover"
+          {cfg.hero.visual === "image" ? (
+            <Suspense
+              fallback={
+                <div
+                  className="min-h-[240px] w-full rounded-2xl"
+                  style={{ background: "rgba(8, 14, 32, 0.55)" }}
+                  aria-hidden
+                />
+              }
+            >
+              <LandingHeroDashboard cfg={cfg} />
+            </Suspense>
+          ) : (
+            <LandingHeroFrame accent={p.accent} navy={p.navy}>
+              {cfg.hero.visual === "animation" ? (
+                <Suspense
+                  fallback={
+                    <div
+                      className="min-h-[320px] w-full"
+                      style={{ background: "rgba(8, 14, 32, 0.72)" }}
+                      aria-hidden
                     />
-                  </div>
-                }
-              >
-                <LandingStoryWindow cfg={cfg} />
-              </Suspense>
-            )}
-          </LandingHeroFrame>
+                  }
+                >
+                  <LandingHeroIllustration cfg={cfg} />
+                </Suspense>
+              ) : (
+                <Suspense
+                  fallback={
+                    <div
+                      className="relative w-full overflow-hidden"
+                      style={{ aspectRatio: "16 / 9" }}
+                      aria-hidden
+                    >
+                      <img
+                        src="/landing/ipx-pitch-poster.jpg"
+                        alt=""
+                        className="absolute inset-0 h-full w-full object-cover"
+                      />
+                    </div>
+                  }
+                >
+                  <LandingStoryWindow cfg={cfg} />
+                </Suspense>
+              )}
+            </LandingHeroFrame>
+          )}
         </div>
       </div>
     </section>

@@ -1,5 +1,5 @@
 /* Minimal offline shell for iProjectX PWA */
-const CACHE = "iprojectx-shell-v2";
+const CACHE = "iprojectx-shell-v3";
 const PRECACHE = ["/manifest.webmanifest", "/favicon.png"];
 
 self.addEventListener("install", (event) => {
@@ -40,31 +40,26 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Navigations: stale-while-revalidate so repeat visits do not always
-  // wake the Vercel origin (major Fast Origin Transfer driver).
+  // Navigations: network-first. Serving a cached HTML document after a deploy
+  // points at missing JS chunks and blanks the site — common on mobile Safari.
   if (req.mode === "navigate") {
     event.respondWith(
       (async () => {
-        const cached = await caches.match(req);
-        const networkPromise = fetch(req)
-          .then((res) => {
-            if (res.ok) {
-              const copy = res.clone();
-              caches.open(CACHE).then((c) => c.put(req, copy));
-            }
-            return res;
-          })
-          .catch(() => null);
-        if (cached) {
-          void networkPromise;
-          return cached;
+        try {
+          const res = await fetch(req);
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(req, copy));
+          }
+          return res;
+        } catch {
+          return (
+            (await caches.match(req)) ||
+            (await caches.match("/")) ||
+            (await caches.match("/app/")) ||
+            Response.error()
+          );
         }
-        return (
-          (await networkPromise) ||
-          (await caches.match("/")) ||
-          (await caches.match("/app/")) ||
-          Response.error()
-        );
       })(),
     );
   }
