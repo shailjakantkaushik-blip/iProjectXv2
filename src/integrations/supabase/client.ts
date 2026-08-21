@@ -67,16 +67,16 @@ function createSupabaseClient() {
       },
     });
   } catch {
-    // Safari/Chrome private windows can throw on BroadcastChannel, Web Locks,
-    // or storage probes inside the SDK even after wrapping sessionStorage.
+    // Private windows can throw on BroadcastChannel / Web Locks during init.
+    // Keep PKCE. Persist only in RAM (not localStorage). Skip navigator.locks.
     return createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
       global,
       auth: {
         storage: memoryStorage(),
-        persistSession: false,
-        autoRefreshToken: false,
-        detectSessionInUrl: false,
-        flowType: "implicit",
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        flowType: "pkce",
         lock: noOpLock,
       },
     });
