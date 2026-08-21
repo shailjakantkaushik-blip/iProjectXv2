@@ -20,6 +20,7 @@ import {
   Wallet,
 } from "lucide-react";
 import type { LandingConfig, LandingPalette } from "@/lib/landing-config";
+import { subscribeMediaQuery } from "@/lib/media-query";
 
 type Scene = {
   id: string;
@@ -552,8 +553,7 @@ export function LandingHeroIllustration({ cfg }: { cfg: LandingConfig }) {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     const apply = () => setReduced(mq.matches);
     apply();
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
+    return subscribeMediaQuery(mq, apply);
   }, []);
 
   useEffect(() => {

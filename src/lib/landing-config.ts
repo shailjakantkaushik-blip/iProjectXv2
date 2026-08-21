@@ -51,21 +51,26 @@ export const LANDING_HERO_VISUALS: {
   {
     id: "image",
     label: "Image",
-    hint: "Original static portfolio dashboard mock from before the film and walkthrough.",
+    hint: "Original static portfolio timeline mock. This is the public default.",
   },
 ];
 
 export function normalizeHeroVisual(v: unknown): LandingHeroVisual {
-  if (v === "still" || v === "dashboard" || v === "photo") return "image";
-  if (v === "animation" || v === "illustration" || v === "image") return "animation";
-  return "video";
+  if (v === "film") return "video";
+  if (v === "animation" || v === "illustration") return "animation";
+  if (v === "still" || v === "dashboard" || v === "photo" || v === "image") return "image";
+  // Legacy product default was `video`. Public hero is the original timeline mock.
+  return "image";
 }
 
-/** Persist Image as `still` so legacy `image` (animation) keeps working. */
-export function persistHeroVisual(v: LandingHeroVisual | unknown): "video" | "animation" | "still" {
+/** Persist Image as `still` and Video as `film` so legacy `image`/`video` stay distinct. */
+export function persistHeroVisual(
+  v: LandingHeroVisual | unknown,
+): "film" | "animation" | "still" {
   if (v === "image" || v === "still" || v === "dashboard" || v === "photo") return "still";
   if (v === "animation" || v === "illustration") return "animation";
-  return "video";
+  if (v === "video" || v === "film") return "film";
+  return "still";
 }
 
 export type LandingItem = { title: string; desc: string; icon?: string };
@@ -692,7 +697,7 @@ export const DEFAULT_LANDING: LandingConfig = {
     secondary_cta: "See capabilities",
     alert:
       "Registers record the past. iProjectX surfaces pressure early, explains forecast variance, and puts the next decision in front of leaders — before the board pack is late.",
-    visual: "video",
+    visual: "image",
   },
   comparison: {
     heading: "What a register cannot do. What portfolio intelligence does.",

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Pause, Play, Volume2, VolumeX } from "lucide-react";
 import type { LandingConfig } from "@/lib/landing-config";
+import { subscribeMediaQuery } from "@/lib/media-query";
 
 const VIDEO_SRC = "/landing/ipx-pitch.mp4";
 const POSTER_SRC = "/landing/ipx-pitch-poster.jpg";
@@ -12,22 +13,35 @@ export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
   const p = cfg.palette;
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const [userPlaying, setUserPlaying] = useState(true);
+  const [userPlaying, setUserPlaying] = useState(false);
   const [muted, setMuted] = useState(true);
   const [volume, setVolume] = useState(DEFAULT_VOLUME);
   const [reduced, setReduced] = useState(false);
+  const [narrow, setNarrow] = useState(() =>
+    typeof window !== "undefined"
+      ? window.matchMedia("(max-width: 767px), (pointer: coarse)").matches
+      : false,
+  );
 
   useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const apply = () => setReduced(mq.matches);
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const coarse = window.matchMedia("(max-width: 767px), (pointer: coarse)");
+    const apply = () => {
+      setReduced(reduce.matches);
+      setNarrow(coarse.matches);
+    };
     apply();
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
+    const a = subscribeMediaQuery(reduce, apply);
+    const b = subscribeMediaQuery(coarse, apply);
+    return () => {
+      a();
+      b();
+    };
   }, []);
 
   useEffect(() => {
-    if (reduced) setUserPlaying(false);
-  }, [reduced]);
+    if (reduced || narrow) setUserPlaying(false);
+  }, [reduced, narrow]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -102,7 +116,7 @@ export function LandingStoryWindow({ cfg }: { cfg: LandingConfig }) {
         muted={muted}
         playsInline
         loop
-        preload="metadata"
+        preload={narrow ? "none" : "metadata"}
         disablePictureInPicture
         aria-label="iProjectX product advertisement"
       />
