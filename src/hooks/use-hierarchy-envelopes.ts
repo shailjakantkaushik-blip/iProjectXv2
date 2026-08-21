@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import {
   indexHierarchyEnvelopes,
+  normalizeHierarchyName,
   type HierarchyEnvelopeLayer,
   type HierarchyEnvelopeRow,
 } from "@/lib/hierarchy-envelope";
@@ -18,7 +19,7 @@ export function useHierarchyEnvelopes(orgId: string | null | undefined) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("hierarchy_envelopes" as never)
-        .select("id,org_id,layer,name,envelope,notes")
+        .select("id,org_id,layer,parent_name,name,envelope,notes")
         .eq("org_id", orgId!);
       if (error) throw error;
       return (data ?? []) as HierarchyEnvelopeRow[];
@@ -34,19 +35,26 @@ export function useHierarchyEnvelopes(orgId: string | null | undefined) {
       layer: HierarchyEnvelopeLayer;
       name: string;
       envelope: number | null;
+      parentName?: string | null;
     }) => {
       if (!orgId) throw new Error("Organisation is required");
       const name = input.name.trim() || "Unassigned";
+      const parent_name =
+        input.layer === "program" ? normalizeHierarchyName(input.parentName) : "";
+      if (input.layer === "program" && !parent_name) {
+        throw new Error("Pick a Strategic Alignment before setting a program envelope");
+      }
       const payload = {
         org_id: orgId,
         layer: input.layer,
+        parent_name,
         name,
         envelope: input.envelope,
         updated_by: user?.id ?? null,
       };
       const { error } = await supabase
         .from("hierarchy_envelopes" as never)
-        .upsert(payload as never, { onConflict: "org_id,layer,name" });
+        .upsert(payload as never, { onConflict: "org_id,layer,parent_name,name" });
       if (error) throw error;
     },
     onSuccess: () => {
@@ -55,8 +63,12 @@ export function useHierarchyEnvelopes(orgId: string | null | undefined) {
   });
 
   const saveEnvelope = useCallback(
-    (layer: HierarchyEnvelopeLayer, name: string, envelope: number | null) =>
-      save.mutateAsync({ layer, name, envelope }),
+    (
+      layer: HierarchyEnvelopeLayer,
+      name: string,
+      envelope: number | null,
+      parentName: string = "",
+    ) => save.mutateAsync({ layer, name, envelope, parentName }),
     [save],
   );
 

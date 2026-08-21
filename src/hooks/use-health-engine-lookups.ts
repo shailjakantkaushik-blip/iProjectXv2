@@ -129,7 +129,7 @@ export function useHealthEngineLookups(orgId: string | null | undefined) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("hierarchy_envelopes" as never)
-        .select("id,org_id,layer,name,envelope,notes")
+        .select("id,org_id,layer,parent_name,name,envelope,notes")
         .eq("org_id", orgId!);
       if (error) return [];
       return data ?? [];
