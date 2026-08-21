@@ -70,7 +70,6 @@ type LandingLoaderData = {
 };
 
 export const Route = createFileRoute("/")({
-  ssr: false,
   loader: async (): Promise<LandingLoaderData> => {
     // Instant paint on repeat visits from memory/localStorage (logos + palette kept).
     // Prefer in-memory (updated by /auth fetch) over a stale localStorage edge case.
@@ -78,9 +77,13 @@ export const Route = createFileRoute("/")({
     // First visit (no cache): await live config so we never flash DEFAULT branding.
     // staleTime: 0 so auth→home always re-reads this snapshot (no 60s-old logo).
     if (typeof window !== "undefined") {
-      const cached = getFreshLandingConfigSnapshot();
-      if (cached) {
-        return { cfg: { ...cached, signup_enabled: false }, needsRevalidate: true };
+      try {
+        const cached = getFreshLandingConfigSnapshot();
+        if (cached) {
+          return { cfg: { ...cached, signup_enabled: false }, needsRevalidate: true };
+        }
+      } catch {
+        /* private browser with blocked storage */
       }
     }
     try {

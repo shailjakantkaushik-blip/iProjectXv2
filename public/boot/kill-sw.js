@@ -18,10 +18,12 @@
     }).then(function (keys) {
       return Promise.all((keys || []).map(function (k) { return caches.delete(k); }));
     }).then(function () {
-      if (navigator.serviceWorker.controller && !sessionStorage.getItem("pmo:sw-public-cleared")) {
-        sessionStorage.setItem("pmo:sw-public-cleared", "1");
-        location.reload();
-      }
+      try {
+        if (navigator.serviceWorker.controller && !sessionStorage.getItem("pmo:sw-public-cleared")) {
+          sessionStorage.setItem("pmo:sw-public-cleared", "1");
+          location.reload();
+        }
+      } catch (e) {}
     }).catch(function () {});
   } catch (e) {}
 })();
