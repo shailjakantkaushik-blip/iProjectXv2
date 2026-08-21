@@ -1645,6 +1645,10 @@ export function getFreshLandingConfigSnapshot(): LandingConfig | null {
  * Keeps the loader's signup_enabled (cache-sourced loaders already force it off).
  */
 export function resolveLandingCfgForPaint(loaderCfg: LandingConfig): LandingConfig {
+  // Server must not overlay in-memory config: that copy still had data: URL
+  // logos and put 360KB <img> tags into SSR HTML (Safari private then dies).
+  if (typeof window === "undefined") return loaderCfg;
+
   const mem = peekLandingConfigMemory();
   const fresh = mem ?? readCachedLandingConfig();
   if (!fresh) return loaderCfg;
@@ -1661,6 +1665,13 @@ export function resolveLandingCfgForPaint(loaderCfg: LandingConfig): LandingConf
 }
 
 export async function fetchLandingConfig(): Promise<LandingConfig> {
+  // Public SSR must not wait on Supabase or embed stored logos. Mobile Safari
+  // private windows abort ("server stopped responding") when TTFB is ~2s and
+  // the HTML still contains 360KB data: URL images.
+  if (typeof window === "undefined") {
+    return { ...DEFAULT_LANDING, signup_enabled: false };
+  }
+
   const now = Date.now();
   if (landingConfigMemory && now - landingConfigMemory.at < LANDING_CONFIG_MEMORY_TTL_MS) {
     return forSsrPayload(landingConfigMemory.cfg);
