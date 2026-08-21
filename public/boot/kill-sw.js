@@ -1,4 +1,6 @@
 (function () {
+  // Unregister only — never reload. iOS Safari private + sessionStorage made
+  // a reload loop that left a white page.
   try {
     if (!("serviceWorker" in navigator)) return;
     var p = location.pathname;
