@@ -38,6 +38,8 @@ import {
 import { DEFAULT_PAGE_SIZE } from "@/lib/portfolio-paging";
 import { explainRag } from "@/lib/explain-metric";
 import { FUNCTIONAL_AREAS, displayRag, isRagOverridden } from "@/lib/ops-enhancements";
+import { PORTFOLIO_CATEGORIES } from "@/lib/project-health";
+import { normalizeHierarchyName } from "@/lib/hierarchy-envelope";
 import { PROJECT_OPS_EXTRAS } from "@/lib/project-selects";
 
 const PROGRAM_COLORS = CHART_SERIES;
@@ -117,6 +119,23 @@ export function ProjectRegister() {
     () => pageRows.map((p) => ({ ...p, ...(extrasById.get(p.id) || {}) })),
     [pageRows, extrasById],
   );
+
+  const alignmentOptions = useMemo(() => {
+    const s = new Set<string>(PORTFOLIO_CATEGORIES);
+    for (const p of projects as { portfolio?: string | null }[]) {
+      s.add(normalizeHierarchyName(p.portfolio));
+    }
+    return [...s].sort((a, b) => a.localeCompare(b)).map((v) => ({ label: v, value: v }));
+  }, [projects]);
+
+  const programOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of projects as { program?: string | null }[]) {
+      const n = String(p.program ?? "").trim();
+      if (n) s.add(n);
+    }
+    return [...s].sort((a, b) => a.localeCompare(b)).map((v) => ({ label: v, value: v }));
+  }, [projects]);
 
   const { data: kpis } = useQuery({
     queryKey: ["portfolio-kpis", orgId],
@@ -543,13 +562,8 @@ export function ProjectRegister() {
                         rowId={p.id}
                         field="portfolio"
                         value={p.portfolio}
-                        type="select"
-                        options={[
-                          { label: "Business Strategic", value: "Business Strategic" },
-                          { label: "IT Strategic", value: "IT Strategic" },
-                          { label: "CAPEX", value: "CAPEX" },
-                          { label: "Unfunded", value: "Unfunded" },
-                        ]}
+                        type="select-or-new"
+                        options={alignmentOptions}
                         invalidateKeys={["projects"]}
                       />
                     </td>
@@ -559,6 +573,8 @@ export function ProjectRegister() {
                         rowId={p.id}
                         field="program"
                         value={p.program}
+                        type="select-or-new"
+                        options={programOptions}
                         invalidateKeys={["projects"]}
                       />
                     </td>

@@ -106,7 +106,8 @@ export function FinancialsExplained({ showHouse = true }: { showHouse?: boolean 
             <Link to="/app/strategic-alignment" className="font-medium text-primary hover:underline">
               Strategic Alignment
             </Link>{" "}
-            — optional parent envelope vs child project approved funding. Data Editor sheet
+            — pick an existing Strategic Alignment, set that pot, then allocate to programs inside
+            it (dropdown of existing names; type only for a new name). Data Editor sheet
             &quot;SA / Program Envelopes&quot; is the bulk path.
           </li>
           <li>

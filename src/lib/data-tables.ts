@@ -489,11 +489,12 @@ export const TABLES: TableDef[] = [
   {
     key: "hierarchy_envelopes",
     label: "SA / Program Envelopes",
-    matchOn: ["layer", "name"],
+    matchOn: ["layer", "parent_name", "name"],
     orderBy: "layer",
     description:
-      "Optional top-down pots for Strategic Alignment (`layer=alignment`, name = projects.portfolio) " +
-      "or Program (`layer=program`, name = projects.program). Leave envelope blank for rollup-only. " +
+      "Optional top-down pots. layer=alignment and name = Strategic Alignment (projects.portfolio), " +
+      "parent_name blank. layer=program and name = Program, parent_name = the SA it sits under. " +
+      "Prefer Programs → Hierarchy envelopes (dropdown of existing names). Leave envelope blank for rollup-only. " +
       "Project approved funding stays the project envelope; FY Allocation stays a year slice of that project envelope.",
     fields: [
       {
@@ -503,6 +504,7 @@ export const TABLES: TableDef[] = [
         options: ["alignment", "program"],
         required: true,
       },
+      { key: "parent_name", label: "Parent SA (required for program)", type: "text" },
       { key: "name", label: "SA or Program name", type: "text", required: true },
       { key: "envelope", label: "Envelope $", type: "number" },
       { key: "notes", label: "Notes", type: "textarea" },

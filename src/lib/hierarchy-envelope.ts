@@ -5,6 +5,8 @@
  * FY Allocation is still a year slice of that project envelope.
  * These pots are optional parent constraints: when set, the sum of child
  * project approved funding should stay inside them.
+ *
+ * Program pots are scoped under a Strategic Alignment (parent_name).
  */
 
 import { projectApprovedFunding, type ProjectFinanceLike } from "@/lib/project-finance";
@@ -16,6 +18,8 @@ export type HierarchyEnvelopeRow = {
   id?: string;
   org_id?: string;
   layer: HierarchyEnvelopeLayer;
+  /** Strategic Alignment name for program rows; empty for alignment rows. */
+  parent_name?: string | null;
   name: string;
   envelope: number | null;
   notes?: string | null;
@@ -38,6 +42,11 @@ export type ParentEnvelopeWatch = {
   childApproved: number;
 };
 
+export type HierarchyProjectLike = ProjectFinanceLike & {
+  portfolio?: string | null;
+  program?: string | null;
+};
+
 const num = (v: unknown) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -48,8 +57,19 @@ export function normalizeHierarchyName(name: unknown): string {
   return s || "Unassigned";
 }
 
-export function envelopeLookupKey(layer: HierarchyEnvelopeLayer, name: string): string {
-  return `${layer}:${normalizeHierarchyName(name).toLowerCase()}`;
+export function programApprovedKey(alignment: unknown, program: unknown): string {
+  return `${normalizeHierarchyName(alignment)}|||${normalizeHierarchyName(program)}`;
+}
+
+export function envelopeLookupKey(
+  layer: HierarchyEnvelopeLayer,
+  name: string,
+  parentName: string = "",
+): string {
+  if (layer === "program") {
+    return `program:${normalizeHierarchyName(parentName).toLowerCase()}|${normalizeHierarchyName(name).toLowerCase()}`;
+  }
+  return `alignment:${normalizeHierarchyName(name).toLowerCase()}`;
 }
 
 export function indexHierarchyEnvelopes(
@@ -58,7 +78,7 @@ export function indexHierarchyEnvelopes(
   const m = new Map<string, HierarchyEnvelopeRow>();
   for (const row of rows ?? []) {
     if (!row?.layer || !row.name) continue;
-    m.set(envelopeLookupKey(row.layer, row.name), row);
+    m.set(envelopeLookupKey(row.layer, row.name, row.parent_name ?? ""), row);
   }
   return m;
 }
@@ -67,8 +87,9 @@ export function lookupHierarchyEnvelope(
   index: Map<string, HierarchyEnvelopeRow>,
   layer: HierarchyEnvelopeLayer,
   name: string,
+  parentName: string = "",
 ): number | null {
-  const row = index.get(envelopeLookupKey(layer, name));
+  const row = index.get(envelopeLookupKey(layer, name, parentName));
   if (!row) return null;
   const v = row.envelope;
   if (v == null || !Number.isFinite(Number(v))) return null;
@@ -102,9 +123,7 @@ export function parentEnvelopeStatus(
 }
 
 export function childApprovedByLayer(
-  projects: Array<
-    ProjectFinanceLike & { portfolio?: string | null; program?: string | null }
-  >,
+  projects: HierarchyProjectLike[],
   layer: HierarchyEnvelopeLayer,
 ): Map<string, number> {
   const m = new Map<string, number>();
@@ -118,6 +137,16 @@ export function childApprovedByLayer(
   return m;
 }
 
+/** Project approved funding keyed by SA + program (not a global program name). */
+export function childApprovedByProgram(projects: HierarchyProjectLike[]): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const p of projects) {
+    const k = programApprovedKey(p.portfolio, p.program);
+    m.set(k, (m.get(k) ?? 0) + projectApprovedFunding(p));
+  }
+  return m;
+}
+
 export type ParentEnvelopeContext = {
   envelopes: Map<string, HierarchyEnvelopeRow>;
   alignmentApproved: Map<string, number>;
@@ -125,15 +154,13 @@ export type ParentEnvelopeContext = {
 };
 
 export function parentEnvelopeContext(
-  projects: Array<
-    ProjectFinanceLike & { portfolio?: string | null; program?: string | null }
-  >,
+  projects: HierarchyProjectLike[],
   envelopes: HierarchyEnvelopeRow[] | Map<string, HierarchyEnvelopeRow>,
 ): ParentEnvelopeContext {
   return {
     envelopes: envelopes instanceof Map ? envelopes : indexHierarchyEnvelopes(envelopes),
     alignmentApproved: childApprovedByLayer(projects, "alignment"),
-    programApproved: childApprovedByLayer(projects, "program"),
+    programApproved: childApprovedByProgram(projects),
   };
 }
 
@@ -162,17 +189,51 @@ export function overlayParentEnvelopeRag(
   return worseRag(child, status.rag);
 }
 
-/** Sum of set program envelopes (unset programs are skipped). */
+/** Sum of set program envelopes under one Strategic Alignment (unset programs skipped). */
 export function programPotsAllocated(
+  alignmentName: string,
   programNames: string[],
   envelopes: Map<string, HierarchyEnvelopeRow>,
 ): number {
   let sum = 0;
   for (const name of programNames) {
-    const v = lookupHierarchyEnvelope(envelopes, "program", name);
+    const v = lookupHierarchyEnvelope(envelopes, "program", name, alignmentName);
     if (v != null && v > 0) sum += v;
   }
   return sum;
+}
+
+export function collectAlignmentNames(
+  projects: HierarchyProjectLike[],
+  rows: HierarchyEnvelopeRow[] | null | undefined,
+  extras: string[] = [],
+): string[] {
+  const s = new Set<string>();
+  for (const extra of extras) s.add(normalizeHierarchyName(extra));
+  for (const p of projects) s.add(normalizeHierarchyName(p.portfolio));
+  for (const row of rows ?? []) {
+    if (row.layer === "alignment") s.add(normalizeHierarchyName(row.name));
+    else if (row.parent_name) s.add(normalizeHierarchyName(row.parent_name));
+  }
+  return [...s].sort((a, b) => a.localeCompare(b));
+}
+
+export function collectProgramNames(
+  projects: HierarchyProjectLike[],
+  rows: HierarchyEnvelopeRow[] | null | undefined,
+  alignmentName: string,
+): string[] {
+  const sa = normalizeHierarchyName(alignmentName);
+  const s = new Set<string>();
+  for (const p of projects) {
+    if (normalizeHierarchyName(p.portfolio) === sa) s.add(normalizeHierarchyName(p.program));
+  }
+  for (const row of rows ?? []) {
+    if (row.layer !== "program") continue;
+    if (normalizeHierarchyName(row.parent_name) !== sa) continue;
+    s.add(normalizeHierarchyName(row.name));
+  }
+  return [...s].sort((a, b) => a.localeCompare(b));
 }
 
 export function parentWatchesForProject(
@@ -193,13 +254,13 @@ export function parentWatchesForProject(
       childApproved: alignmentApproved.get(alignment) ?? 0,
     });
   }
-  const progEnv = lookupHierarchyEnvelope(envelopes, "program", program);
+  const progEnv = lookupHierarchyEnvelope(envelopes, "program", program, alignment);
   if (progEnv != null && progEnv > 0) {
     out.push({
       layer: "program",
       name: program,
       envelope: progEnv,
-      childApproved: programApproved.get(program) ?? 0,
+      childApproved: programApproved.get(programApprovedKey(alignment, program)) ?? 0,
     });
   }
   return out;

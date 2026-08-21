@@ -28,8 +28,10 @@ import {
 } from "@/lib/stage-gate-approval";
 import { useHierarchyEnvelopes } from "@/hooks/use-hierarchy-envelopes";
 import { HierarchyEnvelopeField } from "@/components/hierarchy-envelope-field";
+import { HierarchyEnvelopeBoard } from "@/components/hierarchy-envelope-board";
 import {
   childApprovedByLayer,
+  childApprovedByProgram,
   lookupHierarchyEnvelope,
   overlayParentEnvelopeRag,
   parentEnvelopeStatus,
@@ -357,7 +359,7 @@ function StrategicAlignmentPage() {
       Record<string, unknown> & { portfolio?: string | null; program?: string | null }
     >;
     const alignmentApproved = childApprovedByLayer(financeProjects as never, "alignment");
-    const programApproved = childApprovedByLayer(financeProjects as never, "program");
+    const programApproved = childApprovedByProgram(financeProjects as never);
 
     const alignmentMap = new Map<string, Map<string, ProjectNode[]>>();
     for (const p of financeProjects) {
@@ -415,7 +417,7 @@ function StrategicAlignmentPage() {
           const projectNodes = programMap.get(programName)!;
           const metrics = rollMetrics(projectNodes);
           const envStatus = parentEnvelopeStatus(
-            lookupHierarchyEnvelope(envelopes.index, "program", programName),
+            lookupHierarchyEnvelope(envelopes.index, "program", programName, name),
             metrics.budget,
           );
           return {
@@ -431,6 +433,7 @@ function StrategicAlignmentPage() {
       const saEnv = lookupHierarchyEnvelope(envelopes.index, "alignment", name);
       const saVsProjects = parentEnvelopeStatus(saEnv, alignmentMetrics.budget);
       const pots = programPotsAllocated(
+        name,
         programs.map((p) => p.name),
         envelopes.index,
       );
@@ -509,7 +512,7 @@ function StrategicAlignmentPage() {
       <PageHeading
         icon="🧭"
         title="Strategic Alignment"
-        subtitle="Strategic Alignment → program → project → stream. Health Engine RAG, money, and open RAID on every node."
+        subtitle="Strategic Alignment → program → project → stream. Set the SA envelope first, then allocate to programs inside it. Health Engine RAG, money, and open RAID on every node."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" size="sm" onClick={expandAll}>
@@ -520,6 +523,14 @@ function StrategicAlignmentPage() {
             </Button>
           </div>
         }
+      />
+
+      <HierarchyEnvelopeBoard
+        projects={projects as never}
+        rows={envelopes.rows}
+        index={envelopes.index}
+        canEdit={canEdit}
+        onSave={envelopes.saveEnvelope}
       />
 
       <div className="mb-3">
@@ -585,6 +596,7 @@ function StrategicAlignmentPage() {
                       onSave={(value) => envelopes.saveEnvelope("alignment", sa.name, value)}
                       peerLabel="Program pots"
                       peerAllocated={programPotsAllocated(
+                        sa.name,
                         sa.programs.map((p) => p.name),
                         envelopes.index,
                       )}
@@ -623,11 +635,12 @@ function StrategicAlignmentPage() {
                                     envelopes.index,
                                     "program",
                                     prog.name,
+                                    sa.name,
                                   )}
                                   childApproved={prog.metrics.budget}
                                   canEdit={canEdit}
                                   onSave={(value) =>
-                                    envelopes.saveEnvelope("program", prog.name, value)
+                                    envelopes.saveEnvelope("program", prog.name, value, sa.name)
                                   }
                                 />
                                 {progOpen && prog.projects.length ? (

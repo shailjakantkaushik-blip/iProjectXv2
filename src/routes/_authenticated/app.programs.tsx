@@ -32,8 +32,10 @@ import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
 import { useHierarchyEnvelopes } from "@/hooks/use-hierarchy-envelopes";
 import { HierarchyEnvelopeField } from "@/components/hierarchy-envelope-field";
+import { HierarchyEnvelopeBoard } from "@/components/hierarchy-envelope-board";
 import {
   lookupHierarchyEnvelope,
+  normalizeHierarchyName,
   parentEnvelopeStatus,
 } from "@/lib/hierarchy-envelope";
 
@@ -105,9 +107,14 @@ function ProgramsPage() {
   const programs = useMemo(() => {
     const m = new Map<string, any>();
     projects.forEach((p: any) => {
-      const k = p.program || "Unassigned";
+      const alignment = normalizeHierarchyName(p.portfolio);
+      const name = normalizeHierarchyName(p.program);
+      const k = `${alignment}|||${name}`;
       const cur = m.get(k) || {
-        name: k,
+        key: k,
+        alignment,
+        name,
+        label: `${alignment} · ${name}`,
         count: 0,
         owner: "NA",
         sponsor: p.sponsor || "—",
@@ -162,20 +169,26 @@ function ProgramsPage() {
         remaining: Math.max(0, p.approved - p.actual),
         variance: p.approved - p.fac,
         utilisation: p.approved ? p.actual / p.approved : 0,
-        envelope: lookupHierarchyEnvelope(envelopes.index, "program", p.name),
+        envelope: lookupHierarchyEnvelope(envelopes.index, "program", p.name, p.alignment),
       }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => a.alignment.localeCompare(b.alignment) || a.name.localeCompare(b.name));
   }, [projects, organization?.fy_start_month, envelopes.index]);
 
-  const currentProgram = programs.find((p) => p.name === selectedProgram) || programs[0];
+  const currentProgram = programs.find((p) => p.key === selectedProgram) || programs[0];
   const programProjects = useMemo(
-    () => projects.filter((p: any) => (p.program || "Unassigned") === currentProgram?.name),
+    () =>
+      projects.filter(
+        (p: any) =>
+          normalizeHierarchyName(p.program) === currentProgram?.name &&
+          normalizeHierarchyName(p.portfolio) === currentProgram?.alignment,
+      ),
     [projects, currentProgram],
   );
 
   const programColumns: ColumnarColumn<any>[] = useMemo(
     () => [
       { key: "name", label: "Program" },
+      { key: "alignment", label: "Strategic Alignment" },
       { key: "owner", label: "Owner" },
       { key: "sponsor", label: "Sponsor" },
       { key: "status", label: "Status" },
@@ -316,7 +329,15 @@ function ProgramsPage() {
       <PageHeading
         icon="🎯"
         title="Programs"
-        subtitle="Program-level rollups under Strategic Alignment. Optional top-down program envelope is compared to child project approved funding — FY Allocation stays a year slice of each project envelope."
+        subtitle="Set the Strategic Alignment envelope first, then allocate to programs inside it. Names come from a dropdown when they already exist."
+      />
+
+      <HierarchyEnvelopeBoard
+        projects={projects as never}
+        rows={envelopes.rows}
+        index={envelopes.index}
+        canEdit={canEdit}
+        onSave={envelopes.saveEnvelope}
       />
 
       <SectionFrame>
@@ -341,7 +362,7 @@ function ProgramsPage() {
             <BarChart data={programs} margin={{ top: 10, right: 10, left: 0, bottom: 70 }}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
               <XAxis
-                dataKey="name"
+                dataKey="label"
                 tick={{ fontSize: 10 }}
                 angle={-30}
                 textAnchor="end"
@@ -367,11 +388,11 @@ function ProgramsPage() {
             <BarChart
               data={remainingSorted}
               layout="vertical"
-              margin={{ top: 5, right: 60, left: 120, bottom: 5 }}
+              margin={{ top: 5, right: 60, left: 170, bottom: 5 }}
             >
               <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
               <XAxis type="number" tickFormatter={money} tick={{ fontSize: 10 }} />
-              <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={120} />
+              <YAxis type="category" dataKey="label" tick={{ fontSize: 10 }} width={160} />
               <Tooltip formatter={(v: number) => money(v)} />
               <Bar dataKey="remaining" radius={[0, 4, 4, 0]}>
                 {remainingSorted.map((p, i) => (
@@ -460,8 +481,9 @@ function ProgramsPage() {
             </thead>
             <tbody>
               {programTable.rows.map((p) => (
-                <tr key={p.name}>
+                <tr key={p.key}>
                   <td className="font-medium">{p.name}</td>
+                  <td>{p.alignment}</td>
                   <td>{p.owner}</td>
                   <td>{p.sponsor}</td>
                   <td>{p.status}</td>
@@ -540,13 +562,13 @@ function ProgramsPage() {
         <SectionTitle>🔍 Program Detail</SectionTitle>
         <label className="text-xs text-slate-600">Select program</label>
         <select
-          value={currentProgram?.name ?? ""}
+          value={currentProgram?.key ?? ""}
           onChange={(e) => setSelectedProgram(e.target.value)}
           className="mt-1 mb-4 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
         >
           {programs.map((p) => (
-            <option key={p.name} value={p.name}>
-              {p.name}
+            <option key={p.key} value={p.key}>
+              {p.label}
             </option>
           ))}
         </select>
@@ -580,7 +602,14 @@ function ProgramsPage() {
               envelope={currentProgram.envelope}
               childApproved={currentProgram.approved}
               canEdit={canEdit}
-              onSave={(value) => envelopes.saveEnvelope("program", currentProgram.name, value)}
+              onSave={(value) =>
+                envelopes.saveEnvelope(
+                  "program",
+                  currentProgram.name,
+                  value,
+                  currentProgram.alignment,
+                )
+              }
             />
 
             <div className="mt-4">
@@ -696,7 +725,7 @@ function ProgramsPage() {
           <BarChart data={programs} margin={{ top: 15, right: 10, left: 0, bottom: 50 }}>
             <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
             <XAxis
-              dataKey="name"
+              dataKey="label"
               tick={{ fontSize: 10 }}
               angle={-25}
               textAnchor="end"

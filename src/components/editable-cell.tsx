@@ -9,7 +9,7 @@ import { persistCurrentPhaseFromGates } from "@/lib/project-phase";
 import { fetchGateChecklistBlockReason } from "@/lib/stage-gate-checklist";
 import { useAuth } from "@/lib/auth-context";
 
-type FieldType = "text" | "number" | "date" | "select";
+type FieldType = "text" | "number" | "date" | "select" | "select-or-new";
 
 type Props = {
   table: string;
@@ -35,6 +35,7 @@ export function EditableCell({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<string>(value == null ? "" : String(value));
   const [saving, setSaving] = useState(false);
+  const [creating, setCreating] = useState(false);
   const inputRef = useRef<HTMLInputElement | HTMLSelectElement | null>(null);
 
   useEffect(() => setDraft(value == null ? "" : String(value)), [value]);
@@ -52,6 +53,7 @@ export function EditableCell({
       if (type === "date") payload = draft === "" ? null : draft;
       if (type === "text" && draft === "") payload = null;
       if (type === "select" && draft === "") payload = null;
+      if (type === "select-or-new" && draft === "") payload = null;
 
       // Governance: block Approve when required checklist items are open,
       // then copy status onto every row of the same project + gate name.
@@ -176,7 +178,12 @@ export function EditableCell({
     return (
       <button
         type="button"
-        onClick={() => setEditing(true)}
+        onClick={() => {
+          const current = value == null ? "" : String(value);
+          const known = (options ?? []).some((o) => o.value === current);
+          setCreating(type === "select-or-new" && !!current && !known);
+          setEditing(true);
+        }}
         className={`group inline-flex items-center gap-1 rounded px-1 -mx-1 text-left hover:bg-accent/60 ${className ?? ""}`}
         title="Click to edit"
       >
@@ -186,19 +193,52 @@ export function EditableCell({
     );
   }
 
+  const NEW = "__new__";
+  const selectOrNewValue = type === "select-or-new" && creating ? NEW : draft;
+
   return (
     <span className="inline-flex items-center gap-1">
-      {type === "select" ? (
-        <select
-          ref={inputRef as any}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          className="h-7 rounded border bg-background px-1 text-xs"
-          disabled={saving}
-        >
-          <option value="">—</option>
-          {(options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
+      {type === "select" || type === "select-or-new" ? (
+        <>
+          <select
+            ref={inputRef as any}
+            value={type === "select-or-new" ? selectOrNewValue : draft}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (type === "select-or-new" && v === NEW) {
+                setCreating(true);
+                setDraft("");
+                return;
+              }
+              setCreating(false);
+              setDraft(v);
+            }}
+            className="h-7 rounded border bg-background px-1 text-xs"
+            disabled={saving}
+          >
+            <option value="">—</option>
+            {(options ?? []).map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+            {type === "select-or-new" ? <option value={NEW}>+ New…</option> : null}
+          </select>
+          {type === "select-or-new" && creating ? (
+            <input
+              type="text"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void commit();
+                if (e.key === "Escape") setEditing(false);
+              }}
+              className="h-7 w-full min-w-[80px] rounded border bg-background px-1 text-xs"
+              placeholder="New name"
+              disabled={saving}
+            />
+          ) : null}
+        </>
       ) : (
         <input
           ref={inputRef as any}

@@ -1092,6 +1092,7 @@ export type Database = {
           name: string
           notes: string | null
           org_id: string
+          parent_name: string
           updated_at: string
           updated_by: string | null
         }
@@ -1103,6 +1104,7 @@ export type Database = {
           name: string
           notes?: string | null
           org_id: string
+          parent_name?: string
           updated_at?: string
           updated_by?: string | null
         }
@@ -1114,6 +1116,7 @@ export type Database = {
           name?: string
           notes?: string | null
           org_id?: string
+          parent_name?: string
           updated_at?: string
           updated_by?: string | null
         }

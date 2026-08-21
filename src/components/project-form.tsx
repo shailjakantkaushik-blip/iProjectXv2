@@ -13,7 +13,12 @@ import {
   fetchDeliveryMethods,
 } from "@/lib/delivery-methods";
 import { FUNCTIONAL_AREAS } from "@/lib/ops-enhancements";
+import { ExistingOrNewName } from "@/components/existing-or-new-name";
 import { PORTFOLIO_CATEGORIES } from "@/lib/project-health";
+import {
+  collectAlignmentNames,
+  collectProgramNames,
+} from "@/lib/hierarchy-envelope";
 
 export interface ProjectFormValues {
   project_code?: string | null;
@@ -123,7 +128,21 @@ export function ProjectForm({
     for (const k of BRIEF_KEYS) briefDefaults[k] = String((defaultValues.brief as any)[k] ?? "");
   }
 
-  const { register, handleSubmit } = useForm<ProjectFormValues>({
+  const { data: hierarchyRows = [] } = useQuery({
+    queryKey: ["projects", organization?.id, "hierarchy-names"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("projects")
+        .select("portfolio,program")
+        .eq("org_id", organization!.id);
+      if (error) throw error;
+      return (data ?? []) as { portfolio?: string | null; program?: string | null }[];
+    },
+    enabled: !!organization?.id,
+    staleTime: 15_000,
+  });
+
+  const { register, handleSubmit, watch, setValue } = useForm<ProjectFormValues>({
     defaultValues: {
       priority: "Medium", status: "Not Started", rag: "Green", delivery_method: "Waterfall",
       ...defaultValues,
@@ -137,6 +156,11 @@ export function ProjectForm({
       actual_end_date: toDateInput(defaultValues?.actual_end_date),
     },
   });
+
+  const portfolio = watch("portfolio") || "";
+  const program = watch("program") || "";
+  const saOptions = collectAlignmentNames(hierarchyRows, [], [...PORTFOLIO_CATEGORIES]);
+  const programOptions = collectProgramNames(hierarchyRows, [], portfolio);
 
   const submit = handleSubmit(async (v) => {
     const clean: any = { ...v };
@@ -179,8 +203,27 @@ export function ProjectForm({
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Project code *"><Input {...register("project_code", { required: true })} placeholder="PRJ-001" /></Field>
               <Field label="Name *"><Input {...register("name", { required: true })} /></Field>
-              <Field label="Program"><Input {...register("program")} placeholder="Growth / Transformation…" /></Field>
-              <Sel label="Strategic Alignment" reg={register("portfolio")} opts={[...PORTFOLIO_CATEGORIES]} />
+              <ExistingOrNewName
+                label="Strategic Alignment"
+                value={portfolio}
+                options={saOptions}
+                onChange={(v) => {
+                  setValue("portfolio", v);
+                  setValue("program", "");
+                }}
+                placeholder="Select alignment"
+                newOptionLabel="+ New strategic alignment"
+                disabled={!!readOnly}
+              />
+              <ExistingOrNewName
+                label="Program"
+                value={program}
+                options={programOptions}
+                onChange={(v) => setValue("program", v)}
+                placeholder="Select program in this alignment"
+                newOptionLabel="+ New program"
+                disabled={!!readOnly}
+              />
               <Sel label="Functional Area" reg={register("functional_area")} opts={[...FUNCTIONAL_AREAS]} />
               <Field label="Payback (months)"><Input type="number" min={0} step={1} {...register("payback_months")} /></Field>
               <Field label="Business Unit">
