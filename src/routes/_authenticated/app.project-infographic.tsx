@@ -109,6 +109,8 @@ import {
 } from "@/lib/explain-metric";
 import { evaluateProjectHealth } from "@/lib/project-health-engine";
 import { displayRag, effectiveRag, isRagOverridden } from "@/lib/ops-enhancements";
+import { useHierarchyEnvelopes } from "@/hooks/use-hierarchy-envelopes";
+import { parentEnvelopeContext, parentWatchesForProject } from "@/lib/hierarchy-envelope";
 
 export const Route = createFileRoute("/_authenticated/app/project-infographic")({
   validateSearch: (s: Record<string, unknown>) => ({ pid: (s.pid as string) || "" }),
@@ -379,6 +381,7 @@ function Gauge({
 
 function InfographicPage() {
   const { organization } = useAuth();
+  const envelopes = useHierarchyEnvelopes(organization?.id);
   const search = Route.useSearch();
   const [pid, setPid] = useState<string>(search.pid || "");
   const [showPvA, setShowPvA] = useState<boolean>(false);
@@ -1210,6 +1213,7 @@ function InfographicPage() {
 
   const healthEngine = useMemo(() => {
     if (!project) return null;
+    const parentCtx = parentEnvelopeContext(projects as never, envelopes.index);
     return evaluateProjectHealth({
       project,
       gates: gates as any[],
@@ -1222,8 +1226,14 @@ function InfographicPage() {
       benefitLines: benefits as any[],
       fyAllocations: fyAllocations as any[],
       fyStartMonth: organization?.fy_start_month || 4,
+      parentEnvelopes: parentWatchesForProject(
+        project,
+        parentCtx.envelopes,
+        parentCtx.alignmentApproved,
+        parentCtx.programApproved,
+      ),
     });
-  }, [project, gates, risks, deps, monthly, projectAllocations, workItems, changeRequests, benefits, fyAllocations, organization?.fy_start_month]);
+  }, [project, gates, risks, deps, monthly, projectAllocations, workItems, changeRequests, benefits, fyAllocations, organization?.fy_start_month, projects, envelopes.index]);
 
   if (!projects.length) {
     return (

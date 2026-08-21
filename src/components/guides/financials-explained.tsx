@@ -85,6 +85,14 @@ export function FinancialsExplained({ showHouse = true }: { showHouse?: boolean 
           of the lifetime envelope. If Estimation Plan, Actuals, or Forecast for that year goes
           above the allocation, the Financial health dimension flags Amber or Red.
         </p>
+        <p className="mt-3 text-sm leading-relaxed">
+          Strategic Alignment and Program can also have an optional top-down envelope. That parent
+          pot is a constraint on the <strong>sum of child project approved funding</strong>. It
+          does not replace the project envelope, and FY Allocation stays a year slice of each
+          project envelope. When child projects (or program pots) exceed the parent, health shows
+          an early warning and the parent RAG on Strategic Alignment / Programs — a well-behaved
+          project&apos;s own financial score is not tanked.
+        </p>
       </SectionFrame>
 
       <SectionFrame>
@@ -94,7 +102,12 @@ export function FinancialsExplained({ showHouse = true }: { showHouse?: boolean 
             <Link to="/app/programs" className="font-medium text-primary hover:underline">
               Programs
             </Link>{" "}
-            — project register and stream budget in context.
+            and{" "}
+            <Link to="/app/strategic-alignment" className="font-medium text-primary hover:underline">
+              Strategic Alignment
+            </Link>{" "}
+            — optional parent envelope vs child project approved funding. Data Editor sheet
+            &quot;SA / Program Envelopes&quot; is the bulk path.
           </li>
           <li>
             <Link to="/app/project-forecast" className="font-medium text-primary hover:underline">

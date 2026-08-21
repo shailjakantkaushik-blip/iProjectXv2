@@ -21,6 +21,7 @@ export const TABLE_QUERY_KEYS: Record<string, string[]> = {
   financials_monthly: ["financials_monthly", "monthly"],
   opex_other_costs: ["opex_other_costs", "financials_monthly", "projects"],
   fy_allocations: ["fy_allocations"],
+  hierarchy_envelopes: ["hierarchy_envelopes"],
   benefits: ["benefits"],
   resources: ["resources"],
   resource_allocations: ["resource_allocations"],
@@ -104,9 +105,18 @@ export const LIVE_SYNC_ROUTE_TABLES: Record<string, readonly string[]> = {
     "actions",
     "benefits",
     "fy_allocations",
+    "hierarchy_envelopes",
     "risks",
   ],
-  "/app/strategic-alignment": [...LIVE_SYNC_CORE_TABLES, "stage_gates", "risks", "actions", "issues", "decisions"],
+  "/app/strategic-alignment": [
+    ...LIVE_SYNC_CORE_TABLES,
+    "stage_gates",
+    "risks",
+    "actions",
+    "issues",
+    "decisions",
+    "hierarchy_envelopes",
+  ],
   "/app/decisions": [...LIVE_SYNC_CORE_TABLES, "decisions", "stage_gates"],
   "/app/my-work": [
     ...LIVE_SYNC_CORE_TABLES,
@@ -142,7 +152,7 @@ export const LIVE_SYNC_ROUTE_TABLES: Record<string, readonly string[]> = {
   ],
   "/app/timeline": [...LIVE_SYNC_CORE_TABLES, "stage_gates"],
   "/app/projects": [...LIVE_SYNC_CORE_TABLES, "stakeholders", "stage_gates"],
-  "/app/programs": [...LIVE_SYNC_CORE_TABLES, "stakeholders", "stage_gates"],
+  "/app/programs": [...LIVE_SYNC_CORE_TABLES, "stakeholders", "stage_gates", "hierarchy_envelopes"],
   "/app/financials": [
     ...LIVE_SYNC_CORE_TABLES,
     "financials_monthly",
@@ -197,8 +207,9 @@ export const LIVE_SYNC_ROUTE_TABLES: Record<string, readonly string[]> = {
     "financials_monthly",
     "documents",
     "resource_allocations",
+    "hierarchy_envelopes",
   ],
-  "/app/data-editor": [...LIVE_SYNC_CORE_TABLES, "export_jobs"],
+  "/app/data-editor": [...LIVE_SYNC_CORE_TABLES, "export_jobs", "hierarchy_envelopes"],
   "/app/audit-log": ["audit_events", "export_jobs"],
 };
 

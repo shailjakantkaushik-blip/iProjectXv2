@@ -28,6 +28,8 @@ import {
 } from "@/lib/project-health-engine";
 import { explainRag, type MetricExplanation } from "@/lib/explain-metric";
 import { ExplainThis } from "@/components/explain-this";
+import { useHierarchyEnvelopes } from "@/hooks/use-hierarchy-envelopes";
+import { parentEnvelopeContext, parentWatchesForProject } from "@/lib/hierarchy-envelope";
 
 const money = (n: number) =>
   "$" + new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(n || 0);
@@ -186,6 +188,23 @@ export function ProjectHealthEnginePanel({
     enabled: !!orgId && !!projectId,
     staleTime: 30_000,
   });
+  const envelopes = useHierarchyEnvelopes(orgId);
+  const { data: siblingProjects = [] } = useQuery({
+    queryKey: ["projects", orgId, "envelope-siblings"],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("projects")
+          .select("id,portfolio,program,budget,capex_approved,opex_approved")
+          .eq("org_id", orgId!)
+      ).data ?? [],
+    enabled: !!orgId,
+    staleTime: 15_000,
+  });
+  const parentCtx = useMemo(
+    () => parentEnvelopeContext(siblingProjects as never, envelopes.index),
+    [siblingProjects, envelopes.index],
+  );
   const workItems = workItemsProp ?? workItemsFetched;
   const changeRequests = changeRequestsProp ?? changeRequestsFetched;
 
@@ -209,6 +228,12 @@ export function ProjectHealthEnginePanel({
       fyAllocations: fyAllocFetched as any[],
       fyStartMonth: organization?.fy_start_month || 4,
       previousScore: prevScore,
+      parentEnvelopes: parentWatchesForProject(
+        project,
+        parentCtx.envelopes,
+        parentCtx.alignmentApproved,
+        parentCtx.programApproved,
+      ),
     });
   }, [
     project,
@@ -223,6 +248,7 @@ export function ProjectHealthEnginePanel({
     fyAllocFetched,
     organization?.fy_start_month,
     prevScore,
+    parentCtx,
   ]);
 
   useEffect(() => {

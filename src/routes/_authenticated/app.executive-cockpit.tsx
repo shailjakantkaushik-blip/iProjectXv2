@@ -47,6 +47,7 @@ import {
   projectPortfolio,
 } from "@/lib/project-health";
 import { computeEngineHealth, useHealthEngineLookups } from "@/hooks/use-health-engine-lookups";
+import { parentEnvelopeContext } from "@/lib/hierarchy-envelope";
 import { getPortfolioKpis, listPortfolioProjects } from "@/lib/portfolio.functions";
 import { MAX_PAGE_SIZE } from "@/lib/portfolio-paging";
 import { FINANCIALS_MONTHLY_SELECT } from "@/lib/query-selects";
@@ -342,6 +343,10 @@ function ExecutiveCockpit() {
   });
   const healthLookups = useHealthEngineLookups(orgId);
   const benefits = healthLookups.benefits;
+  const parentCtx = useMemo(
+    () => parentEnvelopeContext(projects as never, healthLookups.envelopeIndex),
+    [projects, healthLookups.envelopeIndex],
+  );
 
   const profileById = useMemo(() => new Map((profiles as any[]).map((p) => [p.id, p])), [profiles]);
 
@@ -587,6 +592,7 @@ function ExecutiveCockpit() {
           healthLookups,
           monthlyByProject.get(p.id) || [],
           fyStartMonth,
+          parentCtx,
         );
         const pm = p.pm_user_id ? profileById.get(p.pm_user_id) : null;
         const deliveryLead =
@@ -595,7 +601,7 @@ function ExecutiveCockpit() {
         return { ...p, ...health, delivery_lead: deliveryLead, shown_rag: shown };
       })
       .sort(compareProjectsByCodeName);
-  }, [projects, gatesByProject, profileById, monthlyByProject, healthLookups, fyStartMonth]);
+  }, [projects, gatesByProject, profileById, monthlyByProject, healthLookups, fyStartMonth, parentCtx]);
 
   const matrixRag = useMemo(() => countEngineRag(healthRows), [healthRows]);
   const mixRagByAlign = useMemo(() => {

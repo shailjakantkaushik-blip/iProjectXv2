@@ -525,6 +525,7 @@ export async function downloadTemplate() {
     ["Dates", "Use YYYY-MM-DD. Prefer Planned/Actual dates; Schedule Start/End auto-sync in the app."],
     ["FY labels", "Use FY26, FY27 style labels matching your org financial year (default April start → FY ends in labelled year)."],
     ["FY Allocations", "Set budget and forecast $ per FY. CapEx/OpEx/Benefits are optional detail of the budget split. Optional stream_code."],
+    ["SA / Program Envelopes", "Optional top-down pot. layer=alignment (projects.portfolio) or layer=program (projects.program). Leave envelope blank for rollup-only. Project budget stays the project envelope; FY Allocation stays a year slice of that project envelope."],
     ["Benefits", "Add benefit lines; keep Projects.benefits_target / benefits_realised equal to the sum of lines."],
     ["ROI %", "Target ROI on Projects. Leave blank to let the app compute from benefits_target and budget."],
     ["Capacity", "resource_allocations.allocated_hours = plan hours from Estimation Planning (stream + stage gate). allocation_percent is derived % of person-month."],
@@ -600,6 +601,11 @@ function sampleRowForTemplate(t: TableDef, headers: string[]): Dict {
     row.capex = 1200000;
     row.opex = 300000;
     row.benefits = 2000000;
+  } else if (t.key === "hierarchy_envelopes") {
+    row.layer = "program";
+    row.name = "Digital Transformation";
+    row.envelope = 8000000;
+    row.notes = "Optional parent pot. Child project approved funding should stay inside this amount.";
   } else if (t.key === "benefits") {
     row.project_code = "PRJ-001";
     row.title = "Revenue uplift";
