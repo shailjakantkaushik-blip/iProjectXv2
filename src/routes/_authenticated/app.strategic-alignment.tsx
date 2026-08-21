@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { HEALTH_ENGINE_RISKS_SELECT, PROJECT_PORTFOLIO_SELECT } from "@/lib/query-selects";
 import { PROJECT_OPS_EXTRAS } from "@/lib/project-selects";
 import { sortProjectsByCodeName } from "@/lib/project-sort";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth, canEditProjects } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, RagChip } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import { PageLoading } from "@/components/page-loading";
@@ -26,6 +26,17 @@ import {
   projectMatchesGateStatusFilter,
   type GateStatusFilter,
 } from "@/lib/stage-gate-approval";
+import { useHierarchyEnvelopes } from "@/hooks/use-hierarchy-envelopes";
+import { HierarchyEnvelopeField } from "@/components/hierarchy-envelope-field";
+import {
+  childApprovedByLayer,
+  lookupHierarchyEnvelope,
+  overlayParentEnvelopeRag,
+  parentEnvelopeStatus,
+  parentWatchesForProject,
+  programPotsAllocated,
+  worseRag,
+} from "@/lib/hierarchy-envelope";
 
 export const Route = createFileRoute("/_authenticated/app/strategic-alignment")({
   head: () => ({
@@ -152,8 +163,10 @@ function rollMetrics(nodes: { metrics: NodeMetrics }[]): NodeMetrics {
 }
 
 function StrategicAlignmentPage() {
-  const { organization, loading: authLoading } = useAuth();
+  const { organization, loading: authLoading, roles } = useAuth();
   const orgId = organization?.id;
+  const canEdit = canEditProjects(roles);
+  const envelopes = useHierarchyEnvelopes(orgId);
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   const [openedOnce, setOpenedOnce] = useState(false);
   const [gateStatusByName, setGateStatusByName] = useState<GateStatusFilter>({});
@@ -340,14 +353,26 @@ function StrategicAlignmentPage() {
       list.sort((a, b) => a.name.localeCompare(b.name));
     }
 
+    const financeProjects = projects as Array<
+      Record<string, unknown> & { portfolio?: string | null; program?: string | null }
+    >;
+    const alignmentApproved = childApprovedByLayer(financeProjects as never, "alignment");
+    const programApproved = childApprovedByLayer(financeProjects as never, "program");
+
     const alignmentMap = new Map<string, Map<string, ProjectNode[]>>();
-    for (const p of projects as Array<Record<string, unknown>>) {
+    for (const p of financeProjects) {
       const id = String(p.id);
       if (!projectMatchesGateStatusFilter(gates as never, id, gateStatusByName, p as never)) continue;
       const alignment = String(p.portfolio || "").trim() || "Unassigned";
       const program = String(p.program || "").trim() || "Unassigned";
       const health = computeProjectHealth(p as never, (gatesByProject.get(id) ?? []) as never, {
         risks: (risksByProject.get(id) ?? []) as never,
+        parentEnvelopes: parentWatchesForProject(
+          p,
+          envelopes.index,
+          alignmentApproved,
+          programApproved,
+        ),
       });
       const rag = effectiveRag(p as never, health.overall_rag) || health.overall_rag;
       const childStreams = streamsByProject.get(id) ?? [];
@@ -388,20 +413,50 @@ function StrategicAlignmentPage() {
         .sort((a, b) => a.localeCompare(b))
         .map((programName) => {
           const projectNodes = programMap.get(programName)!;
+          const metrics = rollMetrics(projectNodes);
+          const envStatus = parentEnvelopeStatus(
+            lookupHierarchyEnvelope(envelopes.index, "program", programName),
+            metrics.budget,
+          );
           return {
             name: programName,
             projects: projectNodes,
-            metrics: rollMetrics(projectNodes),
+            metrics: {
+              ...metrics,
+              rag: overlayParentEnvelopeRag(String(metrics.rag), envStatus),
+            },
           };
         });
+      const alignmentMetrics = rollMetrics(programs);
+      const saEnv = lookupHierarchyEnvelope(envelopes.index, "alignment", name);
+      const saVsProjects = parentEnvelopeStatus(saEnv, alignmentMetrics.budget);
+      const pots = programPotsAllocated(
+        programs.map((p) => p.name),
+        envelopes.index,
+      );
+      const saVsPots = pots > 0 ? parentEnvelopeStatus(saEnv, pots) : null;
+      let saRag = overlayParentEnvelopeRag(String(alignmentMetrics.rag), saVsProjects);
+      if (saVsPots) saRag = worseRag(saRag, overlayParentEnvelopeRag(saRag, saVsPots));
       return {
         name,
         programs,
-        metrics: rollMetrics(programs),
+        metrics: {
+          ...alignmentMetrics,
+          rag: saRag,
+        },
       };
     });
     return alignments;
-  }, [projects, streams, raidByProject, gatesByProject, risksByProject, gates, gateStatusByName]);
+  }, [
+    projects,
+    streams,
+    raidByProject,
+    gatesByProject,
+    risksByProject,
+    gates,
+    gateStatusByName,
+    envelopes.index,
+  ]);
 
   const defaultOpen = useMemo(() => {
     const keys = new Set<string>();
@@ -521,6 +576,19 @@ function StrategicAlignmentPage() {
                       childLabel={`${sa.programs.length} program${sa.programs.length === 1 ? "" : "s"}`}
                       emphasize
                     />
+                    <HierarchyEnvelopeField
+                      layer="alignment"
+                      name={sa.name}
+                      envelope={lookupHierarchyEnvelope(envelopes.index, "alignment", sa.name)}
+                      childApproved={sa.metrics.budget}
+                      canEdit={canEdit}
+                      onSave={(value) => envelopes.saveEnvelope("alignment", sa.name, value)}
+                      peerLabel="Program pots"
+                      peerAllocated={programPotsAllocated(
+                        sa.programs.map((p) => p.name),
+                        envelopes.index,
+                      )}
+                    />
                   </div>
                   {saOpen && sa.programs.length ? (
                     <div className="border-t px-3 pb-4 pt-2 sm:px-5">
@@ -547,6 +615,20 @@ function StrategicAlignmentPage() {
                                   onToggle={() => toggle(progKey)}
                                   childLabel={`${prog.projects.length} project${prog.projects.length === 1 ? "" : "s"}`}
                                   to="/app/programs"
+                                />
+                                <HierarchyEnvelopeField
+                                  layer="program"
+                                  name={prog.name}
+                                  envelope={lookupHierarchyEnvelope(
+                                    envelopes.index,
+                                    "program",
+                                    prog.name,
+                                  )}
+                                  childApproved={prog.metrics.budget}
+                                  canEdit={canEdit}
+                                  onSave={(value) =>
+                                    envelopes.saveEnvelope("program", prog.name, value)
+                                  }
                                 />
                                 {progOpen && prog.projects.length ? (
                                   <div className="relative mt-3 ml-3 border-l border-border pl-4">
@@ -637,6 +719,7 @@ function TreeLegend() {
       </span>
       <span>Score /100</span>
       <span>B budget · F forecast · A actual</span>
+      <span>Optional SA / Program envelope vs child project approved funding</span>
       <span className="inline-flex items-center gap-1">
         <MarkerPill kind="R" n={0} />
         <MarkerPill kind="A" n={0} />

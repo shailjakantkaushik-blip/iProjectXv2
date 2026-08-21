@@ -46,6 +46,7 @@ import {
   groupRowsByProjectId,
   useHealthEngineLookups,
 } from "@/hooks/use-health-engine-lookups";
+import { parentEnvelopeContext } from "@/lib/hierarchy-envelope";
 import {
   projectApprovedFunding,
   projectForecast,
@@ -262,6 +263,10 @@ function ExecutiveDashboard() {
   const milestones = milestonesQ.data ?? [];
   const otherCosts = otherCostsQ.data ?? [];
   const healthLookups = useHealthEngineLookups(organization?.id);
+  const parentCtx = useMemo(
+    () => parentEnvelopeContext(projects as never, healthLookups.envelopeIndex),
+    [projects, healthLookups.envelopeIndex],
+  );
   const monthlyByProject = useMemo(
     () => groupRowsByProjectId(monthly as { project_id?: string | null }[]),
     [monthly],
@@ -331,11 +336,12 @@ function ExecutiveDashboard() {
         healthLookups,
         (monthlyByProject.get(id) || []) as never,
         fyStartMonth,
+        parentCtx,
       );
       m.set(id, health.overall_rag);
     }
     return m;
-  }, [filtered, gatesByProject, monthlyByProject, healthLookups, fyStartMonth]);
+  }, [filtered, gatesByProject, monthlyByProject, healthLookups, fyStartMonth, parentCtx]);
 
   const engineRagOf = (p: { id?: string }) => engineRagById.get(String(p.id || "")) || null;
 

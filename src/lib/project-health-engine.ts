@@ -21,6 +21,10 @@ import {
   fyYearWatches,
   worstFyOverAllocation,
 } from "@/lib/fy-allocation-scope";
+import {
+  parentEnvelopeStatus,
+  type ParentEnvelopeWatch,
+} from "@/lib/hierarchy-envelope";
 import { projectScheduleEnd, projectScheduleStart } from "@/lib/project-dates";
 import {
   computeProjectEvm,
@@ -141,6 +145,11 @@ export type HealthEngineInput = {
   fyStartMonth?: number | null;
   /** Benefits register lines — canonical target/realised (same as Cockpit). */
   benefitLines?: BenefitLineLike[];
+  /**
+   * Optional Strategic Alignment / Program pots. Warnings only — does not
+   * change this project's financial dimension score.
+   */
+  parentEnvelopes?: ParentEnvelopeWatch[];
   /** Prior health score (e.g. last visit) for “dropped 82 → 72” copy. */
   previousScore?: number | null;
   nowMs?: number;
@@ -508,6 +517,7 @@ function buildEarlyWarnings(opts: {
   utilPct: number;
   fyWatches?: ReturnType<typeof fyYearWatches>;
   envelopeOver?: ReturnType<typeof fyEnvelopeOverAllocation>;
+  parentEnvelopes?: ParentEnvelopeWatch[];
 }): EarlyWarning[] {
   const out: EarlyWarning[] = [];
   const ftePct = opts.ftePlan > 0 ? opts.fteActual / opts.ftePlan : 0;
@@ -563,6 +573,22 @@ function buildEarlyWarnings(opts: {
       potentialCostImpact: Math.round(opts.envelopeOver.overBy),
       recommendedAction: "Rebalance year slices so FY allocation stays a subset of the overall envelope.",
       severity: opts.envelopeOver.overBy > opts.envelopeOver.overall * 0.1 ? "Red" : "Amber",
+    });
+  }
+
+  for (const watch of opts.parentEnvelopes ?? []) {
+    const st = parentEnvelopeStatus(watch.envelope, watch.childApproved);
+    if (!st.constrained || st.overBy <= 0) continue;
+    const layerLabel = watch.layer === "alignment" ? "Strategic Alignment" : "Program";
+    out.push({
+      code: watch.layer === "alignment" ? "sa_over_envelope" : "program_over_envelope",
+      title: `${layerLabel} envelope early warning`,
+      message: `${layerLabel} “${watch.name}” child project approved funding sums to $${Math.round(st.allocated).toLocaleString()} against $${Math.round(st.envelope).toLocaleString()} envelope.`,
+      potentialDelayWeeks: null,
+      potentialCostImpact: Math.round(st.overBy),
+      recommendedAction:
+        "Rebalance project envelopes or raise the parent pot. This project's own financial score is unchanged.",
+      severity: st.rag === "Red" ? "Red" : "Amber",
     });
   }
 
@@ -863,6 +889,7 @@ export function evaluateProjectHealth(input: HealthEngineInput): HealthEngineRes
     utilPct,
     fyWatches,
     envelopeOver,
+    parentEnvelopes: input.parentEnvelopes,
   });
 
   return {

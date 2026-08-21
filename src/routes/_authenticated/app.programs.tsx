@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/query-selects";
 import { PROJECT_OPS_EXTRAS } from "@/lib/project-selects";
 import { sortProjectsByCodeName } from "@/lib/project-sort";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth, canEditProjects } from "@/lib/auth-context";
 import { SectionFrame, SectionTitle, PageHeading, KpiCard, RagChip } from "@/components/streamlit";
 import { explainRag } from "@/lib/explain-metric";
 import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
@@ -30,6 +30,12 @@ import { projectScheduleEnd, projectScheduleStart, fyOf } from "@/lib/project-da
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
+import { useHierarchyEnvelopes } from "@/hooks/use-hierarchy-envelopes";
+import { HierarchyEnvelopeField } from "@/components/hierarchy-envelope-field";
+import {
+  lookupHierarchyEnvelope,
+  parentEnvelopeStatus,
+} from "@/lib/hierarchy-envelope";
 
 export const Route = createFileRoute("/_authenticated/app/programs")({
   component: ProgramsPage,
@@ -65,8 +71,10 @@ function fmtDate(d: any) {
   }
 }
 function ProgramsPage() {
-  const { organization, loading: authLoading } = useAuth();
+  const { organization, loading: authLoading, roles } = useAuth();
   const orgId = organization?.id;
+  const canEdit = canEditProjects(roles);
+  const envelopes = useHierarchyEnvelopes(orgId);
   const {
     data: projects = [],
     isLoading,
@@ -154,9 +162,10 @@ function ProgramsPage() {
         remaining: Math.max(0, p.approved - p.actual),
         variance: p.approved - p.fac,
         utilisation: p.approved ? p.actual / p.approved : 0,
+        envelope: lookupHierarchyEnvelope(envelopes.index, "program", p.name),
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [projects, organization?.fy_start_month]);
+  }, [projects, organization?.fy_start_month, envelopes.index]);
 
   const currentProgram = programs.find((p) => p.name === selectedProgram) || programs[0];
   const programProjects = useMemo(
@@ -172,12 +181,30 @@ function ProgramsPage() {
       { key: "status", label: "Status" },
       { key: "startFY", label: "Start FY" },
       { key: "endFY", label: "End FY" },
-      { key: "budget", label: "Budget", getValue: (p) => Math.round(p.budget) },
+      { key: "budget", label: "Rolled project budget", getValue: (p) => Math.round(p.budget) },
       { key: "forecast", label: "Forecast", getValue: (p) => Math.round(p.forecast) },
       {
         key: "approved",
         label: "Approved Funding (Projects)",
         getValue: (p) => Math.round(p.approved),
+      },
+      {
+        key: "envelope",
+        label: "Program envelope",
+        getValue: (p) => (p.envelope == null ? "" : Math.round(p.envelope)),
+      },
+      {
+        key: "envelopeRemaining",
+        label: "Remaining vs envelope",
+        getValue: (p) => {
+          const st = parentEnvelopeStatus(p.envelope, p.approved);
+          return st.constrained ? Math.round(st.remaining) : "";
+        },
+      },
+      {
+        key: "envelopeRag",
+        label: "Envelope RAG",
+        getValue: (p) => parentEnvelopeStatus(p.envelope, p.approved).rag,
       },
       {
         key: "actual",
@@ -191,12 +218,12 @@ function ProgramsPage() {
       },
       {
         key: "committedVsBudget",
-        label: "Committed vs Program Budget",
+        label: "Committed vs rolled budget",
         getValue: (p) => Math.round(p.committedVsBudget),
       },
       {
         key: "remaining",
-        label: "Remaining Budget",
+        label: "Remaining vs approved",
         getValue: (p) => Math.round(p.remaining),
       },
       {
@@ -289,7 +316,7 @@ function ProgramsPage() {
       <PageHeading
         icon="🎯"
         title="Programs"
-        subtitle="Program-level rollups under Strategic Alignment, plus the full project register (KPIs, import/export)."
+        subtitle="Program-level rollups under Strategic Alignment. Optional top-down program envelope is compared to child project approved funding — FY Allocation stays a year slice of each project envelope."
       />
 
       <SectionFrame>
@@ -416,6 +443,8 @@ function ProgramsPage() {
                         "budget",
                         "forecast",
                         "approved",
+                        "envelope",
+                        "envelopeRemaining",
                         "actual",
                         "fac",
                         "committedVsBudget",
@@ -446,6 +475,37 @@ function ProgramsPage() {
                   </td>
                   <td className="text-right tabular-nums">
                     {Math.round(p.approved).toLocaleString()}
+                  </td>
+                  <td className="text-right tabular-nums">
+                    {p.envelope == null ? "—" : Math.round(p.envelope).toLocaleString()}
+                  </td>
+                  <td
+                    className={`text-right tabular-nums ${
+                      parentEnvelopeStatus(p.envelope, p.approved).overBy > 0 ? "text-red-600" : ""
+                    }`}
+                  >
+                    {(() => {
+                      const st = parentEnvelopeStatus(p.envelope, p.approved);
+                      return st.constrained ? Math.round(st.remaining).toLocaleString() : "—";
+                    })()}
+                  </td>
+                  <td>
+                    {(() => {
+                      const st = parentEnvelopeStatus(p.envelope, p.approved);
+                      if (!st.constrained) return "—";
+                      return (
+                        <RagChip
+                          rag={st.rag === "none" ? "Green" : st.rag}
+                          explain={explainRag({
+                            rag: st.rag === "none" ? "Green" : st.rag,
+                            extraBullets: [
+                              `Program envelope ${money(st.envelope)}.`,
+                              `Child project approved funding ${money(st.allocated)}.`,
+                            ],
+                          })}
+                        />
+                      );
+                    })()}
                   </td>
                   <td className="text-right tabular-nums">
                     {Math.round(p.actual).toLocaleString()}
@@ -495,23 +555,33 @@ function ProgramsPage() {
           <>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <KpiCard
-                label="Program Budget"
+                label="Rolled project budget"
                 value={moneyM(currentProgram.budget)}
+                sub="Sum of project.budget — not the parent pot"
                 accent="#3b82f6"
+              />
+              <KpiCard
+                label="Approved funding"
+                value={moneyM(currentProgram.approved)}
+                sub="Child project envelopes"
+                accent="#1d4ed8"
               />
               <KpiCard label="Committed" value={moneyM(currentProgram.forecast)} accent="#22c55e" />
               <KpiCard
-                label="Actual Spend"
-                value={moneyM(currentProgram.actual)}
-                accent="#f59e0b"
-              />
-              <KpiCard
-                label="Remaining"
+                label="Remaining vs approved"
                 value={moneyM(currentProgram.remaining)}
                 sub={`↑ ${(currentProgram.utilisation * 100).toFixed(1)}% used`}
                 accent="#8b5cf6"
               />
             </div>
+            <HierarchyEnvelopeField
+              layer="program"
+              name={currentProgram.name}
+              envelope={currentProgram.envelope}
+              childApproved={currentProgram.approved}
+              canEdit={canEdit}
+              onSave={(value) => envelopes.saveEnvelope("program", currentProgram.name, value)}
+            />
 
             <div className="mt-4">
               <p className="text-xs text-slate-600 mb-2">

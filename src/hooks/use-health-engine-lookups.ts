@@ -14,6 +14,11 @@ import {
   type StageGateHealthLike,
 } from "@/lib/project-health";
 import type { HealthEngineInput } from "@/lib/project-health-engine";
+import {
+  indexHierarchyEnvelopes,
+  parentWatchesForProject,
+  type ParentEnvelopeContext,
+} from "@/lib/hierarchy-envelope";
 
 export function groupRowsByProjectId<T extends { project_id?: string | null }>(rows: T[]) {
   const m = new Map<string, T[]>();
@@ -119,6 +124,19 @@ export function useHealthEngineLookups(orgId: string | null | undefined) {
     enabled: !!orgId,
     staleTime: 60_000,
   });
+  const envelopesQ = useQuery({
+    queryKey: ["hierarchy_envelopes", orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("hierarchy_envelopes" as never)
+        .select("id,org_id,layer,name,envelope,notes")
+        .eq("org_id", orgId!);
+      if (error) return [];
+      return data ?? [];
+    },
+    enabled: !!orgId,
+    staleTime: 15_000,
+  });
 
   const risksByProject = useMemo(
     () => groupRowsByProjectId((risksQ.data ?? []) as { project_id?: string | null }[]),
@@ -148,6 +166,10 @@ export function useHealthEngineLookups(orgId: string | null | undefined) {
     () => groupRowsByProjectId((fyAllocQ.data ?? []) as { project_id?: string | null }[]),
     [fyAllocQ.data],
   );
+  const envelopeIndex = useMemo(
+    () => indexHierarchyEnvelopes(envelopesQ.data as never),
+    [envelopesQ.data],
+  );
 
   return useMemo(
     () => ({
@@ -158,6 +180,8 @@ export function useHealthEngineLookups(orgId: string | null | undefined) {
       changeRequests: crsQ.data ?? [],
       benefits: benefitsQ.data ?? [],
       fyAllocations: fyAllocQ.data ?? [],
+      envelopes: envelopesQ.data ?? [],
+      envelopeIndex,
       risksByProject,
       depsByProject,
       workItemsByProject,
@@ -174,6 +198,8 @@ export function useHealthEngineLookups(orgId: string | null | undefined) {
       crsQ.data,
       benefitsQ.data,
       fyAllocQ.data,
+      envelopesQ.data,
+      envelopeIndex,
       risksByProject,
       depsByProject,
       workItemsByProject,
@@ -190,6 +216,10 @@ export function healthExtrasForProject(
   lookups: ReturnType<typeof useHealthEngineLookups>,
   monthly: HealthEngineInput["monthly"] = [],
   fyStartMonth?: number | null,
+  parent?: {
+    project: { portfolio?: string | null; program?: string | null };
+    ctx: ParentEnvelopeContext;
+  },
 ): Omit<Partial<HealthEngineInput>, "project" | "gates"> {
   return {
     monthly,
@@ -201,6 +231,14 @@ export function healthExtrasForProject(
     allocations: lookups.allocationsByProject.get(projectId) || [],
     changeRequests: lookups.crsByProject.get(projectId) || [],
     benefitLines: lookups.benefitsByProject.get(projectId) || [],
+    parentEnvelopes: parent
+      ? parentWatchesForProject(
+          parent.project,
+          parent.ctx.envelopes,
+          parent.ctx.alignmentApproved,
+          parent.ctx.programApproved,
+        )
+      : undefined,
   } as Omit<Partial<HealthEngineInput>, "project" | "gates">;
 }
 
@@ -211,7 +249,18 @@ export function computeEngineHealth(
   lookups: ReturnType<typeof useHealthEngineLookups>,
   monthly: HealthEngineInput["monthly"] = [],
   fyStartMonth?: number | null,
+  parentCtx?: ParentEnvelopeContext,
 ): ProjectHealthComputed {
   const id = String(project.id || "");
-  return computeProjectHealth(project, gates, healthExtrasForProject(id, lookups, monthly, fyStartMonth));
+  return computeProjectHealth(
+    project,
+    gates,
+    healthExtrasForProject(
+      id,
+      lookups,
+      monthly,
+      fyStartMonth,
+      parentCtx ? { project, ctx: parentCtx } : undefined,
+    ),
+  );
 }
