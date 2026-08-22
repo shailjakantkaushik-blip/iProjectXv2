@@ -53,7 +53,7 @@ function ContactPending() {
 }
 
 function BrandMark({ cfg }: { cfg: LandingConfig }) {
-  return <PublicBrandMark cfg={cfg} fallback="name" />;
+  return <PublicBrandMark cfg={cfg} />;
 }
 
 function ContactPage() {
