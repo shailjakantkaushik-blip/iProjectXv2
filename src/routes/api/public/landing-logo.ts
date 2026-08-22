@@ -1,19 +1,23 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
+  parseLiveLogoSurface,
   readFallbackLogoBytes,
   resolveLiveLandingLogo,
 } from "@/lib/live-landing-logo.server";
 
 /**
- * Browser-native landing logo. The first HTML always references this URL, so
+ * Browser-native public logo. The first HTML always references this URL, so
  * the image starts loading during HTML parse — same as a professional site —
  * not after React hydrates and fetches config.
+ *
+ * `?surface=auth` serves Platform → Landing → Auth logo; default is Landing.
  */
 export const Route = createFileRoute("/api/public/landing-logo")({
   server: {
     handlers: {
-      GET: async () => {
-        const resolved = await resolveLiveLandingLogo();
+      GET: async ({ request }) => {
+        const surface = parseLiveLogoSurface(new URL(request.url).searchParams.get("surface"));
+        const resolved = await resolveLiveLandingLogo(surface);
         const cache = "public, max-age=60, stale-while-revalidate=600";
         if (resolved.kind === "redirect") {
           return new Response(null, {

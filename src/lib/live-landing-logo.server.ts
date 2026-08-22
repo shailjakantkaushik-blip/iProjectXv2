@@ -1,9 +1,14 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { sanitizeLandingLogoCookieUrl } from "@/lib/landing-logo-cookie";
-import { parseDataImageUrl } from "@/lib/live-landing-logo-parse";
+import {
+  parseDataImageUrl,
+  pickLiveLogoCandidate,
+  type LiveLogoSurface,
+} from "@/lib/live-landing-logo-parse";
 
-export { parseDataImageUrl };
+export { parseDataImageUrl, parseLiveLogoSurface, pickLiveLogoCandidate } from "@/lib/live-landing-logo-parse";
+export type { LiveLogoSurface };
 
 export type LiveLandingLogo =
   | { kind: "redirect"; url: string }
@@ -14,17 +19,17 @@ const CACHE_MS = 30_000;
 const FALLBACK_FILE = join(process.cwd(), "public/brand/iprojectx-mark.webp");
 const FETCH_MS = 800;
 
-let cache: { at: number; value: LiveLandingLogo } | null = null;
+const cache = new Map<LiveLogoSurface, { at: number; value: LiveLandingLogo }>();
 
 function fallbackFile(): LiveLandingLogo {
   return { kind: "file", path: FALLBACK_FILE, type: "image/webp" };
 }
 
-function fromBrand(brand: Record<string, unknown> | undefined): LiveLandingLogo {
-  const landing = typeof brand?.logo_url_landing === "string" ? brand.logo_url_landing.trim() : "";
-  const legacy = typeof brand?.logo_url === "string" ? brand.logo_url.trim() : "";
-  const app = typeof brand?.logo_url_app === "string" ? brand.logo_url_app.trim() : "";
-  const candidate = landing || (!app ? legacy : "");
+function fromBrand(
+  brand: Record<string, unknown> | undefined,
+  surface: LiveLogoSurface,
+): LiveLandingLogo {
+  const candidate = pickLiveLogoCandidate(brand, surface);
   if (!candidate) return fallbackFile();
 
   const https = sanitizeLandingLogoCookieUrl(candidate);
@@ -37,8 +42,11 @@ function fromBrand(brand: Record<string, unknown> | undefined): LiveLandingLogo 
   return fallbackFile();
 }
 
-export async function resolveLiveLandingLogo(): Promise<LiveLandingLogo> {
-  if (cache && Date.now() - cache.at < CACHE_MS) return cache.value;
+export async function resolveLiveLandingLogo(
+  surface: LiveLogoSurface = "landing",
+): Promise<LiveLandingLogo> {
+  const hit = cache.get(surface);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
   try {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const query = supabaseAdmin
@@ -53,12 +61,12 @@ export async function resolveLiveLandingLogo(): Promise<LiveLandingLogo> {
       }),
     ]);
     const brand = (data as { config?: { brand?: Record<string, unknown> } } | null)?.config?.brand;
-    const value = fromBrand(brand);
-    cache = { at: Date.now(), value };
+    const value = fromBrand(brand, surface);
+    cache.set(surface, { at: Date.now(), value });
     return value;
   } catch {
     const value = fallbackFile();
-    cache = { at: Date.now(), value };
+    cache.set(surface, { at: Date.now(), value });
     return value;
   }
 }
@@ -69,5 +77,5 @@ export async function readFallbackLogoBytes(): Promise<Uint8Array> {
 }
 
 export function invalidateLiveLandingLogoCache() {
-  cache = null;
+  cache.clear();
 }

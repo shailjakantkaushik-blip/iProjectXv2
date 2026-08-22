@@ -1,3 +1,28 @@
+export type LiveLogoSurface = "landing" | "auth";
+
+export function parseLiveLogoSurface(raw: string | null | undefined): LiveLogoSurface {
+  return raw === "auth" ? "auth" : "landing";
+}
+
+/**
+ * Pick the configured file for a public surface.
+ * Never use the App-shell file (`logo_url_app`).
+ * Auth prefers `logo_url_auth`, then the Landing file, then true-legacy `logo_url`.
+ */
+export function pickLiveLogoCandidate(
+  brand: Record<string, unknown> | undefined,
+  surface: LiveLogoSurface,
+): string {
+  const landing = typeof brand?.logo_url_landing === "string" ? brand.logo_url_landing.trim() : "";
+  const auth = typeof brand?.logo_url_auth === "string" ? brand.logo_url_auth.trim() : "";
+  const legacy = typeof brand?.logo_url === "string" ? brand.logo_url.trim() : "";
+  const app = typeof brand?.logo_url_app === "string" ? brand.logo_url_app.trim() : "";
+  if (surface === "auth") {
+    return auth || landing || (!app ? legacy : "");
+  }
+  return landing || (!app ? legacy : "");
+}
+
 export function parseDataImageUrl(
   url: string,
 ): { type: string; bytes: Uint8Array } | null {
