@@ -48,6 +48,8 @@ if (hasBuild) {
   process.stdout.write("SKIP  guard:preload (no .output build here)\n");
 }
 run("live:public-smoke", "node", ["scripts/live-public-smoke.mjs"]);
+run("live:platform-rls", "node", ["scripts/live-platform-rls.mjs"]);
+run("live:platform-signed-in", "node", ["scripts/live-platform-signed-in.mjs"]);
 
 const failed = results.filter((r) => !r.ok);
 console.log("\n=== Commercial readiness summary ===");

@@ -6,7 +6,10 @@
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { decryptByodSecret } from "@/lib/byod-crypto.server";
-import type { ByodPublicStatus, ByodStatus } from "@/lib/byod-types";
+import type { ByodStatus } from "@/lib/byod-types";
+import { normalizeSupabaseUrl, toPublicByodStatus } from "@/lib/byod-url";
+
+export { normalizeSupabaseUrl, toPublicByodStatus };
 
 export type { ByodPublicStatus, ByodStatus } from "@/lib/byod-types";
 
@@ -26,48 +29,6 @@ type ByodRow = {
   notes: string | null;
   updated_at: string | null;
 };
-
-export function normalizeSupabaseUrl(url: string): string {
-  const u = url.trim().replace(/\/+$/, "");
-  if (!/^https:\/\/.+/i.test(u)) {
-    throw new Error(
-      "Customer database URL must be https (e.g. https://db.customer.example.com or https://xxxx.supabase.co)",
-    );
-  }
-  try {
-    const parsed = new URL(u);
-    if (parsed.protocol !== "https:") {
-      throw new Error("Customer database URL must use https");
-    }
-  } catch (e) {
-    if (e instanceof Error && e.message.startsWith("Customer database")) throw e;
-    throw new Error("Customer database URL is not a valid https URL");
-  }
-  return u;
-}
-
-export function toPublicByodStatus(
-  row: ByodRow | null,
-  byodActive: boolean,
-  kekConfigured: boolean,
-): ByodPublicStatus {
-  return {
-    org_id: row?.org_id ?? "",
-    enabled: row?.enabled ?? false,
-    provider: row?.provider ?? "supabase",
-    supabase_url: row?.supabase_url ?? null,
-    publishable_key_configured: Boolean(row?.publishable_key),
-    secret_configured: Boolean(row?.secret_configured),
-    secret_hint: row?.secret_hint ?? null,
-    status: row?.status ?? "not_configured",
-    last_tested_at: row?.last_tested_at ?? null,
-    last_error: row?.last_error ?? null,
-    notes: row?.notes ?? null,
-    byod_active: byodActive,
-    kek_configured: kekConfigured,
-    updated_at: row?.updated_at ?? null,
-  };
-}
 
 export async function loadByodRow(orgId: string): Promise<ByodRow | null> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");

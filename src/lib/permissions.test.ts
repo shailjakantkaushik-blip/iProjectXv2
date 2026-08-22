@@ -45,4 +45,22 @@ describe("page ACL", () => {
       assert.ok(paths.has(required), `missing page ${required}`);
     }
   });
+
+  it("registers the leftover signed-in commercial surfaces", () => {
+    const paths = new Set(PAGES.map((p) => p.path));
+    for (const required of [
+      "/app/investment-committee",
+      "/app/timesheets",
+      "/app/project-forecast",
+      "/app/benefits",
+      "/app/issues",
+      "/app/actions",
+      "/app/decisions",
+      "/app/governance-channels",
+      "/app/resources",
+      "/app/alert-emails",
+    ]) {
+      assert.ok(paths.has(required), `missing page ${required}`);
+    }
+  });
 });

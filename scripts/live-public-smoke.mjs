@@ -16,7 +16,10 @@ function ok(msg) {
 }
 
 async function fetchText(url) {
-  const res = await fetch(url, { redirect: "follow" });
+  const res = await fetch(url, {
+    redirect: "follow",
+    headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+  });
   const body = await res.text();
   return { res, body };
 }
