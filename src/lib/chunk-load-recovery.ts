@@ -37,7 +37,12 @@ export function isChunkLoadError(error: unknown): boolean {
     // They were shown as "Data not available" on /auth (and elsewhere).
     /Invariant failed/i.test(message) ||
     /Could not find match for matchId/i.test(message) ||
-    /reading ['"](?:options|component)['"]/i.test(message)
+    /reading ['"](?:options|component)['"]/i.test(message) ||
+    // Safari / WebKit: stale or circular ESM chunks after a deploy.
+    // Demo symptom: /auth showed "importing binding name 't' not found".
+    /importing binding name ['"]?\w+['"]? (is )?not found/i.test(message) ||
+    /does not provide an export named/i.test(message) ||
+    /doesn't provide an export named/i.test(message)
   );
 }
 

@@ -4,6 +4,7 @@ import {
   mergeNavigationConfig,
   type NavigationConfig,
 } from "@/lib/navigation-config";
+import { mergeBrandSurfaceLogos } from "@/lib/public-landing-logo";
 
 export type { NavigationConfig };
 export { defaultNavigationConfig };
@@ -132,7 +133,11 @@ export function logoSizeDims(
   return { heightPx: found.heightPx, maxWidthPx: found.maxWidthPx };
 }
 
-/** Resolve the logo URL for a surface. Falls back to legacy `logo_url` only. */
+/**
+ * Resolve the logo URL for a surface. Falls back to legacy `logo_url` only.
+ * Public marketing chrome must use `resolvePublicLandingLogoUrl` instead —
+ * this helper will still return the App/legacy file when Landing is empty.
+ */
 export function resolveBrandLogoUrl(
   brand: Pick<
     LandingConfig["brand"],
@@ -1098,28 +1103,14 @@ export function mergeConfig(partial: any): LandingConfig {
   if (typeof merged.style_theme_id !== "string" || !merged.style_theme_id.trim()) {
     merged.style_theme_id = "simple";
   }
+  const surfaceLogos = mergeBrandSurfaceLogos(merged.brand);
   merged.brand = {
     ...DEFAULT_LANDING.brand,
     ...(merged.brand ?? {}),
-    logo_url: typeof merged.brand?.logo_url === "string" ? merged.brand.logo_url : "",
-    logo_url_landing:
-      typeof merged.brand?.logo_url_landing === "string"
-        ? merged.brand.logo_url_landing
-        : typeof merged.brand?.logo_url === "string"
-          ? merged.brand.logo_url
-          : "",
-    logo_url_auth:
-      typeof merged.brand?.logo_url_auth === "string"
-        ? merged.brand.logo_url_auth
-        : typeof merged.brand?.logo_url === "string"
-          ? merged.brand.logo_url
-          : "",
-    logo_url_app:
-      typeof merged.brand?.logo_url_app === "string"
-        ? merged.brand.logo_url_app
-        : typeof merged.brand?.logo_url === "string"
-          ? merged.brand.logo_url
-          : "",
+    logo_url: surfaceLogos.logo_url,
+    logo_url_landing: surfaceLogos.logo_url_landing,
+    logo_url_auth: surfaceLogos.logo_url_auth,
+    logo_url_app: surfaceLogos.logo_url_app,
     logo_size_landing: normalizeLogoSize(
       merged.brand?.logo_size_landing,
       DEFAULT_LANDING.brand.logo_size_landing,

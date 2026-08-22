@@ -8,12 +8,10 @@ import {
   resolveLandingCfgForPaint,
   getFreshLandingConfigSnapshot,
   DEFAULT_LANDING,
-  resolveBrandLogoUrl,
-  resolveBrandLogoDims,
   type LandingConfig,
 } from "@/lib/landing-config";
 import { PageLoading } from "@/components/page-loading";
-import { StableBrandLogo } from "@/components/stable-brand-logo";
+import { PublicBrandMark } from "@/components/public-brand-mark";
 import { ArrowLeft } from "lucide-react";
 import DOMPurify from "dompurify";
 
@@ -84,25 +82,8 @@ function LegalPending() {
   );
 }
 
-function BrandMark({ cfg }: { cfg: LandingConfig }) {
-  const logoUrl = resolveBrandLogoUrl(cfg.brand, "landing");
-  const dims = resolveBrandLogoDims(cfg.brand, "landing");
-  const p = cfg.palette;
-  if (logoUrl) {
-    return (
-      <StableBrandLogo
-        src={logoUrl}
-        alt={cfg.brand.name}
-        heightPx={Math.min(32, dims.heightPx)}
-        maxWidthPx={Math.min(160, dims.maxWidthPx)}
-      />
-    );
-  }
-  return (
-    <span className="text-lg font-bold tracking-tight" style={{ ...HEADING, color: p.textHeading }}>
-      {cfg.brand.name}
-    </span>
-  );
+function BrandMark({ cfg, holdDefault = false }: { cfg: LandingConfig; holdDefault?: boolean }) {
+  return <PublicBrandMark cfg={cfg} size="sm" holdDefault={holdDefault} fallback="name" />;
 }
 
 /** Strip leading H1 / Last updated so UI header is not duplicated. */
@@ -184,6 +165,7 @@ function markdownToHtml(md: string): string {
 function LegalPolicyPage() {
   const { policy, cfg: loaderCfg, needsRevalidate } = Route.useLoaderData();
   const [cfg, setCfg] = useState(() => resolveLandingCfgForPaint(loaderCfg));
+  const [brandSettled, setBrandSettled] = useState(false);
   const p = cfg.palette;
   const isDark = cfg.theme === "dark";
   const pageBg = isDark ? p.navy : "#fafbfc";
@@ -194,11 +176,18 @@ function LegalPolicyPage() {
   }, [loaderCfg]);
 
   useEffect(() => {
-    if (!needsRevalidate) return;
+    if (!needsRevalidate) {
+      setBrandSettled(true);
+      return;
+    }
     let cancelled = false;
-    void fetchLandingConfig().then((live) => {
-      if (!cancelled) setCfg(live);
-    });
+    void fetchLandingConfig()
+      .then((live) => {
+        if (!cancelled) setCfg(live);
+      })
+      .finally(() => {
+        if (!cancelled) setBrandSettled(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -268,8 +257,8 @@ function LegalPolicyPage() {
       >
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-5 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
-            <Link to="/" className="shrink-0">
-              <BrandMark cfg={cfg} />
+            <Link to="/" className="shrink-0" suppressHydrationWarning>
+              <BrandMark cfg={cfg} holdDefault={!brandSettled} />
             </Link>
             <span className="hidden text-sm sm:inline" style={{ color: p.surface }}>
               /
