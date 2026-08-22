@@ -44,8 +44,7 @@ import {
   type LogoDisplaySize,
 } from "@/lib/landing-config";
 import { PublicBrandMark } from "@/components/public-brand-mark";
-import { readLandingLogoCookieBrowser } from "@/lib/landing-logo-cookie";
-import { resolveDocumentLandingLogoUrl } from "@/lib/landing-public-logo.functions";
+import { PUBLIC_LANDING_LOGO_HREF } from "@/lib/live-landing-logo";
 import { resolvePublicLandingLogoUrl } from "@/lib/public-landing-logo";
 import { LandingHeroFrame } from "@/components/landing-hero-frame";
 import { LandingHeroDashboard } from "@/components/landing-hero-dashboard";
@@ -69,18 +68,10 @@ type LandingLoaderData = {
   needsRevalidate: boolean;
 };
 
-function withLandingCookieLogo(cfg: LandingConfig, logoUrl: string): LandingConfig {
-  if (!logoUrl) return cfg;
-  return {
-    ...cfg,
-    brand: { ...cfg.brand, logo_url_landing: logoUrl },
-  };
-}
-
 export const Route = createFileRoute("/")({
   loader: async (): Promise<LandingLoaderData> => {
-    // First HTML must include the real landing logo when we can get an https
-    // URL quickly. Never wait on the full config / data: URLs (Safari).
+    // Instant HTML. The logo is a normal <img src="/api/public/landing-logo">
+    // so the browser fetches it during parse — we do not wait on branding here.
     const base: LandingConfig = { ...DEFAULT_LANDING, signup_enabled: false };
     if (typeof window !== "undefined") {
       try {
@@ -91,26 +82,13 @@ export const Route = createFileRoute("/")({
       } catch {
         /* private browser with blocked storage */
       }
-      return {
-        cfg: withLandingCookieLogo(base, readLandingLogoCookieBrowser()),
-        needsRevalidate: true,
-      };
     }
-    try {
-      const logo = await resolveDocumentLandingLogoUrl();
-      return { cfg: withLandingCookieLogo(base, logo), needsRevalidate: true };
-    } catch {
-      return { cfg: base, needsRevalidate: true };
-    }
+    return { cfg: base, needsRevalidate: true };
   },
   staleTime: 0,
   component: LandingPage,
-  head: ({ loaderData }) => {
-    const logo = resolvePublicLandingLogoUrl(loaderData?.cfg?.brand);
-    const links =
-      logo && /^https?:\/\//i.test(logo)
-        ? [{ rel: "preload" as const, as: "image", href: logo }]
-        : [];
+  head: () => {
+    const links = [{ rel: "preload" as const, as: "image", href: PUBLIC_LANDING_LOGO_HREF }];
     return {
       meta: [
         {
@@ -303,7 +281,7 @@ function BrandMark({
   size?: LogoDisplaySize;
   onDark?: boolean;
 }) {
-  return <PublicBrandMark cfg={cfg} size={size} onDark={onDark} fallback="slot" />;
+  return <PublicBrandMark cfg={cfg} size={size} onDark={onDark} />;
 }
 
 function LandingPage() {

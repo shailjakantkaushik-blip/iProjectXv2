@@ -48,6 +48,7 @@ import { ProcessingOverlay } from "@/components/processing-animation";
 import { clearOrgAuthEntry, rememberOrgAuthEntry } from "@/lib/org-auth-entry";
 import { AlertTriangle } from "lucide-react";
 import { RouteErrorView } from "@/components/route-error";
+import { PUBLIC_AUTH_LOGO_HREF } from "@/lib/live-landing-logo";
 
 type OrgAccessAlert = {
   title: string;
@@ -124,6 +125,7 @@ export const Route = createFileRoute("/auth")({
       { title: "Sign in — PMO Enterprise" },
       { name: "robots", content: "noindex" },
     ],
+    links: [{ rel: "preload" as const, as: "image", href: PUBLIC_AUTH_LOGO_HREF }],
   }),
   loader: async ({ deps }): Promise<AuthLoaderData> => loadAuthPublicConfig(deps.org),
   staleTime: 60_000,
@@ -142,12 +144,13 @@ export const Route = createFileRoute("/auth")({
 });
 
 function authShellBrand(): AuthBrand {
-  // Neutral stub only — never paint cached name/logo during pending.
+  // Name/tagline from defaults. The left-panel <img> always uses
+  // PUBLIC_AUTH_LOGO_HREF — do not wait on live config.
   return {
-    name: "",
-    logo_url: "",
-    tagline: "",
-    logo_size_auth: "lg",
+    name: DEFAULT_LANDING.brand.name,
+    tagline: DEFAULT_LANDING.brand.tagline,
+    logo_size_auth: DEFAULT_LANDING.brand.logo_size_auth,
+    logo_custom_auth: DEFAULT_LANDING.brand.logo_custom_auth,
   };
 }
 
@@ -158,8 +161,8 @@ function readOrgFromLocation(): string | undefined {
 }
 
 /**
- * Pending shell: layout chrome only — no brand name/logo so landing→auth
- * never flashes a previous (or default) mark before live config arrives.
+ * Pending shell: form is a spinner; left-panel logo is already in the HTML
+ * via PUBLIC_AUTH_LOGO_HREF so a cold /auth visit still shows the mark.
  */
 function AuthPending() {
   const orgRequested = Boolean(readOrgFromLocation());

@@ -83,7 +83,7 @@ function LegalPending() {
 }
 
 function BrandMark({ cfg }: { cfg: LandingConfig }) {
-  return <PublicBrandMark cfg={cfg} size="sm" fallback="name" />;
+  return <PublicBrandMark cfg={cfg} size="sm" />;
 }
 
 /** Strip leading H1 / Last updated so UI header is not duplicated. */

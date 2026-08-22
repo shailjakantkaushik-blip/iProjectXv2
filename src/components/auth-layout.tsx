@@ -2,13 +2,13 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useState, type ChangeEvent, type ReactNode } from "react";
 import { ArrowLeft, BarChart3, Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { StableBrandLogo } from "@/components/stable-brand-logo";
 import {
   logoSizeDims,
   type LogoCustomDims,
   type LogoDisplaySize,
 } from "@/lib/landing-config";
 import { applyFaviconHref, DEFAULT_FAVICON_HREF } from "@/lib/favicon";
+import { PUBLIC_AUTH_LOGO_HREF } from "@/lib/live-landing-logo";
 
 export type AuthBrand = {
   name: string;
@@ -38,8 +38,9 @@ type AuthLayoutProps = {
   /** When true, org white-label was requested via ?org= (even if still resolving). */
   orgRequested?: boolean;
   /**
-   * When false, brand logo/name are skeleton placeholders so a pending route
-   * never paints a stale mark that then swaps to the live one.
+   * When false, form title / copy stay as skeletons. The left-panel logo is
+   * always a native <img> at PUBLIC_AUTH_LOGO_HREF so a direct /auth visit
+   * still paints the Landing-config mark in the first HTML.
    */
   brandReady?: boolean;
   title: string;
@@ -78,11 +79,15 @@ function LogoMark({
 
   if (logoUrl) {
     return (
-      <StableBrandLogo
+      <img
         src={logoUrl}
         alt={`${name} logo`}
-        heightPx={dims.heightPx}
-        maxWidthPx={dims.maxWidthPx}
+        width={dims.maxWidthPx}
+        height={dims.heightPx}
+        fetchPriority="high"
+        decoding="async"
+        className="w-auto object-contain"
+        style={{ height: dims.heightPx, maxWidth: dims.maxWidthPx }}
       />
     );
   }
@@ -112,13 +117,12 @@ export function AuthLayout({
 }: AuthLayoutProps) {
   // White-label only when the dedicated org login link was used (?org=).
   const useOrg = Boolean(brandReady && orgRequested && org);
-  const displayName = useOrg && org ? org.name : platform.name;
+  const displayName = useOrg && org ? org.name : platform.name || "iProjectX";
+  // Platform mark is always the stable auth endpoint (Landing-config Auth logo).
+  // Direct /auth must not wait on fetchLandingConfig — the server loader
+  // returns empty logos so a config-driven <img src={logo_url}> never paints.
   const displayLogo =
-    brandReady && useOrg && org?.logo_url
-      ? org.logo_url
-      : brandReady
-        ? platform.logo_url
-        : undefined;
+    useOrg && org?.logo_url ? org.logo_url : PUBLIC_AUTH_LOGO_HREF;
   const tagline = platform.tagline || "Enterprise PMO Command Center";
   const logoSize: LogoDisplaySize =
     useOrg && org?.logo_size_auth
@@ -147,9 +151,8 @@ export function AuthLayout({
 
   // Browser tab icon matches whatever logo is shown on this login surface.
   useEffect(() => {
-    if (!brandReady) return;
     applyFaviconHref(displayLogo || DEFAULT_FAVICON_HREF);
-  }, [brandReady, displayLogo]);
+  }, [displayLogo]);
 
   const BrandIdentity = ({
     onDark,
@@ -160,33 +163,6 @@ export function AuthLayout({
     size: LogoDisplaySize;
     custom?: LogoCustomDims | null;
   }) => {
-    if (!brandReady) {
-      return (
-        <div className="flex items-center gap-3" aria-hidden>
-          <div
-            className={cn(
-              "shrink-0 rounded-xl",
-              onDark ? "bg-white/15" : "bg-muted",
-              size === "sm" ? "h-8 w-8" : size === "lg" || size === "xl" ? "h-12 w-12" : "h-10 w-10",
-            )}
-          />
-          <div className="min-w-0 space-y-2">
-            <div
-              className={cn(
-                "h-5 w-36 rounded",
-                onDark ? "bg-white/20" : "bg-muted",
-              )}
-            />
-            <div
-              className={cn(
-                "h-3 w-48 rounded",
-                onDark ? "bg-white/10" : "bg-muted/80",
-              )}
-            />
-          </div>
-        </div>
-      );
-    }
     return (
       <div className="flex items-center gap-3">
         <LogoMark name={displayName} logoUrl={displayLogo} size={size} custom={custom} />
@@ -293,24 +269,17 @@ export function AuthLayout({
         />
 
         <div className="relative z-10 flex items-center justify-between border-b border-border/60 px-4 py-3 lg:hidden">
-          {brandReady ? (
-            <Link to="/" className="flex min-w-0 items-center gap-2">
-              <LogoMark
-                name={displayName}
-                logoUrl={displayLogo}
-                size={mobileSize}
-                custom={mobileCustom}
-              />
-              <span className="truncate text-sm font-semibold text-foreground">
-                {displayName}
-              </span>
-            </Link>
-          ) : (
-            <div className="flex min-w-0 items-center gap-2" aria-hidden>
-              <div className="h-8 w-8 shrink-0 rounded-lg bg-muted" />
-              <div className="h-4 w-28 rounded bg-muted" />
-            </div>
-          )}
+          <Link to="/" className="flex min-w-0 items-center gap-2">
+            <LogoMark
+              name={displayName}
+              logoUrl={displayLogo}
+              size={mobileSize}
+              custom={mobileCustom}
+            />
+            <span className="truncate text-sm font-semibold text-foreground">
+              {displayName}
+            </span>
+          </Link>
           <Link
             to="/"
             className="text-xs font-medium text-muted-foreground hover:text-foreground"
