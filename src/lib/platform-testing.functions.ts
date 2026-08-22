@@ -3,7 +3,12 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { assertPlatformAdmin } from "@/lib/user-admin.functions";
 import { PLATFORM_ORG_SLUG, isPlatformOrgRow } from "@/lib/platform-org";
-import { runPlatformCommercialSuite, type PlatformSuiteReport } from "@/lib/platform-commercial-suite";
+import {
+  ALL_PLATFORM_SUITE_KINDS,
+  runPlatformCommercialSuite,
+  type PlatformSuiteKind,
+  type PlatformSuiteReport,
+} from "@/lib/platform-commercial-suite";
 import { resolveSupabasePublishableKey, resolveSupabaseUrl } from "@/integrations/supabase/env";
 
 export const runPlatformCommercialTests = createServerFn({ method: "POST" })
@@ -12,6 +17,7 @@ export const runPlatformCommercialTests = createServerFn({ method: "POST" })
     z
       .object({
         origin: z.string().url().max(200),
+        suites: z.array(z.enum(ALL_PLATFORM_SUITE_KINDS as [PlatformSuiteKind, ...PlatformSuiteKind[]])).min(1),
       })
       .parse(d),
   )
@@ -24,6 +30,7 @@ export const runPlatformCommercialTests = createServerFn({ method: "POST" })
 
     return runPlatformCommercialSuite({
       origin: data.origin.replace(/\/$/, ""),
+      suites: data.suites,
       resolvePlatformOrg: async () => {
         const { data: rows, error } = await supabaseAdmin
           .from("organizations")

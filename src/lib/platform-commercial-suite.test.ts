@@ -24,6 +24,18 @@ describe("platform commercial suite isolation", () => {
     assert.ok(seen.every((s) => s.endsWith(":plat")), `queried outside platform: ${seen.join(",")}`);
     const leak = report.checks.find((c) => c.id === "data-projects");
     assert.equal(leak?.status, "fail");
+    assert.equal(leak?.severity, "critical");
     assert.match(leak?.detail || "", /refused a row/);
+    assert.ok(report.issues.some((i) => i.id === "data-projects" && i.severity === "critical"));
+    assert.ok(report.issueCounts.critical >= 1);
+  });
+
+  it("keeps every catalogued suite selectable", async () => {
+    const { ALL_PLATFORM_SUITE_KINDS, PLATFORM_SUITE_KINDS } = await import("./platform-commercial-suite.ts");
+    assert.deepEqual(
+      PLATFORM_SUITE_KINDS.map((s) => s.id),
+      ["e2e", "functional", "system", "regression", "performance", "security"],
+    );
+    assert.equal(ALL_PLATFORM_SUITE_KINDS.length, 6);
   });
 });

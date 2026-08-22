@@ -1,18 +1,35 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
-import { FlaskConical, Play, Copy } from "lucide-react";
+import { Copy, FlaskConical, Play } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth, isPlatformAdmin } from "@/lib/auth-context";
 import { runPlatformCommercialTests } from "@/lib/platform-testing.functions";
-import type { PlatformCheckResult, PlatformSuiteReport } from "@/lib/platform-commercial-suite";
+import {
+  ALL_PLATFORM_SUITE_KINDS,
+  PLATFORM_SUITE_KINDS,
+  type IssueSeverity,
+  type PlatformCheckResult,
+  type PlatformSuiteKind,
+  type PlatformSuiteReport,
+} from "@/lib/platform-commercial-suite";
 
 export const Route = createFileRoute("/_authenticated/platform/testing")({
   component: PlatformTestingPage,
 });
+
+const SEVERITY_ORDER: IssueSeverity[] = ["critical", "high", "medium", "low"];
+
+const SEVERITY_CLASS: Record<IssueSeverity, string> = {
+  critical: "bg-rose-700 text-white",
+  high: "bg-rose-100 text-rose-800",
+  medium: "bg-amber-100 text-amber-900",
+  low: "bg-slate-100 text-slate-700",
+};
 
 function statusClass(status: PlatformCheckResult["status"]) {
   if (status === "pass") return "bg-emerald-100 text-emerald-800";
@@ -24,27 +41,36 @@ function PlatformTestingPage() {
   const { roles } = useAuth();
   const allowed = isPlatformAdmin(roles);
   const runSuite = useServerFn(runPlatformCommercialTests);
+  const [selected, setSelected] = useState<PlatformSuiteKind[]>([...ALL_PLATFORM_SUITE_KINDS]);
   const [running, setRunning] = useState(false);
   const [report, setReport] = useState<PlatformSuiteReport | null>(null);
 
-  const groups = useMemo(() => {
+  const suiteGroups = useMemo(() => {
     if (!report) return [];
-    const order = ["Engines", "Public", "Anon RLS", "Platform data"];
     const map = new Map<string, PlatformCheckResult[]>();
     for (const check of report.checks) {
-      const list = map.get(check.group) ?? [];
+      const key = PLATFORM_SUITE_KINDS.find((s) => s.id === check.suite)?.label ?? check.suite;
+      const list = map.get(key) ?? [];
       list.push(check);
-      map.set(check.group, list);
+      map.set(key, list);
     }
-    return order.filter((g) => map.has(g)).map((g) => ({ name: g, checks: map.get(g)! }));
+    return [...map.entries()].map(([name, checks]) => ({ name, checks }));
   }, [report]);
 
+  function toggle(kind: PlatformSuiteKind) {
+    setSelected((cur) => (cur.includes(kind) ? cur.filter((k) => k !== kind) : [...cur, kind]));
+  }
+
   async function run() {
+    if (!selected.length) {
+      toast.error("Select at least one suite");
+      return;
+    }
     setRunning(true);
     try {
-      const next = await runSuite({ data: { origin: window.location.origin } });
+      const next = await runSuite({ data: { origin: window.location.origin, suites: selected } });
       setReport(next);
-      if (next.failed) toast.error(`${next.failed} check(s) failed — see results below`);
+      if (next.failed) toast.error(`${next.failed} issue(s) — grouped by criticality below`);
       else toast.success(`${next.passed} checks passed`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Suite failed to start");
@@ -57,10 +83,18 @@ function PlatformTestingPage() {
     if (!report) return;
     const lines = [
       `iProjectX platform commercial suite`,
+      `Suites: ${report.suites.join(", ")}`,
       `Ran ${report.ranAt} against ${report.platformOrg.name || report.platformOrg.slug}`,
-      `${report.passed} passed · ${report.failed} failed · ${report.skipped} skipped`,
+      `${report.passed} passed · ${report.failed} failed`,
+      `Issues: critical ${report.issueCounts.critical}, high ${report.issueCounts.high}, medium ${report.issueCounts.medium}, low ${report.issueCounts.low}`,
       "",
-      ...report.checks.map((c) => `${c.status.toUpperCase()}  [${c.group}] ${c.name} — ${c.detail} (${c.ms}ms)`),
+      ...SEVERITY_ORDER.flatMap((sev) => {
+        const rows = report.issues.filter((i) => i.severity === sev);
+        if (!rows.length) return [];
+        return [`## ${sev.toUpperCase()}`, ...rows.map((i) => `- [${i.suite}] ${i.name} — ${i.detail}`), ""];
+      }),
+      "## All checks",
+      ...report.checks.map((c) => `${c.status.toUpperCase()}  [${c.suite}/${c.severity}] ${c.name} — ${c.detail} (${c.ms}ms)`),
     ];
     await navigator.clipboard.writeText(lines.join("\n"));
     toast.success("Results copied");
@@ -79,7 +113,7 @@ function PlatformTestingPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeading
           title="Commercial testing"
-          subtitle="One-click suite for the iProjectX platform organisation. Customer tenants are never queried."
+          subtitle="End-to-end application checks on the iProjectX platform organisation only. Customer tenants are never queried."
         />
         <div className="flex gap-2">
           {report && (
@@ -87,45 +121,128 @@ function PlatformTestingPage() {
               <Copy className="mr-1.5 h-4 w-4" /> Copy results
             </Button>
           )}
-          <Button size="sm" onClick={() => void run()} disabled={running}>
+          <Button size="sm" onClick={() => void run()} disabled={running || !selected.length}>
             {running ? (
               <FlaskConical className="mr-1.5 h-4 w-4 animate-pulse" />
             ) : (
               <Play className="mr-1.5 h-4 w-4" />
             )}
-            {running ? "Running…" : "Run tests"}
+            {running ? "Running…" : "Run selected"}
           </Button>
         </div>
       </div>
 
       <SectionFrame exportable={false}>
-        <SectionTitle>Guardrail</SectionTitle>
-        <p className="text-sm text-muted-foreground">
-          Every live data check is filtered to organisation slug <code>iprojectx</code>. Anon RLS
-          checks prove tenant tables return zero rows without a session. This page is not a load
-          test and does not write platform or customer rows.
+        <SectionTitle>Suites</SectionTitle>
+        <div className="mb-3 flex gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={() => setSelected([...ALL_PLATFORM_SUITE_KINDS])}>
+            All
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => setSelected(["e2e"])}>
+            End to end only
+          </Button>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          {PLATFORM_SUITE_KINDS.map((suite) => (
+            <label key={suite.id} className="flex cursor-pointer gap-3 rounded-md border p-3">
+              <Checkbox
+                checked={selected.includes(suite.id)}
+                onCheckedChange={() => toggle(suite.id)}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="block font-medium">{suite.label}</span>
+                <span className="block text-sm text-muted-foreground">{suite.blurb}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+        <p className="mt-3 text-sm text-muted-foreground">
+          Live data is filtered to slug <code>iprojectx</code>. Performance uses three samples per
+          URL — not a load test. Nothing is written.
         </p>
       </SectionFrame>
 
-      {report && (
-        <div className="flex flex-wrap gap-2 text-sm">
-          <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">{report.passed} passed</Badge>
-          <Badge className="bg-rose-100 text-rose-800 hover:bg-rose-100">{report.failed} failed</Badge>
-          <Badge variant="secondary">{report.skipped} skipped</Badge>
-          <span className="text-muted-foreground">
-            {report.platformOrg.name} · {new Date(report.ranAt).toLocaleString()}
-          </span>
+      <div className="rounded-lg border bg-slate-50 p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-semibold">Result window</h2>
+          {report && (
+            <span className="text-sm text-muted-foreground">
+              {report.platformOrg.name} · {new Date(report.ranAt).toLocaleString()}
+            </span>
+          )}
         </div>
-      )}
 
-      {groups.map((group) => (
+        {!report && (
+          <p className="text-sm text-muted-foreground">
+            Select suites and click <strong>Run selected</strong>. Failures appear here grouped by
+            criticality so you can act on Critical first.
+          </p>
+        )}
+
+        {report && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2 text-sm">
+              <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">{report.passed} passed</Badge>
+              <Badge className="bg-rose-100 text-rose-800 hover:bg-rose-100">{report.failed} failed</Badge>
+              {SEVERITY_ORDER.map((sev) => (
+                <span key={sev} className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${SEVERITY_CLASS[sev]}`}>
+                  {report.issueCounts[sev]} {sev}
+                </span>
+              ))}
+            </div>
+
+            {SEVERITY_ORDER.map((sev) => {
+              const rows = report.issues.filter((i) => i.severity === sev);
+              if (!rows.length) return null;
+              return (
+                <div key={sev}>
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className={`inline-flex rounded px-2 py-0.5 text-xs font-medium uppercase ${SEVERITY_CLASS[sev]}`}>
+                      {sev}
+                    </span>
+                    <span className="text-sm text-muted-foreground">{rows.length} issue{rows.length === 1 ? "" : "s"} to act on</span>
+                  </div>
+                  <div className="overflow-x-auto rounded border bg-white">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-left text-muted-foreground">
+                          <th className="px-3 py-2 font-medium">Suite</th>
+                          <th className="px-3 py-2 font-medium">Issue</th>
+                          <th className="px-3 py-2 font-medium">What to act on</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((issue) => (
+                          <tr key={issue.id} className="border-b border-slate-100 align-top">
+                            <td className="px-3 py-2 capitalize">{issue.suite}</td>
+                            <td className="px-3 py-2 font-medium">{issue.name}</td>
+                            <td className="px-3 py-2 text-muted-foreground">{issue.detail}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
+
+            {!report.issues.length && (
+              <p className="text-sm text-emerald-800">No issues. All selected suites passed.</p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {suiteGroups.map((group) => (
         <SectionFrame key={group.name} exportable={false}>
-          <SectionTitle>{group.name}</SectionTitle>
-          <div className="overflow-x-auto">
+          <SectionTitle>{group.name} log</SectionTitle>
+          <div className="max-h-[28rem] overflow-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-muted-foreground">
                   <th className="py-2 pr-3 font-medium">Result</th>
+                  <th className="py-2 pr-3 font-medium">Severity</th>
                   <th className="py-2 pr-3 font-medium">Check</th>
                   <th className="py-2 pr-3 font-medium">Detail</th>
                   <th className="py-2 font-medium">ms</th>
@@ -139,6 +256,11 @@ function PlatformTestingPage() {
                         {c.status}
                       </span>
                     </td>
+                    <td className="py-2 pr-3">
+                      <span className={`inline-flex rounded px-2 py-0.5 text-xs font-medium capitalize ${SEVERITY_CLASS[c.severity]}`}>
+                        {c.severity}
+                      </span>
+                    </td>
                     <td className="py-2 pr-3 font-medium">{c.name}</td>
                     <td className="py-2 pr-3 text-muted-foreground">{c.detail}</td>
                     <td className="py-2 tabular-nums text-muted-foreground">{c.ms}</td>
@@ -149,13 +271,6 @@ function PlatformTestingPage() {
           </div>
         </SectionFrame>
       ))}
-
-      {!report && !running && (
-        <p className="text-sm text-muted-foreground">
-          Click <strong>Run tests</strong> to execute engines, public pages, anon RLS, and iProjectX
-          data checks.
-        </p>
-      )}
     </div>
   );
 }
