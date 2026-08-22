@@ -8,7 +8,8 @@ import {
   type LogoDisplaySize,
 } from "@/lib/landing-config";
 import { applyFaviconHref, DEFAULT_FAVICON_HREF } from "@/lib/favicon";
-import { PUBLIC_AUTH_LOGO_HREF } from "@/lib/live-landing-logo";
+import { StableBrandLogo } from "@/components/stable-brand-logo";
+import { PACKAGED_PUBLIC_MARK_HREF } from "@/lib/live-landing-logo";
 
 export type AuthBrand = {
   name: string;
@@ -38,8 +39,8 @@ type AuthLayoutProps = {
   /** When true, org white-label was requested via ?org= (even if still resolving). */
   orgRequested?: boolean;
   /**
-   * When false, form title / copy stay as skeletons. Platform logo src is
-   * always PUBLIC_AUTH_LOGO_HREF so a cold /auth visit does not swap marks.
+   * When false, form title / copy stay as skeletons. The left-panel logo
+   * uses the Landing-config Auth file when present (cache / live fetch).
    */
   brandReady?: boolean;
   title: string;
@@ -78,15 +79,11 @@ function LogoMark({
 
   if (logoUrl) {
     return (
-      <img
+      <StableBrandLogo
         src={logoUrl}
         alt={`${name} logo`}
-        width={dims.maxWidthPx}
-        height={dims.heightPx}
-        fetchPriority="high"
-        decoding="async"
-        className="w-auto object-contain"
-        style={{ height: dims.heightPx, maxWidth: dims.maxWidthPx }}
+        heightPx={dims.heightPx}
+        maxWidthPx={dims.maxWidthPx}
       />
     );
   }
@@ -118,7 +115,9 @@ export function AuthLayout({
   const useOrg = Boolean(brandReady && orgRequested && org);
   const displayName = useOrg && org ? org.name : platform.name || "iProjectX";
   const displayLogo =
-    useOrg && org?.logo_url ? org.logo_url : PUBLIC_AUTH_LOGO_HREF;
+    useOrg && org?.logo_url
+      ? org.logo_url
+      : platform.logo_url?.trim() || PACKAGED_PUBLIC_MARK_HREF;
   const tagline = platform.tagline || "Enterprise PMO Command Center";
   const logoSize: LogoDisplaySize =
     useOrg && org?.logo_size_auth

@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -48,7 +48,6 @@ import { ProcessingOverlay } from "@/components/processing-animation";
 import { clearOrgAuthEntry, rememberOrgAuthEntry } from "@/lib/org-auth-entry";
 import { AlertTriangle } from "lucide-react";
 import { RouteErrorView } from "@/components/route-error";
-import { PUBLIC_AUTH_LOGO_HREF } from "@/lib/live-landing-logo";
 
 type OrgAccessAlert = {
   title: string;
@@ -125,7 +124,7 @@ export const Route = createFileRoute("/auth")({
       { title: "Sign in — PMO Enterprise" },
       { name: "robots", content: "noindex" },
     ],
-    links: [{ rel: "preload" as const, as: "image", href: PUBLIC_AUTH_LOGO_HREF }],
+    links: [],
   }),
   loader: async ({ deps }): Promise<AuthLoaderData> => loadAuthPublicConfig(deps.org),
   staleTime: 60_000,
@@ -144,8 +143,11 @@ export const Route = createFileRoute("/auth")({
 });
 
 function authShellBrand(): AuthBrand {
-  // Name/tagline from defaults. The left-panel <img> always uses
-  // PUBLIC_AUTH_LOGO_HREF — do not wait on live config.
+  const cached =
+    typeof window !== "undefined"
+      ? getFreshLandingConfigSnapshot() ?? readCachedLandingConfig()
+      : null;
+  if (cached) return toAuthPlatformBrand(cached.brand);
   return {
     name: DEFAULT_LANDING.brand.name,
     tagline: DEFAULT_LANDING.brand.tagline,
@@ -161,8 +163,8 @@ function readOrgFromLocation(): string | undefined {
 }
 
 /**
- * Pending shell: form is a spinner; left-panel logo is already in the HTML
- * via PUBLIC_AUTH_LOGO_HREF so a cold /auth visit still shows the mark.
+ * Pending shell: form is a spinner. Brand comes from Landing-config cache
+ * when the visitor just left the public site (Monday behaviour).
  */
 function AuthPending() {
   const orgRequested = Boolean(readOrgFromLocation());
@@ -216,13 +218,22 @@ function AuthPage() {
   const sessionEmail =
     session?.user?.email || profile?.email || null;
 
+  // Cached Landing-config (from the public site) has the Auth logo already.
+  // Apply it before paint — do not wait on /api/public/landing-logo.
+  useLayoutEffect(() => {
+    const cached = getFreshLandingConfigSnapshot() ?? readCachedLandingConfig();
+    if (!cached) return;
+    setPlatformBrand(toAuthPlatformBrand(cached.brand));
+    if (cached.signup_enabled === true) setSignupEnabled(true);
+  }, []);
+
   useEffect(() => {
-    setPlatformBrand(loader.platformBrand);
+    if (loader.platformBrand.logo_url) setPlatformBrand(loader.platformBrand);
     setSignupEnabled(loader.signupEnabled);
   }, [loader.platformBrand, loader.signupEnabled]);
 
-  // Server loader returns empty logos (Safari-safe). Fetch live Landing-config
-  // in the browser so the left-panel mark is the configured Auth file.
+  // Server loader returns empty logos (Safari-safe). Fetch live config in the
+  // browser — same path as Monday, when sign-in was instant after landing.
   useEffect(() => {
     let cancelled = false;
     void fetchLandingConfig()
