@@ -158,8 +158,9 @@ function PlatformTestingPage() {
           ))}
         </div>
         <p className="mt-3 text-sm text-muted-foreground">
-          Live data is filtered to slug <code>iprojectx</code>. Performance uses three samples per
-          URL — not a load test. Nothing is written.
+          Live data is filtered to slug <code>iprojectx</code>. Performance is three sequential
+          samples. Load is eight parallel GETs per public URL plus four parallel iProjectX project
+          reads — a bounded tick, not a soak. Nothing is written.
         </p>
       </SectionFrame>
 

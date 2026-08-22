@@ -42,6 +42,11 @@ export const PLATFORM_SUITE_KINDS = [
     blurb: "Bounded latency on public pages and iProjectX reads. Not a customer load test.",
   },
   {
+    id: "load",
+    label: "Load",
+    blurb: "Eight parallel public GETs per URL plus four iProjectX project reads. A bounded tick, not a soak.",
+  },
+  {
     id: "security",
     label: "Security",
     blurb: "Anon RLS and refuse any row outside slug iprojectx.",
@@ -155,6 +160,21 @@ const E2E_APP_PATHS = [
 ];
 
 const PERF_PATHS = ["/", "/auth", "/contact", "/api/public/landing-logo"];
+
+/** Concurrent GETs per public path. Hard cap so the server function cannot become a self-DoS. */
+const LOAD_CONCURRENCY = 8;
+const LOAD_P95_PAGE_MS = 5000;
+const LOAD_P95_LOGO_MS = 6000;
+const LOAD_ORG_READS = 4;
+const LOAD_ORG_WALL_MS = 3000;
+
+/** Nearest-rank percentile. `p` is 0–100. */
+export function percentile(samples: number[], p: number): number {
+  if (!samples.length) return 0;
+  const sorted = [...samples].sort((a, b) => a - b);
+  const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
+  return sorted[idx] ?? 0;
+}
 
 function wants(selected: Set<PlatformSuiteKind>, kind: PlatformSuiteKind) {
   return selected.has(kind);
@@ -501,7 +521,8 @@ export async function runPlatformCommercialSuite(deps: PlatformSuiteDeps): Promi
     wants(selected, "system") ||
     wants(selected, "security") ||
     wants(selected, "functional") ||
-    wants(selected, "performance");
+    wants(selected, "performance") ||
+    wants(selected, "load");
 
   if (needOrg) {
     checks.push(
@@ -623,6 +644,71 @@ export async function runPlatformCommercialSuite(deps: PlatformSuiteDeps): Promi
             }
             must(ms <= 2500, `query ${ms}ms exceeds 2500ms`);
             return `${ms}ms · ${rows.length} rows`;
+          },
+        ),
+      );
+    }
+  }
+
+  if (wants(selected, "load")) {
+    for (const path of PERF_PATHS) {
+      checks.push(
+        await runCheck(
+          {
+            id: `load-${path === "/" ? "home" : path.replace(/\W+/g, "-")}`,
+            suite: "load",
+            group: "Load tick",
+            name: `${LOAD_CONCURRENCY} parallel GETs: ${origin}${path}`,
+            severity: "high",
+          },
+          async () => {
+            const wave = await Promise.all(
+              Array.from({ length: LOAD_CONCURRENCY }, async () => {
+                const t0 = Date.now();
+                const page = await deps.fetchText(`${origin}${path}`);
+                return { ms: Date.now() - t0, status: page.status };
+              }),
+            );
+            const errors = wave.filter((row) => row.status !== 200);
+            must(
+              errors.length === 0,
+              `${errors.length}/${LOAD_CONCURRENCY} failed · HTTP ${errors[0]?.status}`,
+            );
+            const samples = wave.map((row) => row.ms);
+            const p50 = percentile(samples, 50);
+            const p95 = percentile(samples, 95);
+            const cap = path.includes("landing-logo") ? LOAD_P95_LOGO_MS : LOAD_P95_PAGE_MS;
+            must(p95 <= cap, `p95 ${p95}ms exceeds ${cap}ms (p50 ${p50}ms · worst ${Math.max(...samples)}ms)`);
+            return `p50 ${p50}ms · p95 ${p95}ms · worst ${Math.max(...samples)}ms · cap ${cap}ms`;
+          },
+        ),
+      );
+    }
+    if (org && isPlatformOrgRow(org)) {
+      checks.push(
+        await runCheck(
+          {
+            id: "load-platform-projects",
+            suite: "load",
+            group: "Load tick",
+            name: `${LOAD_ORG_READS} parallel iProjectX project reads`,
+            severity: "medium",
+          },
+          async () => {
+            const t0 = Date.now();
+            const batches = await Promise.all(
+              Array.from({ length: LOAD_ORG_READS }, () =>
+                deps.selectPlatform("projects", "id,org_id,project_code", org.id, 40),
+              ),
+            );
+            const ms = Date.now() - t0;
+            for (const rows of batches) {
+              for (const row of rows as Array<Record<string, unknown>>) {
+                assertPlatformOrgId(String(row.org_id), org.id, "projects");
+              }
+            }
+            must(ms <= LOAD_ORG_WALL_MS, `${LOAD_ORG_READS} queries ${ms}ms wall exceeds ${LOAD_ORG_WALL_MS}ms`);
+            return `${ms}ms wall · ${batches[0]?.length ?? 0} rows each`;
           },
         ),
       );
