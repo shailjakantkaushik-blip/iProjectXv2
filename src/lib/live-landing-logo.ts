@@ -1,5 +1,9 @@
-/** Same-origin logo the first HTML can load — no JS, no diamond, no late swap. */
-export const PUBLIC_LANDING_LOGO_HREF = "/api/public/landing-logo";
+/** Packaged iProjectX mark. Always a real static file on Vercel. */
+export const PUBLIC_LANDING_LOGO_HREF = "/brand/iprojectx-mark.webp";
+export const PUBLIC_AUTH_LOGO_HREF = "/brand/iprojectx-mark.webp";
 
-/** Sign-in / MFA / reset panel. Reads Landing-config Auth logo (`logo_url_auth`). */
-export const PUBLIC_AUTH_LOGO_HREF = "/api/public/landing-logo?surface=auth";
+/** Configured URL when present, otherwise the packaged mark (never empty). */
+export function visiblePublicLogoUrl(url?: string | null): string {
+  const trimmed = typeof url === "string" ? url.trim() : "";
+  return trimmed || PUBLIC_LANDING_LOGO_HREF;
+}

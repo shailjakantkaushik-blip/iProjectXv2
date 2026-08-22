@@ -8,7 +8,7 @@ import {
   type LogoDisplaySize,
 } from "@/lib/landing-config";
 import { applyFaviconHref, DEFAULT_FAVICON_HREF } from "@/lib/favicon";
-import { PUBLIC_AUTH_LOGO_HREF } from "@/lib/live-landing-logo";
+import { visiblePublicLogoUrl } from "@/lib/live-landing-logo";
 
 export type AuthBrand = {
   name: string;
@@ -38,9 +38,8 @@ type AuthLayoutProps = {
   /** When true, org white-label was requested via ?org= (even if still resolving). */
   orgRequested?: boolean;
   /**
-   * When false, form title / copy stay as skeletons. The left-panel logo is
-   * always a native <img> at PUBLIC_AUTH_LOGO_HREF so a direct /auth visit
-   * still paints the Landing-config mark in the first HTML.
+   * When false, form title / copy stay as skeletons. The left-panel logo
+   * always paints: org file, Landing-config Auth file, or the packaged mark.
    */
   brandReady?: boolean;
   title: string;
@@ -118,11 +117,10 @@ export function AuthLayout({
   // White-label only when the dedicated org login link was used (?org=).
   const useOrg = Boolean(brandReady && orgRequested && org);
   const displayName = useOrg && org ? org.name : platform.name || "iProjectX";
-  // Platform mark is always the stable auth endpoint (Landing-config Auth logo).
-  // Direct /auth must not wait on fetchLandingConfig — the server loader
-  // returns empty logos so a config-driven <img src={logo_url}> never paints.
   const displayLogo =
-    useOrg && org?.logo_url ? org.logo_url : PUBLIC_AUTH_LOGO_HREF;
+    useOrg && org?.logo_url
+      ? org.logo_url
+      : visiblePublicLogoUrl(platform.logo_url);
   const tagline = platform.tagline || "Enterprise PMO Command Center";
   const logoSize: LogoDisplaySize =
     useOrg && org?.logo_size_auth

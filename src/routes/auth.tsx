@@ -186,7 +186,10 @@ function AuthPending() {
 }
 
 function AuthPage() {
-  const { platformBrand, signupEnabled, orgBrand, orgRequested } = Route.useLoaderData();
+  const loader = Route.useLoaderData();
+  const { orgBrand, orgRequested } = loader;
+  const [platformBrand, setPlatformBrand] = useState(loader.platformBrand);
+  const [signupEnabled, setSignupEnabled] = useState(loader.signupEnabled);
   const { session, loading, profile } = useAuth();
   const navigate = useNavigate();
   const assertOrgMembership = useServerFn(assertUserBelongsToOrgSlug);
@@ -212,6 +215,27 @@ function AuthPage() {
   const orgLabel = orgBrand?.name || targetOrgSlug || "this organisation";
   const sessionEmail =
     session?.user?.email || profile?.email || null;
+
+  useEffect(() => {
+    setPlatformBrand(loader.platformBrand);
+    setSignupEnabled(loader.signupEnabled);
+  }, [loader.platformBrand, loader.signupEnabled]);
+
+  // Server loader returns empty logos (Safari-safe). Fetch live Landing-config
+  // in the browser so the left-panel mark is the configured Auth file.
+  useEffect(() => {
+    let cancelled = false;
+    void fetchLandingConfig()
+      .then((cfg) => {
+        if (cancelled) return;
+        setPlatformBrand(toAuthPlatformBrand(cfg.brand));
+        setSignupEnabled(cfg.signup_enabled === true);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Warm the landing logo so "Back to site" paints the current mark, not a stale swap.
   useEffect(() => {

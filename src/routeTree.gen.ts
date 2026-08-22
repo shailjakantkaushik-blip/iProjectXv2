@@ -117,6 +117,7 @@ import { Route as AuthenticatedPlatformInvoiceIdRouteImport } from './routes/_au
 import { Route as ApiPublicHooksBillingRunRouteImport } from './routes/api/public/hooks/billing-run'
 import { Route as ApiPublicHooksAlertsDigestRouteImport } from './routes/api/public/hooks/alerts-digest'
 import { Route as ApiPublicHooksIntegrationWebhookRouteImport } from './routes/api/public/hooks/integration-webhook'
+import { Route as ApiPublicLandingLogoRouteImport } from './routes/api/public/landing-logo'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -740,6 +741,11 @@ const ApiPublicHooksIntegrationWebhookRoute =
     path: '/api/public/hooks/integration-webhook',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicLandingLogoRoute = ApiPublicLandingLogoRouteImport.update({
+  id: '/api/public/landing-logo',
+  path: '/api/public/landing-logo',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -848,6 +854,7 @@ export interface FileRoutesByFullPath {
   '/api/public/hooks/billing-run': typeof ApiPublicHooksBillingRunRoute
   '/api/public/hooks/alerts-digest': typeof ApiPublicHooksAlertsDigestRoute
   '/api/public/hooks/integration-webhook': typeof ApiPublicHooksIntegrationWebhookRoute
+  '/api/public/landing-logo': typeof ApiPublicLandingLogoRoute
   '/app/projects/': typeof AuthenticatedAppProjectsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -955,6 +962,7 @@ export interface FileRoutesByTo {
   '/api/public/hooks/billing-run': typeof ApiPublicHooksBillingRunRoute
   '/api/public/hooks/alerts-digest': typeof ApiPublicHooksAlertsDigestRoute
   '/api/public/hooks/integration-webhook': typeof ApiPublicHooksIntegrationWebhookRoute
+  '/api/public/landing-logo': typeof ApiPublicLandingLogoRoute
   '/app/projects': typeof AuthenticatedAppProjectsIndexRoute
 }
 export interface FileRoutesById {
@@ -1066,6 +1074,7 @@ export interface FileRoutesById {
   '/api/public/hooks/billing-run': typeof ApiPublicHooksBillingRunRoute
   '/api/public/hooks/alerts-digest': typeof ApiPublicHooksAlertsDigestRoute
   '/api/public/hooks/integration-webhook': typeof ApiPublicHooksIntegrationWebhookRoute
+  '/api/public/landing-logo': typeof ApiPublicLandingLogoRoute
   '/_authenticated/app/projects/': typeof AuthenticatedAppProjectsIndexRoute
 }
 export interface FileRouteTypes {
@@ -1177,6 +1186,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/billing-run'
     | '/api/public/hooks/alerts-digest'
     | '/api/public/hooks/integration-webhook'
+    | '/api/public/landing-logo'
     | '/app/projects/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -1284,6 +1294,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/billing-run'
     | '/api/public/hooks/alerts-digest'
     | '/api/public/hooks/integration-webhook'
+    | '/api/public/landing-logo'
     | '/app/projects'
   id:
     | '__root__'
@@ -1394,6 +1405,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/billing-run'
     | '/api/public/hooks/alerts-digest'
     | '/api/public/hooks/integration-webhook'
+    | '/api/public/landing-logo'
     | '/_authenticated/app/projects/'
   fileRoutesById: FileRoutesById
 }
@@ -1410,6 +1422,7 @@ export interface RootRouteChildren {
   ApiPublicHooksBillingRunRoute: typeof ApiPublicHooksBillingRunRoute
   ApiPublicHooksAlertsDigestRoute: typeof ApiPublicHooksAlertsDigestRoute
   ApiPublicHooksIntegrationWebhookRoute: typeof ApiPublicHooksIntegrationWebhookRoute
+  ApiPublicLandingLogoRoute: typeof ApiPublicLandingLogoRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -2170,6 +2183,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksIntegrationWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/landing-logo': {
+      id: '/api/public/landing-logo'
+      path: '/api/public/landing-logo'
+      fullPath: '/api/public/landing-logo'
+      preLoaderRoute: typeof ApiPublicLandingLogoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -2429,6 +2449,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHooksBillingRunRoute: ApiPublicHooksBillingRunRoute,
   ApiPublicHooksAlertsDigestRoute: ApiPublicHooksAlertsDigestRoute,
   ApiPublicHooksIntegrationWebhookRoute: ApiPublicHooksIntegrationWebhookRoute,
+  ApiPublicLandingLogoRoute: ApiPublicLandingLogoRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
