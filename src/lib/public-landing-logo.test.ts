@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { mergeBrandSurfaceLogos, resolvePublicLandingLogoUrl } from "./public-landing-logo.ts";
-import { parseLandingLogoCookie, sanitizeLandingLogoCookieUrl } from "./landing-logo-cookie.ts";
+import {
+  parseLandingLogoCookie,
+  parseLandingLogoSizeCookie,
+  sanitizeLandingLogoCookieUrl,
+  sanitizeLandingLogoSizeCookie,
+} from "./landing-logo-cookie.ts";
 
 const APP = "https://cdn.example/app-mark.png";
 const LANDING = "https://cdn.example/landing-mark.png";
@@ -81,5 +86,11 @@ describe("landing logo cookie", () => {
     );
     assert.equal(sanitizeLandingLogoCookieUrl("data:image/png;base64,aaaa"), "");
     assert.equal(sanitizeLandingLogoCookieUrl("/relative.png"), "");
+  });
+
+  it("reads configured landing mark size", () => {
+    assert.deepEqual(parseLandingLogoSizeCookie("pmo_lsz=56x280"), { heightPx: 56, maxWidthPx: 280 });
+    assert.equal(sanitizeLandingLogoSizeCookie("32x160")?.heightPx, 32);
+    assert.equal(sanitizeLandingLogoSizeCookie("9x9"), null);
   });
 });

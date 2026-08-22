@@ -22,8 +22,6 @@ import {
   GitBranch,
   Calendar,
   Flag,
-  Menu,
-  X,
   KeyRound,
   ScrollText,
   Shield,
@@ -35,6 +33,7 @@ import {
 } from "lucide-react";
 import {
   DEFAULT_LANDING,
+  applyLandingLogoDims,
   fetchLandingConfig,
   getFreshLandingConfigSnapshot,
   resolveLandingCfgForPaint,
@@ -43,9 +42,15 @@ import {
   type LogoDisplaySize,
 } from "@/lib/landing-config";
 import { PublicBrandMark } from "@/components/public-brand-mark";
-import { LandingMobileMenu } from "@/components/landing-mobile-menu";
+import {
+  LANDING_NAV_OPEN_ID,
+  LandingMobileMenuPanel,
+  LandingMobileMenuToggle,
+} from "@/components/landing-mobile-menu";
 import { resolvePublicLandingLogoUrl } from "@/lib/public-landing-logo";
 import { PUBLIC_AUTH_LOGO_HREF, PUBLIC_LANDING_LOGO_HREF } from "@/lib/live-landing-logo";
+import { resolveDocumentLandingLogoDims } from "@/lib/landing-public-logo.functions";
+import { readLandingLogoSizeCookieBrowser } from "@/lib/landing-logo-cookie";
 import { LandingHeroFrame } from "@/components/landing-hero-frame";
 import { LandingHeroDashboard } from "@/components/landing-hero-dashboard";
 import { lockDocumentScroll, unlockDocumentScroll } from "@/lib/document-scroll";
@@ -70,9 +75,9 @@ type LandingLoaderData = {
 
 export const Route = createFileRoute("/")({
   loader: async (): Promise<LandingLoaderData> => {
-    // Instant HTML. Branding overlays from cache after hydrate (Monday behaviour).
-    // so the browser fetches it during parse — we do not wait on branding here.
-    const base: LandingConfig = { ...DEFAULT_LANDING, signup_enabled: false };
+    // Instant HTML for copy. Size is a few numbers — bake them into the first
+    // document so .com and .com.au do not paint 32px then jump.
+    let cfg: LandingConfig = { ...DEFAULT_LANDING, signup_enabled: false };
     if (typeof window !== "undefined") {
       try {
         const cached = getFreshLandingConfigSnapshot();
@@ -82,10 +87,17 @@ export const Route = createFileRoute("/")({
       } catch {
         /* private browser with blocked storage */
       }
+      cfg = applyLandingLogoDims(cfg, readLandingLogoSizeCookieBrowser());
+      return { cfg, needsRevalidate: true };
     }
-    return { cfg: base, needsRevalidate: true };
+    try {
+      cfg = applyLandingLogoDims(cfg, await resolveDocumentLandingLogoDims());
+    } catch {
+      /* keep default size rather than blocking TTFB */
+    }
+    return { cfg, needsRevalidate: true };
   },
-  staleTime: 0,
+  staleTime: 60_000,
   component: LandingPage,
   head: () => {
     const links: { rel: "preload"; as: "image"; href: string }[] = [
@@ -489,10 +501,10 @@ function Nav({
   const p = cfg.palette;
   const navigate = useNavigate();
   const [scrolled, setScrolled] = useState(false);
-  const [open, setOpen] = useState(false);
 
   const goSection = (href: `#${string}`) => {
-    setOpen(false);
+    const box = document.getElementById(LANDING_NAV_OPEN_ID);
+    if (box instanceof HTMLInputElement) box.checked = false;
     const hash = href.slice(1);
     void navigate({ to: "/", hash, hashScrollIntoView: false });
     requestAnimationFrame(() => scrollToLandingHash(href));
@@ -506,13 +518,18 @@ function Nav({
   }, []);
 
   useEffect(() => {
-    if (open) {
-      lockDocumentScroll();
-      return () => unlockDocumentScroll();
-    }
-    unlockDocumentScroll();
-    return undefined;
-  }, [open]);
+    const box = document.getElementById(LANDING_NAV_OPEN_ID);
+    if (!(box instanceof HTMLInputElement)) return;
+    const sync = () => {
+      if (box.checked) lockDocumentScroll();
+      else unlockDocumentScroll();
+    };
+    box.addEventListener("change", sync);
+    return () => {
+      box.removeEventListener("change", sync);
+      unlockDocumentScroll();
+    };
+  }, []);
 
   const navBg =
     cfg.theme === "dark"
@@ -533,11 +550,12 @@ function Nav({
         boxShadow: scrolled ? "0 1px 0 rgba(15,27,61,0.06)" : "none",
       }}
     >
+      <input id={LANDING_NAV_OPEN_ID} type="checkbox" className="landing-nav-open" />
       <div
         data-landing-nav-bar
         className="relative z-[101] mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-6"
       >
-        <Link to="/" className="relative z-10" onClick={() => setOpen(false)}>
+        <Link to="/" className="relative z-10">
           <BrandMark cfg={cfg} />
         </Link>
 
@@ -587,31 +605,10 @@ function Nav({
               Get started
             </Link>
           ) : null}
-          <button
-            type="button"
-            className="relative z-[102] inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md border md:hidden"
-            style={{ borderColor: p.surface, color: p.textHeading, touchAction: "manipulation" }}
-            aria-label={open ? "Close menu" : "Open menu"}
-            aria-expanded={open}
-            aria-controls="landing-mobile-menu"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setOpen((v) => !v);
-            }}
-          >
-            {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
+          <LandingMobileMenuToggle borderColor={p.surface} color={p.textHeading} />
         </div>
       </div>
-      <LandingMobileMenu
-        open={open}
-        onClose={() => setOpen(false)}
-        cfg={cfg}
-        signupEnabled={signupEnabled}
-        links={NAV_LINKS}
-        onSection={goSection}
-      />
+      <LandingMobileMenuPanel cfg={cfg} signupEnabled={signupEnabled} links={NAV_LINKS} />
     </nav>
   );
 }

@@ -1760,3 +1760,44 @@ html[data-style-theme="atelier"] button[data-slot="button"] {
     page-break-inside: avoid;
   }
 }
+
+/* Landing mobile menu — native checkbox, works without React hydrate */
+.landing-nav-open {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+[data-landing-mobile-drawer] {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 300;
+  height: calc(100dvh - 4rem);
+  overflow: auto;
+}
+.landing-nav-open:checked ~ [data-landing-mobile-drawer] {
+  display: block;
+}
+.landing-menu-icon-close {
+  display: none;
+}
+.landing-nav-open:checked ~ [data-landing-nav-bar] .landing-menu-icon-open {
+  display: none;
+}
+.landing-nav-open:checked ~ [data-landing-nav-bar] .landing-menu-icon-close {
+  display: block;
+}
+@media (min-width: 768px) {
+  [data-landing-menu-toggle],
+  [data-landing-mobile-drawer] {
+    display: none !important;
+  }
+}
