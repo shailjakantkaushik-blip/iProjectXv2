@@ -82,8 +82,8 @@ function LegalPending() {
   );
 }
 
-function BrandMark({ cfg, holdDefault = false }: { cfg: LandingConfig; holdDefault?: boolean }) {
-  return <PublicBrandMark cfg={cfg} size="sm" holdDefault={holdDefault} fallback="name" />;
+function BrandMark({ cfg }: { cfg: LandingConfig }) {
+  return <PublicBrandMark cfg={cfg} size="sm" fallback="name" />;
 }
 
 /** Strip leading H1 / Last updated so UI header is not duplicated. */
@@ -164,8 +164,7 @@ function markdownToHtml(md: string): string {
 
 function LegalPolicyPage() {
   const { policy, cfg: loaderCfg, needsRevalidate } = Route.useLoaderData();
-  const [cfg, setCfg] = useState(() => resolveLandingCfgForPaint(loaderCfg));
-  const [brandSettled, setBrandSettled] = useState(false);
+  const [cfg, setCfg] = useState(loaderCfg);
   const p = cfg.palette;
   const isDark = cfg.theme === "dark";
   const pageBg = isDark ? p.navy : "#fafbfc";
@@ -176,18 +175,11 @@ function LegalPolicyPage() {
   }, [loaderCfg]);
 
   useEffect(() => {
-    if (!needsRevalidate) {
-      setBrandSettled(true);
-      return;
-    }
+    if (!needsRevalidate) return;
     let cancelled = false;
-    void fetchLandingConfig()
-      .then((live) => {
-        if (!cancelled) setCfg(live);
-      })
-      .finally(() => {
-        if (!cancelled) setBrandSettled(true);
-      });
+    void fetchLandingConfig().then((live) => {
+      if (!cancelled) setCfg(live);
+    });
     return () => {
       cancelled = true;
     };
@@ -257,8 +249,8 @@ function LegalPolicyPage() {
       >
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-5 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
-            <Link to="/" className="shrink-0" suppressHydrationWarning>
-              <BrandMark cfg={cfg} holdDefault={!brandSettled} />
+            <Link to="/" className="shrink-0">
+              <BrandMark cfg={cfg} />
             </Link>
             <span className="hidden text-sm sm:inline" style={{ color: p.surface }}>
               /

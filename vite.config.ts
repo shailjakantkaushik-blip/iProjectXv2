@@ -17,9 +17,8 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes("node_modules")) return;
-          // Isolate supabase only. Forcing every @tanstack package into one
-          // chunk created circular ESM bindings — Safari then died on /auth
-          // with "importing binding name 't' not found".
+          // Isolate supabase. Leave TanStack to the bundler — a forced
+          // mega-chunk caused Safari missing-export errors on /auth.
           if (id.includes("node_modules/@supabase")) return "supabase";
         },
       },

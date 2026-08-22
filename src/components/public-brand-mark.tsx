@@ -14,24 +14,18 @@ type PublicBrandMarkProps = {
   /** Override; defaults to configured landing logo size. */
   size?: LogoDisplaySize;
   onDark?: boolean;
-  /**
-   * When true and no public landing logo is ready, reserve space instead of
-   * painting the built-in diamond / wordmark (the “app logo” flash).
-   */
-  holdDefault?: boolean;
   /** After live config: name-only vs diamond+name when no custom landing logo. */
   fallback?: "diamond" | "name";
 };
 
 /**
- * Marketing chrome brand mark. Uses the landing-surface logo only — never the
- * App-shell file — and can hold an empty slot until live config arrives.
+ * Marketing chrome brand mark. Always paints a complete mark: the landing
+ * logo when known, otherwise the default diamond + name. Never an empty slot.
  */
 export function PublicBrandMark({
   cfg,
   size,
   onDark = false,
-  holdDefault = false,
   fallback = "diamond",
 }: PublicBrandMarkProps) {
   const p = cfg.palette;
@@ -40,8 +34,7 @@ export function PublicBrandMark({
     size != null
       ? resolveBrandLogoDims({ ...cfg.brand, logo_size_landing: size }, "landing")
       : resolveBrandLogoDims(cfg.brand, "landing");
-  const phase = holdDefault ? "first-paint" : "settled";
-  const logoUrl = sanitizeEmbeddedAssetUrl(resolvePublicLandingLogoUrl(cfg.brand, phase));
+  const logoUrl = sanitizeEmbeddedAssetUrl(resolvePublicLandingLogoUrl(cfg.brand));
   const box =
     token === "xl" || (token === "custom" && dims.heightPx >= 48)
       ? "h-12 w-12"
@@ -74,17 +67,6 @@ export function PublicBrandMark({
         alt={cfg.brand.name}
         heightPx={heightPx}
         maxWidthPx={maxWidthPx}
-      />
-    );
-  }
-
-  if (holdDefault) {
-    return (
-      <span
-        aria-hidden
-        data-landing-brand-slot
-        className="inline-block"
-        style={{ height: heightPx, width: Math.min(maxWidthPx, heightPx * 2.5) }}
       />
     );
   }
