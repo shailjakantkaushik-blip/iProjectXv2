@@ -32,8 +32,10 @@ export function parseDataImageUrl(
   const type = m[1].toLowerCase();
   if (type.includes("svg")) return null;
   const isB64 = Boolean(m[3]);
-  const payload = m[4] ?? "";
-  if (!payload || payload.length > 550_000) return null;
+  const payload = (m[4] ?? "").replace(/\s/g, "");
+  // Stored landing logos can sit near the 550KB data-URL cap; allow the
+  // decoded payload a little more room so first-paint does not fall back.
+  if (!payload || payload.length > 1_200_000) return null;
   try {
     if (isB64) {
       const buf = Buffer.from(payload, "base64");

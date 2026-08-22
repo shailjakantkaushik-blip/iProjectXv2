@@ -72,8 +72,15 @@ describe("parseDataImageUrl", () => {
     assert.equal(Buffer.from(parsed.bytes).toString(), "png-bytes");
   });
 
-  it("rejects SVG and oversized payloads", () => {
+  it("rejects SVG and non-data URLs", () => {
     assert.equal(parseDataImageUrl("data:image/svg+xml;base64,YQ=="), null);
     assert.equal(parseDataImageUrl("https://cdn.example/logo.png"), null);
+  });
+
+  it("accepts base64 with whitespace", () => {
+    const png = Buffer.from("png-bytes").toString("base64");
+    const parsed = parseDataImageUrl(`data:image/png;base64,${png.slice(0, 4)}\n${png.slice(4)}`);
+    assert.ok(parsed);
+    assert.equal(Buffer.from(parsed.bytes).toString(), "png-bytes");
   });
 });

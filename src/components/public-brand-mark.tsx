@@ -3,8 +3,7 @@ import {
   type LandingConfig,
   type LogoDisplaySize,
 } from "@/lib/landing-config";
-import { resolvePublicLandingLogoUrl } from "@/lib/public-landing-logo";
-import { visiblePublicLogoUrl } from "@/lib/live-landing-logo";
+import { PUBLIC_LANDING_LOGO_HREF } from "@/lib/live-landing-logo";
 
 type PublicBrandMarkProps = {
   cfg: LandingConfig;
@@ -14,9 +13,9 @@ type PublicBrandMarkProps = {
 };
 
 /**
- * Marketing chrome brand mark. Uses the Landing-config file when the client
- * has it; otherwise the packaged iProjectX mark so the first HTML is never a
- * broken / 404 image.
+ * Marketing chrome brand mark. Src is always the live logo endpoint so the
+ * first HTML and the hydrated page request the same file — no packaged→current
+ * flicker when Landing-config arrives.
  */
 export function PublicBrandMark({
   cfg,
@@ -29,11 +28,10 @@ export function PublicBrandMark({
       : resolveBrandLogoDims(cfg.brand, "landing");
   const heightPx = token === "sm" ? Math.min(24, dims.heightPx) : dims.heightPx;
   const maxWidthPx = token === "sm" ? Math.min(120, dims.maxWidthPx) : dims.maxWidthPx;
-  const src = visiblePublicLogoUrl(resolvePublicLandingLogoUrl(cfg.brand));
 
   return (
     <img
-      src={src}
+      src={PUBLIC_LANDING_LOGO_HREF}
       alt={cfg.brand.name || "iProjectX"}
       width={maxWidthPx}
       height={heightPx}
