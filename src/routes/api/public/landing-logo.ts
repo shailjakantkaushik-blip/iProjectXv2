@@ -36,7 +36,10 @@ export const Route = createFileRoute("/api/public/landing-logo")({
             headers: { "Content-Type": resolved.type, "Cache-Control": cache },
           });
         } catch {
-          return new Response("Not found", { status: 404 });
+          return new Response(null, {
+            status: 302,
+            headers: { Location: "/brand/iprojectx-mark.webp", "Cache-Control": cache },
+          });
         }
       },
     },

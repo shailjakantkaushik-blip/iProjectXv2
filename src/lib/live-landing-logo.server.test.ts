@@ -5,6 +5,15 @@ import {
   parseLiveLogoSurface,
   pickLiveLogoCandidate,
 } from "./live-landing-logo-parse.ts";
+import { visiblePublicLogoUrl } from "./live-landing-logo.ts";
+
+describe("visiblePublicLogoUrl", () => {
+  it("never returns empty — packaged mark when config is blank", () => {
+    assert.equal(visiblePublicLogoUrl(""), "/brand/iprojectx-mark.webp");
+    assert.equal(visiblePublicLogoUrl(null), "/brand/iprojectx-mark.webp");
+    assert.equal(visiblePublicLogoUrl("https://cdn.example/logo.png"), "https://cdn.example/logo.png");
+  });
+});
 
 describe("pickLiveLogoCandidate", () => {
   it("uses Auth then Landing then legacy, never App-shell", () => {
