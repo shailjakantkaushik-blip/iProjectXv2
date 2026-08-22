@@ -8,7 +8,6 @@ import { completeForcedPasswordChange } from "@/lib/platform-admin.functions";
 import { ProcessingOverlay } from "@/components/processing-animation";
 import { DEFAULT_LANDING, fetchLandingConfig, resolveBrandLogoUrl } from "@/lib/landing-config";
 import { AuthLayout, PasswordField, type AuthBrand } from "@/components/auth-layout";
-import { PUBLIC_AUTH_LOGO_HREF } from "@/lib/live-landing-logo";
 import { readOrgAuthEntrySlug } from "@/lib/org-auth-entry";
 
 export const Route = createFileRoute("/force-password-change")({
@@ -17,7 +16,7 @@ export const Route = createFileRoute("/force-password-change")({
       { title: "Change your password — PMO Enterprise" },
       { name: "robots", content: "noindex" },
     ],
-    links: [{ rel: "preload" as const, as: "image", href: PUBLIC_AUTH_LOGO_HREF }],
+    links: [],
   }),
   component: ForcePwdPage,
 });

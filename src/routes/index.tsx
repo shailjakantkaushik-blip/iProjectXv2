@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   Ban,
@@ -44,7 +44,6 @@ import {
   type LogoDisplaySize,
 } from "@/lib/landing-config";
 import { PublicBrandMark } from "@/components/public-brand-mark";
-import { PUBLIC_LANDING_LOGO_HREF } from "@/lib/live-landing-logo";
 import { resolvePublicLandingLogoUrl } from "@/lib/public-landing-logo";
 import { LandingHeroFrame } from "@/components/landing-hero-frame";
 import { LandingHeroDashboard } from "@/components/landing-hero-dashboard";
@@ -70,7 +69,7 @@ type LandingLoaderData = {
 
 export const Route = createFileRoute("/")({
   loader: async (): Promise<LandingLoaderData> => {
-    // Instant HTML. Logo is always /api/public/landing-logo — same src after hydrate.
+    // Instant HTML. Branding overlays from cache after hydrate (Monday behaviour).
     // so the browser fetches it during parse — we do not wait on branding here.
     const base: LandingConfig = { ...DEFAULT_LANDING, signup_enabled: false };
     if (typeof window !== "undefined") {
@@ -88,7 +87,7 @@ export const Route = createFileRoute("/")({
   staleTime: 0,
   component: LandingPage,
   head: () => {
-    const links = [{ rel: "preload" as const, as: "image", href: PUBLIC_LANDING_LOGO_HREF }];
+    const links: { rel: "preload"; as: "image"; href: string }[] = [];
     return {
       meta: [
         {
@@ -296,7 +295,7 @@ function LandingPage() {
     unlockDocumentScroll();
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setCfg(resolveLandingCfgForPaint(loaderCfg));
   }, [loaderCfg]);
 

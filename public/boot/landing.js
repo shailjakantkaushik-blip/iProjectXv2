@@ -10,14 +10,16 @@
         document.documentElement.style.backgroundColor = dark ? p.navy : "#ffffff";
         document.documentElement.style.color = p.textBody || "#1e3a5f";
       }
-    }
-    if (!document.querySelector('link[data-pmo-landing-logo]')) {
-      var link = document.createElement("link");
-      link.rel = "preload";
-      link.as = "image";
-      link.href = "/api/public/landing-logo";
-      link.setAttribute("data-pmo-landing-logo", "1");
-      document.head.appendChild(link);
+      var b = cfg && cfg.brand;
+      var u = b && String(b.logo_url_landing || b.logo_url || "").trim();
+      if (u && u.indexOf("data:") !== 0 && !document.querySelector('link[data-pmo-landing-logo]')) {
+        var link = document.createElement("link");
+        link.rel = "preload";
+        link.as = "image";
+        link.href = u;
+        link.setAttribute("data-pmo-landing-logo", "1");
+        document.head.appendChild(link);
+      }
     }
   } catch (e) {}
 })();

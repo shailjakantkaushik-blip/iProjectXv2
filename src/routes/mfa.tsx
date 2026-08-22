@@ -14,7 +14,6 @@ import { toast } from "sonner";
 import { ProcessingOverlay } from "@/components/processing-animation";
 import { DEFAULT_LANDING, fetchLandingConfig, resolveBrandLogoUrl } from "@/lib/landing-config";
 import { AuthLayout, type AuthBrand } from "@/components/auth-layout";
-import { PUBLIC_AUTH_LOGO_HREF } from "@/lib/live-landing-logo";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { readOrgAuthEntrySlug } from "@/lib/org-auth-entry";
 
@@ -47,7 +46,7 @@ export const Route = createFileRoute("/mfa")({
       { title: "Two-factor authentication — iProjectX" },
       { name: "robots", content: "noindex" },
     ],
-    links: [{ rel: "preload" as const, as: "image", href: PUBLIC_AUTH_LOGO_HREF }],
+    links: [],
   }),
   component: MfaPage,
 });

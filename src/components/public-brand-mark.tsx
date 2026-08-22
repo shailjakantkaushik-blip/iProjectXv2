@@ -1,9 +1,11 @@
+import { StableBrandLogo } from "@/components/stable-brand-logo";
 import {
   resolveBrandLogoDims,
   type LandingConfig,
   type LogoDisplaySize,
 } from "@/lib/landing-config";
-import { PUBLIC_LANDING_LOGO_HREF } from "@/lib/live-landing-logo";
+import { resolvePublicLandingLogoUrl } from "@/lib/public-landing-logo";
+import { PACKAGED_PUBLIC_MARK_HREF } from "@/lib/live-landing-logo";
 
 type PublicBrandMarkProps = {
   cfg: LandingConfig;
@@ -13,32 +15,29 @@ type PublicBrandMarkProps = {
 };
 
 /**
- * Marketing chrome brand mark. Src is always the live logo endpoint so the
- * first HTML and the hydrated page request the same file — no packaged→current
- * flicker when Landing-config arrives.
+ * Marketing chrome brand mark. Uses the Landing-config file and size the
+ * same way as before this week's API experiment — never a 32px default once
+ * live/cached config is on the page.
  */
 export function PublicBrandMark({
   cfg,
   size,
 }: PublicBrandMarkProps) {
-  const token = size ?? cfg.brand.logo_size_landing ?? "md";
   const dims =
     size != null
       ? resolveBrandLogoDims({ ...cfg.brand, logo_size_landing: size }, "landing")
       : resolveBrandLogoDims(cfg.brand, "landing");
-  const heightPx = token === "sm" ? Math.min(24, dims.heightPx) : dims.heightPx;
-  const maxWidthPx = token === "sm" ? Math.min(120, dims.maxWidthPx) : dims.maxWidthPx;
+  const heightPx = size === "sm" ? Math.min(24, dims.heightPx) : dims.heightPx;
+  const maxWidthPx = size === "sm" ? Math.min(120, dims.maxWidthPx) : dims.maxWidthPx;
+  const configured = resolvePublicLandingLogoUrl(cfg.brand);
+  const src = configured || PACKAGED_PUBLIC_MARK_HREF;
 
   return (
-    <img
-      src={PUBLIC_LANDING_LOGO_HREF}
+    <StableBrandLogo
+      src={src}
       alt={cfg.brand.name || "iProjectX"}
-      width={maxWidthPx}
-      height={heightPx}
-      fetchPriority="high"
-      decoding="async"
-      className="w-auto object-contain"
-      style={{ height: heightPx, maxWidth: maxWidthPx }}
+      heightPx={heightPx}
+      maxWidthPx={maxWidthPx}
     />
   );
 }
