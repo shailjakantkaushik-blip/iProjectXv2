@@ -321,7 +321,8 @@ function BrandMark({
 }
 
 function LandingPage() {
-  const { cfg: loaderCfg, needsRevalidate, logoHref } = Route.useLoaderData();
+  const { cfg: loaderCfg, needsRevalidate, logoHref: loaderLogoHref } = Route.useLoaderData();
+  const logoHref = loaderLogoHref || PUBLIC_LANDING_LOGO_HREF;
   // First paint must match SSR (loaderCfg). Overlay cache only after hydrate
   // so mobile Safari does not fail on a logo mismatch.
   // Prefer memory/localStorage over a stale loader snapshot so the uploaded
@@ -425,7 +426,7 @@ function LandingPage() {
       >
         Skip to content
       </a>
-      <Nav cfg={cfg} signupEnabled={signupEnabled} />
+      <Nav cfg={cfg} signupEnabled={signupEnabled} logoHref={logoHref} />
       <div className="w-full max-w-[100vw] overflow-x-hidden">
       {/* Matches frozen nav: 4rem bar + notch inset, so the hero is not tucked under Sign in / logo. */}
       <div className="h-[var(--lp-nav-h)] shrink-0" aria-hidden />
@@ -446,7 +447,7 @@ function LandingPage() {
         <StatsStrip cfg={cfg} />
         <FinalCta cfg={cfg} onEoiClick={() => setEoiOpen(true)} />
       </main>
-      <Footer cfg={cfg} />
+      <Footer cfg={cfg} logoHref={logoHref} />
       </div>
       {eoiOpen ? (
         <Suspense fallback={null}>
@@ -516,9 +517,11 @@ function CtaSecondary({
 function Nav({
   cfg,
   signupEnabled,
+  logoHref,
 }: {
   cfg: LandingConfig;
   signupEnabled: boolean;
+  logoHref: string;
 }) {
   const p = cfg.palette;
   const navigate = useNavigate();
@@ -1879,7 +1882,7 @@ function FinalCta({ cfg, onEoiClick }: { cfg: LandingConfig; onEoiClick?: () => 
   );
 }
 
-function Footer({ cfg }: { cfg: LandingConfig }) {
+function Footer({ cfg, logoHref }: { cfg: LandingConfig; logoHref: string }) {
   const p = cfg.palette;
   const year = new Date().getFullYear();
   return (
