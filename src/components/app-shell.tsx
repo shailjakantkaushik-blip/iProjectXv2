@@ -63,6 +63,7 @@ import {
   Link2,
   Brain,
   Network,
+  FlaskConical,
   type LucideIcon,
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -179,6 +180,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Link2,
   Brain,
   Network,
+  FlaskConical,
 };
 
 function resolveIcon(name: string): LucideIcon {

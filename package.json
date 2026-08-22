@@ -15,7 +15,11 @@
     "check:preload": "node scripts/check-preload-size.mjs",
     "build:ci": "npm run build:byod-schema && vite build && node scripts/check-preload-size.mjs && node scripts/check-csp.mjs",
     "preview": "vite preview",
-    "test": "node --experimental-strip-types --test src/lib/*.test.ts",
+    "test": "node --experimental-strip-types --import ./scripts/register-ts-alias.mjs --test src/lib/*.test.ts",
+    "test:commercial": "node scripts/run-commercial-tests.mjs",
+    "test:live": "node scripts/live-public-smoke.mjs",
+    "test:live-platform": "node scripts/live-platform-rls.mjs",
+    "test:live-signed-in": "node scripts/live-platform-signed-in.mjs",
     "lint": "eslint .",
     "format": "prettier --write .",
     "build:replication": "node scripts/build-complete-supabase-replication.mjs"
