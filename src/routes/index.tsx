@@ -49,7 +49,11 @@ import {
 } from "@/components/landing-mobile-menu";
 import { resolvePublicLandingLogoUrl } from "@/lib/public-landing-logo";
 import { PUBLIC_AUTH_LOGO_HREF, PUBLIC_LANDING_LOGO_HREF } from "@/lib/live-landing-logo";
-import { resolveDocumentLandingLogoDims } from "@/lib/landing-public-logo.functions";
+import {
+  peekDocumentLandingLogoUrl,
+  resolveDocumentLandingLogoDims,
+} from "@/lib/landing-public-logo.functions";
+import { readLandingLogoCookieBrowser } from "@/lib/landing-logo-cookie";
 import { readLandingLogoSizeCookieBrowser } from "@/lib/landing-logo-cookie";
 import { LandingHeroFrame } from "@/components/landing-hero-frame";
 import { LandingHeroDashboard } from "@/components/landing-hero-dashboard";
@@ -71,37 +75,53 @@ type LandingLoaderData = {
   cfg: LandingConfig;
   /** True when cfg came from localStorage — revalidate live signup/branding after paint. */
   needsRevalidate: boolean;
+  /** https CDN URL from cookie, else the live API href. */
+  logoHref: string;
 };
+
+function landingLogoHrefFromCookie(): string {
+  return readLandingLogoCookieBrowser() || PUBLIC_LANDING_LOGO_HREF;
+}
 
 export const Route = createFileRoute("/")({
   loader: async (): Promise<LandingLoaderData> => {
     // Instant HTML for copy. Size is a few numbers — bake them into the first
     // document so .com and .com.au do not paint 32px then jump.
     let cfg: LandingConfig = { ...DEFAULT_LANDING, signup_enabled: false };
+    let logoHref = PUBLIC_LANDING_LOGO_HREF;
     if (typeof window !== "undefined") {
       try {
         const cached = getFreshLandingConfigSnapshot();
         if (cached) {
-          return { cfg: { ...cached, signup_enabled: false }, needsRevalidate: true };
+          return {
+            cfg: { ...cached, signup_enabled: false },
+            needsRevalidate: true,
+            logoHref: landingLogoHrefFromCookie(),
+          };
         }
       } catch {
         /* private browser with blocked storage */
       }
       cfg = applyLandingLogoDims(cfg, readLandingLogoSizeCookieBrowser());
-      return { cfg, needsRevalidate: true };
+      return { cfg, needsRevalidate: true, logoHref: landingLogoHrefFromCookie() };
     }
     try {
-      cfg = applyLandingLogoDims(cfg, await resolveDocumentLandingLogoDims());
+      const [dims, cookieUrl] = await Promise.all([
+        resolveDocumentLandingLogoDims(),
+        peekDocumentLandingLogoUrl(),
+      ]);
+      cfg = applyLandingLogoDims(cfg, dims);
+      if (cookieUrl) logoHref = cookieUrl;
     } catch {
       /* keep default size rather than blocking TTFB */
     }
-    return { cfg, needsRevalidate: true };
+    return { cfg, needsRevalidate: true, logoHref };
   },
   staleTime: 60_000,
   component: LandingPage,
-  head: () => {
+  head: ({ loaderData }) => {
     const links: { rel: "preload"; as: "image"; href: string }[] = [
-      { rel: "preload", as: "image", href: PUBLIC_LANDING_LOGO_HREF },
+      { rel: "preload", as: "image", href: loaderData?.logoHref || PUBLIC_LANDING_LOGO_HREF },
     ];
     return {
       meta: [
@@ -289,17 +309,19 @@ function BrandMark({
   cfg,
   size,
   onDark = false,
+  src,
 }: {
   cfg: LandingConfig;
   /** Override; defaults to configured landing logo size. */
   size?: LogoDisplaySize;
   onDark?: boolean;
+  src?: string;
 }) {
-  return <PublicBrandMark cfg={cfg} size={size} onDark={onDark} />;
+  return <PublicBrandMark cfg={cfg} size={size} onDark={onDark} src={src} />;
 }
 
 function LandingPage() {
-  const { cfg: loaderCfg, needsRevalidate } = Route.useLoaderData();
+  const { cfg: loaderCfg, needsRevalidate, logoHref } = Route.useLoaderData();
   // First paint must match SSR (loaderCfg). Overlay cache only after hydrate
   // so mobile Safari does not fail on a logo mismatch.
   // Prefer memory/localStorage over a stale loader snapshot so the uploaded
@@ -556,7 +578,7 @@ function Nav({
         className="relative z-[101] mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-6"
       >
         <Link to="/" className="relative z-10">
-          <BrandMark cfg={cfg} />
+          <BrandMark cfg={cfg} src={logoHref} />
         </Link>
 
         <div className="hidden items-center gap-8 md:flex">
@@ -1871,7 +1893,7 @@ function Footer({ cfg }: { cfg: LandingConfig }) {
       <div className="mx-auto max-w-7xl px-5 py-14 sm:px-6">
         <div className="grid gap-10 md:grid-cols-12 md:gap-8">
           <div className="md:col-span-5">
-            <BrandMark cfg={cfg} size="xl" />
+            <BrandMark cfg={cfg} size="xl" src={logoHref} />
             <p className="mt-4 max-w-sm text-sm leading-relaxed" style={{ color: p.textMuted }}>
               {cfg.brand.tagline || "Portfolio Intelligence Platform"}
             </p>

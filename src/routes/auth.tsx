@@ -49,6 +49,11 @@ import { clearOrgAuthEntry, rememberOrgAuthEntry } from "@/lib/org-auth-entry";
 import { AlertTriangle } from "lucide-react";
 import { RouteErrorView } from "@/components/route-error";
 import { PUBLIC_AUTH_LOGO_HREF } from "@/lib/live-landing-logo";
+import { peekDocumentAuthLogoUrl } from "@/lib/landing-public-logo.functions";
+import {
+  readAuthLogoCookieBrowser,
+  sanitizeLandingLogoCookieUrl,
+} from "@/lib/landing-logo-cookie";
 
 type OrgAccessAlert = {
   title: string;
@@ -68,18 +73,32 @@ type AuthLoaderData = {
   orgRequested: boolean;
 };
 
-function toAuthPlatformBrand(brand: LandingConfig["brand"]): AuthBrand {
+function toAuthPlatformBrand(brand: LandingConfig["brand"], cookieUrl = ""): AuthBrand {
+  const live = resolveBrandLogoUrl(brand, "auth");
   return {
     name: brand.name,
-    logo_url: resolveBrandLogoUrl(brand, "auth"),
+    logo_url:
+      sanitizeLandingLogoCookieUrl(live) ||
+      sanitizeLandingLogoCookieUrl(cookieUrl) ||
+      PUBLIC_AUTH_LOGO_HREF,
     tagline: brand.tagline,
     logo_size_auth: brand.logo_size_auth,
     logo_custom_auth: brand.logo_custom_auth,
   };
 }
 
+async function authLogoCookieHref(): Promise<string> {
+  if (typeof window !== "undefined") return readAuthLogoCookieBrowser();
+  try {
+    return await peekDocumentAuthLogoUrl();
+  } catch {
+    return "";
+  }
+}
+
 async function loadAuthPublicConfig(orgSlug?: string): Promise<AuthLoaderData> {
   const slug = orgSlug?.trim() || "";
+  const cookieUrl = await authLogoCookieHref();
   try {
     const cfg = await fetchLandingConfig();
     let orgBrand: AuthOrgBrand = null;
@@ -97,7 +116,7 @@ async function loadAuthPublicConfig(orgSlug?: string): Promise<AuthLoaderData> {
       }
     }
     return {
-      platformBrand: toAuthPlatformBrand(cfg?.brand ?? DEFAULT_LANDING.brand),
+      platformBrand: toAuthPlatformBrand(cfg?.brand ?? DEFAULT_LANDING.brand, cookieUrl),
       signupEnabled: cfg.signup_enabled === true,
       orgBrand,
       orgRequested: Boolean(slug),
@@ -107,7 +126,7 @@ async function loadAuthPublicConfig(orgSlug?: string): Promise<AuthLoaderData> {
     // still shows the last known brand instead of a default placeholder.
     const cached = typeof window !== "undefined" ? readCachedLandingConfig() : null;
     return {
-      platformBrand: toAuthPlatformBrand(cached?.brand ?? DEFAULT_LANDING.brand),
+      platformBrand: toAuthPlatformBrand(cached?.brand ?? DEFAULT_LANDING.brand, cookieUrl),
       signupEnabled: false,
       orgBrand: null,
       orgRequested: Boolean(slug),
@@ -120,12 +139,18 @@ export const Route = createFileRoute("/auth")({
     org: typeof search.org === "string" && search.org.trim() ? search.org.trim() : undefined,
   }),
   loaderDeps: ({ search }) => ({ org: search.org }),
-  head: () => ({
+  head: ({ loaderData }) => ({
     meta: [
       { title: "Sign in — PMO Enterprise" },
       { name: "robots", content: "noindex" },
     ],
-    links: [{ rel: "preload", as: "image", href: PUBLIC_AUTH_LOGO_HREF }],
+    links: [
+      {
+        rel: "preload",
+        as: "image",
+        href: loaderData?.platformBrand.logo_url || PUBLIC_AUTH_LOGO_HREF,
+      },
+    ],
   }),
   loader: async ({ deps }): Promise<AuthLoaderData> => loadAuthPublicConfig(deps.org),
   staleTime: 60_000,
@@ -148,10 +173,12 @@ function authShellBrand(): AuthBrand {
     typeof window !== "undefined"
       ? getFreshLandingConfigSnapshot() ?? readCachedLandingConfig()
       : null;
-  if (cached) return toAuthPlatformBrand(cached.brand);
+  const cookieUrl = typeof window !== "undefined" ? readAuthLogoCookieBrowser() : "";
+  if (cached) return toAuthPlatformBrand(cached.brand, cookieUrl);
   return {
     name: DEFAULT_LANDING.brand.name,
     tagline: DEFAULT_LANDING.brand.tagline,
+    logo_url: cookieUrl || PUBLIC_AUTH_LOGO_HREF,
     logo_size_auth: DEFAULT_LANDING.brand.logo_size_auth,
     logo_custom_auth: DEFAULT_LANDING.brand.logo_custom_auth,
   };
@@ -224,7 +251,7 @@ function AuthPage() {
   useLayoutEffect(() => {
     const cached = getFreshLandingConfigSnapshot() ?? readCachedLandingConfig();
     if (!cached) return;
-    setPlatformBrand(toAuthPlatformBrand(cached.brand));
+    setPlatformBrand(toAuthPlatformBrand(cached.brand, readAuthLogoCookieBrowser()));
     if (cached.signup_enabled === true) setSignupEnabled(true);
   }, []);
 
@@ -240,7 +267,7 @@ function AuthPage() {
     void fetchLandingConfig()
       .then((cfg) => {
         if (cancelled) return;
-        setPlatformBrand(toAuthPlatformBrand(cfg.brand));
+        setPlatformBrand(toAuthPlatformBrand(cfg.brand, readAuthLogoCookieBrowser()));
         setSignupEnabled(cfg.signup_enabled === true);
       })
       .catch(() => {});

@@ -1,16 +1,18 @@
 /** Short https landing-logo cookie so SSR can paint the real mark on return visits. */
 export const LANDING_LOGO_COOKIE = "pmo_llogo";
+/** Auth / sign-in mark (may differ from landing). */
+export const AUTH_LOGO_COOKIE = "pmo_alogo";
 const MAX_COOKIE_URL = 1800;
 const MAX_AGE_SEC = 60 * 60 * 24 * 30;
 
-export function parseLandingLogoCookie(cookieHeader: string): string {
+function parseHttpsCookie(cookieHeader: string, cookieName: string): string {
   if (!cookieHeader) return "";
   const parts = cookieHeader.split(";");
   for (const part of parts) {
     const idx = part.indexOf("=");
     if (idx < 0) continue;
     const name = part.slice(0, idx).trim();
-    if (name !== LANDING_LOGO_COOKIE) continue;
+    if (name !== cookieName) continue;
     let value = part.slice(idx + 1).trim();
     try {
       value = decodeURIComponent(value);
@@ -20,6 +22,14 @@ export function parseLandingLogoCookie(cookieHeader: string): string {
     return sanitizeLandingLogoCookieUrl(value);
   }
   return "";
+}
+
+export function parseLandingLogoCookie(cookieHeader: string): string {
+  return parseHttpsCookie(cookieHeader, LANDING_LOGO_COOKIE);
+}
+
+export function parseAuthLogoCookie(cookieHeader: string): string {
+  return parseHttpsCookie(cookieHeader, AUTH_LOGO_COOKIE);
 }
 
 export function sanitizeLandingLogoCookieUrl(url: unknown): string {
@@ -103,16 +113,33 @@ export function writeLandingLogoSizeCookie(dims: LandingLogoSizeCookie | null | 
   }
 }
 
-export function writeLandingLogoCookie(url: unknown) {
+function writeHttpsLogoCookie(cookieName: string, url: unknown) {
   if (typeof document === "undefined") return;
   const safe = sanitizeLandingLogoCookieUrl(url);
   try {
     if (!safe) {
-      document.cookie = `${LANDING_LOGO_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
+      document.cookie = `${cookieName}=; Path=/; Max-Age=0; SameSite=Lax`;
       return;
     }
-    document.cookie = `${LANDING_LOGO_COOKIE}=${encodeURIComponent(safe)}; Path=/; Max-Age=${MAX_AGE_SEC}; SameSite=Lax`;
+    document.cookie = `${cookieName}=${encodeURIComponent(safe)}; Path=/; Max-Age=${MAX_AGE_SEC}; SameSite=Lax`;
   } catch {
     /* private / cookie blocked */
+  }
+}
+
+export function writeLandingLogoCookie(url: unknown) {
+  writeHttpsLogoCookie(LANDING_LOGO_COOKIE, url);
+}
+
+export function writeAuthLogoCookie(url: unknown) {
+  writeHttpsLogoCookie(AUTH_LOGO_COOKIE, url);
+}
+
+export function readAuthLogoCookieBrowser(): string {
+  if (typeof document === "undefined") return "";
+  try {
+    return parseAuthLogoCookie(document.cookie);
+  } catch {
+    return "";
   }
 }

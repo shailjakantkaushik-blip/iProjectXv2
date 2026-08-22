@@ -1,6 +1,24 @@
 import { createServerFn } from "@tanstack/react-start";
 
 /**
+ * Cookie-only. Never waits on Supabase — first HTML TTFB stays short.
+ * Returns an https CDN URL on repeat visits, otherwise "".
+ */
+export const peekDocumentLandingLogoUrl = createServerFn({ method: "GET" }).handler(
+  async (): Promise<string> => {
+    const { readLandingLogoCookieFromRequest } = await import("@/lib/landing-logo-cookie.server");
+    return readLandingLogoCookieFromRequest();
+  },
+);
+
+export const peekDocumentAuthLogoUrl = createServerFn({ method: "GET" }).handler(
+  async (): Promise<string> => {
+    const { readAuthLogoCookieFromRequest } = await import("@/lib/landing-logo-cookie.server");
+    return readAuthLogoCookieFromRequest();
+  },
+);
+
+/**
  * https landing-logo URL for the first HTML document.
  * Cookie (repeat visit) first, then a short DB read. Client stubs never
  * import `@tanstack/react-start/server`.

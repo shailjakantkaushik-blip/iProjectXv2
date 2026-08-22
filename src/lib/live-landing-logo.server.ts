@@ -21,7 +21,7 @@ export type LiveLandingLogo =
   | { kind: "bytes"; type: string; body: Uint8Array }
   | { kind: "file"; path: string; type: string };
 
-const CACHE_MS = 30_000;
+const CACHE_MS = 5 * 60_000;
 const FALLBACK_FILE = join(process.cwd(), "public/brand/iprojectx-mark.webp");
 const PACKAGED_HREF = "/brand/iprojectx-mark.webp";
 /** Image request is parallel to HTML — do not starve the configured file. */
@@ -103,6 +103,23 @@ function makePublicClient() {
 async function readBrand(): Promise<Record<string, unknown> | undefined> {
   const client = makePublicClient();
   if (!client) return undefined;
+  const urls = await client
+    .from("landing_config" as never)
+    .select(
+      "logo_url_landing:config->brand->logo_url_landing, logo_url_auth:config->brand->logo_url_auth, logo_url:config->brand->logo_url",
+    )
+    .eq("id", "singleton")
+    .maybeSingle();
+  if (urls.data && typeof urls.data === "object") {
+    const row = urls.data as Record<string, unknown>;
+    if (row.logo_url_landing || row.logo_url_auth || row.logo_url) {
+      return {
+        logo_url_landing: row.logo_url_landing,
+        logo_url_auth: row.logo_url_auth,
+        logo_url: row.logo_url,
+      };
+    }
+  }
   const slim = await client
     .from("landing_config" as never)
     .select("config->brand")

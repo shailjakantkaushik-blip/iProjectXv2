@@ -9,6 +9,7 @@ import {
 } from "@/lib/landing-config";
 import { applyFaviconHref, DEFAULT_FAVICON_HREF } from "@/lib/favicon";
 import { PUBLIC_AUTH_LOGO_HREF } from "@/lib/live-landing-logo";
+import { sanitizeLandingLogoCookieUrl } from "@/lib/landing-logo-cookie";
 
 export type AuthBrand = {
   name: string;
@@ -117,7 +118,9 @@ export function AuthLayout({
   const useOrg = Boolean(brandReady && orgRequested && org);
   const displayName = useOrg && org ? org.name : platform.name || "iProjectX";
   const displayLogo =
-    useOrg && org?.logo_url ? org.logo_url : PUBLIC_AUTH_LOGO_HREF;
+    useOrg && org?.logo_url
+      ? org.logo_url
+      : sanitizeLandingLogoCookieUrl(platform.logo_url) || PUBLIC_AUTH_LOGO_HREF;
   const tagline = platform.tagline || "Enterprise PMO Command Center";
   const logoSize: LogoDisplaySize =
     useOrg && org?.logo_size_auth
