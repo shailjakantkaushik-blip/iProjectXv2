@@ -103,6 +103,7 @@ import { Route as AuthenticatedPlatformOrganizationsRouteImport } from './routes
 import { Route as AuthenticatedPlatformPlansRouteImport } from './routes/_authenticated/platform.plans'
 import { Route as AuthenticatedPlatformPoliciesRouteImport } from './routes/_authenticated/platform.policies'
 import { Route as AuthenticatedPlatformProjectPurgeRouteImport } from './routes/_authenticated/platform.project-purge'
+import { Route as AuthenticatedPlatformRolesRouteImport } from './routes/_authenticated/platform.roles'
 import { Route as AuthenticatedPlatformSecurityRouteImport } from './routes/_authenticated/platform.security'
 import { Route as AuthenticatedPlatformSettingsRouteImport } from './routes/_authenticated/platform.settings'
 import { Route as AuthenticatedPlatformAlertEmailsRouteImport } from './routes/_authenticated/platform.alert-emails'
@@ -658,6 +659,12 @@ const AuthenticatedPlatformProjectPurgeRoute =
     path: '/project-purge',
     getParentRoute: () => AuthenticatedPlatformRoute,
   } as any)
+const AuthenticatedPlatformRolesRoute =
+  AuthenticatedPlatformRolesRouteImport.update({
+    id: '/roles',
+    path: '/roles',
+    getParentRoute: () => AuthenticatedPlatformRoute,
+  } as any)
 const AuthenticatedPlatformSecurityRoute =
   AuthenticatedPlatformSecurityRouteImport.update({
     id: '/security',
@@ -840,6 +847,7 @@ export interface FileRoutesByFullPath {
   '/platform/plans': typeof AuthenticatedPlatformPlansRoute
   '/platform/policies': typeof AuthenticatedPlatformPoliciesRoute
   '/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
+  '/platform/roles': typeof AuthenticatedPlatformRolesRoute
   '/platform/security': typeof AuthenticatedPlatformSecurityRoute
   '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/platform/alert-emails': typeof AuthenticatedPlatformAlertEmailsRoute
@@ -948,6 +956,7 @@ export interface FileRoutesByTo {
   '/platform/plans': typeof AuthenticatedPlatformPlansRoute
   '/platform/policies': typeof AuthenticatedPlatformPoliciesRoute
   '/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
+  '/platform/roles': typeof AuthenticatedPlatformRolesRoute
   '/platform/security': typeof AuthenticatedPlatformSecurityRoute
   '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/platform/alert-emails': typeof AuthenticatedPlatformAlertEmailsRoute
@@ -1060,6 +1069,7 @@ export interface FileRoutesById {
   '/_authenticated/platform/plans': typeof AuthenticatedPlatformPlansRoute
   '/_authenticated/platform/policies': typeof AuthenticatedPlatformPoliciesRoute
   '/_authenticated/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
+  '/_authenticated/platform/roles': typeof AuthenticatedPlatformRolesRoute
   '/_authenticated/platform/security': typeof AuthenticatedPlatformSecurityRoute
   '/_authenticated/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/_authenticated/platform/alert-emails': typeof AuthenticatedPlatformAlertEmailsRoute
@@ -1172,6 +1182,7 @@ export interface FileRouteTypes {
     | '/platform/plans'
     | '/platform/policies'
     | '/platform/project-purge'
+    | '/platform/roles'
     | '/platform/security'
     | '/platform/settings'
     | '/platform/alert-emails'
@@ -1280,6 +1291,7 @@ export interface FileRouteTypes {
     | '/platform/plans'
     | '/platform/policies'
     | '/platform/project-purge'
+    | '/platform/roles'
     | '/platform/security'
     | '/platform/settings'
     | '/platform/alert-emails'
@@ -1391,6 +1403,7 @@ export interface FileRouteTypes {
     | '/_authenticated/platform/plans'
     | '/_authenticated/platform/policies'
     | '/_authenticated/platform/project-purge'
+    | '/_authenticated/platform/roles'
     | '/_authenticated/platform/security'
     | '/_authenticated/platform/settings'
     | '/_authenticated/platform/alert-emails'
@@ -2085,6 +2098,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPlatformProjectPurgeRouteImport
       parentRoute: typeof AuthenticatedPlatformRoute
     }
+    '/_authenticated/platform/roles': {
+      id: '/_authenticated/platform/roles'
+      path: '/roles'
+      fullPath: '/platform/roles'
+      preLoaderRoute: typeof AuthenticatedPlatformRolesRouteImport
+      parentRoute: typeof AuthenticatedPlatformRoute
+    }
     '/_authenticated/platform/security': {
       id: '/_authenticated/platform/security'
       path: '/security'
@@ -2381,6 +2401,7 @@ interface AuthenticatedPlatformRouteChildren {
   AuthenticatedPlatformPlansRoute: typeof AuthenticatedPlatformPlansRoute
   AuthenticatedPlatformPoliciesRoute: typeof AuthenticatedPlatformPoliciesRoute
   AuthenticatedPlatformProjectPurgeRoute: typeof AuthenticatedPlatformProjectPurgeRoute
+  AuthenticatedPlatformRolesRoute: typeof AuthenticatedPlatformRolesRoute
   AuthenticatedPlatformSecurityRoute: typeof AuthenticatedPlatformSecurityRoute
   AuthenticatedPlatformSettingsRoute: typeof AuthenticatedPlatformSettingsRoute
   AuthenticatedPlatformSubscriptionsRoute: typeof AuthenticatedPlatformSubscriptionsRoute
@@ -2407,6 +2428,7 @@ const AuthenticatedPlatformRouteChildren: AuthenticatedPlatformRouteChildren = {
   AuthenticatedPlatformPoliciesRoute: AuthenticatedPlatformPoliciesRoute,
   AuthenticatedPlatformProjectPurgeRoute:
     AuthenticatedPlatformProjectPurgeRoute,
+  AuthenticatedPlatformRolesRoute: AuthenticatedPlatformRolesRoute,
   AuthenticatedPlatformSecurityRoute: AuthenticatedPlatformSecurityRoute,
   AuthenticatedPlatformSettingsRoute: AuthenticatedPlatformSettingsRoute,
   AuthenticatedPlatformSubscriptionsRoute:

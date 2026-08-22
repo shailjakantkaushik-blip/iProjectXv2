@@ -391,7 +391,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             return supportAllowed;
           }
           if (n.platformOnly) return platform;
-          if (n.adminOnly) return admin;
+          if (n.adminOnly) return admin || (platform && n.to === "/app/permissions");
           return admin || canViewPage(n.to);
         }),
       }))

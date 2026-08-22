@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { adminCreateOrganization, adminCreateUser } from "@/lib/platform-admin.functions";
 import {
   adminAssignUserRole,
@@ -16,7 +16,12 @@ import {
   adminSetUserActive,
   listAllOrgsDirectory,
 } from "@/lib/user-admin.functions";
-import { UserDirectoryTable, randomPassword } from "@/components/user-directory-table";
+import {
+  UserDirectoryTable,
+  randomPassword,
+  type DirectoryUser,
+} from "@/components/user-directory-table";
+import { assignableOrgRoles, useOrgRoles } from "@/lib/org-roles";
 import { useAuth } from "@/lib/auth-context";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
@@ -63,6 +68,21 @@ function OrgsPage() {
   const [uOrg, setUOrg] = useState<string>("");
   const [uRole, setURole] = useState<string>("pm");
   const [uPwd, setUPwd] = useState(randomPassword());
+  const createUserRolesQ = useOrgRoles(uOrg || null);
+  const createUserRoleOptions = useMemo(
+    () =>
+      assignableOrgRoles(createUserRolesQ.data ?? []).map((r) => ({
+        value: r.role_key,
+        label: r.label,
+      })),
+    [createUserRolesQ.data],
+  );
+
+  useEffect(() => {
+    if (createUserRoleOptions.length && !createUserRoleOptions.some((r) => r.value === uRole)) {
+      setURole(createUserRoleOptions.find((r) => r.value === "pm")?.value || createUserRoleOptions[0].value);
+    }
+  }, [createUserRoleOptions, uRole]);
 
   const addUser = useMutation({
     mutationFn: async () =>
@@ -125,7 +145,11 @@ function OrgsPage() {
         <h1 className="text-3xl font-bold tracking-tight">Organizations & Users</h1>
         <p className="text-sm text-muted-foreground">
           View every organisation and its users, assign roles, activate/deactivate, or delete
-          accounts.
+          accounts. Add or edit the role catalog from{" "}
+          <Link to="/platform/roles" className="text-primary underline-offset-2 hover:underline">
+            Organisation roles
+          </Link>
+          .
         </p>
       </div>
 
@@ -193,11 +217,20 @@ function OrgsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="org_admin">Org Admin</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="bu_lead">BU Lead</SelectItem>
-                  <SelectItem value="pm">Project Manager</SelectItem>
-                  <SelectItem value="executive">Executive</SelectItem>
+                  {(createUserRoleOptions.length
+                    ? createUserRoleOptions
+                    : [
+                        { value: "org_admin", label: "Org Admin" },
+                        { value: "admin", label: "Admin" },
+                        { value: "bu_lead", label: "BU Lead" },
+                        { value: "pm", label: "Project Manager" },
+                        { value: "executive", label: "Executive" },
+                      ]
+                  ).map((r) => (
+                    <SelectItem key={r.value} value={r.value}>
+                      {r.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -238,77 +271,121 @@ function OrgsPage() {
           {!isLoading && filtered.length === 0 && (
             <p className="text-sm text-muted-foreground">No organisations match.</p>
           )}
-          {filtered.map((org) => {
-            const open = expanded[org.id] ?? true;
-            return (
-              <div key={org.id} className="rounded-lg border">
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-muted/40"
-                  onClick={() => setExpanded((m) => ({ ...m, [org.id]: !open }))}
-                >
-                  {open ? (
-                    <ChevronDown className="h-4 w-4 shrink-0" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4 shrink-0" />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium">{org.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {org.slug} · {org.plan} · {org.users.length} user
-                      {org.users.length === 1 ? "" : "s"}
-                    </div>
-                  </div>
-                </button>
-                {open && (
-                  <div className="border-t px-2 pb-2">
-                    <UserDirectoryTable
-                      users={org.users}
-                      orgId={org.id}
-                      currentUserId={user?.id}
-                      busyId={busyId}
-                      onToggleActive={(u, next) =>
-                        void runUserAction(
-                          u.id,
-                          () => setActive({ data: { user_id: u.id, is_active: next } }),
-                          next ? "User activated" : "User deactivated",
-                        )
-                      }
-                      onDelete={(u) =>
-                        void runUserAction(
-                          u.id,
-                          () => deleteUser({ data: { user_id: u.id } }),
-                          "User deleted",
-                        )
-                      }
-                      onAssignRole={(u, role) =>
-                        void runUserAction(
-                          u.id,
-                          () =>
-                            assignRole({
-                              data: { user_id: u.id, org_id: org.id, role: role as any },
-                            }),
-                          "Role added",
-                        )
-                      }
-                      onRemoveRole={(u, role) =>
-                        void runUserAction(
-                          u.id,
-                          () =>
-                            removeRole({
-                              data: { user_id: u.id, org_id: org.id, role: role as any },
-                            }),
-                          "Role removed",
-                        )
-                      }
-                    />
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {filtered.map((org) => (
+            <OrgDirectoryCard
+              key={org.id}
+              org={org}
+              open={expanded[org.id] ?? true}
+              onToggle={() => setExpanded((m) => ({ ...m, [org.id]: !(expanded[org.id] ?? true) }))}
+              currentUserId={user?.id}
+              busyId={busyId}
+              onToggleActive={(u, next) =>
+                void runUserAction(
+                  u.id,
+                  () => setActive({ data: { user_id: u.id, is_active: next } }),
+                  next ? "User activated" : "User deactivated",
+                )
+              }
+              onDelete={(u) =>
+                void runUserAction(u.id, () => deleteUser({ data: { user_id: u.id } }), "User deleted")
+              }
+              onAssignRole={(u, role) =>
+                void runUserAction(
+                  u.id,
+                  () => assignRole({ data: { user_id: u.id, org_id: org.id, role: role as any } }),
+                  "Role added",
+                )
+              }
+              onRemoveRole={(u, role) =>
+                void runUserAction(
+                  u.id,
+                  () => removeRole({ data: { user_id: u.id, org_id: org.id, role: role as any } }),
+                  "Role removed",
+                )
+              }
+            />
+          ))}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function OrgDirectoryCard({
+  org,
+  open,
+  onToggle,
+  currentUserId,
+  busyId,
+  onToggleActive,
+  onDelete,
+  onAssignRole,
+  onRemoveRole,
+}: {
+  org: { id: string; name: string; slug: string; plan: string; users: DirectoryUser[] };
+  open: boolean;
+  onToggle: () => void;
+  currentUserId?: string | null;
+  busyId?: string | null;
+  onToggleActive: (user: DirectoryUser, next: boolean) => void;
+  onDelete: (user: DirectoryUser) => void;
+  onAssignRole: (user: DirectoryUser, role: string) => void;
+  onRemoveRole: (user: DirectoryUser, role: string) => void;
+}) {
+  const rolesQ = useOrgRoles(org.id);
+  const roleOptions = useMemo(
+    () =>
+      assignableOrgRoles(rolesQ.data ?? []).map((r) => ({
+        value: r.role_key,
+        label: r.label,
+      })),
+    [rolesQ.data],
+  );
+
+  return (
+    <div className="rounded-lg border">
+      <div className="flex items-center gap-2 px-4 py-3">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-2 text-left hover:opacity-80"
+          onClick={onToggle}
+        >
+          {open ? (
+            <ChevronDown className="h-4 w-4 shrink-0" />
+          ) : (
+            <ChevronRight className="h-4 w-4 shrink-0" />
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="font-medium">{org.name}</div>
+            <div className="text-xs text-muted-foreground">
+              {org.slug} · {org.plan} · {org.users.length} user
+              {org.users.length === 1 ? "" : "s"}
+            </div>
+          </div>
+        </button>
+        <a
+          href={`/platform/roles?org=${org.id}`}
+          className="shrink-0 text-xs text-primary underline-offset-2 hover:underline"
+          onClick={(e) => e.stopPropagation()}
+        >
+          Manage roles
+        </a>
+      </div>
+      {open && (
+        <div className="border-t px-2 pb-2">
+          <UserDirectoryTable
+            users={org.users}
+            orgId={org.id}
+            currentUserId={currentUserId}
+            busyId={busyId}
+            roleOptions={roleOptions}
+            onToggleActive={onToggleActive}
+            onDelete={onDelete}
+            onAssignRole={onAssignRole}
+            onRemoveRole={onRemoveRole}
+          />
+        </div>
+      )}
     </div>
   );
 }

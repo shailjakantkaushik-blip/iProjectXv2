@@ -148,6 +148,12 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
         platformOnly: true,
       },
       {
+        to: "/platform/roles",
+        label: "Organisation roles",
+        icon: "ShieldCheck",
+        platformOnly: true,
+      },
+      {
         to: "/platform/project-purge",
         label: "Closed project purge",
         icon: "Trash2",
