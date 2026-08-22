@@ -52,14 +52,13 @@ function ContactPending() {
   );
 }
 
-function BrandMark({ cfg, holdDefault = false }: { cfg: LandingConfig; holdDefault?: boolean }) {
-  return <PublicBrandMark cfg={cfg} holdDefault={holdDefault} fallback="name" />;
+function BrandMark({ cfg }: { cfg: LandingConfig }) {
+  return <PublicBrandMark cfg={cfg} fallback="name" />;
 }
 
 function ContactPage() {
   const { cfg: loaderCfg, needsRevalidate } = Route.useLoaderData();
-  const [cfg, setCfg] = useState(() => resolveLandingCfgForPaint(loaderCfg));
-  const [brandSettled, setBrandSettled] = useState(false);
+  const [cfg, setCfg] = useState(loaderCfg);
   const p = cfg.palette;
   const isDark = cfg.theme === "dark";
   const pageBg = isDark ? p.navy : "#fafbfc";
@@ -69,18 +68,11 @@ function ContactPage() {
   }, [loaderCfg]);
 
   useEffect(() => {
-    if (!needsRevalidate) {
-      setBrandSettled(true);
-      return;
-    }
+    if (!needsRevalidate) return;
     let cancelled = false;
-    void fetchLandingConfig()
-      .then((live) => {
-        if (!cancelled) setCfg(live);
-      })
-      .finally(() => {
-        if (!cancelled) setBrandSettled(true);
-      });
+    void fetchLandingConfig().then((live) => {
+      if (!cancelled) setCfg(live);
+    });
     return () => {
       cancelled = true;
     };
@@ -103,8 +95,8 @@ function ContactPage() {
         }}
       >
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-6">
-          <Link to="/" suppressHydrationWarning>
-            <BrandMark cfg={cfg} holdDefault={!brandSettled} />
+          <Link to="/">
+            <BrandMark cfg={cfg} />
           </Link>
           <div className="flex items-center gap-6">
             <Link to="/" className="text-sm font-semibold transition-opacity hover:opacity-70" style={{ color: p.textMuted }}>

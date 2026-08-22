@@ -1,9 +1,8 @@
 /**
- * Public marketing logo rules — never paint the App-shell mark on landing.
+ * Public marketing logo — Landing surface only, never the App-shell file.
  *
- * Platform Landing stores three surfaces. Older configs (and merge backfill)
- * copied the legacy/app file into `logo_url_landing`, so first paint showed
- * the in-app logo for a frame, then the real marketing mark.
+ * Always return a usable landing URL or "" so the UI can show the default
+ * diamond + name. Never leave the nav empty.
  */
 
 export type PublicLandingBrandLogos = {
@@ -17,50 +16,27 @@ function trimUrl(url: unknown): string {
   return typeof url === "string" ? url.trim() : "";
 }
 
-/** True when `landing` is only the App / legacy mark stored on the landing field. */
-export function isAppMarkMasqueradingAsLanding(brand: PublicLandingBrandLogos): boolean {
-  const landing = trimUrl(brand.logo_url_landing);
-  const app = trimUrl(brand.logo_url_app);
-  const legacy = trimUrl(brand.logo_url);
-  if (!landing) return false;
-  if (app && landing === app) return true;
-  if (app && legacy && landing === legacy && app === legacy) return true;
-  return false;
-}
-
 /**
- * Logo URL for the public landing / contact / legal chrome.
- * `phase: "first-paint"` never falls back to app/legacy, and ignores a
- * landing URL that is identical to the App-shell mark (stale cache).
- * `phase: "settled"` may use a true legacy single-logo (`logo_url` only).
+ * Logo URL for public landing / contact / legal chrome.
+ * Prefer `logo_url_landing`. Fall back to legacy `logo_url` only when no
+ * App-shell file is configured (true single-logo setups).
+ * Never use `logo_url_app`.
  */
 export function resolvePublicLandingLogoUrl(
   brand: PublicLandingBrandLogos | null | undefined,
-  phase: "first-paint" | "settled" = "first-paint",
 ): string {
   if (!brand) return "";
   const landing = trimUrl(brand.logo_url_landing);
+  if (landing) return landing;
   const app = trimUrl(brand.logo_url_app);
   const legacy = trimUrl(brand.logo_url);
-
-  if (landing) {
-    if (phase === "first-paint" && isAppMarkMasqueradingAsLanding(brand)) {
-      return "";
-    }
-    return landing;
-  }
-
-  if (phase === "settled" && legacy && !app) {
-    return legacy;
-  }
-
+  if (legacy && !app) return legacy;
   return "";
 }
 
 /**
  * Merge rules for surface logos. Do not copy legacy `logo_url` onto Landing
- * when any per-surface field exists — that is how the App mark leaked onto
- * the public page.
+ * when any per-surface field exists.
  */
 export function mergeBrandSurfaceLogos(input: PublicLandingBrandLogos | null | undefined): {
   logo_url: string;

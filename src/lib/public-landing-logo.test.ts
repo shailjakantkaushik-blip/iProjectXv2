@@ -1,17 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import {
-  isAppMarkMasqueradingAsLanding,
-  mergeBrandSurfaceLogos,
-  resolvePublicLandingLogoUrl,
-} from "./public-landing-logo.ts";
+import { mergeBrandSurfaceLogos, resolvePublicLandingLogoUrl } from "./public-landing-logo.ts";
+import { parseLandingLogoCookie, sanitizeLandingLogoCookieUrl } from "./landing-logo-cookie.ts";
 
 const APP = "https://cdn.example/app-mark.png";
 const LANDING = "https://cdn.example/landing-mark.png";
 const LEGACY = "https://cdn.example/legacy.png";
 
 describe("resolvePublicLandingLogoUrl", () => {
-  it("uses the landing-specific URL when it is not the app mark", () => {
+  it("uses the landing-specific URL, even when it matches the app file", () => {
     assert.equal(
       resolvePublicLandingLogoUrl({
         logo_url: APP,
@@ -20,28 +17,17 @@ describe("resolvePublicLandingLogoUrl", () => {
       }),
       LANDING,
     );
-  });
-
-  it("does not paint the app mark on first paint even if it was backfilled onto landing", () => {
     assert.equal(
       resolvePublicLandingLogoUrl({
         logo_url: APP,
         logo_url_landing: APP,
         logo_url_app: APP,
       }),
-      "",
-    );
-    assert.equal(
-      isAppMarkMasqueradingAsLanding({
-        logo_url: APP,
-        logo_url_landing: APP,
-        logo_url_app: APP,
-      }),
-      true,
+      APP,
     );
   });
 
-  it("does not fall back to the app or legacy mark while waiting for live config", () => {
+  it("does not fall back to the app-shell file", () => {
     assert.equal(
       resolvePublicLandingLogoUrl({
         logo_url: APP,
@@ -52,20 +38,10 @@ describe("resolvePublicLandingLogoUrl", () => {
     );
   });
 
-  it("after settle, uses a true legacy single logo only when no app surface exists", () => {
+  it("uses a true legacy single logo when no app surface exists", () => {
     assert.equal(
-      resolvePublicLandingLogoUrl(
-        { logo_url: LEGACY, logo_url_landing: "", logo_url_app: "" },
-        "settled",
-      ),
+      resolvePublicLandingLogoUrl({ logo_url: LEGACY, logo_url_landing: "", logo_url_app: "" }),
       LEGACY,
-    );
-    assert.equal(
-      resolvePublicLandingLogoUrl(
-        { logo_url: APP, logo_url_landing: "", logo_url_app: APP },
-        "settled",
-      ),
-      "",
     );
   });
 });
@@ -94,5 +70,16 @@ describe("mergeBrandSurfaceLogos", () => {
       logo_url_app: APP,
     });
     assert.equal(merged.logo_url_landing, "");
+  });
+});
+
+describe("landing logo cookie", () => {
+  it("reads an https landing logo and rejects data URLs", () => {
+    assert.equal(
+      parseLandingLogoCookie(`other=1; pmo_llogo=${encodeURIComponent(LANDING)}`),
+      LANDING,
+    );
+    assert.equal(sanitizeLandingLogoCookieUrl("data:image/png;base64,aaaa"), "");
+    assert.equal(sanitizeLandingLogoCookieUrl("/relative.png"), "");
   });
 });

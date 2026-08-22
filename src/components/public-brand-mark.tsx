@@ -15,24 +15,21 @@ type PublicBrandMarkProps = {
   size?: LogoDisplaySize;
   onDark?: boolean;
   /**
-   * When true and no public landing logo is ready, reserve space instead of
-   * painting the built-in diamond / wordmark (the “app logo” flash).
+   * `slot` — reserved space only (public landing: never the diamond placeholder).
+   * `name` — wordmark if the logo URL is not ready.
    */
-  holdDefault?: boolean;
-  /** After live config: name-only vs diamond+name when no custom landing logo. */
-  fallback?: "diamond" | "name";
+  fallback?: "slot" | "name";
 };
 
 /**
- * Marketing chrome brand mark. Uses the landing-surface logo only — never the
- * App-shell file — and can hold an empty slot until live config arrives.
+ * Marketing chrome brand mark. Paints the configured landing logo. Never the
+ * App-shell file and never the geometric diamond placeholder.
  */
 export function PublicBrandMark({
   cfg,
   size,
   onDark = false,
-  holdDefault = false,
-  fallback = "diamond",
+  fallback = "slot",
 }: PublicBrandMarkProps) {
   const p = cfg.palette;
   const token = size ?? cfg.brand.logo_size_landing ?? "md";
@@ -40,22 +37,7 @@ export function PublicBrandMark({
     size != null
       ? resolveBrandLogoDims({ ...cfg.brand, logo_size_landing: size }, "landing")
       : resolveBrandLogoDims(cfg.brand, "landing");
-  const phase = holdDefault ? "first-paint" : "settled";
-  const logoUrl = sanitizeEmbeddedAssetUrl(resolvePublicLandingLogoUrl(cfg.brand, phase));
-  const box =
-    token === "xl" || (token === "custom" && dims.heightPx >= 48)
-      ? "h-12 w-12"
-      : token === "lg" || (token === "custom" && dims.heightPx >= 36)
-        ? "h-11 w-11"
-        : token === "sm" || (token === "custom" && dims.heightPx <= 24)
-          ? "h-7 w-7"
-          : "h-8 w-8";
-  const diamond =
-    token === "xl" || token === "lg" || dims.heightPx >= 36
-      ? "h-5 w-5"
-      : token === "sm" || dims.heightPx <= 24
-        ? "h-3 w-3"
-        : "h-4 w-4";
+  const logoUrl = sanitizeEmbeddedAssetUrl(resolvePublicLandingLogoUrl(cfg.brand));
   const text =
     token === "xl" || dims.heightPx >= 52
       ? "text-3xl"
@@ -78,17 +60,6 @@ export function PublicBrandMark({
     );
   }
 
-  if (holdDefault) {
-    return (
-      <span
-        aria-hidden
-        data-landing-brand-slot
-        className="inline-block"
-        style={{ height: heightPx, width: Math.min(maxWidthPx, heightPx * 2.5) }}
-      />
-    );
-  }
-
   if (fallback === "name") {
     return (
       <span
@@ -101,19 +72,11 @@ export function PublicBrandMark({
   }
 
   return (
-    <span className="inline-flex items-center gap-2.5">
-      <span
-        className={`flex ${box} items-center justify-center rounded-md`}
-        style={{ background: onDark ? "rgba(255,255,255,0.12)" : p.navy }}
-      >
-        <span className={`${diamond} rotate-45 border-2`} style={{ borderColor: p.accent }} />
-      </span>
-      <span
-        className={`${text} font-bold tracking-tight`}
-        style={{ ...HEADING, color: onDark ? p.textOnDark : p.textHeading }}
-      >
-        {cfg.brand.name}
-      </span>
-    </span>
+    <span
+      aria-hidden
+      data-landing-brand-slot
+      className="inline-block"
+      style={{ height: heightPx, width: Math.min(maxWidthPx, heightPx * 2.5) }}
+    />
   );
 }

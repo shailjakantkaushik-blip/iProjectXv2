@@ -44,6 +44,9 @@ import {
   type LogoDisplaySize,
 } from "@/lib/landing-config";
 import { PublicBrandMark } from "@/components/public-brand-mark";
+import { readLandingLogoCookieBrowser } from "@/lib/landing-logo-cookie";
+import { resolveDocumentLandingLogoUrl } from "@/lib/landing-public-logo.functions";
+import { resolvePublicLandingLogoUrl } from "@/lib/public-landing-logo";
 import { LandingHeroFrame } from "@/components/landing-hero-frame";
 import { LandingHeroDashboard } from "@/components/landing-hero-dashboard";
 import { lockDocumentScroll, unlockDocumentScroll } from "@/lib/document-scroll";
@@ -66,14 +69,19 @@ type LandingLoaderData = {
   needsRevalidate: boolean;
 };
 
+function withLandingCookieLogo(cfg: LandingConfig, logoUrl: string): LandingConfig {
+  if (!logoUrl) return cfg;
+  return {
+    ...cfg,
+    brand: { ...cfg.brand, logo_url_landing: logoUrl },
+  };
+}
+
 export const Route = createFileRoute("/")({
   loader: async (): Promise<LandingLoaderData> => {
-    // Instant paint on repeat visits from memory/localStorage (logos + palette kept).
-    // Prefer in-memory (updated by /auth fetch) over a stale localStorage edge case.
-    // Never trust cached signup_enabled (avoids Get started flash).
-    // Client first visit / private mode has no cache — never await Supabase here.
-    // Awaiting used to overlay a full-screen spinner (or hang) instead of the page.
-    // staleTime: 0 so auth→home always re-reads this snapshot (no 60s-old logo).
+    // First HTML must include the real landing logo when we can get an https
+    // URL quickly. Never wait on the full config / data: URLs (Safari).
+    const base: LandingConfig = { ...DEFAULT_LANDING, signup_enabled: false };
     if (typeof window !== "undefined") {
       try {
         const cached = getFreshLandingConfigSnapshot();
@@ -83,33 +91,48 @@ export const Route = createFileRoute("/")({
       } catch {
         /* private browser with blocked storage */
       }
-      return { cfg: { ...DEFAULT_LANDING, signup_enabled: false }, needsRevalidate: true };
+      return {
+        cfg: withLandingCookieLogo(base, readLandingLogoCookieBrowser()),
+        needsRevalidate: true,
+      };
     }
-    // SSR: default copy only — no Supabase wait, no embedded logos.
-    return { cfg: { ...DEFAULT_LANDING, signup_enabled: false }, needsRevalidate: true };
+    try {
+      const logo = await resolveDocumentLandingLogoUrl();
+      return { cfg: withLandingCookieLogo(base, logo), needsRevalidate: true };
+    } catch {
+      return { cfg: base, needsRevalidate: true };
+    }
   },
   staleTime: 0,
   component: LandingPage,
-  head: () => ({
-    meta: [
-      {
-        title: "iProjectX — Portfolio Intelligence Platform beyond the register",
-      },
-      {
-        name: "description",
-        content:
-          "iProjectX — portfolio intelligence with calculated Project Health, Portfolio Pulse, explainable KPIs, executive what-ifs, stage-gate governance, white-label branding, MFA, optional SSO & BYOD, and In-house AI by default.",
-      },
-      { property: "og:title", content: "iProjectX — Portfolio Intelligence Platform" },
-      {
-        property: "og:description",
-        content:
-          "Not a static register. Calculated health, Portfolio Pulse, explainable financials, white-label, MFA, optional SSO/BYOD, and In-house AI by default.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
-    ],
-  }),
+  head: ({ loaderData }) => {
+    const logo = resolvePublicLandingLogoUrl(loaderData?.cfg?.brand);
+    const links =
+      logo && /^https?:\/\//i.test(logo)
+        ? [{ rel: "preload" as const, as: "image", href: logo }]
+        : [];
+    return {
+      meta: [
+        {
+          title: "iProjectX — Portfolio Intelligence Platform beyond the register",
+        },
+        {
+          name: "description",
+          content:
+            "iProjectX — portfolio intelligence with calculated Project Health, Portfolio Pulse, explainable KPIs, executive what-ifs, stage-gate governance, white-label branding, MFA, optional SSO & BYOD, and In-house AI by default.",
+        },
+        { property: "og:title", content: "iProjectX — Portfolio Intelligence Platform" },
+        {
+          property: "og:description",
+          content:
+            "Not a static register. Calculated health, Portfolio Pulse, explainable financials, white-label, MFA, optional SSO/BYOD, and In-house AI by default.",
+        },
+        { property: "og:type", content: "website" },
+        { name: "twitter:card", content: "summary_large_image" },
+      ],
+      links,
+    };
+  },
 });
 
 const HEADING = { fontFamily: "'Sora', system-ui, sans-serif" as const };
@@ -274,29 +297,22 @@ function BrandMark({
   cfg,
   size,
   onDark = false,
-  holdDefault = false,
 }: {
   cfg: LandingConfig;
   /** Override; defaults to configured landing logo size. */
   size?: LogoDisplaySize;
   onDark?: boolean;
-  holdDefault?: boolean;
 }) {
-  return (
-    <PublicBrandMark cfg={cfg} size={size} onDark={onDark} holdDefault={holdDefault} />
-  );
+  return <PublicBrandMark cfg={cfg} size={size} onDark={onDark} fallback="slot" />;
 }
 
 function LandingPage() {
   const { cfg: loaderCfg, needsRevalidate } = Route.useLoaderData();
-  // Prefer memory/localStorage over a stale loader snapshot so returning from
-  // /auth never paints the previous logo for a frame.
-  const [cfg, setCfg] = useState(() => resolveLandingCfgForPaint(loaderCfg));
-  const [brandSettled, setBrandSettled] = useState(false);
+  // First paint must match SSR (loaderCfg). Overlay cache only after hydrate
+  // so mobile Safari does not fail on a logo mismatch.
+  const [cfg, setCfg] = useState(loaderCfg);
   const signupEnabled = cfg.signup_enabled === true;
   const [eoiOpen, setEoiOpen] = useState(false);
-  // Mount heavier below-fold sections after first paint so Hero can appear sooner.
-  const [belowFoldReady, setBelowFoldReady] = useState(false);
 
   useEffect(() => {
     unlockDocumentScroll();
@@ -307,19 +323,14 @@ function LandingPage() {
   }, [loaderCfg]);
 
   useEffect(() => {
-    if (!needsRevalidate) {
-      setBrandSettled(true);
-      return;
-    }
+    if (!needsRevalidate) return;
     let cancelled = false;
     void fetchLandingConfig()
       .then((live) => {
         if (cancelled) return;
-        // Apply live config without wiping a good cached brand if the fetch
-        // somehow returns empty logo URLs while cache had them.
         setCfg((prev: LandingConfig) => {
-          const prevLogo = resolveBrandLogoUrl(prev.brand, "landing");
-          const liveLogo = resolveBrandLogoUrl(live.brand, "landing");
+          const prevLogo = resolvePublicLandingLogoUrl(prev.brand);
+          const liveLogo = resolvePublicLandingLogoUrl(live.brand);
           if (prevLogo && !liveLogo) {
             return {
               ...live,
@@ -335,11 +346,8 @@ function LandingPage() {
           }
           return live;
         });
-        setBrandSettled(true);
       })
-      .catch(() => {
-        setBrandSettled(true);
-      });
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -353,27 +361,13 @@ function LandingPage() {
   }, []);
 
   useEffect(() => {
-    const w = window as Window & {
-      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
-      cancelIdleCallback?: (id: number) => void;
-    };
-    if (typeof w.requestIdleCallback === "function") {
-      const id = w.requestIdleCallback(() => setBelowFoldReady(true), { timeout: 400 });
-      return () => w.cancelIdleCallback?.(id);
-    }
-    const t = window.setTimeout(() => setBelowFoldReady(true), 0);
-    return () => window.clearTimeout(t);
-  }, []);
-
-  useEffect(() => {
-    if (!belowFoldReady) return;
     if (location.hash) scrollToLandingHash(location.hash, "auto");
     const onHash = () => {
       if (location.hash) scrollToLandingHash(location.hash, "smooth");
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
-  }, [belowFoldReady]);
+  }, []);
 
   // Warm the auth logo in the browser cache so Sign in paints without a swap.
   useEffect(() => {
@@ -417,33 +411,27 @@ function LandingPage() {
       >
         Skip to content
       </a>
-      <Nav cfg={cfg} signupEnabled={signupEnabled} holdDefault={!brandSettled} />
+      <Nav cfg={cfg} signupEnabled={signupEnabled} />
       {/* Matches frozen nav: 4rem bar + notch inset, so the hero is not tucked under Sign in / logo. */}
       <div className="h-[var(--lp-nav-h)] shrink-0" aria-hidden />
       <main id="main" className="min-w-0">
         <Hero cfg={cfg} onEoiClick={() => setEoiOpen(true)} />
         {cfg.hero.alert && <InsightBar cfg={cfg} />}
         <TrustStrip cfg={cfg} />
-        {belowFoldReady ? (
-          <>
-            <TrustedBy cfg={cfg} sectionBg={sectionBg} />
-            <CeoMessage cfg={cfg} sectionBg={sectionBg} />
-            <FailureVsSuccess cfg={cfg} />
-            <ExecutiveCockpitTour cfg={cfg} sectionBg={sectionBg} />
-            <PortfolioTimelineTour cfg={cfg} />
-            <RaidTour cfg={cfg} sectionBg={sectionBg} />
-            <SecurityTour cfg={cfg} sectionBg={sectionBg} />
-            <CapabilityBento cfg={cfg} />
-            <Testimonials cfg={cfg} sectionBg={sectionBg} />
-            <BoardStatements cfg={cfg} />
-            <StatsStrip cfg={cfg} />
-            <FinalCta cfg={cfg} onEoiClick={() => setEoiOpen(true)} />
-          </>
-        ) : (
-          <div className="min-h-[50vh]" aria-hidden />
-        )}
+        <TrustedBy cfg={cfg} sectionBg={sectionBg} />
+        <CeoMessage cfg={cfg} sectionBg={sectionBg} />
+        <FailureVsSuccess cfg={cfg} />
+        <ExecutiveCockpitTour cfg={cfg} sectionBg={sectionBg} />
+        <PortfolioTimelineTour cfg={cfg} />
+        <RaidTour cfg={cfg} sectionBg={sectionBg} />
+        <SecurityTour cfg={cfg} sectionBg={sectionBg} />
+        <CapabilityBento cfg={cfg} />
+        <Testimonials cfg={cfg} sectionBg={sectionBg} />
+        <BoardStatements cfg={cfg} />
+        <StatsStrip cfg={cfg} />
+        <FinalCta cfg={cfg} onEoiClick={() => setEoiOpen(true)} />
       </main>
-      <Footer cfg={cfg} holdDefault={!brandSettled} />
+      <Footer cfg={cfg} />
       {eoiOpen ? (
         <Suspense fallback={null}>
           <EoiModal cfg={cfg} onClose={() => setEoiOpen(false)} />
@@ -512,11 +500,9 @@ function CtaSecondary({
 function Nav({
   cfg,
   signupEnabled,
-  holdDefault = false,
 }: {
   cfg: LandingConfig;
   signupEnabled: boolean;
-  holdDefault?: boolean;
 }) {
   const p = cfg.palette;
   const navigate = useNavigate();
@@ -569,13 +555,8 @@ function Nav({
         data-landing-nav-bar
         className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-6"
       >
-        <Link
-          to="/"
-          className="relative z-10"
-          onClick={() => setOpen(false)}
-          suppressHydrationWarning
-        >
-          <BrandMark cfg={cfg} holdDefault={holdDefault} />
+        <Link to="/" className="relative z-10" onClick={() => setOpen(false)}>
+          <BrandMark cfg={cfg} />
         </Link>
 
         <div className="hidden items-center gap-8 md:flex">
@@ -1948,7 +1929,7 @@ function FinalCta({ cfg, onEoiClick }: { cfg: LandingConfig; onEoiClick?: () => 
   );
 }
 
-function Footer({ cfg, holdDefault = false }: { cfg: LandingConfig; holdDefault?: boolean }) {
+function Footer({ cfg }: { cfg: LandingConfig }) {
   const p = cfg.palette;
   const year = new Date().getFullYear();
   return (
@@ -1962,7 +1943,7 @@ function Footer({ cfg, holdDefault = false }: { cfg: LandingConfig; holdDefault?
       <div className="mx-auto max-w-7xl px-5 py-14 sm:px-6">
         <div className="grid gap-10 md:grid-cols-12 md:gap-8">
           <div className="md:col-span-5">
-            <BrandMark cfg={cfg} size="xl" holdDefault={holdDefault} />
+            <BrandMark cfg={cfg} size="xl" />
             <p className="mt-4 max-w-sm text-sm leading-relaxed" style={{ color: p.textMuted }}>
               {cfg.brand.tagline || "Portfolio Intelligence Platform"}
             </p>

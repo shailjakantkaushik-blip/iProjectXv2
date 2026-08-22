@@ -4,7 +4,8 @@ import {
   mergeNavigationConfig,
   type NavigationConfig,
 } from "@/lib/navigation-config";
-import { mergeBrandSurfaceLogos } from "@/lib/public-landing-logo";
+import { mergeBrandSurfaceLogos, resolvePublicLandingLogoUrl } from "@/lib/public-landing-logo";
+import { writeLandingLogoCookie } from "@/lib/landing-logo-cookie";
 
 export type { NavigationConfig };
 export { defaultNavigationConfig };
@@ -1600,6 +1601,7 @@ export function writeCachedLandingConfig(config: LandingConfig) {
     window.localStorage.setItem(LANDING_CONFIG_CACHE_KEY, next);
     // Drop pre-v2 cache that could still paint stale logos.
     window.localStorage.removeItem("pmo.landingConfig.v1");
+    writeLandingLogoCookie(resolvePublicLandingLogoUrl(config.brand));
   } catch {
     /* quota / private mode */
   }
