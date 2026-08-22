@@ -44,7 +44,7 @@ import {
   type AuthBrand,
   type AuthOrgBrand,
 } from "@/components/auth-layout";
-import { ProcessingAnimation, ProcessingOverlay } from "@/components/processing-animation";
+import { ProcessingOverlay } from "@/components/processing-animation";
 import { clearOrgAuthEntry, rememberOrgAuthEntry } from "@/lib/org-auth-entry";
 import { AlertTriangle } from "lucide-react";
 import { RouteErrorView } from "@/components/route-error";
@@ -172,7 +172,11 @@ function AuthPending() {
       description="Sign in with your organisation account."
     >
       <div className="flex flex-col items-center justify-center py-8" aria-busy="true">
-        <ProcessingAnimation label="Preparing sign in…" size="sm" />
+        <span
+          className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground"
+          aria-hidden
+        />
+        <p className="mt-3 text-sm text-muted-foreground">Preparing sign in…</p>
       </div>
     </AuthLayout>
   );

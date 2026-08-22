@@ -17,10 +17,10 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes("node_modules")) return;
-          // Only isolate supabase / tanstack. Do NOT force recharts/pptx/excel
-          // into shared chunks — that made them modulepreload on every reload.
+          // Isolate supabase only. Forcing every @tanstack package into one
+          // chunk created circular ESM bindings — Safari then died on /auth
+          // with "importing binding name 't' not found".
           if (id.includes("node_modules/@supabase")) return "supabase";
-          if (id.includes("node_modules/@tanstack")) return "tanstack";
         },
       },
     },

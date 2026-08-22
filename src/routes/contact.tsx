@@ -6,12 +6,10 @@ import {
   resolveLandingCfgForPaint,
   getFreshLandingConfigSnapshot,
   DEFAULT_LANDING,
-  resolveBrandLogoUrl,
-  resolveBrandLogoDims,
   type LandingConfig,
 } from "@/lib/landing-config";
 import { PageLoading } from "@/components/page-loading";
-import { StableBrandLogo } from "@/components/stable-brand-logo";
+import { PublicBrandMark } from "@/components/public-brand-mark";
 import { EoiForm } from "@/components/eoi-form";
 import { Mail, MapPin, MessageSquare } from "lucide-react";
 
@@ -54,23 +52,14 @@ function ContactPending() {
   );
 }
 
-function BrandMark({ cfg }: { cfg: LandingConfig }) {
-  const logoUrl = resolveBrandLogoUrl(cfg.brand, "landing");
-  const dims = resolveBrandLogoDims(cfg.brand, "landing");
-  const p = cfg.palette;
-  if (logoUrl) {
-    return <StableBrandLogo src={logoUrl} alt={cfg.brand.name} heightPx={dims.heightPx} maxWidthPx={dims.maxWidthPx} />;
-  }
-  return (
-    <span className="text-xl font-bold tracking-tight" style={{ ...HEADING, color: p.textHeading }}>
-      {cfg.brand.name}
-    </span>
-  );
+function BrandMark({ cfg, holdDefault = false }: { cfg: LandingConfig; holdDefault?: boolean }) {
+  return <PublicBrandMark cfg={cfg} holdDefault={holdDefault} fallback="name" />;
 }
 
 function ContactPage() {
   const { cfg: loaderCfg, needsRevalidate } = Route.useLoaderData();
   const [cfg, setCfg] = useState(() => resolveLandingCfgForPaint(loaderCfg));
+  const [brandSettled, setBrandSettled] = useState(false);
   const p = cfg.palette;
   const isDark = cfg.theme === "dark";
   const pageBg = isDark ? p.navy : "#fafbfc";
@@ -80,11 +69,18 @@ function ContactPage() {
   }, [loaderCfg]);
 
   useEffect(() => {
-    if (!needsRevalidate) return;
+    if (!needsRevalidate) {
+      setBrandSettled(true);
+      return;
+    }
     let cancelled = false;
-    void fetchLandingConfig().then((live) => {
-      if (!cancelled) setCfg(live);
-    });
+    void fetchLandingConfig()
+      .then((live) => {
+        if (!cancelled) setCfg(live);
+      })
+      .finally(() => {
+        if (!cancelled) setBrandSettled(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -107,8 +103,8 @@ function ContactPage() {
         }}
       >
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-6">
-          <Link to="/">
-            <BrandMark cfg={cfg} />
+          <Link to="/" suppressHydrationWarning>
+            <BrandMark cfg={cfg} holdDefault={!brandSettled} />
           </Link>
           <div className="flex items-center gap-6">
             <Link to="/" className="text-sm font-semibold transition-opacity hover:opacity-70" style={{ color: p.textMuted }}>

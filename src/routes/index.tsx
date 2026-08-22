@@ -36,7 +36,6 @@ import {
 import {
   DEFAULT_LANDING,
   fetchLandingConfig,
-  resolveBrandLogoDims,
   resolveBrandLogoUrl,
   getFreshLandingConfigSnapshot,
   resolveLandingCfgForPaint,
@@ -44,7 +43,7 @@ import {
   type LandingItem,
   type LogoDisplaySize,
 } from "@/lib/landing-config";
-import { StableBrandLogo } from "@/components/stable-brand-logo";
+import { PublicBrandMark } from "@/components/public-brand-mark";
 import { LandingHeroFrame } from "@/components/landing-hero-frame";
 import { LandingHeroDashboard } from "@/components/landing-hero-dashboard";
 import { lockDocumentScroll, unlockDocumentScroll } from "@/lib/document-scroll";
@@ -275,67 +274,16 @@ function BrandMark({
   cfg,
   size,
   onDark = false,
+  holdDefault = false,
 }: {
   cfg: LandingConfig;
   /** Override; defaults to configured landing logo size. */
   size?: LogoDisplaySize;
   onDark?: boolean;
+  holdDefault?: boolean;
 }) {
-  const p = cfg.palette;
-  const token = size ?? cfg.brand.logo_size_landing ?? "md";
-  const dims =
-    size != null
-      ? resolveBrandLogoDims({ ...cfg.brand, logo_size_landing: size }, "landing")
-      : resolveBrandLogoDims(cfg.brand, "landing");
-  const logoUrl = resolveBrandLogoUrl(cfg.brand, "landing");
-  const box =
-    token === "xl" || (token === "custom" && dims.heightPx >= 48)
-      ? "h-12 w-12"
-      : token === "lg" || (token === "custom" && dims.heightPx >= 36)
-        ? "h-11 w-11"
-        : token === "sm" || (token === "custom" && dims.heightPx <= 24)
-          ? "h-7 w-7"
-          : "h-8 w-8";
-  const diamond =
-    token === "xl" || token === "lg" || dims.heightPx >= 36
-      ? "h-5 w-5"
-      : token === "sm" || dims.heightPx <= 24
-        ? "h-3 w-3"
-        : "h-4 w-4";
-  const text =
-    token === "xl" || dims.heightPx >= 52
-      ? "text-3xl"
-      : token === "lg" || dims.heightPx >= 40
-        ? "text-2xl"
-        : token === "sm" || dims.heightPx <= 24
-          ? "text-base"
-          : "text-xl";
-
-  if (logoUrl) {
-    return (
-      <StableBrandLogo
-        src={logoUrl}
-        alt={cfg.brand.name}
-        heightPx={size === "sm" ? Math.min(24, dims.heightPx) : dims.heightPx}
-        maxWidthPx={size === "sm" ? Math.min(120, dims.maxWidthPx) : dims.maxWidthPx}
-      />
-    );
-  }
   return (
-    <span className="inline-flex items-center gap-2.5">
-      <span
-        className={`flex ${box} items-center justify-center rounded-md`}
-        style={{ background: onDark ? "rgba(255,255,255,0.12)" : p.navy }}
-      >
-        <span className={`${diamond} rotate-45 border-2`} style={{ borderColor: p.accent }} />
-      </span>
-      <span
-        className={`${text} font-bold tracking-tight`}
-        style={{ ...HEADING, color: onDark ? p.textOnDark : p.textHeading }}
-      >
-        {cfg.brand.name}
-      </span>
-    </span>
+    <PublicBrandMark cfg={cfg} size={size} onDark={onDark} holdDefault={holdDefault} />
   );
 }
 
@@ -344,6 +292,7 @@ function LandingPage() {
   // Prefer memory/localStorage over a stale loader snapshot so returning from
   // /auth never paints the previous logo for a frame.
   const [cfg, setCfg] = useState(() => resolveLandingCfgForPaint(loaderCfg));
+  const [brandSettled, setBrandSettled] = useState(false);
   const signupEnabled = cfg.signup_enabled === true;
   const [eoiOpen, setEoiOpen] = useState(false);
   // Mount heavier below-fold sections after first paint so Hero can appear sooner.
@@ -358,7 +307,10 @@ function LandingPage() {
   }, [loaderCfg]);
 
   useEffect(() => {
-    if (!needsRevalidate) return;
+    if (!needsRevalidate) {
+      setBrandSettled(true);
+      return;
+    }
     let cancelled = false;
     void fetchLandingConfig()
       .then((live) => {
@@ -383,8 +335,11 @@ function LandingPage() {
           }
           return live;
         });
+        setBrandSettled(true);
       })
-      .catch(() => {});
+      .catch(() => {
+        setBrandSettled(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -462,7 +417,7 @@ function LandingPage() {
       >
         Skip to content
       </a>
-      <Nav cfg={cfg} signupEnabled={signupEnabled} />
+      <Nav cfg={cfg} signupEnabled={signupEnabled} holdDefault={!brandSettled} />
       {/* Matches frozen nav: 4rem bar + notch inset, so the hero is not tucked under Sign in / logo. */}
       <div className="h-[var(--lp-nav-h)] shrink-0" aria-hidden />
       <main id="main" className="min-w-0">
@@ -488,7 +443,7 @@ function LandingPage() {
           <div className="min-h-[50vh]" aria-hidden />
         )}
       </main>
-      <Footer cfg={cfg} />
+      <Footer cfg={cfg} holdDefault={!brandSettled} />
       {eoiOpen ? (
         <Suspense fallback={null}>
           <EoiModal cfg={cfg} onClose={() => setEoiOpen(false)} />
@@ -554,7 +509,15 @@ function CtaSecondary({
   );
 }
 
-function Nav({ cfg, signupEnabled }: { cfg: LandingConfig; signupEnabled: boolean }) {
+function Nav({
+  cfg,
+  signupEnabled,
+  holdDefault = false,
+}: {
+  cfg: LandingConfig;
+  signupEnabled: boolean;
+  holdDefault?: boolean;
+}) {
   const p = cfg.palette;
   const navigate = useNavigate();
   const [scrolled, setScrolled] = useState(false);
@@ -606,8 +569,13 @@ function Nav({ cfg, signupEnabled }: { cfg: LandingConfig; signupEnabled: boolea
         data-landing-nav-bar
         className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-6"
       >
-        <Link to="/" className="relative z-10" onClick={() => setOpen(false)}>
-          <BrandMark cfg={cfg} />
+        <Link
+          to="/"
+          className="relative z-10"
+          onClick={() => setOpen(false)}
+          suppressHydrationWarning
+        >
+          <BrandMark cfg={cfg} holdDefault={holdDefault} />
         </Link>
 
         <div className="hidden items-center gap-8 md:flex">
@@ -1980,7 +1948,7 @@ function FinalCta({ cfg, onEoiClick }: { cfg: LandingConfig; onEoiClick?: () => 
   );
 }
 
-function Footer({ cfg }: { cfg: LandingConfig }) {
+function Footer({ cfg, holdDefault = false }: { cfg: LandingConfig; holdDefault?: boolean }) {
   const p = cfg.palette;
   const year = new Date().getFullYear();
   return (
@@ -1994,7 +1962,7 @@ function Footer({ cfg }: { cfg: LandingConfig }) {
       <div className="mx-auto max-w-7xl px-5 py-14 sm:px-6">
         <div className="grid gap-10 md:grid-cols-12 md:gap-8">
           <div className="md:col-span-5">
-            <BrandMark cfg={cfg} size="xl" />
+            <BrandMark cfg={cfg} size="xl" holdDefault={holdDefault} />
             <p className="mt-4 max-w-sm text-sm leading-relaxed" style={{ color: p.textMuted }}>
               {cfg.brand.tagline || "Portfolio Intelligence Platform"}
             </p>

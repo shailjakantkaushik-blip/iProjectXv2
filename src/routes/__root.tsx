@@ -70,7 +70,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Sora:wght@500;600;700;800&display=swap",
       },
-      { rel: "preload", as: "image", href: "/brand/iprojectx-mark.webp", type: "image/webp" },
       { rel: "icon", href: DEFAULT_FAVICON_HREF, type: "image/png" },
       { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
     ],
