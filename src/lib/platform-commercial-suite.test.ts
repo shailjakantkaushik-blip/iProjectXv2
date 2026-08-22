@@ -30,6 +30,17 @@ describe("platform commercial suite isolation", () => {
     assert.ok(report.issueCounts.critical >= 1);
   });
 
+  it("selects columns that exist on timesheet entries and demand", async () => {
+    const { PLATFORM_TABLES } = await import("./platform-commercial-suite.ts");
+    const cols = Object.fromEntries(PLATFORM_TABLES);
+    assert.match(cols.timesheet_entries, /timesheet_id/);
+    assert.match(cols.timesheet_entries, /hours_mon/);
+    assert.doesNotMatch(cols.timesheet_entries, /\bstatus\b/);
+    assert.match(cols.timesheets, /\bstatus\b/);
+    assert.match(cols.demand_pipeline, /idea_name/);
+    assert.doesNotMatch(cols.demand_pipeline, /\btitle\b/);
+  });
+
   it("keeps every catalogued suite selectable", async () => {
     const { ALL_PLATFORM_SUITE_KINDS, PLATFORM_SUITE_KINDS } = await import("./platform-commercial-suite.ts");
     assert.deepEqual(

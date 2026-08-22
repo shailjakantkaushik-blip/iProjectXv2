@@ -103,6 +103,7 @@ const ANON_HIDDEN_TABLES = [
   "decisions",
   "fy_allocations",
   "financials_monthly",
+  "timesheets",
   "timesheet_entries",
   "demand_pipeline",
   "benefits",
@@ -113,7 +114,8 @@ const ANON_HIDDEN_TABLES = [
   "profiles",
 ] as const;
 
-const PLATFORM_TABLES = [
+/** Live select lists must use columns that exist on production. */
+export const PLATFORM_TABLES = [
   ["projects", "id,org_id,project_code,name,status,budget,capex_approved,opex_approved,capex_incurred,opex_incurred"],
   ["risks", "id,org_id,raid_code,title,status"],
   ["issues", "id,org_id,raid_code,title,status"],
@@ -121,8 +123,9 @@ const PLATFORM_TABLES = [
   ["decisions", "id,org_id,raid_code,title,outcome,status"],
   ["fy_allocations", "id,org_id,fy,budget,forecast"],
   ["financials_monthly", "id,org_id,period_month"],
-  ["timesheet_entries", "id,org_id,status"],
-  ["demand_pipeline", "id,org_id,title,status"],
+  ["timesheets", "id,org_id,status,week_start"],
+  ["timesheet_entries", "id,org_id,timesheet_id,project_id,hours_mon"],
+  ["demand_pipeline", "id,org_id,idea_name,status"],
   ["benefits", "id,org_id,target_value,realised_value"],
   ["resources", "id,org_id,name,role"],
   ["work_items", "id,org_id,title,status"],
