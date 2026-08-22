@@ -1,14 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
-import { Copy, FlaskConical, Play } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Copy, Database, FlaskConical, Play } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { useAuth, isPlatformAdmin } from "@/lib/auth-context";
 import { runPlatformCommercialTests } from "@/lib/platform-testing.functions";
+import { previewPlatformSampleData, resetPlatformSampleData } from "@/lib/platform-sample-reset.functions";
 import {
   ALL_PLATFORM_SUITE_KINDS,
   PLATFORM_SUITE_KINDS,
@@ -17,6 +19,15 @@ import {
   type PlatformSuiteKind,
   type PlatformSuiteReport,
 } from "@/lib/platform-commercial-suite";
+import {
+  PLATFORM_SAMPLE_CONFIRM,
+  PLATFORM_SAMPLE_PACK_BLURBS,
+  PLATFORM_SAMPLE_PACKS,
+  SAMPLE_KEEP_SURFACES,
+  type PlatformSamplePack,
+  type SamplePreview,
+  type SampleResetReport,
+} from "@/lib/platform-sample-reset";
 
 export const Route = createFileRoute("/_authenticated/platform/testing")({
   component: PlatformTestingPage,
@@ -41,9 +52,28 @@ function PlatformTestingPage() {
   const { roles } = useAuth();
   const allowed = isPlatformAdmin(roles);
   const runSuite = useServerFn(runPlatformCommercialTests);
+  const previewSample = useServerFn(previewPlatformSampleData);
+  const resetSample = useServerFn(resetPlatformSampleData);
   const [selected, setSelected] = useState<PlatformSuiteKind[]>([...ALL_PLATFORM_SUITE_KINDS]);
   const [running, setRunning] = useState(false);
   const [report, setReport] = useState<PlatformSuiteReport | null>(null);
+  const [pack, setPack] = useState<PlatformSamplePack>(4);
+  const [confirm, setConfirm] = useState("");
+  const [preview, setPreview] = useState<SamplePreview | null>(null);
+  const [resetting, setResetting] = useState(false);
+  const [resetReport, setResetReport] = useState<SampleResetReport | null>(null);
+
+  async function loadPreview() {
+    try {
+      setPreview(await previewSample());
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not load iProjectX counts");
+    }
+  }
+
+  useEffect(() => {
+    void loadPreview();
+  }, []);
 
   const suiteGroups = useMemo(() => {
     if (!report) return [];
@@ -76,6 +106,25 @@ function PlatformTestingPage() {
       toast.error(e instanceof Error ? e.message : "Suite failed to start");
     } finally {
       setRunning(false);
+    }
+  }
+
+  async function resetLab() {
+    if (confirm.trim().toLowerCase() !== PLATFORM_SAMPLE_CONFIRM) {
+      toast.error("Type iprojectx to confirm");
+      return;
+    }
+    setResetting(true);
+    try {
+      const next = await resetSample({ data: { pack, confirm } });
+      setResetReport(next);
+      setConfirm("");
+      await loadPreview();
+      toast.success(`Reset ${next.created.projects ?? pack} iProjectX projects`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Reset failed");
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -160,8 +209,83 @@ function PlatformTestingPage() {
         <p className="mt-3 text-sm text-muted-foreground">
           Live data is filtered to slug <code>iprojectx</code>. Performance is three sequential
           samples. Load is eight parallel GETs per public URL plus four parallel iProjectX project
-          reads — a bounded tick, not a soak. Nothing is written.
+          reads — a bounded tick, not a soak. Suites do not write. Reset below is a separate, confirmed
+          wipe of iProjectX operational rows only.
         </p>
+      </SectionFrame>
+
+      <SectionFrame exportable={false}>
+        <SectionTitle>Reset platform sample data</SectionTitle>
+        <p className="mb-3 text-sm text-muted-foreground">
+          Rebuilds the iProjectX lab so every commercial page has a story. Wipes existing operational
+          sample rows for slug <code>iprojectx</code> only, then seeds the pack you pick. Customer
+          tenants are never queried. Keeps {SAMPLE_KEEP_SURFACES.join("; ")}.
+        </p>
+        <div className="grid gap-3 md:grid-cols-3">
+          {PLATFORM_SAMPLE_PACKS.map((n) => (
+            <label key={n} className="flex cursor-pointer gap-3 rounded-md border p-3">
+              <input
+                type="radio"
+                name="sample-pack"
+                className="mt-1"
+                checked={pack === n}
+                onChange={() => setPack(n)}
+              />
+              <span>
+                <span className="block font-medium">{n} projects</span>
+                <span className="block text-sm text-muted-foreground">{PLATFORM_SAMPLE_PACK_BLURBS[n]}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+        {preview && (
+          <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">{preview.org.name} now:</span>
+            {Object.entries(preview.counts).map(([table, n]) => (
+              <span key={table} className="rounded bg-slate-100 px-2 py-0.5">
+                {table} {n}
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="mt-4 flex flex-wrap items-end gap-3">
+          <label className="min-w-[16rem] flex-1">
+            <span className="mb-1 block text-sm font-medium">Type {PLATFORM_SAMPLE_CONFIRM} to confirm</span>
+            <Input
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              placeholder={PLATFORM_SAMPLE_CONFIRM}
+              autoComplete="off"
+            />
+          </label>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={resetting || confirm.trim().toLowerCase() !== PLATFORM_SAMPLE_CONFIRM}
+            onClick={() => void resetLab()}
+          >
+            <Database className="mr-1.5 h-4 w-4" />
+            {resetting ? "Resetting…" : `Wipe and seed ${pack}`}
+          </Button>
+        </div>
+        {resetReport && (
+          <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm">
+            <p className="font-medium text-emerald-900">
+              Seeded pack {resetReport.pack} on {resetReport.org.name}.{" "}
+              {resetReport.created.projects ?? 0} projects, {resetReport.created.risks ?? 0} risks,{" "}
+              {resetReport.created.demand_pipeline ?? 0} demand ideas.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="mt-2"
+              onClick={() => setSelected(["e2e"])}
+            >
+              Select End to end next
+            </Button>
+          </div>
+        )}
       </SectionFrame>
 
       <div className="rounded-lg border bg-slate-50 p-4">
