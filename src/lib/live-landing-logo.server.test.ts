@@ -37,7 +37,7 @@ describe("pickLiveLogoCandidate", () => {
         { logo_url: "https://cdn.example/legacy.png", logo_url_app: "https://cdn.example/app.png" },
         "auth",
       ),
-      "",
+      "https://cdn.example/legacy.png",
     );
   });
 
@@ -51,7 +51,11 @@ describe("pickLiveLogoCandidate", () => {
         { logo_url: "https://cdn.example/legacy.png", logo_url_app: "https://cdn.example/app.png" },
         "landing",
       ),
-      "",
+      "https://cdn.example/legacy.png",
+    );
+    assert.equal(
+      pickLiveLogoCandidate({ logo_url_auth: "https://cdn.example/auth.png" }, "landing"),
+      "https://cdn.example/auth.png",
     );
   });
 

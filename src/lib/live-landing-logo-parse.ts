@@ -16,11 +16,10 @@ export function pickLiveLogoCandidate(
   const landing = typeof brand?.logo_url_landing === "string" ? brand.logo_url_landing.trim() : "";
   const auth = typeof brand?.logo_url_auth === "string" ? brand.logo_url_auth.trim() : "";
   const legacy = typeof brand?.logo_url === "string" ? brand.logo_url.trim() : "";
-  const app = typeof brand?.logo_url_app === "string" ? brand.logo_url_app.trim() : "";
   if (surface === "auth") {
-    return auth || landing || (!app ? legacy : "");
+    return auth || landing || legacy;
   }
-  return landing || (!app ? legacy : "");
+  return landing || legacy || auth;
 }
 
 export function parseDataImageUrl(
@@ -35,7 +34,7 @@ export function parseDataImageUrl(
   const payload = (m[4] ?? "").replace(/\s/g, "");
   // Stored landing logos can sit near the 550KB data-URL cap; allow the
   // decoded payload a little more room so first-paint does not fall back.
-  if (!payload || payload.length > 1_200_000) return null;
+  if (!payload || payload.length > 2_000_000) return null;
   try {
     if (isB64) {
       const buf = Buffer.from(payload, "base64");

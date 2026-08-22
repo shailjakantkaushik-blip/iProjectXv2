@@ -25,7 +25,7 @@ const CACHE_MS = 30_000;
 const FALLBACK_FILE = join(process.cwd(), "public/brand/iprojectx-mark.webp");
 const PACKAGED_HREF = "/brand/iprojectx-mark.webp";
 /** Image request is parallel to HTML — do not starve the configured file. */
-const FETCH_MS = 4_000;
+const FETCH_MS = 8_000;
 
 const cache = new Map<LiveLogoSurface, { at: number; value: LiveLandingLogo }>();
 

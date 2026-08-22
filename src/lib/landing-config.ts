@@ -1681,7 +1681,7 @@ export async function fetchLandingConfig(): Promise<LandingConfig> {
       const { data } = await Promise.race([
         query,
         new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error("landing_config timeout")), 2000);
+          setTimeout(() => reject(new Error("landing_config timeout")), 8000);
         }),
       ]);
       const cfg = mergeConfig((data as any)?.config);
