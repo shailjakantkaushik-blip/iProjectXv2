@@ -48,6 +48,7 @@ import { ProcessingOverlay } from "@/components/processing-animation";
 import { clearOrgAuthEntry, rememberOrgAuthEntry } from "@/lib/org-auth-entry";
 import { AlertTriangle } from "lucide-react";
 import { RouteErrorView } from "@/components/route-error";
+import { PUBLIC_AUTH_LOGO_HREF } from "@/lib/live-landing-logo";
 
 type OrgAccessAlert = {
   title: string;
@@ -124,7 +125,7 @@ export const Route = createFileRoute("/auth")({
       { title: "Sign in — PMO Enterprise" },
       { name: "robots", content: "noindex" },
     ],
-    links: [],
+    links: [{ rel: "preload", as: "image", href: PUBLIC_AUTH_LOGO_HREF }],
   }),
   loader: async ({ deps }): Promise<AuthLoaderData> => loadAuthPublicConfig(deps.org),
   staleTime: 60_000,

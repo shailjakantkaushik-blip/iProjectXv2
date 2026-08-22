@@ -36,7 +36,6 @@ import {
 import {
   DEFAULT_LANDING,
   fetchLandingConfig,
-  resolveBrandLogoUrl,
   getFreshLandingConfigSnapshot,
   resolveLandingCfgForPaint,
   type LandingConfig,
@@ -44,7 +43,9 @@ import {
   type LogoDisplaySize,
 } from "@/lib/landing-config";
 import { PublicBrandMark } from "@/components/public-brand-mark";
+import { LandingMobileMenu } from "@/components/landing-mobile-menu";
 import { resolvePublicLandingLogoUrl } from "@/lib/public-landing-logo";
+import { PUBLIC_AUTH_LOGO_HREF, PUBLIC_LANDING_LOGO_HREF } from "@/lib/live-landing-logo";
 import { LandingHeroFrame } from "@/components/landing-hero-frame";
 import { LandingHeroDashboard } from "@/components/landing-hero-dashboard";
 import { lockDocumentScroll, unlockDocumentScroll } from "@/lib/document-scroll";
@@ -87,7 +88,9 @@ export const Route = createFileRoute("/")({
   staleTime: 0,
   component: LandingPage,
   head: () => {
-    const links: { rel: "preload"; as: "image"; href: string }[] = [];
+    const links: { rel: "preload"; as: "image"; href: string }[] = [
+      { rel: "preload", as: "image", href: PUBLIC_LANDING_LOGO_HREF },
+    ];
     return {
       meta: [
         {
@@ -348,14 +351,12 @@ function LandingPage() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
-  // Warm the auth logo in the browser cache so Sign in paints without a swap.
+  // Warm the auth logo in the browser cache so Sign in paints the same file.
   useEffect(() => {
-    const authLogo = resolveBrandLogoUrl(cfg.brand, "auth");
-    if (!authLogo || authLogo.startsWith("data:")) return;
     const img = new Image();
     img.decoding = "async";
-    img.src = authLogo;
-  }, [cfg.brand]);
+    img.src = PUBLIC_AUTH_LOGO_HREF;
+  }, []);
 
   const p = cfg.palette;
   const isDark = cfg.theme === "dark";
@@ -517,15 +518,15 @@ function Nav({
     cfg.theme === "dark"
       ? scrolled
         ? `${p.navy}f2`
-        : `${p.navy}cc`
+        : `${p.navy}ee`
       : scrolled
-        ? "rgba(255,255,255,0.92)"
-        : "rgba(255,255,255,0.78)";
+        ? "rgba(255,255,255,0.98)"
+        : "rgba(255,255,255,0.96)";
 
   return (
     <nav
       data-landing-nav
-      className="fixed inset-x-0 top-0 z-[100] w-full border-b pt-[env(safe-area-inset-top)] backdrop-blur-xl transition-[background,box-shadow] duration-300 print:absolute"
+      className="fixed inset-x-0 top-0 z-[100] w-full border-b pt-[env(safe-area-inset-top)] transition-[background,box-shadow] duration-300 print:absolute"
       style={{
         borderColor: scrolled ? p.surface : "transparent",
         background: navBg,
@@ -564,7 +565,7 @@ function Nav({
           </Link>
         </div>
 
-        <div className="hidden items-center gap-3 md:flex">
+        <div className="flex items-center gap-2">
           <Link
             to="/auth"
             style={{
@@ -573,7 +574,7 @@ function Nav({
               color: signupEnabled ? p.textHeading : p.textOnAccent,
               border: signupEnabled ? `1.5px solid ${p.accent}` : "none",
             }}
-            className="rounded-md px-4 py-2.5 text-sm font-bold transition-opacity hover:opacity-90"
+            className="rounded-md px-3 py-2 text-sm font-bold transition-opacity hover:opacity-90 sm:px-4 sm:py-2.5"
           >
             Sign in
           </Link>
@@ -581,107 +582,36 @@ function Nav({
             <Link
               to="/auth"
               style={{ ...HEADING, background: p.navy, color: p.textOnDark }}
-              className="rounded-md px-4 py-2.5 text-sm font-bold transition-opacity hover:opacity-90"
+              className="hidden rounded-md px-4 py-2.5 text-sm font-bold transition-opacity hover:opacity-90 md:inline-flex"
             >
               Get started
             </Link>
           ) : null}
-        </div>
-
-        <button
-          type="button"
-          className="relative z-[102] inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border md:hidden"
-          style={{ borderColor: p.surface, color: p.textHeading, touchAction: "manipulation" }}
-          aria-label={open ? "Close menu" : "Open menu"}
-          aria-expanded={open}
-          aria-controls="landing-mobile-menu"
-          onPointerDown={(e) => {
-            e.stopPropagation();
-          }}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setOpen((v) => !v);
-          }}
-        >
-          {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
-      </div>
-
-      {open ? (
-        <div
-          id="landing-mobile-menu"
-          className="fixed inset-x-0 bottom-0 z-[99] md:hidden"
-          style={{ top: LANDING_NAV_H }}
-        >
           <button
             type="button"
-            className="absolute inset-0 bg-black/35"
-            aria-label="Close menu"
-            onClick={() => setOpen(false)}
-          />
-          <div
-            className="relative z-10 max-h-[min(70vh,calc(100dvh-var(--lp-nav-h)))] overflow-y-auto border-t px-5 py-5"
-            style={{
-              borderColor: p.surface,
-              background: cfg.theme === "dark" ? p.navy : "#ffffff",
+            className="relative z-[102] inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md border md:hidden"
+            style={{ borderColor: p.surface, color: p.textHeading, touchAction: "manipulation" }}
+            aria-label={open ? "Close menu" : "Open menu"}
+            aria-expanded={open}
+            aria-controls="landing-mobile-menu"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setOpen((v) => !v);
             }}
           >
-          <div className="flex flex-col gap-1">
-            {NAV_LINKS.map(([href, label]) => (
-              <a
-                key={href}
-                href={href}
-                onClick={(e) => {
-                  e.preventDefault();
-                  goSection(href);
-                }}
-                className="rounded-md px-3 py-3 text-sm font-semibold"
-                style={{ color: p.textHeading }}
-              >
-                {label}
-              </a>
-            ))}
-            <Link
-              to="/contact"
-              onClick={() => setOpen(false)}
-              className="rounded-md px-3 py-3 text-sm font-semibold"
-              style={{ color: p.textHeading }}
-            >
-              Contact us
-            </Link>
-          </div>
-          <div
-            className="mt-4 flex flex-col gap-2 border-t pt-4"
-            style={{ borderColor: p.surface }}
-          >
-            <Link
-              to="/auth"
-              onClick={() => setOpen(false)}
-              style={{
-                ...HEADING,
-                background: signupEnabled ? "transparent" : p.accent,
-                color: signupEnabled ? p.textHeading : p.textOnAccent,
-                border: signupEnabled ? `1.5px solid ${p.accent}` : "none",
-              }}
-              className="rounded-md px-3 py-3 text-center text-sm font-bold"
-            >
-              Sign in
-            </Link>
-            {signupEnabled ? (
-              <Link
-                to="/auth"
-                onClick={() => setOpen(false)}
-                style={{ ...HEADING, background: p.navy, color: p.textOnDark }}
-                className="rounded-md px-3 py-3 text-center text-sm font-bold"
-              >
-                Get started
-              </Link>
-            ) : null}
-          </div>
+            {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
         </div>
-        </div>
-      ) : null}
+      </div>
+      <LandingMobileMenu
+        open={open}
+        onClose={() => setOpen(false)}
+        cfg={cfg}
+        signupEnabled={signupEnabled}
+        links={NAV_LINKS}
+        onSection={goSection}
+      />
     </nav>
   );
 }
