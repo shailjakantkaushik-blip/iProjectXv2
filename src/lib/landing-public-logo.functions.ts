@@ -14,3 +14,14 @@ export const resolveDocumentLandingLogoUrl = createServerFn({ method: "GET" }).h
     return fetchPublicLandingLogoUrl();
   },
 );
+
+/** Configured landing mark size for the first HTML. Cookie, then a slim DB read. */
+export const resolveDocumentLandingLogoDims = createServerFn({ method: "GET" }).handler(
+  async (): Promise<{ heightPx: number; maxWidthPx: number } | null> => {
+    const { readLandingLogoSizeCookieFromRequest } = await import("@/lib/landing-logo-cookie.server");
+    const cookie = await readLandingLogoSizeCookieFromRequest();
+    if (cookie) return cookie;
+    const { fetchPublicLandingLogoDims } = await import("@/lib/fetch-landing-logo.server");
+    return fetchPublicLandingLogoDims();
+  },
+);

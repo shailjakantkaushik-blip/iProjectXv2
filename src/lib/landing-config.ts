@@ -5,7 +5,7 @@ import {
   type NavigationConfig,
 } from "@/lib/navigation-config";
 import { mergeBrandSurfaceLogos, resolvePublicLandingLogoUrl } from "@/lib/public-landing-logo";
-import { writeLandingLogoCookie } from "@/lib/landing-logo-cookie";
+import { writeLandingLogoCookie, writeLandingLogoSizeCookie } from "@/lib/landing-logo-cookie";
 
 export type { NavigationConfig };
 export { defaultNavigationConfig };
@@ -211,6 +211,22 @@ export function resolveAppShellLogoUrl(opts: {
 
 /** Packaged iProjectX mark (processing animation / favicon helpers). Not the app-shell fallback. */
 export const DEFAULT_IPROJECTX_MARK = "/brand/iprojectx-mark.webp";
+
+export function applyLandingLogoDims(
+  cfg: LandingConfig,
+  dims: { heightPx: number; maxWidthPx: number } | null | undefined,
+): LandingConfig {
+  if (!dims) return cfg;
+  const custom = clampLogoCustom(dims);
+  return {
+    ...cfg,
+    brand: {
+      ...cfg.brand,
+      logo_size_landing: "custom",
+      logo_custom_landing: custom,
+    },
+  };
+}
 
 export function resolveBrandLogoDims(
   brand: LandingConfig["brand"],
@@ -1597,11 +1613,12 @@ export function writeCachedLandingConfig(config: LandingConfig) {
     };
     const next = JSON.stringify(stored);
     const prev = window.localStorage.getItem(LANDING_CONFIG_CACHE_KEY);
+    writeLandingLogoCookie(resolvePublicLandingLogoUrl(config.brand));
+    writeLandingLogoSizeCookie(logoSizeDims(config.brand.logo_size_landing, config.brand.logo_custom_landing));
     if (prev === next) return;
     window.localStorage.setItem(LANDING_CONFIG_CACHE_KEY, next);
     // Drop pre-v2 cache that could still paint stale logos.
     window.localStorage.removeItem("pmo.landingConfig.v1");
-    writeLandingLogoCookie(resolvePublicLandingLogoUrl(config.brand));
   } catch {
     /* quota / private mode */
   }

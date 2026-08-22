@@ -1,4 +1,11 @@
 import { sanitizeLandingLogoCookieUrl } from "@/lib/landing-logo-cookie";
+import {
+  clampLogoCustom,
+  logoSizeDims,
+  normalizeLogoSize,
+} from "@/lib/landing-config";
+
+export type PublicLandingLogoDims = { heightPx: number; maxWidthPx: number };
 
 const LOGO_FETCH_MS = 500;
 
@@ -31,5 +38,48 @@ export async function fetchPublicLandingLogoUrl(
     return sanitizeLandingLogoCookieUrl(candidate);
   } catch {
     return "";
+  }
+}
+
+function walkBrandSize(data: unknown): { size?: unknown; custom?: unknown } {
+  if (!data || typeof data !== "object") return {};
+  const o = data as Record<string, unknown>;
+  if ("logo_size_landing" in o || "logo_custom_landing" in o) {
+    return { size: o.logo_size_landing, custom: o.logo_custom_landing };
+  }
+  for (const value of Object.values(o)) {
+    const found = walkBrandSize(value);
+    if (found.size != null || found.custom != null) return found;
+  }
+  return {};
+}
+
+/**
+ * Configured landing mark size only — never the data: URL bytes.
+ * Safe to wait on during document SSR so .com and .com.au paint the same size.
+ */
+export async function fetchPublicLandingLogoDims(
+  timeoutMs: number = 800,
+): Promise<PublicLandingLogoDims | null> {
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const query = supabaseAdmin
+      .from("landing_config" as never)
+      .select(
+        "logo_size_landing:config->brand->logo_size_landing, logo_custom_landing:config->brand->logo_custom_landing",
+      )
+      .eq("id", "singleton")
+      .maybeSingle();
+    const { data } = await Promise.race([
+      query,
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("landing logo size timeout")), timeoutMs);
+      }),
+    ]);
+    const found = walkBrandSize(data);
+    if (found.size == null && found.custom == null) return null;
+    return logoSizeDims(normalizeLogoSize(found.size), clampLogoCustom(found.custom));
+  } catch {
+    return null;
   }
 }
