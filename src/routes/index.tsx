@@ -70,7 +70,7 @@ type LandingLoaderData = {
 
 export const Route = createFileRoute("/")({
   loader: async (): Promise<LandingLoaderData> => {
-    // Instant HTML. Logo is the Landing-config file, or /brand/iprojectx-mark.webp.
+    // Instant HTML. Logo is always /api/public/landing-logo — same src after hydrate.
     // so the browser fetches it during parse — we do not wait on branding here.
     const base: LandingConfig = { ...DEFAULT_LANDING, signup_enabled: false };
     if (typeof window !== "undefined") {
