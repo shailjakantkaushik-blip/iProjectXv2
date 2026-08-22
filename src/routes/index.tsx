@@ -45,6 +45,7 @@ import {
 } from "@/lib/landing-config";
 import { PublicBrandMark } from "@/components/public-brand-mark";
 import { readLandingLogoCookieBrowser } from "@/lib/landing-logo-cookie";
+import { resolveDocumentLandingLogoUrl } from "@/lib/landing-public-logo.functions";
 import { resolvePublicLandingLogoUrl } from "@/lib/public-landing-logo";
 import { LandingHeroFrame } from "@/components/landing-hero-frame";
 import { LandingHeroDashboard } from "@/components/landing-hero-dashboard";
@@ -78,8 +79,8 @@ function withLandingCookieLogo(cfg: LandingConfig, logoUrl: string): LandingConf
 
 export const Route = createFileRoute("/")({
   loader: async (): Promise<LandingLoaderData> => {
-    // Never await Supabase on the first document. Mobile Safari aborts when TTFB
-    // is slow. Paint a complete page from default + optional landing-logo cookie.
+    // First HTML must include the real landing logo when we can get an https
+    // URL quickly. Never wait on the full config / data: URLs (Safari).
     const base: LandingConfig = { ...DEFAULT_LANDING, signup_enabled: false };
     if (typeof window !== "undefined") {
       try {
@@ -96,35 +97,42 @@ export const Route = createFileRoute("/")({
       };
     }
     try {
-      const { readLandingLogoCookieFromRequest } = await import("@/lib/landing-logo-cookie.server");
-      const cookieLogo = await readLandingLogoCookieFromRequest();
-      return { cfg: withLandingCookieLogo(base, cookieLogo), needsRevalidate: true };
+      const logo = await resolveDocumentLandingLogoUrl();
+      return { cfg: withLandingCookieLogo(base, logo), needsRevalidate: true };
     } catch {
       return { cfg: base, needsRevalidate: true };
     }
   },
   staleTime: 0,
   component: LandingPage,
-  head: () => ({
-    meta: [
-      {
-        title: "iProjectX — Portfolio Intelligence Platform beyond the register",
-      },
-      {
-        name: "description",
-        content:
-          "iProjectX — portfolio intelligence with calculated Project Health, Portfolio Pulse, explainable KPIs, executive what-ifs, stage-gate governance, white-label branding, MFA, optional SSO & BYOD, and In-house AI by default.",
-      },
-      { property: "og:title", content: "iProjectX — Portfolio Intelligence Platform" },
-      {
-        property: "og:description",
-        content:
-          "Not a static register. Calculated health, Portfolio Pulse, explainable financials, white-label, MFA, optional SSO/BYOD, and In-house AI by default.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
-    ],
-  }),
+  head: ({ loaderData }) => {
+    const logo = resolvePublicLandingLogoUrl(loaderData?.cfg?.brand);
+    const links =
+      logo && /^https?:\/\//i.test(logo)
+        ? [{ rel: "preload" as const, as: "image", href: logo }]
+        : [];
+    return {
+      meta: [
+        {
+          title: "iProjectX — Portfolio Intelligence Platform beyond the register",
+        },
+        {
+          name: "description",
+          content:
+            "iProjectX — portfolio intelligence with calculated Project Health, Portfolio Pulse, explainable KPIs, executive what-ifs, stage-gate governance, white-label branding, MFA, optional SSO & BYOD, and In-house AI by default.",
+        },
+        { property: "og:title", content: "iProjectX — Portfolio Intelligence Platform" },
+        {
+          property: "og:description",
+          content:
+            "Not a static register. Calculated health, Portfolio Pulse, explainable financials, white-label, MFA, optional SSO/BYOD, and In-house AI by default.",
+        },
+        { property: "og:type", content: "website" },
+        { name: "twitter:card", content: "summary_large_image" },
+      ],
+      links,
+    };
+  },
 });
 
 const HEADING = { fontFamily: "'Sora', system-ui, sans-serif" as const };
@@ -295,7 +303,7 @@ function BrandMark({
   size?: LogoDisplaySize;
   onDark?: boolean;
 }) {
-  return <PublicBrandMark cfg={cfg} size={size} onDark={onDark} />;
+  return <PublicBrandMark cfg={cfg} size={size} onDark={onDark} fallback="slot" />;
 }
 
 function LandingPage() {
