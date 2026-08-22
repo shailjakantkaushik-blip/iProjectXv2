@@ -104,6 +104,7 @@ import { Route as AuthenticatedPlatformPlansRouteImport } from './routes/_authen
 import { Route as AuthenticatedPlatformPoliciesRouteImport } from './routes/_authenticated/platform.policies'
 import { Route as AuthenticatedPlatformProjectPurgeRouteImport } from './routes/_authenticated/platform.project-purge'
 import { Route as AuthenticatedPlatformSecurityRouteImport } from './routes/_authenticated/platform.security'
+import { Route as AuthenticatedPlatformTestingRouteImport } from './routes/_authenticated/platform.testing'
 import { Route as AuthenticatedPlatformSettingsRouteImport } from './routes/_authenticated/platform.settings'
 import { Route as AuthenticatedPlatformAlertEmailsRouteImport } from './routes/_authenticated/platform.alert-emails'
 import { Route as AuthenticatedPlatformSubscriptionsRouteImport } from './routes/_authenticated/platform.subscriptions'
@@ -664,6 +665,12 @@ const AuthenticatedPlatformSecurityRoute =
     path: '/security',
     getParentRoute: () => AuthenticatedPlatformRoute,
   } as any)
+const AuthenticatedPlatformTestingRoute =
+  AuthenticatedPlatformTestingRouteImport.update({
+    id: '/testing',
+    path: '/testing',
+    getParentRoute: () => AuthenticatedPlatformRoute,
+  } as any)
 const AuthenticatedPlatformSettingsRoute =
   AuthenticatedPlatformSettingsRouteImport.update({
     id: '/settings',
@@ -841,6 +848,7 @@ export interface FileRoutesByFullPath {
   '/platform/policies': typeof AuthenticatedPlatformPoliciesRoute
   '/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
   '/platform/security': typeof AuthenticatedPlatformSecurityRoute
+  '/platform/testing': typeof AuthenticatedPlatformTestingRoute
   '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/platform/alert-emails': typeof AuthenticatedPlatformAlertEmailsRoute
   '/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
@@ -949,6 +957,7 @@ export interface FileRoutesByTo {
   '/platform/policies': typeof AuthenticatedPlatformPoliciesRoute
   '/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
   '/platform/security': typeof AuthenticatedPlatformSecurityRoute
+  '/platform/testing': typeof AuthenticatedPlatformTestingRoute
   '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/platform/alert-emails': typeof AuthenticatedPlatformAlertEmailsRoute
   '/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
@@ -1061,6 +1070,7 @@ export interface FileRoutesById {
   '/_authenticated/platform/policies': typeof AuthenticatedPlatformPoliciesRoute
   '/_authenticated/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
   '/_authenticated/platform/security': typeof AuthenticatedPlatformSecurityRoute
+  '/_authenticated/platform/testing': typeof AuthenticatedPlatformTestingRoute
   '/_authenticated/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/_authenticated/platform/alert-emails': typeof AuthenticatedPlatformAlertEmailsRoute
   '/_authenticated/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
@@ -1173,6 +1183,7 @@ export interface FileRouteTypes {
     | '/platform/policies'
     | '/platform/project-purge'
     | '/platform/security'
+    | '/platform/testing'
     | '/platform/settings'
     | '/platform/alert-emails'
     | '/platform/subscriptions'
@@ -1281,6 +1292,7 @@ export interface FileRouteTypes {
     | '/platform/policies'
     | '/platform/project-purge'
     | '/platform/security'
+    | '/platform/testing'
     | '/platform/settings'
     | '/platform/alert-emails'
     | '/platform/subscriptions'
@@ -1392,6 +1404,7 @@ export interface FileRouteTypes {
     | '/_authenticated/platform/policies'
     | '/_authenticated/platform/project-purge'
     | '/_authenticated/platform/security'
+    | '/_authenticated/platform/testing'
     | '/_authenticated/platform/settings'
     | '/_authenticated/platform/alert-emails'
     | '/_authenticated/platform/subscriptions'
@@ -2092,6 +2105,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPlatformSecurityRouteImport
       parentRoute: typeof AuthenticatedPlatformRoute
     }
+    '/_authenticated/platform/testing': {
+      id: '/_authenticated/platform/testing'
+      path: '/testing'
+      fullPath: '/platform/testing'
+      preLoaderRoute: typeof AuthenticatedPlatformTestingRouteImport
+      parentRoute: typeof AuthenticatedPlatformRoute
+    }
     '/_authenticated/platform/settings': {
       id: '/_authenticated/platform/settings'
       path: '/settings'
@@ -2382,6 +2402,7 @@ interface AuthenticatedPlatformRouteChildren {
   AuthenticatedPlatformPoliciesRoute: typeof AuthenticatedPlatformPoliciesRoute
   AuthenticatedPlatformProjectPurgeRoute: typeof AuthenticatedPlatformProjectPurgeRoute
   AuthenticatedPlatformSecurityRoute: typeof AuthenticatedPlatformSecurityRoute
+  AuthenticatedPlatformTestingRoute: typeof AuthenticatedPlatformTestingRoute
   AuthenticatedPlatformSettingsRoute: typeof AuthenticatedPlatformSettingsRoute
   AuthenticatedPlatformSubscriptionsRoute: typeof AuthenticatedPlatformSubscriptionsRoute
   AuthenticatedPlatformSupportRoute: typeof AuthenticatedPlatformSupportRoute
@@ -2408,6 +2429,7 @@ const AuthenticatedPlatformRouteChildren: AuthenticatedPlatformRouteChildren = {
   AuthenticatedPlatformProjectPurgeRoute:
     AuthenticatedPlatformProjectPurgeRoute,
   AuthenticatedPlatformSecurityRoute: AuthenticatedPlatformSecurityRoute,
+  AuthenticatedPlatformTestingRoute: AuthenticatedPlatformTestingRoute,
   AuthenticatedPlatformSettingsRoute: AuthenticatedPlatformSettingsRoute,
   AuthenticatedPlatformSubscriptionsRoute:
     AuthenticatedPlatformSubscriptionsRoute,

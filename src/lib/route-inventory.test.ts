@@ -12,7 +12,7 @@ describe("route inventory", () => {
 
   it("keeps public commercial surfaces in the router", () => {
     const tree = readFileSync(new URL("../routeTree.gen.ts", import.meta.url), "utf8");
-    for (const path of ["/", "/auth", "/contact", "/api/public/landing-logo"]) {
+    for (const path of ["/", "/auth", "/contact", "/api/public/landing-logo", "/platform/testing"]) {
       assert.ok(tree.includes(`fullPath: '${path}'`), `missing ${path}`);
     }
   });

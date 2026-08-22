@@ -194,6 +194,12 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
         platformOnly: true,
       },
       {
+        to: "/platform/testing",
+        label: "Commercial testing",
+        icon: "FlaskConical",
+        platformOnly: true,
+      },
+      {
         to: "/platform/eoi",
         label: "Expressions of Interest",
         icon: "Inbox",
