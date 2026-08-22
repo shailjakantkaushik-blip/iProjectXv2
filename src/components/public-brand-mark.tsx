@@ -10,6 +10,11 @@ type PublicBrandMarkProps = {
   /** Override; defaults to configured landing logo size. */
   size?: LogoDisplaySize;
   onDark?: boolean;
+  /**
+   * Repeat-visit https CDN URL from the landing-logo cookie. When omitted,
+   * the same-origin API href is used so first HTML and hydrate match.
+   */
+  src?: string;
 };
 
 /**
@@ -20,6 +25,7 @@ type PublicBrandMarkProps = {
 export function PublicBrandMark({
   cfg,
   size,
+  src,
 }: PublicBrandMarkProps) {
   const dims =
     size != null
@@ -30,7 +36,7 @@ export function PublicBrandMark({
 
   return (
     <img
-      src={PUBLIC_LANDING_LOGO_HREF}
+      src={src || PUBLIC_LANDING_LOGO_HREF}
       alt={cfg.brand.name || "iProjectX"}
       height={heightPx}
       width={maxWidthPx}

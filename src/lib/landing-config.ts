@@ -5,7 +5,11 @@ import {
   type NavigationConfig,
 } from "@/lib/navigation-config";
 import { mergeBrandSurfaceLogos, resolvePublicLandingLogoUrl } from "@/lib/public-landing-logo";
-import { writeLandingLogoCookie, writeLandingLogoSizeCookie } from "@/lib/landing-logo-cookie";
+import {
+  writeAuthLogoCookie,
+  writeLandingLogoCookie,
+  writeLandingLogoSizeCookie,
+} from "@/lib/landing-logo-cookie";
 
 export type { NavigationConfig };
 export { defaultNavigationConfig };
@@ -1614,6 +1618,7 @@ export function writeCachedLandingConfig(config: LandingConfig) {
     const next = JSON.stringify(stored);
     const prev = window.localStorage.getItem(LANDING_CONFIG_CACHE_KEY);
     writeLandingLogoCookie(resolvePublicLandingLogoUrl(config.brand));
+    writeAuthLogoCookie(resolveBrandLogoUrl(config.brand, "auth"));
     writeLandingLogoSizeCookie(logoSizeDims(config.brand.logo_size_landing, config.brand.logo_custom_landing));
     if (prev === next) return;
     window.localStorage.setItem(LANDING_CONFIG_CACHE_KEY, next);

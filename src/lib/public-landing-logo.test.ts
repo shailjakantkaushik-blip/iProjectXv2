@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { mergeBrandSurfaceLogos, resolvePublicLandingLogoUrl } from "./public-landing-logo.ts";
 import {
+  parseAuthLogoCookie,
   parseLandingLogoCookie,
   parseLandingLogoSizeCookie,
   sanitizeLandingLogoCookieUrl,
@@ -86,6 +87,15 @@ describe("landing logo cookie", () => {
     );
     assert.equal(sanitizeLandingLogoCookieUrl("data:image/png;base64,aaaa"), "");
     assert.equal(sanitizeLandingLogoCookieUrl("/relative.png"), "");
+  });
+
+  it("reads a separate https auth logo cookie", () => {
+    const auth = "https://cdn.example/auth-mark.png";
+    assert.equal(
+      parseAuthLogoCookie(`pmo_llogo=${encodeURIComponent(LANDING)}; pmo_alogo=${encodeURIComponent(auth)}`),
+      auth,
+    );
+    assert.equal(parseAuthLogoCookie(`pmo_alogo=${encodeURIComponent("data:image/png;base64,aaaa")}`), "");
   });
 
   it("reads configured landing mark size", () => {
