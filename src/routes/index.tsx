@@ -287,7 +287,9 @@ function LandingPage() {
   const { cfg: loaderCfg, needsRevalidate } = Route.useLoaderData();
   // First paint must match SSR (loaderCfg). Overlay cache only after hydrate
   // so mobile Safari does not fail on a logo mismatch.
-  const [cfg, setCfg] = useState(loaderCfg);
+  // Prefer memory/localStorage over a stale loader snapshot so the uploaded
+  // Landing-config logo and size paint immediately (pre-video-ads behaviour).
+  const [cfg, setCfg] = useState(() => resolveLandingCfgForPaint(loaderCfg));
   const signupEnabled = cfg.signup_enabled === true;
   const [eoiOpen, setEoiOpen] = useState(false);
 
@@ -378,17 +380,18 @@ function LandingPage() {
 
   return (
     <div
-      className="w-full max-w-[100vw] overflow-x-hidden antialiased"
+      className="antialiased"
       data-theme={cfg.theme}
       style={{ ...cssVars, ...BODY, color: p.textBody, background: pageBg }}
     >
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:shadow"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[110] focus:rounded focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:shadow"
       >
         Skip to content
       </a>
       <Nav cfg={cfg} signupEnabled={signupEnabled} />
+      <div className="w-full max-w-[100vw] overflow-x-hidden">
       {/* Matches frozen nav: 4rem bar + notch inset, so the hero is not tucked under Sign in / logo. */}
       <div className="h-[var(--lp-nav-h)] shrink-0" aria-hidden />
       <main id="main" className="min-w-0">
@@ -409,6 +412,7 @@ function LandingPage() {
         <FinalCta cfg={cfg} onEoiClick={() => setEoiOpen(true)} />
       </main>
       <Footer cfg={cfg} />
+      </div>
       {eoiOpen ? (
         <Suspense fallback={null}>
           <EoiModal cfg={cfg} onClose={() => setEoiOpen(false)} />
@@ -521,7 +525,7 @@ function Nav({
   return (
     <nav
       data-landing-nav
-      className="fixed inset-x-0 top-0 z-50 w-full border-b pt-[env(safe-area-inset-top)] backdrop-blur-xl transition-[background,box-shadow] duration-300 print:absolute"
+      className="fixed inset-x-0 top-0 z-[100] w-full border-b pt-[env(safe-area-inset-top)] backdrop-blur-xl transition-[background,box-shadow] duration-300 print:absolute"
       style={{
         borderColor: scrolled ? p.surface : "transparent",
         background: navBg,
@@ -530,7 +534,7 @@ function Nav({
     >
       <div
         data-landing-nav-bar
-        className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-6"
+        className="relative z-[101] mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-6"
       >
         <Link to="/" className="relative z-10" onClick={() => setOpen(false)}>
           <BrandMark cfg={cfg} />
@@ -586,24 +590,43 @@ function Nav({
 
         <button
           type="button"
-          className="relative z-10 inline-flex h-10 w-10 items-center justify-center rounded-md border md:hidden"
-          style={{ borderColor: p.surface, color: p.textHeading }}
+          className="relative z-[102] inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border md:hidden"
+          style={{ borderColor: p.surface, color: p.textHeading, touchAction: "manipulation" }}
           aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
+          aria-controls="landing-mobile-menu"
+          onPointerDown={(e) => {
+            e.stopPropagation();
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setOpen((v) => !v);
+          }}
         >
           {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
       </div>
 
-      {open && (
+      {open ? (
         <div
-          className="border-t px-5 py-5 md:hidden"
-          style={{
-            borderColor: p.surface,
-            background: cfg.theme === "dark" ? p.navy : "#ffffff",
-          }}
+          id="landing-mobile-menu"
+          className="fixed inset-x-0 bottom-0 z-[99] md:hidden"
+          style={{ top: LANDING_NAV_H }}
         >
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/35"
+            aria-label="Close menu"
+            onClick={() => setOpen(false)}
+          />
+          <div
+            className="relative z-10 max-h-[min(70vh,calc(100dvh-var(--lp-nav-h)))] overflow-y-auto border-t px-5 py-5"
+            style={{
+              borderColor: p.surface,
+              background: cfg.theme === "dark" ? p.navy : "#ffffff",
+            }}
+          >
           <div className="flex flex-col gap-1">
             {NAV_LINKS.map(([href, label]) => (
               <a
@@ -657,7 +680,8 @@ function Nav({
             ) : null}
           </div>
         </div>
-      )}
+        </div>
+      ) : null}
     </nav>
   );
 }
