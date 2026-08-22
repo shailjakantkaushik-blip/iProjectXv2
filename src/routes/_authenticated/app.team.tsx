@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
@@ -118,7 +118,11 @@ function Team() {
         <h1 className="text-3xl font-bold tracking-tight">Team & Roles</h1>
         <p className="text-sm text-muted-foreground">
           Manage users in {organization?.name ?? "your organisation"} — roles and
-          activate/deactivate. Account deletion is only available to platform admins.
+          activate/deactivate. Add or rename organisation roles on{" "}
+          <Link to="/app/permissions" className="text-primary underline-offset-2 hover:underline">
+            Admin: Permissions
+          </Link>
+          . Account deletion is only available to platform admins.
         </p>
       </div>
 

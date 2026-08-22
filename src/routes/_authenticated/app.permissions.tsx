@@ -1,10 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth, isAdmin as checkIsAdmin } from "@/lib/auth-context";
+import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
+import { OrgRoleCatalog } from "@/components/org-role-catalog";
 import {
   CAPABILITIES,
   EDITABLE_TABLES,
@@ -15,10 +16,9 @@ import {
   pageKey,
   useRolePermissions,
 } from "@/lib/permissions";
-import { assignableOrgRoles, useOrgRoles, type OrgRole } from "@/lib/org-roles";
+import { canManageOrgRoles } from "@/lib/org-role-admin";
+import { assignableOrgRoles, useOrgRoles } from "@/lib/org-roles";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/_authenticated/app/permissions")({
   component: PermissionsPage,
@@ -31,12 +31,8 @@ function PermissionsPage() {
   const rolesQ = useOrgRoles(orgId);
   const qc = useQueryClient();
 
-  const canManage = checkIsAdmin(myRoles);
+  const canManage = canManageOrgRoles(myRoles);
   const roles = assignableOrgRoles(rolesQ.data ?? []);
-
-  const [newKey, setNewKey] = useState("");
-  const [newLabel, setNewLabel] = useState("");
-  const [newDesc, setNewDesc] = useState("");
 
   const map = useMemo(() => {
     const m = new Map<string, { can_view: boolean; can_edit: boolean; can_other: boolean }>();
@@ -65,55 +61,6 @@ function PermissionsPage() {
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["role_table_permissions"] }),
     onError: (e: any) => toast.error(e.message ?? "Failed"),
-  });
-
-  const addRole = useMutation({
-    mutationFn: async () => {
-      if (!orgId) throw new Error("No organisation");
-      const key = newKey
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9_]+/g, "_")
-        .replace(/^_+|_+$/g, "");
-      if (!/^[a-z][a-z0-9_]{1,62}$/.test(key)) {
-        throw new Error("Role key must start with a letter and use a-z, 0-9, underscore");
-      }
-      if (["platform_admin"].includes(key)) throw new Error("Reserved role key");
-      const label = newLabel.trim() || key;
-      const { error } = await supabase.from("org_roles" as any).insert({
-        org_id: orgId,
-        role_key: key,
-        label,
-        description: newDesc.trim() || null,
-        is_system: false,
-        sort_order: 200,
-      } as never);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["org_roles", orgId] });
-      toast.success("Role added — configure permissions below");
-      setNewKey("");
-      setNewLabel("");
-      setNewDesc("");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const deleteRole = useMutation({
-    mutationFn: async (role: OrgRole) => {
-      if (role.is_system) throw new Error("System roles cannot be deleted");
-      const { error } = await supabase
-        .from("org_roles" as any)
-        .delete()
-        .eq("id", role.id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["org_roles", orgId] });
-      toast.success("Role removed");
-    },
-    onError: (e: Error) => toast.error(e.message),
   });
 
   const flip = (
@@ -155,9 +102,10 @@ function PermissionsPage() {
       <PageHeading icon="🔐">Role Permissions</PageHeading>
       <p className="mb-3 text-sm text-muted-foreground">
         Configure who can view, edit, and perform other actions (add/delete, upload, delete project)
-        for each data table, Data Editor tools, and pages. Add custom roles for your organisation —
-        the matrices below update automatically. To limit which projects each role or user can see
-        (Strategic Alignment, program, functional area, project, stream), use{" "}
+        for each data table, Data Editor tools, and pages. Organisation and platform admins can add
+        custom roles and edit existing ones — the matrices below update automatically. To limit
+        which projects each role or user can see (Strategic Alignment, program, functional area,
+        project, stream), use{" "}
         <Link to="/app/project-access" className="text-primary underline-offset-2 hover:underline">
           Project data access
         </Link>
@@ -166,54 +114,13 @@ function PermissionsPage() {
 
       <SectionFrame>
         <SectionTitle>Organisation roles</SectionTitle>
-        <div className="mb-3 flex flex-wrap gap-2">
-          {roles.map((r) => (
-            <span
-              key={r.id}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/30 px-2 py-1 text-xs"
-            >
-              <span className="font-semibold">{r.label}</span>
-              <span className="text-muted-foreground font-mono text-[10px]">{r.role_key}</span>
-              {!r.is_system && canManage && (
-                <button
-                  type="button"
-                  className="text-rose-600 hover:underline text-[10px]"
-                  onClick={() =>
-                    confirm(`Delete role “${r.label}”? Users keep the key until you remove it.`) &&
-                    deleteRole.mutate(r)
-                  }
-                >
-                  Delete
-                </button>
-              )}
-            </span>
-          ))}
-        </div>
-        {canManage && (
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
-            <Input
-              placeholder="Role key (e.g. resource_manager)"
-              value={newKey}
-              onChange={(e) => setNewKey(e.target.value)}
-            />
-            <Input
-              placeholder="Display label"
-              value={newLabel}
-              onChange={(e) => setNewLabel(e.target.value)}
-            />
-            <Input
-              placeholder="Description (optional)"
-              value={newDesc}
-              onChange={(e) => setNewDesc(e.target.value)}
-            />
-            <Button
-              type="button"
-              disabled={addRole.isPending || !newKey.trim()}
-              onClick={() => addRole.mutate()}
-            >
-              {addRole.isPending ? "Adding…" : "Add role"}
-            </Button>
-          </div>
+        {orgId ? (
+          <OrgRoleCatalog orgId={orgId} canManage={canManage} />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            No home organisation on this account. Platform admins can manage any organisation’s
+            roles from Platform → Organisation roles.
+          </p>
         )}
       </SectionFrame>
 

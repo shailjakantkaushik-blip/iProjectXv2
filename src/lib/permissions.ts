@@ -146,7 +146,11 @@ export function resolveCanViewPage(
   rows: Array<{ role: string; table_name: string; can_view: boolean }>,
 ): boolean {
   const admin = roles.some((r) => r === "admin" || r === "org_admin");
-  if (ADMIN_ONLY_PAGES.has(path)) return admin;
+  const platform = roles.includes("platform_admin");
+  if (ADMIN_ONLY_PAGES.has(path)) {
+    if (path === "/app/permissions") return admin || platform;
+    return admin;
+  }
   if (admin) return true;
   const relevant = rows.filter((r) => roles.includes(r.role) && r.table_name === pageKey(path));
   // Default-deny when the matrix has no row for this role+page (fail closed).
