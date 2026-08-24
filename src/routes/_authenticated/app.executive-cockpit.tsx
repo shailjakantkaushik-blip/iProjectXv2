@@ -10,6 +10,7 @@ import { ExplainThis } from "@/components/explain-this";
 import { EnvelopeBullet } from "@/components/envelope-bullet";
 import { ExpandablePanel } from "@/components/expandable-panel";
 import { ExecutiveQuickView } from "@/components/executive-quick-view";
+import { ExecutiveFocusArea } from "@/components/executive-focus-area";
 import { ProjectMeetingSummary } from "@/components/project-meeting-summary";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
@@ -700,6 +701,12 @@ function ExecutiveCockpit() {
         remaining={remainingK}
         monthlySpend={monthlySpend}
         segmentation={segRows.map((r) => ({ name: r.name, value: r.approved }))}
+        gates={gatesScoped}
+        monthly={(monthly as MonthlyFinanceRow[]).filter((m) => inScope((m as any).project_id))}
+      />
+
+      <ExecutiveFocusArea
+        projects={projects}
         gates={gatesScoped}
         monthly={(monthly as MonthlyFinanceRow[]).filter((m) => inScope((m as any).project_id))}
       />

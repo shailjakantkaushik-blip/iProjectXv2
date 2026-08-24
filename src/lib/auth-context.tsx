@@ -100,6 +100,19 @@ export interface Organization {
     page_download?: {
       pages?: Record<string, boolean>;
     };
+    /** Executive Focus attention-score weights (0–N). Missing keys keep product defaults. */
+    executive_focus?: {
+      weights?: {
+        businessImpact?: number;
+        financialImpact?: number;
+        scheduleImpact?: number;
+        urgency?: number;
+        multiProject?: number;
+        execIntervention?: number;
+        riskSeverity?: number;
+        customerImpact?: number;
+      };
+    };
   } | null;
 }
 
