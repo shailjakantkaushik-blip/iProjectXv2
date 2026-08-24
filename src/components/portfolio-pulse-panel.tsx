@@ -27,6 +27,7 @@ import {
   pulseTrendGlyph,
   type PulseTrend,
 } from "@/lib/portfolio-pulse";
+import { ExecutiveFocusArea } from "@/components/executive-focus-area";
 
 function groupByProjectId<T extends { project_id?: string | null }>(rows: T[]): Map<string, T[]> {
   const m = new Map<string, T[]>();
@@ -479,6 +480,16 @@ export function PortfolioPulsePanel({
           </div>
         </div>
       </SectionFrame>
+
+      {!compact ? (
+        <ExecutiveFocusArea
+          projects={filteredProjects}
+          gates={(gatesQ.data ?? []).filter((g: { project_id?: string }) =>
+            filteredProjects.some((p) => p.id === g.project_id),
+          )}
+          monthly={monthlyQ.data ?? []}
+        />
+      ) : null}
     </>
   );
 }

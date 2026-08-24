@@ -17,7 +17,6 @@ import {
   type FocusLink,
   FOCUS_AREA_LABEL,
 } from "@/lib/executive-focus";
-import { buildPortfolioPulse } from "@/lib/portfolio-pulse";
 import type { CapacityAllocation, CapacityResource } from "@/lib/executive-intelligence";
 import type { HealthEngineInput } from "@/lib/project-health-engine";
 import type { MonthlyFinanceRow } from "@/lib/finance-lifecycle";
@@ -345,33 +344,6 @@ export function ExecutiveFocusArea({
     ],
   );
 
-  const week = useMemo(
-    () =>
-      buildPortfolioPulse({
-        orgId: orgId || "org",
-        fyStartMonth: organization?.fy_start_month || 4,
-        projects: projects.map((project) => ({
-          project,
-          gates: gates.filter((g) => g.project_id === project.id),
-          risks: (risksQ.data ?? []).filter((r) => r.project_id === project.id),
-          workItems: (workItemsQ.data ?? []).filter((w: { project_id?: string }) => w.project_id === project.id),
-          monthly: monthly.filter((m) => m.project_id === project.id),
-        })),
-        allRisks: risksQ.data ?? [],
-        allDecisions: decisionsQ.data ?? [],
-      }).week,
-    [
-      orgId,
-      organization?.fy_start_month,
-      projects,
-      gates,
-      risksQ.data,
-      workItemsQ.data,
-      monthly,
-      decisionsQ.data,
-    ],
-  );
-
   const today = new Date().toISOString().slice(0, 10);
   const visible = (item: FocusItem) => {
     if (area !== "all" && item.area !== area) return false;
@@ -389,30 +361,16 @@ export function ExecutiveFocusArea({
   const s = focus.summary;
 
   return (
-    <div className="space-y-4">
-      <SectionFrame exportName="cockpit-week" exportTitle="What changed this week" exportable={false}>
-        <div className="rounded-xl border border-border bg-surface px-4 py-3 sm:px-5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            What changed this week?
+    <SectionFrame exportName="pulse-focus" exportTitle="Executive Focus">
+      <ExpandablePanel
+        title="Executive Focus"
+        compactMaxHeightClass="max-h-none"
+        toolbar={
+          <p className="text-[11px] text-muted-foreground">
+            What needs my attention today · as of {today}
           </p>
-          <ul className="mt-2 space-y-1 text-[13px] text-foreground">
-            {week.bullets.map((b) => (
-              <li key={b}>· {b}</li>
-            ))}
-          </ul>
-        </div>
-      </SectionFrame>
-
-      <SectionFrame exportName="cockpit-focus" exportTitle="Executive Focus">
-        <ExpandablePanel
-          title="Executive Focus"
-          compactMaxHeightClass="max-h-none"
-          toolbar={
-            <p className="text-[11px] text-muted-foreground">
-              What needs my attention today · as of {today}
-            </p>
-          }
-        >
+        }
+      >
           <p className="mb-3 text-[12px] text-muted-foreground">
             Action list, not a dashboard. Ranked by business, financial, and schedule impact — not
             every Red RAG. Tune weights in organisation <code>ui_config.executive_focus</code>.
@@ -494,8 +452,7 @@ export function ExecutiveFocusArea({
             </div>
           ) : null}
         </ExpandablePanel>
-      </SectionFrame>
-    </div>
+    </SectionFrame>
   );
 }
 
