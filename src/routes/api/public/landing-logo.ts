@@ -27,7 +27,7 @@ export const Route = createFileRoute("/api/public/landing-logo")({
         try {
           const surface = parseLiveLogoSurface(new URL(request.url).searchParams.get("surface"));
           const resolved = await resolveLiveLandingLogo(surface);
-          const cache = "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400";
+          const cache = "public, max-age=600, s-maxage=3600, stale-while-revalidate=86400";
           if (resolved.kind === "redirect") {
             return new Response(null, {
               status: 302,

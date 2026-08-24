@@ -21,7 +21,7 @@ export type LiveLandingLogo =
   | { kind: "bytes"; type: string; body: Uint8Array }
   | { kind: "file"; path: string; type: string };
 
-const CACHE_MS = 5 * 60_000;
+const CACHE_MS = 30 * 60_000;
 const FALLBACK_FILE = join(process.cwd(), "public/brand/iprojectx-mark.webp");
 const PACKAGED_HREF = "/brand/iprojectx-mark.webp";
 /** Image request is parallel to HTML — do not starve the configured file. */

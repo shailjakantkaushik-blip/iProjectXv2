@@ -9,7 +9,6 @@ import {
 } from "@/lib/landing-config";
 import { applyFaviconHref, DEFAULT_FAVICON_HREF } from "@/lib/favicon";
 import { PUBLIC_AUTH_LOGO_HREF } from "@/lib/live-landing-logo";
-import { sanitizeLandingLogoCookieUrl } from "@/lib/landing-logo-cookie";
 
 export type AuthBrand = {
   name: string;
@@ -120,7 +119,7 @@ export function AuthLayout({
   const displayLogo =
     useOrg && org?.logo_url
       ? org.logo_url
-      : sanitizeLandingLogoCookieUrl(platform.logo_url) || PUBLIC_AUTH_LOGO_HREF;
+      : PUBLIC_AUTH_LOGO_HREF;
   const tagline = platform.tagline || "Enterprise PMO Command Center";
   const logoSize: LogoDisplaySize =
     useOrg && org?.logo_size_auth
@@ -196,10 +195,10 @@ export function AuthLayout({
   };
 
   return (
-    <div className={cn("flex min-h-screen max-w-[100vw] overflow-x-hidden bg-background", className)}>
+    <div className={cn("flex min-h-screen max-w-[100vw] bg-background", className)}>
       {/* Brand panel — desktop */}
       <aside
-        className="relative hidden w-[44%] max-w-xl flex-col justify-between overflow-hidden px-10 py-10 lg:flex xl:w-[46%]"
+        className="relative hidden w-[44%] max-w-xl flex-col justify-between overflow-x-hidden px-10 py-10 lg:flex xl:w-[46%]"
         style={{
           // Dedicated auth-panel tokens (not --primary) so reload / Cloudflare
           // challenge delays never flash the default app accent blue.
@@ -287,12 +286,7 @@ export function AuthLayout({
         </div>
 
         <div className="relative z-10 flex flex-1 items-center justify-center px-4 py-6 sm:px-8 sm:py-8">
-          <div
-            className={cn(
-              "w-full min-w-0 max-w-[400px]",
-              brandReady && "animate-in fade-in-0 slide-in-from-bottom-2 duration-500",
-            )}
-          >
+          <div className="w-full min-w-0 max-w-[400px]">
             {useOrg && org && (
               <div className="mb-5 hidden items-center gap-2 text-xs text-muted-foreground lg:flex">
                 <span>Organization</span>

@@ -1,6 +1,9 @@
-import { memo, useEffect, useRef } from "react";
+import { memo, useEffect, useRef, useState } from "react";
+import { turnstileSizeForWidth } from "@/lib/turnstile-size";
 
-const TURNSTILE_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+export { turnstileSizeForWidth } from "@/lib/turnstile-size";
+
+export const TURNSTILE_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 
 declare global {
   interface Window {
@@ -21,12 +24,31 @@ export function getTurnstileSiteKey(): string | undefined {
   );
 }
 
+export function isTurnstileEnabled(): boolean {
+  return Boolean(getTurnstileSiteKey());
+}
+
 let loadPromise: Promise<void> | null = null;
+
+export function resetTurnstileLoader() {
+  loadPromise = null;
+}
+
 function loadScript(): Promise<void> {
   if (typeof window === "undefined") return Promise.resolve();
   if (window.turnstile) return Promise.resolve();
   if (loadPromise) return loadPromise;
   loadPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${TURNSTILE_SRC}"]`);
+    if (existing) {
+      if (window.turnstile) {
+        resolve();
+        return;
+      }
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("Failed to load Turnstile")), { once: true });
+      return;
+    }
     const s = document.createElement("script");
     s.src = TURNSTILE_SRC;
     s.async = true;
@@ -34,6 +56,9 @@ function loadScript(): Promise<void> {
     s.onload = () => resolve();
     s.onerror = () => reject(new Error("Failed to load Turnstile"));
     document.head.appendChild(s);
+  }).catch((error) => {
+    loadPromise = null;
+    throw error;
   });
   return loadPromise;
 }
@@ -66,6 +91,8 @@ export const TurnstileWidget = memo(function TurnstileWidget({
   const onTokenRef = useRef(onToken);
   const onExpireRef = useRef(onExpire);
   const prevResetNonceRef = useRef(resetNonce);
+  const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
   onTokenRef.current = onToken;
   onExpireRef.current = onExpire;
   const siteKey = getTurnstileSiteKey();
@@ -73,10 +100,12 @@ export const TurnstileWidget = memo(function TurnstileWidget({
   useEffect(() => {
     if (!siteKey || !containerRef.current) return;
     let cancelled = false;
+    setError(null);
+    const width = containerRef.current.parentElement?.clientWidth || window.innerWidth;
+    const size = turnstileSizeForWidth(width);
     loadScript()
       .then(() => {
         if (cancelled || !window.turnstile || !containerRef.current) return;
-        // Avoid double-render if effect re-runs before cleanup finishes.
         if (widgetIdRef.current) {
           try {
             window.turnstile.remove(widgetIdRef.current);
@@ -88,7 +117,7 @@ export const TurnstileWidget = memo(function TurnstileWidget({
         widgetIdRef.current = window.turnstile.render(containerRef.current, {
           sitekey: siteKey,
           theme,
-          // Always show the widget so users can see the Cloudflare check.
+          size,
           appearance: "always",
           callback: (token: string) => onTokenRef.current(token),
           "expired-callback": () => {
@@ -97,10 +126,16 @@ export const TurnstileWidget = memo(function TurnstileWidget({
               window.turnstile.reset(widgetIdRef.current);
             }
           },
+          "error-callback": () => {
+            onExpireRef.current?.();
+            setError("Cloudflare check did not finish. Tap to retry.");
+          },
         });
         prevResetNonceRef.current = resetNonce;
       })
-      .catch((e) => console.error(e));
+      .catch(() => {
+        if (!cancelled) setError("Cloudflare check did not load. Tap to retry.");
+      });
     return () => {
       cancelled = true;
       if (widgetIdRef.current && window.turnstile) {
@@ -112,7 +147,7 @@ export const TurnstileWidget = memo(function TurnstileWidget({
         widgetIdRef.current = null;
       }
     };
-  }, [siteKey, theme]);
+  }, [siteKey, theme, retry]);
 
   useEffect(() => {
     if (prevResetNonceRef.current === resetNonce) return;
@@ -126,16 +161,32 @@ export const TurnstileWidget = memo(function TurnstileWidget({
   }, [resetNonce]);
 
   if (!siteKey) return null;
+
+  if (error) {
+    return (
+      <div className="flex min-h-[65px] w-full min-w-0 flex-col items-center justify-center gap-2 text-center">
+        <p className="text-xs text-muted-foreground">{error}</p>
+        <button
+          type="button"
+          className="text-xs font-medium text-primary hover:underline"
+          onClick={() => {
+            resetTurnstileLoader();
+            setError(null);
+            setRetry((n) => n + 1);
+          }}
+        >
+          Retry Cloudflare check
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex min-h-[65px] flex-col items-center justify-center gap-1">
-      <div ref={containerRef} className="flex justify-center" />
+    <div className="flex w-full min-w-0 flex-col items-center justify-center gap-1 overflow-visible">
+      <div ref={containerRef} className="flex w-full min-w-0 max-w-full justify-center overflow-visible" />
       <p className="text-[10px] text-muted-foreground">
         Secured by Cloudflare — complete the check before signing in.
       </p>
     </div>
   );
 });
-
-export function isTurnstileEnabled(): boolean {
-  return Boolean(getTurnstileSiteKey());
-}
