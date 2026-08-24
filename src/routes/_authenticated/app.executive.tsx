@@ -869,7 +869,7 @@ function ExecutiveDashboard() {
           <div>
             <div className="page-heading">Executive Dashboard</div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Charts, timelines, and register. Steering pack and project summaries live on{" "}
+              Charts, timelines, and register. Executive Focus and project summaries live on{" "}
               <Link
                 to="/app/executive-cockpit"
                 className="font-medium text-primary hover:underline"

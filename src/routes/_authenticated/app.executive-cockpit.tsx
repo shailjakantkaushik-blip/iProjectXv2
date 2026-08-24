@@ -9,7 +9,7 @@ import { PageHeading, SectionFrame, SectionTitle, RagChip } from "@/components/s
 import { ExplainThis } from "@/components/explain-this";
 import { EnvelopeBullet } from "@/components/envelope-bullet";
 import { ExpandablePanel } from "@/components/expandable-panel";
-import { ExecutiveQuickView } from "@/components/executive-quick-view";
+import { ExecutiveFocusArea } from "@/components/executive-focus-area";
 import { ProjectMeetingSummary } from "@/components/project-meeting-summary";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
@@ -75,7 +75,7 @@ export const Route = createFileRoute("/_authenticated/app/executive-cockpit")({
       { title: "Executive Cockpit — PMO Enterprise" },
       {
         name: "description",
-        content: "Steering pack, portfolio scoreboard, and project summaries.",
+        content: "Attention cards, portfolio scoreboard, and project summaries.",
       },
     ],
   }),
@@ -234,7 +234,6 @@ function ExecutiveCockpit() {
   const [filters, setFilters] = useState<ExecutivePortfolioFilterState>(emptyExecutiveFilters);
   const [summariesCollapsed, setSummariesCollapsed] = useState(section !== "summaries");
   const [openSummaryIds, setOpenSummaryIds] = useState<Set<string>>(() => new Set());
-  const [asksHost, setAsksHost] = useState<HTMLElement | null>(null);
   const asOf = new Date().toLocaleDateString(undefined, {
     day: "numeric",
     month: "short",
@@ -491,45 +490,6 @@ function ExecutiveCockpit() {
     return Array.from(map.values()).sort((a, b) => a.fy.localeCompare(b.fy));
   }, [fyAllocScoped, projects, fyStartMonth]);
 
-  const monthlySpend = useMemo(() => {
-    const monthNames = [
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "May",
-      "Jun",
-      "Jul",
-      "Aug",
-      "Sep",
-      "Oct",
-      "Nov",
-      "Dec",
-    ];
-    const rows = (monthly as any[]).filter((m) => inScope(m.project_id));
-    const buckets = new Map<string, { actual: number; forecast: number }>();
-    rows.forEach((r: any) => {
-      const d = new Date(r.period_month);
-      if (isNaN(d.getTime())) return;
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const cur = buckets.get(key) || { actual: 0, forecast: 0 };
-      cur.actual += Number(r.capex_actual || 0) + Number(r.opex_actual || 0);
-      cur.forecast += Number(r.capex_forecast || 0) + Number(r.opex_forecast || 0);
-      buckets.set(key, cur);
-    });
-    return Array.from(buckets.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-12)
-      .map(([key, v]) => {
-        const [y, m] = key.split("-");
-        return {
-          month: `${monthNames[Number(m) - 1]} '${y.slice(-2)}`,
-          actual: v.actual / 1e6,
-          forecast: v.forecast / 1e6,
-        };
-      });
-  }, [monthly, filtersOn, filteredIds]);
-
   const planTotal = useMemo(() => {
     return (monthly as MonthlyFinanceRow[])
       .filter((m) => inScope((m as any).project_id))
@@ -662,7 +622,7 @@ function ExecutiveCockpit() {
       <PageHeading
         icon="📊"
         title="Executive Cockpit"
-        subtitle={`Steering pack and portfolio pulse · as of ${asOf}${filtersOn ? ` · ${projects.length} of ${allProjects.length} projects` : ` · ${projects.length} projects`}`}
+        subtitle={`Executive Focus and portfolio pulse · as of ${asOf}${filtersOn ? ` · ${projects.length} of ${allProjects.length} projects` : ` · ${projects.length} projects`}`}
         actions={
           <>
             <Link
@@ -690,16 +650,8 @@ function ExecutiveCockpit() {
         />
       </SectionFrame>
 
-      <ExecutiveQuickView
-        mode="steering"
-        asksHost={asksHost}
-        filtered={projects}
-        approvedFunding={approvedFundingK}
-        totalIncurred={actualSpendK}
-        totalForecast={facK}
-        remaining={remainingK}
-        monthlySpend={monthlySpend}
-        segmentation={segRows.map((r) => ({ name: r.name, value: r.approved }))}
+      <ExecutiveFocusArea
+        projects={projects}
         gates={gatesScoped}
         monthly={(monthly as MonthlyFinanceRow[]).filter((m) => inScope((m as any).project_id))}
       />
@@ -1366,8 +1318,6 @@ function ExecutiveCockpit() {
           )}
         </ExpandablePanel>
       </SectionFrame>
-
-      <div id="pack-asks-end" ref={setAsksHost} />
     </div>
   );
 }

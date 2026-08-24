@@ -887,7 +887,7 @@ export const DEFAULT_LANDING: LandingConfig = {
       },
       {
         title: "Executive Cockpit",
-        desc: "Steering pack, financials, health mix, health matrix, and collapsible project summaries.",
+        desc: "Executive Focus, financials, health mix, health matrix, and collapsible project summaries.",
       },
       {
         title: "Portfolio Timeline",

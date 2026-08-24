@@ -5,6 +5,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { RagChip, SectionFrame } from "@/components/streamlit";
 import { ExpandablePanel } from "@/components/expandable-panel";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { BriefingDecision, BriefingGate, BriefingProject, BriefingRisk } from "@/lib/executive-briefing";
 import {
   buildExecutiveFocus,
@@ -59,7 +66,7 @@ function FocusCardLink({
       <Link
         to="/app/projects/$id"
         params={{ id: link.projectId }}
-        search={{ tab: (link.tab as "overview" | "finance") || "overview" }}
+        search={{ tab: (link.tab as "overview" | "finance" | "phases" | "governance" | "decisions") || "overview" }}
         className={cardClass}
       >
         {children}
@@ -121,7 +128,7 @@ function FocusCard({ item, rank }: { item: FocusItem; rank?: number }) {
           <dd>{item.impact}</dd>
         </div>
         <div>
-          <dt className="font-medium text-foreground/70">Action</dt>
+          <dt className="font-medium text-foreground/70">Ask</dt>
           <dd>{item.action}</dd>
         </div>
         <div>
@@ -145,39 +152,6 @@ function FocusCard({ item, rank }: { item: FocusItem; rank?: number }) {
   );
 }
 
-function CheckRow({
-  checked,
-  onChange,
-  label,
-  count,
-  indent,
-}: {
-  checked: boolean;
-  onChange: () => void;
-  label: string;
-  count?: number;
-  indent?: boolean;
-}) {
-  return (
-    <label
-      className={`flex cursor-pointer items-center gap-2 py-0.5 text-[12px] ${
-        indent ? "pl-5 text-muted-foreground" : "font-medium text-foreground"
-      }`}
-    >
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={onChange}
-        className="h-3.5 w-3.5 accent-primary"
-      />
-      <span className="min-w-0 flex-1">{label}</span>
-      {count != null ? (
-        <span className="tabular-nums text-[11px] text-muted-foreground">{count}</span>
-      ) : null}
-    </label>
-  );
-}
-
 export function ExecutiveFocusArea({
   projects,
   gates,
@@ -190,10 +164,10 @@ export function ExecutiveFocusArea({
   const { organization } = useAuth();
   const orgId = organization?.id;
   const ids = useMemo(() => projects.map((p) => p.id), [projects]);
-  const [areas, setAreas] = useState<FocusArea[]>([]);
-  const [subtypes, setSubtypes] = useState<string[]>([]);
-  const [bands, setBands] = useState<FocusCriticality[]>([]);
-  const [horizons, setHorizons] = useState<Array<"overdue" | "30d">>([]);
+  const [area, setArea] = useState<FocusArea | "all">("all");
+  const [subtype, setSubtype] = useState("all");
+  const [band, setBand] = useState<FocusCriticality | "all">("all");
+  const [horizon, setHorizon] = useState<"all" | "overdue" | "30d">("all");
 
   const risksQ = useQuery({
     queryKey: ["risks", orgId, "exec-brief"],
@@ -361,73 +335,37 @@ export function ExecutiveFocusArea({
 
   const today = new Date().toISOString().slice(0, 10);
   const items = useMemo(() => {
-    const areaSet = new Set(areas);
-    const subSet = new Set(subtypes);
-    const bandSet = new Set(bands);
-    const horizonSet = new Set(horizons);
+    const subsets = area === "all" ? [] : FOCUS_AREA_SUBSETS[area];
     return [...focus.top, ...AREAS.flatMap((a) => focus.byArea[a])]
       .filter((item, i, all) => all.findIndex((x) => x.id === item.id) === i)
       .filter((item) => {
-        if (areaSet.size && !areaSet.has(item.area)) return false;
-        const subs = FOCUS_AREA_SUBSETS[item.area];
-        if (subs.length && item.subtype) {
-          const selectedForArea = subs.filter((s) => subSet.has(`${item.area}:${s.id}`));
-          if (selectedForArea.length && !subSet.has(`${item.area}:${item.subtype}`)) return false;
-        }
-        if (bandSet.size && !bandSet.has(item.criticality)) return false;
-        if (horizonSet.size) {
-          const overdue = item.daysRemaining != null && item.daysRemaining < 0;
-          const in30 = item.daysRemaining == null || item.daysRemaining <= 30;
-          if (horizonSet.has("overdue") && horizonSet.has("30d")) {
-            if (!overdue && !in30) return false;
-          } else if (horizonSet.has("overdue") && !overdue) return false;
-          else if (horizonSet.has("30d") && !in30) return false;
+        if (area !== "all" && item.area !== area) return false;
+        if (subsets.length && subtype !== "all" && item.subtype !== subtype) return false;
+        if (band !== "all" && item.criticality !== band) return false;
+        if (horizon === "overdue") {
+          if (!(item.daysRemaining != null && item.daysRemaining < 0)) return false;
+        } else if (horizon === "30d") {
+          if (item.daysRemaining != null && item.daysRemaining > 30) return false;
         }
         return true;
       })
       .sort((a, b) => b.score - a.score);
-  }, [focus, areas, subtypes, bands, horizons]);
+  }, [focus, area, subtype, band, horizon]);
 
-  const countInArea = (area: FocusArea) => focus.byArea[area].length;
-  const countSubtype = (area: FocusArea, id: string) =>
-    focus.byArea[area].filter((i) => i.subtype === id).length;
-
-  const toggleArea = (area: FocusArea) => {
-    const on = areas.includes(area);
-    if (on) {
-      setAreas(areas.filter((a) => a !== area));
-      setSubtypes(subtypes.filter((s) => !s.startsWith(`${area}:`)));
-    } else {
-      setAreas([...areas, area]);
-      const keys = FOCUS_AREA_SUBSETS[area].map((s) => `${area}:${s.id}`);
-      setSubtypes([...subtypes.filter((s) => !s.startsWith(`${area}:`)), ...keys]);
-    }
-  };
-
-  const toggleSubtype = (area: FocusArea, id: string) => {
-    const key = `${area}:${id}`;
-    const on = subtypes.includes(key);
-    const next = on ? subtypes.filter((s) => s !== key) : [...subtypes, key];
-    setSubtypes(next);
-    const anySub = FOCUS_AREA_SUBSETS[area].some((s) => next.includes(`${area}:${s.id}`));
-    if (anySub && !areas.includes(area)) setAreas([...areas, area]);
-    if (!anySub && areas.includes(area)) setAreas(areas.filter((a) => a !== area));
-  };
-
-  const toggleBand = (band: FocusCriticality) => {
-    setBands(bands.includes(band) ? bands.filter((b) => b !== band) : [...bands, band]);
-  };
-
+  const countInArea = (a: FocusArea) => focus.byArea[a].length;
+  const countSubtype = (a: FocusArea, id: string) =>
+    focus.byArea[a].filter((i) => i.subtype === id).length;
+  const areaSubsets = area === "all" ? [] : FOCUS_AREA_SUBSETS[area];
   const s = focus.summary;
 
   return (
-    <SectionFrame exportName="pulse-focus" exportTitle="Executive Focus">
+    <SectionFrame exportName="cockpit-focus" exportTitle="Executive Focus">
       <ExpandablePanel
         title="Executive Focus"
         compactMaxHeightClass="max-h-none"
         toolbar={
           <p className="text-[11px] text-muted-foreground">
-            What needs my attention today · as of {today}
+            What needs my attention today · steering pack · as of {today}
           </p>
         }
       >
@@ -454,106 +392,114 @@ export function ExecutiveFocusArea({
           Ranked by business, financial, and schedule impact — not every Red status. Open a card for
           the source record.
         </p>
+        <nav className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[12px]">
+          <Link to="/app/demand-pipeline" className="font-medium text-primary hover:underline">
+            Demand
+          </Link>
+          <Link to="/app/prioritisation" className="font-medium text-primary hover:underline">
+            Prioritisation
+          </Link>
+          <Link to="/app/risks" className="font-medium text-primary hover:underline">
+            Risks
+          </Link>
+          <Link to="/app/actions" className="font-medium text-primary hover:underline">
+            Actions
+          </Link>
+          <Link to="/app/issues" className="font-medium text-primary hover:underline">
+            Issues
+          </Link>
+          <Link to="/app/decisions" className="font-medium text-primary hover:underline">
+            Decisions
+          </Link>
+          <Link to="/app/stage-gates" className="font-medium text-primary hover:underline">
+            Stage gates
+          </Link>
+          <Link to="/app/financials" className="font-medium text-primary hover:underline">
+            Financials
+          </Link>
+        </nav>
 
-        <div className="mt-4 grid gap-4 sm:grid-cols-3">
-          <fieldset className="min-w-0">
-            <legend className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               Focus area
-            </legend>
-            <CheckRow
-              checked={areas.length === 0}
-              onChange={() => {
-                setAreas([]);
-                setSubtypes([]);
+            </label>
+            <Select
+              value={area}
+              onValueChange={(v) => {
+                setArea(v as FocusArea | "all");
+                setSubtype("all");
               }}
-              label="All areas"
-              count={AREAS.reduce((n, a) => n + countInArea(a), 0)}
-            />
-            {AREAS.map((area) => {
-              const subs = FOCUS_AREA_SUBSETS[area];
-              return (
-                <div key={area} className="mt-1">
-                  <CheckRow
-                    checked={areas.includes(area)}
-                    onChange={() => toggleArea(area)}
-                    label={FOCUS_AREA_LABEL[area]}
-                    count={countInArea(area)}
-                  />
-                  {subs.map((sub) => (
-                    <CheckRow
-                      key={sub.id}
-                      indent
-                      checked={subtypes.includes(`${area}:${sub.id}`)}
-                      onChange={() => toggleSubtype(area, sub.id)}
-                      label={sub.label}
-                      count={countSubtype(area, sub.id)}
-                    />
+            >
+              <SelectTrigger className="h-9" aria-label="Focus area">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">
+                  All areas ({AREAS.reduce((n, a) => n + countInArea(a), 0)})
+                </SelectItem>
+                {AREAS.map((a) => (
+                  <SelectItem key={a} value={a}>
+                    {FOCUS_AREA_LABEL[a]} ({countInArea(a)})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {area !== "all" && areaSubsets.length ? (
+            <div>
+              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {FOCUS_AREA_LABEL[area]}
+              </label>
+              <Select value={subtype} onValueChange={setSubtype}>
+                <SelectTrigger className="h-9" aria-label={`${FOCUS_AREA_LABEL[area]} subset`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All {FOCUS_AREA_LABEL[area].toLowerCase()}</SelectItem>
+                  {areaSubsets.map((sub) => (
+                    <SelectItem key={sub.id} value={sub.id}>
+                      {sub.label} ({countSubtype(area, sub.id)})
+                    </SelectItem>
                   ))}
-                </div>
-              );
-            })}
-          </fieldset>
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
 
-          <fieldset className="min-w-0">
-            <legend className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <div>
+            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               Criticality
-            </legend>
-            <CheckRow
-              checked={bands.length === 0}
-              onChange={() => setBands([])}
-              label="All criticality"
-              count={s.critical + s.high + s.watch}
-            />
-            <CheckRow
-              checked={bands.includes("Critical")}
-              onChange={() => toggleBand("Critical")}
-              label="Critical"
-              count={s.critical}
-            />
-            <CheckRow
-              checked={bands.includes("High")}
-              onChange={() => toggleBand("High")}
-              label="High"
-              count={s.high}
-            />
-            <CheckRow
-              checked={bands.includes("Watch")}
-              onChange={() => toggleBand("Watch")}
-              label="Watch"
-              count={s.watch}
-            />
-          </fieldset>
+            </label>
+            <Select value={band} onValueChange={(v) => setBand(v as FocusCriticality | "all")}>
+              <SelectTrigger className="h-9" aria-label="Criticality">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All ({s.critical + s.high + s.watch})</SelectItem>
+                <SelectItem value="Critical">Critical ({s.critical})</SelectItem>
+                <SelectItem value="High">High ({s.high})</SelectItem>
+                <SelectItem value="Watch">Watch ({s.watch})</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-          <fieldset className="min-w-0">
-            <legend className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <div>
+            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               Due
-            </legend>
-            <CheckRow
-              checked={horizons.length === 0}
-              onChange={() => setHorizons([])}
-              label="Any date"
-            />
-            <CheckRow
-              checked={horizons.includes("overdue")}
-              onChange={() =>
-                setHorizons(
-                  horizons.includes("overdue")
-                    ? horizons.filter((h) => h !== "overdue")
-                    : [...horizons, "overdue"],
-                )
-              }
-              label="Overdue"
-            />
-            <CheckRow
-              checked={horizons.includes("30d")}
-              onChange={() =>
-                setHorizons(
-                  horizons.includes("30d") ? horizons.filter((h) => h !== "30d") : [...horizons, "30d"],
-                )
-              }
-              label="Due in 30 days"
-            />
-          </fieldset>
+            </label>
+            <Select value={horizon} onValueChange={(v) => setHorizon(v as "all" | "overdue" | "30d")}>
+              <SelectTrigger className="h-9" aria-label="Due">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Any date</SelectItem>
+                <SelectItem value="overdue">Overdue</SelectItem>
+                <SelectItem value="30d">Due in 30 days</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <div className="mt-5">

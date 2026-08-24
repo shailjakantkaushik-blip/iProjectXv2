@@ -114,6 +114,13 @@ describe("executive focus on iProjectX seed", () => {
     );
     assert.ok(focus.top.length <= 5);
     assert.ok(focus.top[0].why && focus.top[0].impact && focus.top[0].action);
+    assert.ok(focus.byArea.financial.every((i) => i.link.kind === "financials"));
+    assert.ok(
+      focus.byArea.risk
+        .filter((i) => i.subtype === "risk")
+        .every((i) => i.link.kind === "project" && i.link.tab === "governance"),
+    );
+    assert.ok(focus.byArea.decision.every((i) => i.link.kind === "project" && i.link.tab === "decisions"));
   });
 
   it("flags a skill shortage at portfolio level", () => {
@@ -156,5 +163,32 @@ describe("executive focus on iProjectX seed", () => {
     assert.ok(focus.byArea.dependency.length >= 1);
     assert.ok((focus.byArea.dependency[0].projectsImpacted || 0) >= 1);
     assert.equal(focus.byArea.dependency[0].link.kind, "dependencies");
+  });
+
+  it("keeps a late gate as a clickable delivery ask even when the finish date is still in the future", () => {
+    const portal = {
+      ...financeRow("PRJ-001"),
+      forecast_at_completion: 1_000_000,
+      planned_end_date: "2026-12-15",
+    };
+    const focus = buildExecutiveFocus({
+      now,
+      fyStartMonth: 7,
+      projects: [portal],
+      gates: [
+        {
+          id: "g-late",
+          project_id: "PRJ-001",
+          gate_name: "Testing",
+          status: "in review",
+          planned_date: "2026-01-15",
+        },
+      ],
+    });
+    const gate = focus.byArea.delivery.find((i) => i.subtype === "gate");
+    assert.ok(gate, "late gate should surface on Executive Focus");
+    assert.equal(gate.link.kind, "project");
+    assert.equal(gate.link.tab, "phases");
+    assert.match(gate.action, /rebaseline|Approve/i);
   });
 });
