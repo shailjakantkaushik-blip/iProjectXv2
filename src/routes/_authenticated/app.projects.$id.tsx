@@ -31,8 +31,12 @@ import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-tabl
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
 import { explainRag } from "@/lib/explain-metric";
-import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
+import { displayRag, effectiveRag, isRagOverridden } from "@/lib/ops-enhancements";
 import { ProjectMeetingSummary } from "@/components/project-meeting-summary";
+import { computeEngineHealth, useHealthEngineLookups } from "@/hooks/use-health-engine-lookups";
+import { parentEnvelopeContext } from "@/lib/hierarchy-envelope";
+import { FINANCIALS_MONTHLY_SELECT } from "@/lib/query-selects";
+import { healthScoreHeatClass } from "@/lib/project-health";
 import {
   applyForecastToProjectPlan,
   loadForecastPhases,
@@ -127,6 +131,45 @@ function ProjectDetail() {
   });
   const project = projectQ.data;
   const isLoading = projectQ.isLoading && project === undefined;
+  const fyStartMonth = organization?.fy_start_month || 4;
+  const healthLookups = useHealthEngineLookups(orgId);
+  const parentCtx = useMemo(
+    () => parentEnvelopeContext(project ? [project] : [], healthLookups.envelopeIndex),
+    [project, healthLookups.envelopeIndex],
+  );
+  const { data: healthGates = [] } = useQuery({
+    queryKey: ["stage_gates", orgId],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("stage_gates")
+          .select("id,project_id,stream_id,gate_name,planned_date,actual_date,status")
+      ).data ?? [],
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+  const { data: healthMonthly = [] } = useQuery({
+    queryKey: ["financials_monthly", orgId, "explain"],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("financials_monthly")
+          .select(FINANCIALS_MONTHLY_SELECT as "*")
+          .eq("org_id", orgId!)
+          .limit(10000)
+      ).data ?? [],
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+  const engineHealth = useMemo(() => {
+    if (!project) return null;
+    const gates = (healthGates as any[]).filter((g) => g.project_id === id);
+    const monthly = (healthMonthly as any[]).filter((m) => m.project_id === id);
+    return computeEngineHealth(project, gates, healthLookups, monthly, fyStartMonth, parentCtx);
+  }, [project, healthGates, healthMonthly, healthLookups, fyStartMonth, parentCtx, id]);
+  const shownRag = project
+    ? effectiveRag(project, engineHealth?.overall_rag)
+    : null;
 
   const { data: workItems = [] } = useQuery({
     queryKey: ["work_items", organization?.id, id],
@@ -398,14 +441,29 @@ function ProjectDetail() {
             <span>{project.status || "—"}</span>
             <span>·</span>
             <RagChip
-              rag={displayRag(project)}
+              rag={shownRag || displayRag(project)}
               manual={isRagOverridden(project)}
               explain={explainRag({
-                rag: displayRag(project),
-                source: "register",
+                rag: shownRag || displayRag(project),
+                engine: isRagOverridden(project) ? null : engineHealth?.engine,
+                source: isRagOverridden(project) ? "register" : undefined,
+                score: engineHealth?.health_score,
                 overridden: isRagOverridden(project),
+                extraBullets: isRagOverridden(project)
+                  ? [
+                      `Health Engine is ${engineHealth?.overall_rag || "—"} (${engineHealth?.health_score ?? "—"}/100). This chip is the manual override.`,
+                    ]
+                  : undefined,
               })}
             />
+            {engineHealth?.health_score ? (
+              <span
+                className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${healthScoreHeatClass(engineHealth.health_score)}`}
+                title="Health Engine score — Green ≥ 80, Amber 65–79, Red < 65"
+              >
+                {engineHealth.health_score}
+              </span>
+            ) : null}
             {project.program ? (
               <>
                 <span>·</span>
@@ -536,7 +594,14 @@ function ProjectDetail() {
               Open estimation planning
             </Link>
           </p>
-          <ProjectMeetingSummary projectId={id} project={project} readOnly={!canEdit} />
+          <ProjectMeetingSummary
+            projectId={id}
+            project={project}
+            readOnly={!canEdit}
+            calculatedRag={engineHealth?.overall_rag}
+            healthScore={engineHealth?.health_score}
+            healthEngine={engineHealth?.engine}
+          />
         </div>
       )}
 
