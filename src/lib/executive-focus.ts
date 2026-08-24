@@ -1,5 +1,5 @@
 /**
- * Executive Focus — action-oriented attention items for the cockpit.
+ * Executive Focus — action-oriented attention items for Portfolio Pulse.
  * Not a second dashboard: only items that need executive attention today.
  */
 import { isDecisionAwaiting } from "@/lib/decision-approval";
@@ -65,6 +65,8 @@ export type FocusItem = {
   projectId: string | null;
   projectLabel: string;
   link: FocusLink;
+  /** Narrower kind under `area` — used by checkbox subsets. */
+  subtype?: string;
   amount?: number;
   projectsImpacted?: number;
 };
@@ -119,6 +121,31 @@ export const FOCUS_AREA_LABEL: Record<FocusArea, string> = {
   decision: "Decisions",
   dependency: "Dependencies",
   benefit: "Benefits",
+};
+
+/** Sub-filters shown under an area header when that area has more than one kind. */
+export const FOCUS_AREA_SUBSETS: Record<FocusArea, { id: string; label: string }[]> = {
+  delivery: [
+    { id: "delay", label: "Schedule delay" },
+    { id: "gate", label: "Late gate" },
+  ],
+  financial: [
+    { id: "actual", label: "Actual overrun" },
+    { id: "forecast", label: "Forecast overrun" },
+    { id: "burn", label: "Burn-rate anomaly" },
+    { id: "funding", label: "Funding gap" },
+  ],
+  resource: [],
+  risk: [
+    { id: "risk", label: "Critical risks" },
+    { id: "issue", label: "Escalated issues" },
+  ],
+  decision: [
+    { id: "overdue", label: "Overdue" },
+    { id: "waiting", label: "Waiting" },
+  ],
+  dependency: [],
+  benefit: [],
 };
 
 export type FocusIssue = {
@@ -418,6 +445,7 @@ export function buildExecutiveFocus(opts: {
           projectId: p.id,
           projectLabel: labelOf(p),
           link: { kind: "project", projectId: p.id, tab: "overview", label: "View project" },
+          subtype: lateGate ? "gate" : "delay",
           projectsImpacted: impacted || undefined,
         });
       }
@@ -478,6 +506,7 @@ export function buildExecutiveFocus(opts: {
         projectLabel: labelOf(p),
         amount: exposure,
         link: { kind: "financials", projectId: p.id, label: "View financials" },
+        subtype: financeKind,
       });
     }
 
@@ -549,6 +578,7 @@ export function buildExecutiveFocus(opts: {
       projectId: p.id,
       projectLabel: labelOf(p),
       link: { kind: "risks", projectId: p.id, label: "View risk" },
+      subtype: "risk",
     });
   }
 
@@ -583,6 +613,7 @@ export function buildExecutiveFocus(opts: {
       projectId: p.id,
       projectLabel: labelOf(p),
       link: { kind: "issues", projectId: p.id, label: "View issue" },
+      subtype: "issue",
     });
   }
 
@@ -618,6 +649,7 @@ export function buildExecutiveFocus(opts: {
       projectId: p.id,
       projectLabel: labelOf(p),
       link: { kind: "decisions", projectId: p.id, label: "Open decision" },
+      subtype: overdue ? "overdue" : "waiting",
     });
   }
 

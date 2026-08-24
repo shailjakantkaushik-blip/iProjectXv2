@@ -8,21 +8,20 @@ import { ExpandablePanel } from "@/components/expandable-panel";
 import type { BriefingDecision, BriefingGate, BriefingProject, BriefingRisk } from "@/lib/executive-briefing";
 import {
   buildExecutiveFocus,
-  focusAreaCounts,
+  FOCUS_AREA_LABEL,
+  FOCUS_AREA_SUBSETS,
   type FocusArea,
   type FocusCriticality,
   type FocusDependency,
   type FocusIssue,
   type FocusItem,
   type FocusLink,
-  FOCUS_AREA_LABEL,
 } from "@/lib/executive-focus";
 import type { CapacityAllocation, CapacityResource } from "@/lib/executive-intelligence";
 import type { HealthEngineInput } from "@/lib/project-health-engine";
 import type { MonthlyFinanceRow } from "@/lib/finance-lifecycle";
 
-const AREA_FILTERS: Array<FocusArea | "all"> = [
-  "all",
+const AREAS: FocusArea[] = [
   "delivery",
   "financial",
   "resource",
@@ -45,17 +44,25 @@ function ragOf(c: FocusCriticality): "Red" | "Amber" | "Green" {
   return "Green";
 }
 
-function FocusSourceLink({ link }: { link: FocusLink }) {
-  const className = "text-[12px] font-medium text-primary hover:underline";
+const cardClass =
+  "block rounded-lg border border-border bg-background px-3 py-2.5 text-left transition-colors hover:border-primary/35 hover:bg-primary/[0.03]";
+
+function FocusCardLink({
+  link,
+  children,
+}: {
+  link: FocusLink;
+  children: ReactNode;
+}) {
   if (link.kind === "project" && link.projectId) {
     return (
       <Link
         to="/app/projects/$id"
         params={{ id: link.projectId }}
         search={{ tab: (link.tab as "overview" | "finance") || "overview" }}
-        className={className}
+        className={cardClass}
       >
-        {link.label}
+        {children}
       </Link>
     );
   }
@@ -64,9 +71,9 @@ function FocusSourceLink({ link }: { link: FocusLink }) {
       <Link
         to="/app/financials"
         search={link.projectId ? { pid: link.projectId } : undefined}
-        className={className}
+        className={cardClass}
       >
-        {link.label}
+        {children}
       </Link>
     );
   }
@@ -85,15 +92,15 @@ function FocusSourceLink({ link }: { link: FocusLink }) {
                 ? "/app/benefits"
                 : "/app/stage-gates";
   return (
-    <Link to={to} className={className}>
-      {link.label}
+    <Link to={to} className={cardClass}>
+      {children}
     </Link>
   );
 }
 
 function FocusCard({ item, rank }: { item: FocusItem; rank?: number }) {
   return (
-    <article className="rounded-lg border border-border bg-background px-3 py-2.5">
+    <FocusCardLink link={item.link}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -133,34 +140,41 @@ function FocusCard({ item, rank }: { item: FocusItem; rank?: number }) {
           </dd>
         </div>
       </dl>
-      <div className="mt-2">
-        <FocusSourceLink link={item.link} />
-      </div>
-    </article>
+      <p className="mt-2 text-[12px] font-medium text-primary">{item.link.label} →</p>
+    </FocusCardLink>
   );
 }
 
-function Chip({
-  active,
-  onClick,
-  children,
+function CheckRow({
+  checked,
+  onChange,
+  label,
+  count,
+  indent,
 }: {
-  active: boolean;
-  onClick: () => void;
-  children: ReactNode;
+  checked: boolean;
+  onChange: () => void;
+  label: string;
+  count?: number;
+  indent?: boolean;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
-        active
-          ? "border-primary/40 bg-primary/10 text-foreground"
-          : "border-border bg-background text-muted-foreground hover:border-primary/25"
+    <label
+      className={`flex cursor-pointer items-center gap-2 py-0.5 text-[12px] ${
+        indent ? "pl-5 text-muted-foreground" : "font-medium text-foreground"
       }`}
     >
-      {children}
-    </button>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        className="h-3.5 w-3.5 accent-primary"
+      />
+      <span className="min-w-0 flex-1">{label}</span>
+      {count != null ? (
+        <span className="tabular-nums text-[11px] text-muted-foreground">{count}</span>
+      ) : null}
+    </label>
   );
 }
 
@@ -176,9 +190,10 @@ export function ExecutiveFocusArea({
   const { organization } = useAuth();
   const orgId = organization?.id;
   const ids = useMemo(() => projects.map((p) => p.id), [projects]);
-  const [area, setArea] = useState<FocusArea | "all">("all");
-  const [band, setBand] = useState<FocusCriticality | "all">("all");
-  const [horizon, setHorizon] = useState<"all" | "overdue" | "30d">("all");
+  const [areas, setAreas] = useState<FocusArea[]>([]);
+  const [subtypes, setSubtypes] = useState<string[]>([]);
+  const [bands, setBands] = useState<FocusCriticality[]>([]);
+  const [horizons, setHorizons] = useState<Array<"overdue" | "30d">>([]);
 
   const risksQ = useQuery({
     queryKey: ["risks", orgId, "exec-brief"],
@@ -345,19 +360,64 @@ export function ExecutiveFocusArea({
   );
 
   const today = new Date().toISOString().slice(0, 10);
-  const visible = (item: FocusItem) => {
-    if (area !== "all" && item.area !== area) return false;
-    if (band !== "all" && item.criticality !== band) return false;
-    if (horizon === "overdue") return item.daysRemaining != null && item.daysRemaining < 0;
-    if (horizon === "30d") {
-      if (item.daysRemaining == null) return true;
-      return item.daysRemaining <= 30;
+  const items = useMemo(() => {
+    const areaSet = new Set(areas);
+    const subSet = new Set(subtypes);
+    const bandSet = new Set(bands);
+    const horizonSet = new Set(horizons);
+    return [...focus.top, ...AREAS.flatMap((a) => focus.byArea[a])]
+      .filter((item, i, all) => all.findIndex((x) => x.id === item.id) === i)
+      .filter((item) => {
+        if (areaSet.size && !areaSet.has(item.area)) return false;
+        const subs = FOCUS_AREA_SUBSETS[item.area];
+        if (subs.length && item.subtype) {
+          const selectedForArea = subs.filter((s) => subSet.has(`${item.area}:${s.id}`));
+          if (selectedForArea.length && !subSet.has(`${item.area}:${item.subtype}`)) return false;
+        }
+        if (bandSet.size && !bandSet.has(item.criticality)) return false;
+        if (horizonSet.size) {
+          const overdue = item.daysRemaining != null && item.daysRemaining < 0;
+          const in30 = item.daysRemaining == null || item.daysRemaining <= 30;
+          if (horizonSet.has("overdue") && horizonSet.has("30d")) {
+            if (!overdue && !in30) return false;
+          } else if (horizonSet.has("overdue") && !overdue) return false;
+          else if (horizonSet.has("30d") && !in30) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => b.score - a.score);
+  }, [focus, areas, subtypes, bands, horizons]);
+
+  const countInArea = (area: FocusArea) => focus.byArea[area].length;
+  const countSubtype = (area: FocusArea, id: string) =>
+    focus.byArea[area].filter((i) => i.subtype === id).length;
+
+  const toggleArea = (area: FocusArea) => {
+    const on = areas.includes(area);
+    if (on) {
+      setAreas(areas.filter((a) => a !== area));
+      setSubtypes(subtypes.filter((s) => !s.startsWith(`${area}:`)));
+    } else {
+      setAreas([...areas, area]);
+      const keys = FOCUS_AREA_SUBSETS[area].map((s) => `${area}:${s.id}`);
+      setSubtypes([...subtypes.filter((s) => !s.startsWith(`${area}:`)), ...keys]);
     }
-    return true;
   };
 
-  const top = focus.top.filter(visible);
-  const counts = focusAreaCounts(focus);
+  const toggleSubtype = (area: FocusArea, id: string) => {
+    const key = `${area}:${id}`;
+    const on = subtypes.includes(key);
+    const next = on ? subtypes.filter((s) => s !== key) : [...subtypes, key];
+    setSubtypes(next);
+    const anySub = FOCUS_AREA_SUBSETS[area].some((s) => next.includes(`${area}:${s.id}`));
+    if (anySub && !areas.includes(area)) setAreas([...areas, area]);
+    if (!anySub && areas.includes(area)) setAreas(areas.filter((a) => a !== area));
+  };
+
+  const toggleBand = (band: FocusCriticality) => {
+    setBands(bands.includes(band) ? bands.filter((b) => b !== band) : [...bands, band]);
+  };
+
   const s = focus.summary;
 
   return (
@@ -371,123 +431,148 @@ export function ExecutiveFocusArea({
           </p>
         }
       >
-          <p className="mb-3 text-[12px] text-muted-foreground">
-            Action list, not a dashboard. Ranked by business, financial, and schedule impact — not
-            every Red RAG. Tune weights in organisation <code>ui_config.executive_focus</code>.
-          </p>
+        <p className="text-[13px] text-foreground">
+          <span className="font-semibold text-rose-700">{s.critical} Critical</span>
+          <span className="text-muted-foreground"> · </span>
+          <span className="font-semibold text-amber-800">{s.high} High</span>
+          <span className="text-muted-foreground"> · </span>
+          <span className="font-semibold text-yellow-700">{s.watch} Watch</span>
+          {s.financialExposure > 0 ? (
+            <>
+              <span className="text-muted-foreground"> · </span>
+              {money(s.financialExposure)} exposure
+            </>
+          ) : null}
+          {s.decisionsRequired ? (
+            <>
+              <span className="text-muted-foreground"> · </span>
+              {s.decisionsRequired} decision{s.decisionsRequired === 1 ? "" : "s"}
+            </>
+          ) : null}
+        </p>
+        <p className="mt-1 text-[12px] text-muted-foreground">
+          Ranked by business, financial, and schedule impact — not every Red status. Open a card for
+          the source record.
+        </p>
 
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-            <SummaryTile tone="red" label="Critical" value={String(s.critical)} />
-            <SummaryTile tone="amber" label="High" value={String(s.high)} />
-            <SummaryTile tone="watch" label="Watch" value={String(s.watch)} />
-            <SummaryTile tone="red" label="Decisions required" value={String(s.decisionsRequired)} />
-            <SummaryTile tone="red" label="Delivery issues" value={String(s.deliveryIssues)} />
-            <SummaryTile tone="money" label="Financial exposure" value={money(s.financialExposure)} />
-            <SummaryTile tone="people" label="Capability gap" value={`${s.fteGap} FTE`} />
-            <SummaryTile tone="link" label="Critical dependencies" value={String(s.criticalDependencies)} />
-            <SummaryTile tone="goal" label="Benefits at risk" value={String(s.benefitsAtRisk)} />
-          </div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+          <fieldset className="min-w-0">
+            <legend className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Focus area
+            </legend>
+            <CheckRow
+              checked={areas.length === 0}
+              onChange={() => {
+                setAreas([]);
+                setSubtypes([]);
+              }}
+              label="All areas"
+              count={AREAS.reduce((n, a) => n + countInArea(a), 0)}
+            />
+            {AREAS.map((area) => {
+              const subs = FOCUS_AREA_SUBSETS[area];
+              return (
+                <div key={area} className="mt-1">
+                  <CheckRow
+                    checked={areas.includes(area)}
+                    onChange={() => toggleArea(area)}
+                    label={FOCUS_AREA_LABEL[area]}
+                    count={countInArea(area)}
+                  />
+                  {subs.map((sub) => (
+                    <CheckRow
+                      key={sub.id}
+                      indent
+                      checked={subtypes.includes(`${area}:${sub.id}`)}
+                      onChange={() => toggleSubtype(area, sub.id)}
+                      label={sub.label}
+                      count={countSubtype(area, sub.id)}
+                    />
+                  ))}
+                </div>
+              );
+            })}
+          </fieldset>
 
-          <div className="mt-4 flex flex-wrap gap-1.5">
-            {AREA_FILTERS.map((key) => (
-              <Chip key={key} active={area === key} onClick={() => setArea(key)}>
-                {key === "all" ? "All areas" : FOCUS_AREA_LABEL[key]}
-              </Chip>
-            ))}
-            {(["all", "Critical", "High", "Watch"] as const).map((key) => (
-              <Chip key={key} active={band === key} onClick={() => setBand(key)}>
-                {key === "all" ? "All criticality" : key}
-              </Chip>
-            ))}
-            {(["all", "overdue", "30d"] as const).map((key) => (
-              <Chip key={key} active={horizon === key} onClick={() => setHorizon(key)}>
-                {key === "all" ? "Any date" : key === "overdue" ? "Overdue" : "Due in 30 days"}
-              </Chip>
-            ))}
-          </div>
+          <fieldset className="min-w-0">
+            <legend className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Criticality
+            </legend>
+            <CheckRow
+              checked={bands.length === 0}
+              onChange={() => setBands([])}
+              label="All criticality"
+              count={s.critical + s.high + s.watch}
+            />
+            <CheckRow
+              checked={bands.includes("Critical")}
+              onChange={() => toggleBand("Critical")}
+              label="Critical"
+              count={s.critical}
+            />
+            <CheckRow
+              checked={bands.includes("High")}
+              onChange={() => toggleBand("High")}
+              label="High"
+              count={s.high}
+            />
+            <CheckRow
+              checked={bands.includes("Watch")}
+              onChange={() => toggleBand("Watch")}
+              label="Watch"
+              count={s.watch}
+            />
+          </fieldset>
 
-          <div className="mt-5">
-            <h3 className="text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Top executive attention
-            </h3>
-            {top.length === 0 ? (
-              <p className="mt-2 text-sm text-muted-foreground">
-                Nothing in this filter needs executive attention today.
-              </p>
-            ) : (
-              <div className="mt-2 grid gap-2">
-                {top.map((item, i) => (
-                  <FocusCard key={item.id} item={item} rank={i + 1} />
-                ))}
-              </div>
-            )}
-          </div>
+          <fieldset className="min-w-0">
+            <legend className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Due
+            </legend>
+            <CheckRow
+              checked={horizons.length === 0}
+              onChange={() => setHorizons([])}
+              label="Any date"
+            />
+            <CheckRow
+              checked={horizons.includes("overdue")}
+              onChange={() =>
+                setHorizons(
+                  horizons.includes("overdue")
+                    ? horizons.filter((h) => h !== "overdue")
+                    : [...horizons, "overdue"],
+                )
+              }
+              label="Overdue"
+            />
+            <CheckRow
+              checked={horizons.includes("30d")}
+              onChange={() =>
+                setHorizons(
+                  horizons.includes("30d") ? horizons.filter((h) => h !== "30d") : [...horizons, "30d"],
+                )
+              }
+              label="Due in 30 days"
+            />
+          </fieldset>
+        </div>
 
-          <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-            {counts.map((row) => (
-              <button
-                key={row.area}
-                type="button"
-                onClick={() => setArea(row.area)}
-                className={`rounded-lg border px-3 py-2 text-left ${
-                  area === row.area ? "border-primary/40 bg-primary/5" : "border-border bg-background"
-                }`}
-              >
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  {row.label}
-                </p>
-                <p className="mt-0.5 text-lg font-semibold tabular-nums">{row.count}</p>
-                <p className="text-[11px] text-muted-foreground">
-                  {row.critical ? `${row.critical} critical` : "none critical"}
-                </p>
-              </button>
-            ))}
-          </div>
-
-          {area !== "all" ? (
-            <div className="mt-4 grid gap-2">
-              {focus.byArea[area].filter(visible).map((item) => (
-                <FocusCard key={item.id} item={item} />
+        <div className="mt-5">
+          <h3 className="text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Attention
+          </h3>
+          {items.length === 0 ? (
+            <p className="mt-2 text-sm text-muted-foreground">
+              Nothing in this filter needs executive attention today.
+            </p>
+          ) : (
+            <div className="mt-2 grid gap-2">
+              {items.slice(0, 12).map((item, i) => (
+                <FocusCard key={item.id} item={item} rank={i + 1} />
               ))}
             </div>
-          ) : null}
-        </ExpandablePanel>
-    </SectionFrame>
-  );
-}
-
-function SummaryTile({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone: "red" | "amber" | "watch" | "money" | "people" | "link" | "goal";
-}) {
-  const bar =
-    tone === "red"
-      ? "#dc2626"
-      : tone === "amber"
-        ? "#d97706"
-        : tone === "watch"
-          ? "#ca8a04"
-          : tone === "money"
-            ? "#0f766e"
-            : tone === "people"
-              ? "#1d4ed8"
-              : tone === "link"
-                ? "#7c3aed"
-                : "#be185d";
-  return (
-    <div className="rounded-lg border border-border bg-background px-3 py-2">
-      <div className="flex items-start gap-2">
-        <span className="mt-0.5 h-7 w-1 shrink-0 rounded-full" style={{ backgroundColor: bar }} aria-hidden />
-        <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-          <p className="mt-0.5 text-lg font-semibold tabular-nums tracking-tight">{value}</p>
+          )}
         </div>
-      </div>
-    </div>
+      </ExpandablePanel>
+    </SectionFrame>
   );
 }
