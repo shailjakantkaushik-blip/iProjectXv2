@@ -1,5 +1,5 @@
 /**
- * Executive Focus — action-oriented attention items for Portfolio Pulse.
+ * Executive Focus — action-oriented attention items for the Executive Cockpit.
  * Not a second dashboard: only items that need executive attention today.
  */
 import { isDecisionAwaiting } from "@/lib/decision-approval";
@@ -65,7 +65,7 @@ export type FocusItem = {
   projectId: string | null;
   projectLabel: string;
   link: FocusLink;
-  /** Narrower kind under `area` — used by checkbox subsets. */
+  /** Narrower kind under `area` — used by the subset dropdown. */
   subtype?: string;
   amount?: number;
   projectsImpacted?: number;
