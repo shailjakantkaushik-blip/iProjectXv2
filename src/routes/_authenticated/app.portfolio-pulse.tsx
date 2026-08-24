@@ -9,7 +9,7 @@ export const Route = createFileRoute("/_authenticated/app/portfolio-pulse")({
       { title: "Portfolio Pulse — iProjectX" },
       {
         name: "description",
-        content: "Event-driven portfolio health, area trends, and weekly change digest.",
+        content: "Event-driven portfolio health, weekly change digest, and what needs attention today.",
       },
     ],
   }),
@@ -22,7 +22,7 @@ function PortfolioPulsePage() {
       <PageHeading
         icon="📡"
         title="Portfolio Pulse"
-        subtitle="Live portfolio health by area, with a week-over-week change digest — event-driven, not a static register."
+        subtitle="Live portfolio health by area, what changed this week, and what needs attention today."
       />
       <PortfolioPulsePanel />
     </PageExport>
