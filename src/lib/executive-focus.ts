@@ -128,6 +128,7 @@ export const FOCUS_AREA_SUBSETS: Record<FocusArea, { id: string; label: string }
   delivery: [
     { id: "delay", label: "Schedule delay" },
     { id: "gate", label: "Late gate" },
+    { id: "health", label: "Off-track" },
   ],
   financial: [
     { id: "actual", label: "Actual overrun" },
@@ -821,7 +822,7 @@ export function buildExecutiveFocus(opts: {
       projectId: p.id,
       projectLabel: labelOf(p),
       link: { kind: "project", projectId: p.id, tab: "overview", label: "View project" },
-      subtype: "delay",
+      subtype: "health",
     });
   }
 

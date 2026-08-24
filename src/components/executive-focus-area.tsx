@@ -345,7 +345,7 @@ export function ExecutiveFocusArea({
         if (horizon === "overdue") {
           if (!(item.daysRemaining != null && item.daysRemaining < 0)) return false;
         } else if (horizon === "30d") {
-          if (item.daysRemaining == null || item.daysRemaining > 30) return false;
+          if (item.daysRemaining != null && item.daysRemaining > 30) return false;
         }
         return true;
       })
