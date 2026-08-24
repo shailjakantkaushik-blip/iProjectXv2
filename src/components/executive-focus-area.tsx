@@ -66,7 +66,7 @@ function FocusCardLink({
       <Link
         to="/app/projects/$id"
         params={{ id: link.projectId }}
-        search={{ tab: (link.tab as "overview" | "finance") || "overview" }}
+        search={{ tab: (link.tab as "overview" | "finance" | "phases" | "governance" | "decisions") || "overview" }}
         className={cardClass}
       >
         {children}
@@ -128,7 +128,7 @@ function FocusCard({ item, rank }: { item: FocusItem; rank?: number }) {
           <dd>{item.impact}</dd>
         </div>
         <div>
-          <dt className="font-medium text-foreground/70">Action</dt>
+          <dt className="font-medium text-foreground/70">Ask</dt>
           <dd>{item.action}</dd>
         </div>
         <div>
@@ -365,7 +365,7 @@ export function ExecutiveFocusArea({
         compactMaxHeightClass="max-h-none"
         toolbar={
           <p className="text-[11px] text-muted-foreground">
-            What needs my attention today · as of {today}
+            What needs my attention today · steering pack · as of {today}
           </p>
         }
       >
@@ -392,6 +392,32 @@ export function ExecutiveFocusArea({
           Ranked by business, financial, and schedule impact — not every Red status. Open a card for
           the source record.
         </p>
+        <nav className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[12px]">
+          <Link to="/app/demand-pipeline" className="font-medium text-primary hover:underline">
+            Demand
+          </Link>
+          <Link to="/app/prioritisation" className="font-medium text-primary hover:underline">
+            Prioritisation
+          </Link>
+          <Link to="/app/risks" className="font-medium text-primary hover:underline">
+            Risks
+          </Link>
+          <Link to="/app/actions" className="font-medium text-primary hover:underline">
+            Actions
+          </Link>
+          <Link to="/app/issues" className="font-medium text-primary hover:underline">
+            Issues
+          </Link>
+          <Link to="/app/decisions" className="font-medium text-primary hover:underline">
+            Decisions
+          </Link>
+          <Link to="/app/stage-gates" className="font-medium text-primary hover:underline">
+            Stage gates
+          </Link>
+          <Link to="/app/financials" className="font-medium text-primary hover:underline">
+            Financials
+          </Link>
+        </nav>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div>

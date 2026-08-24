@@ -444,7 +444,9 @@ export function buildExecutiveFocus(opts: {
           daysRemaining: baseline ? daysBetween(today, baseline) : null,
           projectId: p.id,
           projectLabel: labelOf(p),
-          link: { kind: "project", projectId: p.id, tab: "overview", label: "View project" },
+          link: lateGate
+            ? { kind: "project", projectId: p.id, tab: "phases", label: "View phase timeline" }
+            : { kind: "project", projectId: p.id, tab: "overview", label: "View project" },
           subtype: lateGate ? "gate" : "delay",
           projectsImpacted: impacted || undefined,
         });
@@ -577,7 +579,7 @@ export function buildExecutiveFocus(opts: {
       daysRemaining: null,
       projectId: p.id,
       projectLabel: labelOf(p),
-      link: { kind: "risks", projectId: p.id, label: "View risk" },
+      link: { kind: "project", projectId: p.id, tab: "governance", label: "View project RAID" },
       subtype: "risk",
     });
   }
@@ -612,7 +614,7 @@ export function buildExecutiveFocus(opts: {
       daysRemaining: due ? daysBetween(today, due) : null,
       projectId: p.id,
       projectLabel: labelOf(p),
-      link: { kind: "issues", projectId: p.id, label: "View issue" },
+      link: { kind: "project", projectId: p.id, tab: "governance", label: "View project RAID" },
       subtype: "issue",
     });
   }
@@ -648,7 +650,7 @@ export function buildExecutiveFocus(opts: {
       daysRemaining: remaining,
       projectId: p.id,
       projectLabel: labelOf(p),
-      link: { kind: "decisions", projectId: p.id, label: "Open decision" },
+      link: { kind: "project", projectId: p.id, tab: "decisions", label: "Open project decisions" },
       subtype: overdue ? "overdue" : "waiting",
     });
   }
@@ -743,6 +745,84 @@ export function buildExecutiveFocus(opts: {
         link: { kind: "resources", projectId: first?.id, label: "View resource demand" },
       });
     }
+  }
+
+  for (const g of gates.filter((gate) => isGateScheduleDelayed(gate, now))) {
+    const p = byId.get(g.project_id);
+    if (!p || /completed|cancelled|on hold/i.test(String(p.status || ""))) continue;
+    if (items.some((i) => i.projectId === p.id && i.area === "delivery" && i.subtype === "gate")) continue;
+    const planned = isoDay(g.planned_date);
+    const remaining = planned ? daysBetween(today, planned) : null;
+    const score = scoreParts(weights, {
+      businessImpact: 0.75,
+      financialImpact: 0.25,
+      scheduleImpact: 0.9,
+      urgency: remaining != null && remaining < 0 ? 0.9 : 0.7,
+      multiProject: 0.15,
+      execIntervention: 0.8,
+      riskSeverity: 0.2,
+      customerImpact: isHighPriorityProject(p) ? 0.5 : 0.25,
+    });
+    items.push({
+      id: `gate-${g.id || g.gate_name}-${g.project_id}`,
+      area: "delivery",
+      criticality: itemCriticality(score, "Critical"),
+      score: Math.max(score, 78),
+      title: `${g.gate_name || "Stage gate"} · ${labelOf(p)}`,
+      headline: "Late gate",
+      why: `Planned ${planned || "—"} · still ${g.status || "open"}`,
+      impact: labelOf(p),
+      action: "Approve, rebaseline the date, or stop the lane until the pack is ready",
+      owner: ownerOf(p),
+      dueDate: planned,
+      daysRemaining: remaining,
+      projectId: p.id,
+      projectLabel: labelOf(p),
+      link: { kind: "project", projectId: p.id, tab: "phases", label: "View phase timeline" },
+      subtype: "gate",
+    });
+  }
+
+  for (const p of opts.projects) {
+    if (/completed|cancelled|on hold/i.test(String(p.status || ""))) continue;
+    const engine = healthByProject.get(p.id);
+    if (!engine || engine.rag !== "Red") continue;
+    if (items.some((i) => i.projectId === p.id)) continue;
+    const why =
+      engine.earlyWarnings[0]?.title ||
+      engine.drivers.find((d) => d.severity === "Red")?.message ||
+      engine.drivers[0]?.message ||
+      "Health Engine is Red";
+    const score = scoreParts(weights, {
+      businessImpact: 0.8,
+      financialImpact: 0.3,
+      scheduleImpact: 0.55,
+      urgency: 0.75,
+      multiProject: 0.15,
+      execIntervention: 0.85,
+      riskSeverity: 0.4,
+      customerImpact: isHighPriorityProject(p) ? 0.5 : 0.25,
+    });
+    items.push({
+      id: `health-${p.id}`,
+      area: "delivery",
+      criticality: itemCriticality(score, "Critical"),
+      score: Math.max(score, 76),
+      title: labelOf(p),
+      headline: "Off-track",
+      why,
+      impact: "Needs steering this week",
+      action: engine.earlyWarnings[0]?.recommendedAction || "Steer this week — do not wait for the next pack",
+      owner: ownerOf(p),
+      dueDate: isoDay(p.planned_end_date) || isoDay(p.end_date),
+      daysRemaining: isoDay(p.planned_end_date)
+        ? daysBetween(today, isoDay(p.planned_end_date)!)
+        : null,
+      projectId: p.id,
+      projectLabel: labelOf(p),
+      link: { kind: "project", projectId: p.id, tab: "overview", label: "View project" },
+      subtype: "delay",
+    });
   }
 
   items.sort((a, b) => {

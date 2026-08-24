@@ -73,7 +73,7 @@ const ALL: Record<string, Shortcut> = {
   cockpit: {
     to: "/app/executive-cockpit",
     label: "Executive Cockpit",
-    desc: "Steering pack, scoreboard, and project summaries",
+    desc: "Attention cards, scoreboard, and project summaries",
     icon: Rocket,
   },
   projects: {

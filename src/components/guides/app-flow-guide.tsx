@@ -199,7 +199,7 @@ export function AppFlowGuide({ tab, onTab }: { tab: AboutTab; onTab: (t: AboutTa
                 labor.
               </Step>
               <Step n="F" title="Executives — steer without editing Plan">
-                Home, Executive Cockpit (steering pack, scoreboard, and project summaries),
+                Home, Executive Cockpit (attention cards, scoreboard, and project summaries),
                 Executive Dashboard (charts and register), Portfolio Pulse, Financials (Plan vs
                 Actual vs Forecast), How money works for the glossary.
               </Step>
