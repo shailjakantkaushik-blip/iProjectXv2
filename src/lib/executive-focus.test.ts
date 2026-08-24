@@ -102,6 +102,9 @@ describe("executive focus on iProjectX seed", () => {
     assert.ok(focus.summary.decisionsRequired >= 1);
     assert.ok(focus.summary.financialExposure > 0, "PRJ-009 FAC is above envelope");
     assert.ok(focus.byArea.financial.some((i) => i.projectId === "PRJ-009"));
+    assert.ok(focus.byArea.financial.some((i) => i.subtype === "forecast" || i.subtype === "actual"));
+    assert.ok(focus.byArea.risk.some((i) => i.subtype === "risk"));
+    assert.ok(focus.byArea.decision.some((i) => i.subtype === "overdue"));
     assert.ok(focus.byArea.risk.some((i) => i.title.includes("Site access")));
     assert.ok(focus.byArea.decision.some((i) => i.criticality === "Critical"));
     assert.equal(
