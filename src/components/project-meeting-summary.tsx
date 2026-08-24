@@ -4,13 +4,21 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { RagChip, SectionFrame, SectionTitle } from "@/components/streamlit";
-import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
+import { effectiveRag, isRagOverridden } from "@/lib/ops-enhancements";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { computeEngineHealth, useHealthEngineLookups } from "@/hooks/use-health-engine-lookups";
+import { parentEnvelopeContext } from "@/lib/hierarchy-envelope";
+import { FINANCIALS_MONTHLY_SELECT } from "@/lib/query-selects";
+import { healthScoreHeatClass } from "@/lib/project-health";
+import { explainRag } from "@/lib/explain-metric";
+import type { HealthEngineResult } from "@/lib/project-health-engine";
+import type { MonthlyFinanceRow } from "@/lib/finance-lifecycle";
 
 type Props = {
   projectId: string;
   project: {
+    id?: string;
     name?: string | null;
     rag?: string | null;
     rag_override?: string | null;
@@ -20,9 +28,76 @@ type Props = {
   };
   /** Compact read-only card for the executive dashboard. */
   readOnly?: boolean;
+  /** Health Engine RAG (Green ≥ 80 / Amber 65–79 / Red < 65). */
+  calculatedRag?: string | null;
+  healthScore?: number | null;
+  healthEngine?: HealthEngineResult | null;
 };
 
-export function ProjectMeetingSummary({ projectId, project, readOnly }: Props) {
+export function ProjectMeetingSummary(props: Props) {
+  if (props.calculatedRag != null && props.healthScore != null) {
+    return <ProjectMeetingSummaryBody {...props} />;
+  }
+  return <ProjectMeetingSummaryFromEngine {...props} />;
+}
+
+function ProjectMeetingSummaryFromEngine(props: Props) {
+  const { organization } = useAuth();
+  const orgId = organization?.id;
+  const fyStartMonth = organization?.fy_start_month || 4;
+  const lookups = useHealthEngineLookups(orgId);
+  const parentCtx = useMemo(
+    () => parentEnvelopeContext([props.project] as never, lookups.envelopeIndex),
+    [props.project, lookups.envelopeIndex],
+  );
+  const gatesQ = useQuery({
+    queryKey: ["stage_gates", orgId],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("stage_gates")
+          .select("id,project_id,stream_id,gate_name,planned_date,actual_date,status")
+      ).data ?? [],
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+  const monthlyQ = useQuery({
+    queryKey: ["financials_monthly", orgId, "explain"],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("financials_monthly")
+          .select(FINANCIALS_MONTHLY_SELECT as "*")
+          .eq("org_id", orgId!)
+          .limit(10000)
+      ).data ?? [],
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+  const health = useMemo(() => {
+    const pid = props.projectId;
+    const gates = (gatesQ.data ?? []).filter((g: { project_id?: string }) => g.project_id === pid);
+    const monthly = ((monthlyQ.data ?? []) as MonthlyFinanceRow[]).filter((m) => m.project_id === pid);
+    return computeEngineHealth(props.project as never, gates, lookups, monthly, fyStartMonth, parentCtx);
+  }, [props.project, props.projectId, gatesQ.data, monthlyQ.data, lookups, fyStartMonth, parentCtx]);
+  return (
+    <ProjectMeetingSummaryBody
+      {...props}
+      calculatedRag={health.overall_rag}
+      healthScore={health.health_score}
+      healthEngine={health.engine}
+    />
+  );
+}
+
+function ProjectMeetingSummaryBody({
+  projectId,
+  project,
+  readOnly,
+  calculatedRag,
+  healthScore,
+  healthEngine,
+}: Props) {
   const { organization, session } = useAuth();
   const orgId = organization?.id;
   const qc = useQueryClient();
@@ -175,16 +250,47 @@ export function ProjectMeetingSummary({ projectId, project, readOnly }: Props) {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const rag = displayRag({ rag: ragSource.rag ?? project.rag, rag_override: merged.rag_override });
+  const rag = effectiveRag(
+    { rag: ragSource.rag ?? project.rag, rag_override: merged.rag_override },
+    calculatedRag,
+  );
+  const overridden = isRagOverridden({ rag_override: merged.rag_override });
+  const score = Number(healthScore);
+  const ragBlock = (
+    <span className="inline-flex items-center gap-2">
+      {Number.isFinite(score) && score > 0 ? (
+        <span
+          className={`inline-block rounded px-1.5 py-0.5 text-xs font-semibold tabular-nums ${healthScoreHeatClass(score)}`}
+          title="Health Engine score — Green ≥ 80, Amber 65–79, Red < 65"
+        >
+          {score}
+        </span>
+      ) : null}
+      <RagChip
+        rag={rag}
+        manual={overridden}
+        explain={explainRag({
+          rag,
+          engine: overridden ? null : healthEngine,
+          source: overridden ? "register" : undefined,
+          score: Number.isFinite(score) ? score : null,
+          overridden,
+          extraBullets: overridden
+            ? [`Health Engine is ${calculatedRag || "—"} (${Number.isFinite(score) ? score : "—"}/100). This chip is the manual override.`]
+            : undefined,
+        })}
+      />
+    </span>
+  );
 
   return (
     <SectionFrame exportable={!readOnly}>
-      {!readOnly && (
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <SectionTitle>Project Summary</SectionTitle>
-          <RagChip rag={rag} manual={isRagOverridden({ rag_override: merged.rag_override })} />
-        </div>
-      )}
+      {!readOnly ? (
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <SectionTitle>Project Summary</SectionTitle>
+        {ragBlock}
+      </div>
+      ) : null}
       {!readOnly && (
         <label className="mb-3 flex cursor-pointer items-start gap-2 text-sm">
           <Checkbox
@@ -296,7 +402,7 @@ export function ProjectMeetingSummary({ projectId, project, readOnly }: Props) {
               value={merged.rag_override}
               onChange={(e) => setForm((f) => ({ ...f, rag_override: e.target.value }))}
             >
-              <option value="">Use register RAG</option>
+              <option value="">Use Health Engine RAG</option>
               <option value="Green">Green</option>
               <option value="Amber">Amber</option>
               <option value="Red">Red</option>

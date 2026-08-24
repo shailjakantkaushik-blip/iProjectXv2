@@ -563,6 +563,7 @@ function ExecutiveCockpit() {
       .sort(compareProjectsByCodeName);
   }, [projects, gatesByProject, profileById, monthlyByProject, healthLookups, fyStartMonth, parentCtx]);
 
+  const healthById = useMemo(() => new Map(healthRows.map((h: any) => [h.id, h])), [healthRows]);
   const matrixRag = useMemo(() => countEngineRag(healthRows), [healthRows]);
   const mixRagByAlign = useMemo(() => {
     const m = new Map<string, { green: number; amber: number; red: number }>();
@@ -1261,6 +1262,9 @@ function ExecutiveCockpit() {
             <div className="space-y-2">
               {projects.map((p: any) => {
                 const open = openSummaryIds.has(p.id);
+                const row = healthById.get(p.id);
+                const summaryRag = row?.shown_rag || effectiveRag(p, row?.overall_rag);
+                const summaryScore = num(row?.health_score);
                 return (
                   <Collapsible
                     key={p.id}
@@ -1304,11 +1308,41 @@ function ExecutiveCockpit() {
                           >
                             Project Summary
                           </Link>
-                          <RagChip rag={displayRag(p)} manual={isRagOverridden(p)} />
+                          {summaryScore ? (
+                            <span
+                              className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold tabular-nums ${healthHeat(summaryScore)}`}
+                              title="Health Engine score — same as the health matrix"
+                            >
+                              {summaryScore}
+                            </span>
+                          ) : null}
+                          <RagChip
+                            rag={summaryRag}
+                            manual={isRagOverridden(p)}
+                            explain={explainRag({
+                              rag: summaryRag,
+                              engine: isRagOverridden(p) ? null : row?.engine,
+                              source: isRagOverridden(p) ? "register" : undefined,
+                              score: summaryScore || null,
+                              overridden: isRagOverridden(p),
+                              extraBullets: isRagOverridden(p)
+                                ? [
+                                    `Health Engine is ${row?.overall_rag || "—"} (${summaryScore || "—"}/100). This chip is the manual override.`,
+                                  ]
+                                : undefined,
+                            })}
+                          />
                         </div>
                       </div>
                       <CollapsibleContent>
-                        <ProjectMeetingSummary projectId={p.id} project={p} readOnly />
+                        <ProjectMeetingSummary
+                          projectId={p.id}
+                          project={p}
+                          readOnly
+                          calculatedRag={row?.overall_rag}
+                          healthScore={row?.health_score}
+                          healthEngine={row?.engine}
+                        />
                       </CollapsibleContent>
                     </div>
                   </Collapsible>
