@@ -64,6 +64,7 @@ import {
   Brain,
   Network,
   FlaskConical,
+  LogOut,
   type LucideIcon,
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -239,7 +240,7 @@ function writeOpenNavGroups(headings: string[]) {
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { organization, profile, roles } = useAuth();
+  const { organization, profile, roles, signOut } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const admin = isAdmin(roles);
   const platform = isPlatformAdmin(roles);
@@ -677,9 +678,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 
   const Footer = (
-    <div className="shell-footer border-t border-sidebar-border/60 p-3">
+    <div className="shell-footer shrink-0 border-t border-sidebar-border/60 p-3">
       <div className="flex items-center gap-2.5 rounded-lg bg-sidebar-accent/45 px-2.5 py-2">
-        <UserAccountMenu />
+        <UserAccountMenu menuSide="top" />
         <div className="min-w-0 flex-1">
           <div className="truncate text-[12px] font-medium tracking-[-0.01em] text-sidebar-foreground">
             {profile?.full_name || "User"}
@@ -687,6 +688,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="truncate text-[10.5px] text-muted-foreground/80">{profile?.email}</div>
         </div>
       </div>
+      <button
+        type="button"
+        className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-md px-2.5 text-[12.5px] font-medium text-rose-700 transition-colors hover:bg-rose-50 md:hidden"
+        onClick={() => void signOut()}
+      >
+        <LogOut className="h-4 w-4" />
+        Sign out
+      </button>
     </div>
   );
 
@@ -860,9 +869,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="hidden rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-[10.5px] font-medium capitalize tracking-wide text-muted-foreground sm:block">
               {(organization?.plan ?? "free").replace(/_/g, " ")}
             </div>
-            <div className="hidden sm:block">
-              <UserAccountMenu />
-            </div>
+            <UserAccountMenu />
           </div>
         </header>
 
