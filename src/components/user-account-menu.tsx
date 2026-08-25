@@ -46,10 +46,13 @@ export function UserAccountMenu({
   className,
   avatarClassName,
   showLabel = false,
+  menuSide = "bottom",
 }: {
   className?: string;
   avatarClassName?: string;
   showLabel?: boolean;
+  /** Footer menus sit on the bottom edge — open upward so Sign out stays on screen. */
+  menuSide?: "top" | "bottom";
 }) {
   const { profile, signOut, organization } = useAuth();
   const primary = organization?.primary_color || undefined;
@@ -145,14 +148,14 @@ export function UserAccountMenu({
           <button
             type="button"
             className={cn(
-              "inline-flex items-center gap-2 rounded-full outline-none ring-offset-background transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring",
+              "inline-flex min-h-10 min-w-10 items-center justify-center gap-2 rounded-full outline-none ring-offset-background transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0 sm:min-w-0",
               className,
             )}
             aria-label="Account menu"
           >
             <span
               className={cn(
-                "flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold text-primary-foreground ring-2 ring-background",
+                "flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-semibold text-primary-foreground ring-2 ring-background sm:h-7 sm:w-7 sm:text-[10px]",
                 avatarClassName,
               )}
               style={{ background: primary || "var(--primary)" }}
@@ -166,7 +169,12 @@ export function UserAccountMenu({
             ) : null}
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuContent
+          align="end"
+          side={menuSide}
+          collisionPadding={12}
+          className="z-[80] w-56"
+        >
           <DropdownMenuLabel className="font-normal">
             <div className="truncate text-sm font-medium">
               {profile?.full_name || "Account"}

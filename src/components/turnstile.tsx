@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from "react";
-import { turnstileSizeForWidth } from "@/lib/turnstile-size";
+import { turnstileHostWidth, turnstileSizeForWidth } from "@/lib/turnstile-size";
 
 export { turnstileSizeForWidth } from "@/lib/turnstile-size";
 
@@ -101,43 +101,53 @@ export const TurnstileWidget = memo(function TurnstileWidget({
     if (!siteKey || !containerRef.current) return;
     let cancelled = false;
     setError(null);
-    const width = containerRef.current.parentElement?.clientWidth || window.innerWidth;
-    const size = turnstileSizeForWidth(width);
-    loadScript()
-      .then(() => {
-        if (cancelled || !window.turnstile || !containerRef.current) return;
-        if (widgetIdRef.current) {
-          try {
-            window.turnstile.remove(widgetIdRef.current);
-          } catch {
-            /* noop */
-          }
-          widgetIdRef.current = null;
+    const measureWidth = () => {
+      const el = containerRef.current;
+      const host = el?.parentElement?.clientWidth || el?.clientWidth || 0;
+      const viewport = typeof window !== "undefined" ? window.innerWidth : 0;
+      return turnstileHostWidth(host, viewport);
+    };
+    const mount = () => {
+      if (cancelled || !window.turnstile || !containerRef.current) return;
+      if (widgetIdRef.current) {
+        try {
+          window.turnstile.remove(widgetIdRef.current);
+        } catch {
+          /* noop */
         }
-        widgetIdRef.current = window.turnstile.render(containerRef.current, {
-          sitekey: siteKey,
-          theme,
-          size,
-          appearance: "always",
-          callback: (token: string) => onTokenRef.current(token),
-          "expired-callback": () => {
-            onExpireRef.current?.();
-            if (widgetIdRef.current && window.turnstile) {
-              window.turnstile.reset(widgetIdRef.current);
-            }
-          },
-          "error-callback": () => {
-            onExpireRef.current?.();
-            setError("Cloudflare check did not finish. Tap to retry.");
-          },
-        });
-        prevResetNonceRef.current = resetNonce;
-      })
-      .catch(() => {
-        if (!cancelled) setError("Cloudflare check did not load. Tap to retry.");
+        widgetIdRef.current = null;
+      }
+      const size = turnstileSizeForWidth(measureWidth());
+      widgetIdRef.current = window.turnstile.render(containerRef.current, {
+        sitekey: siteKey,
+        theme,
+        size,
+        appearance: "always",
+        callback: (token: string) => onTokenRef.current(token),
+        "expired-callback": () => {
+          onExpireRef.current?.();
+          if (widgetIdRef.current && window.turnstile) {
+            window.turnstile.reset(widgetIdRef.current);
+          }
+        },
+        "error-callback": () => {
+          onExpireRef.current?.();
+          setError("Cloudflare check did not finish. Tap to retry.");
+        },
       });
+      prevResetNonceRef.current = resetNonce;
+    };
+    // Measure after layout so a 0-width first paint does not stretch the widget.
+    const frame = requestAnimationFrame(() => {
+      loadScript()
+        .then(mount)
+        .catch(() => {
+          if (!cancelled) setError("Cloudflare check did not load. Tap to retry.");
+        });
+    });
     return () => {
       cancelled = true;
+      cancelAnimationFrame(frame);
       if (widgetIdRef.current && window.turnstile) {
         try {
           window.turnstile.remove(widgetIdRef.current);
@@ -182,8 +192,8 @@ export const TurnstileWidget = memo(function TurnstileWidget({
   }
 
   return (
-    <div className="flex w-full min-w-0 flex-col items-center justify-center gap-1 overflow-visible">
-      <div ref={containerRef} className="flex w-full min-w-0 max-w-full justify-center overflow-visible" />
+    <div className="flex min-h-[65px] w-full min-w-0 flex-col items-center justify-center gap-1 overflow-visible">
+      <div ref={containerRef} className="flex max-w-full justify-center overflow-visible" />
       <p className="text-[10px] text-muted-foreground">
         Secured by Cloudflare — complete the check before signing in.
       </p>
