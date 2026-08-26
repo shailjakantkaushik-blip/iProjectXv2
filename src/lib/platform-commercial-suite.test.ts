@@ -18,7 +18,7 @@ describe("platform commercial suite isolation", () => {
       restAnon: async (table) => (table === "landing_config" ? { status: 200, body: [{}] } : { status: 200, body: [] }),
       fetchText: async () => ({
         status: 200,
-        body: 'src="/api/public/landing-logo" landing-nav-open',
+        body: 'src="/brand/landing.webp" landing-nav-open',
       }),
     });
     assert.ok(seen.every((s) => s.endsWith(":plat")), `queried outside platform: ${seen.join(",")}`);
@@ -74,7 +74,7 @@ describe("platform commercial suite isolation", () => {
         return { status: 200, body: "ok" };
       },
     });
-    assert.equal(fetches, 32);
+    assert.equal(fetches, 40);
     assert.deepEqual(seen, ["projects:plat", "projects:plat", "projects:plat", "projects:plat"]);
     const home = report.checks.find((c) => c.id === "load-home");
     assert.equal(home?.status, "pass");

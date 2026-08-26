@@ -49,13 +49,13 @@
       } catch (e) {}
       var land = cookieUrl("pmo_llogo");
       if (land) preload(land, "data-pmo-landing-logo");
-      else preload("/api/public/landing-logo", "data-pmo-landing-logo");
+      else preload("/brand/landing.webp", "data-pmo-landing-logo");
     }
 
     if (onAuth) {
       var auth = cookieUrl("pmo_alogo") || cookieUrl("pmo_llogo");
       if (auth) preload(auth, "data-pmo-auth-logo");
-      else preload("/api/public/landing-logo?surface=auth", "data-pmo-auth-logo");
+      else preload("/brand/auth.webp", "data-pmo-auth-logo");
     }
   } catch (e) {}
 })();

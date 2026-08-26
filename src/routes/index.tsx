@@ -50,8 +50,8 @@ import {
 import { resolvePublicLandingLogoUrl } from "@/lib/public-landing-logo";
 import { PUBLIC_AUTH_LOGO_HREF, PUBLIC_LANDING_LOGO_HREF } from "@/lib/live-landing-logo";
 import {
-  peekDocumentLandingLogoUrl,
   resolveDocumentLandingLogoDims,
+  resolveDocumentLandingLogoUrl,
 } from "@/lib/landing-public-logo.functions";
 import { readLandingLogoCookieBrowser } from "@/lib/landing-logo-cookie";
 import { readLandingLogoSizeCookieBrowser } from "@/lib/landing-logo-cookie";
@@ -108,7 +108,7 @@ export const Route = createFileRoute("/")({
     try {
       const [dims, cookieUrl] = await Promise.all([
         resolveDocumentLandingLogoDims(),
-        peekDocumentLandingLogoUrl(),
+        resolveDocumentLandingLogoUrl(),
       ]);
       cfg = applyLandingLogoDims(cfg, dims);
       if (cookieUrl) logoHref = cookieUrl;

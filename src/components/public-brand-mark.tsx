@@ -43,7 +43,7 @@ export function PublicBrandMark({
       className="w-auto object-contain"
       style={{ height: heightPx, maxWidth: maxWidthPx, width: "auto" }}
       fetchPriority="high"
-      decoding="async"
+      decoding="sync"
       draggable={false}
     />
   );
