@@ -596,6 +596,11 @@ html:has([data-auth-layout]) body {
   overflow-x: visible;
 }
 
+.turnstile-host iframe {
+  display: block;
+  max-width: 100%;
+}
+
 /*
  * Paint budget: mobile already felt faster because ≤1024px skipped fixed
  * backgrounds + glass blur. Apply the same mitigations on laptop/desktop —

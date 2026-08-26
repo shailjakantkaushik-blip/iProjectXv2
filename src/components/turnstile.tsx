@@ -1,5 +1,9 @@
 import { memo, useEffect, useRef, useState } from "react";
-import { isIosWebKit, turnstileSizeForHost } from "@/lib/turnstile-size";
+import {
+  turnstileBoxForSize,
+  turnstileSizeForHost,
+  type TurnstileWidgetSize,
+} from "@/lib/turnstile-size";
 
 export { turnstileSizeForHost, turnstileSizeForWidth } from "@/lib/turnstile-size";
 
@@ -93,9 +97,11 @@ export const TurnstileWidget = memo(function TurnstileWidget({
   const prevResetNonceRef = useRef(resetNonce);
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
+  const [size, setSize] = useState<TurnstileWidgetSize>("normal");
   onTokenRef.current = onToken;
   onExpireRef.current = onExpire;
   const siteKey = getTurnstileSiteKey();
+  const box = turnstileBoxForSize(size);
 
   useEffect(() => {
     if (!siteKey || !containerRef.current) return;
@@ -105,10 +111,7 @@ export const TurnstileWidget = memo(function TurnstileWidget({
       const el = containerRef.current;
       const host = el?.parentElement?.clientWidth || el?.clientWidth || 0;
       const viewport = typeof window !== "undefined" ? window.innerWidth : 0;
-      const iosWebKit =
-        typeof navigator !== "undefined" &&
-        isIosWebKit(navigator.userAgent, navigator.platform, navigator.maxTouchPoints || 0);
-      return turnstileSizeForHost(host, viewport, iosWebKit);
+      return turnstileSizeForHost(host, viewport);
     };
     const mount = () => {
       if (cancelled || !window.turnstile || !containerRef.current) return;
@@ -120,11 +123,12 @@ export const TurnstileWidget = memo(function TurnstileWidget({
         }
         widgetIdRef.current = null;
       }
-      const size = measureSize();
+      const nextSize = measureSize();
+      setSize(nextSize);
       widgetIdRef.current = window.turnstile.render(containerRef.current, {
         sitekey: siteKey,
         theme,
-        size,
+        size: nextSize,
         appearance: "always",
         retry: "auto",
         "refresh-expired": "auto",
@@ -197,8 +201,12 @@ export const TurnstileWidget = memo(function TurnstileWidget({
   }
 
   return (
-    <div className="turnstile-host flex min-h-[65px] w-full min-w-0 flex-col items-center justify-center gap-1 overflow-visible [filter:none] [transform:none]">
-      <div ref={containerRef} className="flex max-w-full justify-center overflow-visible" />
+    <div className="turnstile-host flex w-full min-w-0 flex-col items-center justify-center gap-1 overflow-visible [filter:none] [transform:none]">
+      <div
+        ref={containerRef}
+        className="mx-auto block max-w-full overflow-visible"
+        style={{ width: box.widthPx, minHeight: box.heightPx }}
+      />
       <p className="text-[10px] text-muted-foreground">
         Secured by Cloudflare — complete the check before signing in.
       </p>

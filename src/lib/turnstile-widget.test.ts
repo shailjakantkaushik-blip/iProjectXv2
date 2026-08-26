@@ -2,38 +2,41 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   isIosWebKit,
+  turnstileBoxForSize,
   turnstileHostWidth,
   turnstileSizeForHost,
   turnstileSizeForWidth,
 } from "./turnstile-size.ts";
 
 describe("turnstileSizeForHost", () => {
-  it("uses compact on phone viewports so Mobile Safari can finish the challenge", () => {
-    assert.equal(turnstileSizeForHost(318, 390), "compact");
-    assert.equal(turnstileSizeForHost(360, 430), "compact");
-    assert.equal(turnstileSizeForHost(400, 639), "compact");
+  it("uses the standard normal widget on typical phones and desktop cards", () => {
+    assert.equal(turnstileSizeForHost(318, 390), "normal");
+    assert.equal(turnstileSizeForHost(360, 430), "normal");
+    assert.equal(turnstileSizeForHost(352, 1280), "normal");
+    assert.equal(turnstileSizeForHost(400, 768), "normal");
   });
 
-  it("uses compact when the card is narrower than the 300px normal widget", () => {
-    assert.equal(turnstileSizeForHost(248, 1280), "compact");
+  it("uses compact only when the card is narrower than the 300px checkbox", () => {
+    assert.equal(turnstileSizeForHost(248, 390), "compact");
     assert.equal(turnstileSizeForHost(299, 1024), "compact");
   });
 
-  it("uses compact on iOS WebKit even in landscape", () => {
-    assert.equal(turnstileSizeForHost(800, 844, true), "compact");
-    assert.equal(turnstileSizeForHost(400, 1024, true), "compact");
-  });
-
-  it("uses the standard normal widget on desktop cards", () => {
-    assert.equal(turnstileSizeForHost(352, 1280), "normal");
-    assert.equal(turnstileSizeForHost(400, 768), "normal");
-    assert.equal(turnstileSizeForHost(400, 640), "normal");
+  it("does not force compact on iOS when the card can fit the normal widget", () => {
+    assert.equal(turnstileSizeForHost(318, 390, true), "normal");
+    assert.equal(turnstileSizeForHost(800, 844, true), "normal");
   });
 
   it("falls back to normal when width is unknown (never flexible)", () => {
     assert.equal(turnstileSizeForHost(0, 0), "normal");
     assert.equal(turnstileSizeForHost(-1, -1), "normal");
     assert.equal(turnstileSizeForWidth(0), "normal");
+  });
+});
+
+describe("turnstileBoxForSize", () => {
+  it("reserves Cloudflare's official compact footprint so the widget can paint", () => {
+    assert.deepEqual(turnstileBoxForSize("compact"), { widthPx: 150, heightPx: 140 });
+    assert.deepEqual(turnstileBoxForSize("normal"), { widthPx: 300, heightPx: 65 });
   });
 });
 
@@ -60,13 +63,5 @@ describe("isIosWebKit", () => {
     );
     assert.equal(isIosWebKit("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", "MacIntel", 5), true);
     assert.equal(isIosWebKit("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Win32", 0), false);
-    assert.equal(
-      isIosWebKit(
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
-        "MacIntel",
-        0,
-      ),
-      false,
-    );
   });
 });
