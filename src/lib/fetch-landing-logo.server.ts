@@ -41,14 +41,18 @@ export async function fetchPublicLandingLogoUrl(
   }
 }
 
-function walkBrandSize(data: unknown): { size?: unknown; custom?: unknown } {
+function walkBrandSize(
+  data: unknown,
+  sizeKey: "logo_size_landing" | "logo_size_auth",
+  customKey: "logo_custom_landing" | "logo_custom_auth",
+): { size?: unknown; custom?: unknown } {
   if (!data || typeof data !== "object") return {};
   const o = data as Record<string, unknown>;
-  if ("logo_size_landing" in o || "logo_custom_landing" in o) {
-    return { size: o.logo_size_landing, custom: o.logo_custom_landing };
+  if (sizeKey in o || customKey in o) {
+    return { size: o[sizeKey], custom: o[customKey] };
   }
   for (const value of Object.values(o)) {
-    const found = walkBrandSize(value);
+    const found = walkBrandSize(value, sizeKey, customKey);
     if (found.size != null || found.custom != null) return found;
   }
   return {};
@@ -76,7 +80,34 @@ export async function fetchPublicLandingLogoDims(
         setTimeout(() => reject(new Error("landing logo size timeout")), timeoutMs);
       }),
     ]);
-    const found = walkBrandSize(data);
+    const found = walkBrandSize(data, "logo_size_landing", "logo_custom_landing");
+    if (found.size == null && found.custom == null) return null;
+    return logoSizeDims(normalizeLogoSize(found.size), clampLogoCustom(found.custom));
+  } catch {
+    return null;
+  }
+}
+
+/** Configured auth / sign-in mark size — never the data: URL bytes. */
+export async function fetchPublicAuthLogoDims(
+  timeoutMs: number = 800,
+): Promise<PublicLandingLogoDims | null> {
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const query = supabaseAdmin
+      .from("landing_config" as never)
+      .select(
+        "logo_size_auth:config->brand->logo_size_auth, logo_custom_auth:config->brand->logo_custom_auth",
+      )
+      .eq("id", "singleton")
+      .maybeSingle();
+    const { data } = await Promise.race([
+      query,
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("auth logo size timeout")), timeoutMs);
+      }),
+    ]);
+    const found = walkBrandSize(data, "logo_size_auth", "logo_custom_auth");
     if (found.size == null && found.custom == null) return null;
     return logoSizeDims(normalizeLogoSize(found.size), clampLogoCustom(found.custom));
   } catch {

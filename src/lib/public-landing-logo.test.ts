@@ -3,11 +3,13 @@ import { describe, it } from "node:test";
 import { mergeBrandSurfaceLogos, resolvePublicLandingLogoUrl } from "./public-landing-logo.ts";
 import {
   parseAuthLogoCookie,
+  parseAuthLogoSizeCookie,
   parseLandingLogoCookie,
   parseLandingLogoSizeCookie,
   sanitizeLandingLogoCookieUrl,
   sanitizeLandingLogoSizeCookie,
 } from "./landing-logo-cookie.ts";
+import { applyAuthLogoDims } from "./landing-config.ts";
 
 const APP = "https://cdn.example/app-mark.png";
 const LANDING = "https://cdn.example/landing-mark.png";
@@ -102,5 +104,29 @@ describe("landing logo cookie", () => {
     assert.deepEqual(parseLandingLogoSizeCookie("pmo_lsz=56x280"), { heightPx: 56, maxWidthPx: 280 });
     assert.equal(sanitizeLandingLogoSizeCookie("32x160")?.heightPx, 32);
     assert.equal(sanitizeLandingLogoSizeCookie("9x9"), null);
+  });
+
+  it("reads configured auth mark size", () => {
+    assert.deepEqual(parseAuthLogoSizeCookie("pmo_lsz=32x160; pmo_asz=56x280"), {
+      heightPx: 56,
+      maxWidthPx: 280,
+    });
+    assert.equal(parseAuthLogoSizeCookie("pmo_lsz=32x160"), null);
+  });
+});
+
+describe("applyAuthLogoDims", () => {
+  it("bakes the configured size so first paint matches the proper login mark", () => {
+    const next = applyAuthLogoDims(
+      { logo_size_auth: "lg", logo_custom_auth: { heightPx: 48, maxWidthPx: 220 } },
+      { heightPx: 56, maxWidthPx: 280 },
+    );
+    assert.equal(next.logo_size_auth, "custom");
+    assert.deepEqual(next.logo_custom_auth, { heightPx: 56, maxWidthPx: 280 });
+  });
+
+  it("leaves the brand unchanged when no size is stored yet", () => {
+    const brand = { logo_size_auth: "lg" as const, logo_custom_auth: { heightPx: 48, maxWidthPx: 220 } };
+    assert.equal(applyAuthLogoDims(brand, null), brand);
   });
 });

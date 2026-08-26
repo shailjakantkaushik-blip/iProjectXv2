@@ -9,7 +9,6 @@ import {
 } from "@/lib/landing-config";
 import { applyFaviconHref, DEFAULT_FAVICON_HREF } from "@/lib/favicon";
 import { PUBLIC_AUTH_LOGO_HREF } from "@/lib/live-landing-logo";
-import { sanitizeLandingLogoCookieUrl } from "@/lib/landing-logo-cookie";
 
 export type AuthBrand = {
   name: string;
@@ -83,8 +82,9 @@ function LogoMark({
         src={logoUrl}
         alt={`${name} logo`}
         height={dims.heightPx}
+        width={dims.maxWidthPx}
         className="w-auto object-contain"
-        style={{ height: dims.heightPx, maxWidth: dims.maxWidthPx }}
+        style={{ height: dims.heightPx, maxWidth: dims.maxWidthPx, width: "auto" }}
         fetchPriority="high"
         decoding="sync"
       />
@@ -117,10 +117,10 @@ export function AuthLayout({
   // White-label only when the dedicated org login link was used (?org=).
   const useOrg = Boolean(brandReady && orgRequested && org);
   const displayName = useOrg && org ? org.name : platform.name || "iProjectX";
+  // Platform login always uses the same-origin auth file. Swapping to a CDN
+  // URL after hydrate is the small packaged mark → proper logo flicker.
   const displayLogo =
-    useOrg && org?.logo_url
-      ? org.logo_url
-      : sanitizeLandingLogoCookieUrl(platform.logo_url) || PUBLIC_AUTH_LOGO_HREF;
+    useOrg && org?.logo_url ? org.logo_url : PUBLIC_AUTH_LOGO_HREF;
   const tagline = platform.tagline || "Enterprise PMO Command Center";
   const logoSize: LogoDisplaySize =
     useOrg && org?.logo_size_auth
