@@ -588,6 +588,15 @@ body {
 }
 
 /*
+ * Mobile Safari clips Cloudflare Turnstile's challenge iframe when html/body
+ * use overflow-x: hidden. Auth pages must let the widget complete.
+ */
+html:has([data-auth-layout]),
+html:has([data-auth-layout]) body {
+  overflow-x: visible;
+}
+
+/*
  * Paint budget: mobile already felt faster because ≤1024px skipped fixed
  * backgrounds + glass blur. Apply the same mitigations on laptop/desktop —
  * those effects were the main asymmetry, not the data layer.
