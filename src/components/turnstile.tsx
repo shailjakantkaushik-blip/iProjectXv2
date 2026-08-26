@@ -79,7 +79,7 @@ function loadScript(): Promise<void> {
 }
 
 /** Safari can fire script load before window.turnstile is attached. */
-function waitForTurnstile(timeoutMs = 4000): Promise<void> {
+function waitForTurnstile(timeoutMs = 12000): Promise<void> {
   return loadScript().then(() => {
     if (typeof window !== "undefined" && window.turnstile) return;
     return new Promise((resolve, reject) => {
@@ -95,6 +95,10 @@ function waitForTurnstile(timeoutMs = 4000): Promise<void> {
       }, 40);
     });
   });
+}
+
+if (typeof window !== "undefined") {
+  void loadScript();
 }
 
 interface Props {
@@ -113,11 +117,15 @@ interface Props {
  * Callbacks are held in refs so parent re-renders do not remount/reset the
  * challenge (which felt like the login page "refreshing").
  * Memoized so auth form state updates (e.g. token stored) do not recreate the iframe.
+ *
+ * Never replace the host node with an error-only tree — that unmounts the
+ * iframe. Mobile Safari is slow to paint it; tearing it down at 2.5s was why
+ * the checkbox never appeared.
  */
 export const TurnstileWidget = memo(function TurnstileWidget({
   onToken,
   onExpire,
-  theme = "auto",
+  theme = "light",
   resetNonce = 0,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -140,23 +148,12 @@ export const TurnstileWidget = memo(function TurnstileWidget({
   useEffect(() => {
     if (!siteKey || !containerRef.current) return;
     let cancelled = false;
-    let watchdog = 0;
     setError(null);
     const measureSize = () => {
       const el = containerRef.current;
       const host = el?.parentElement?.clientWidth || el?.clientWidth || 0;
       const viewport = typeof window !== "undefined" ? window.innerWidth : 0;
       return turnstileSizeForHost(host, viewport, readIosSafari());
-    };
-    const revealIframe = () => {
-      const iframe = containerRef.current?.querySelector("iframe");
-      if (iframe) {
-        iframe.setAttribute("loading", "eager");
-        iframe.style.maxWidth = "100%";
-        iframe.style.display = "block";
-        return true;
-      }
-      return false;
     };
     const mount = () => {
       if (cancelled || !window.turnstile || !containerRef.current) return;
@@ -190,13 +187,6 @@ export const TurnstileWidget = memo(function TurnstileWidget({
         },
       });
       prevResetNonceRef.current = resetNonce;
-      revealIframe();
-      watchdog = window.setTimeout(() => {
-        if (cancelled) return;
-        if (!revealIframe()) {
-          setError("Cloudflare check did not appear. Tap to retry.");
-        }
-      }, 2500);
     };
     waitForTurnstile()
       .then(mount)
@@ -205,7 +195,6 @@ export const TurnstileWidget = memo(function TurnstileWidget({
       });
     return () => {
       cancelled = true;
-      if (watchdog) window.clearTimeout(watchdog);
       if (widgetIdRef.current && window.turnstile) {
         try {
           window.turnstile.remove(widgetIdRef.current);
@@ -230,10 +219,14 @@ export const TurnstileWidget = memo(function TurnstileWidget({
 
   if (!siteKey) return null;
 
-  if (error) {
-    return (
-      <div className="flex min-h-[65px] w-full min-w-0 flex-col items-center justify-center gap-2 text-center">
-        <p className="text-xs text-muted-foreground">{error}</p>
+  return (
+    <div className="turnstile-host flex w-full min-w-0 flex-col items-center justify-center gap-1 overflow-visible [filter:none] [transform:none]">
+      <div
+        ref={containerRef}
+        className="mx-auto block max-w-full overflow-visible rounded-md bg-muted/40"
+        style={{ width: box.widthPx, minHeight: box.heightPx }}
+      />
+      {error ? (
         <button
           type="button"
           className="text-xs font-medium text-primary hover:underline"
@@ -243,22 +236,13 @@ export const TurnstileWidget = memo(function TurnstileWidget({
             setRetry((n) => n + 1);
           }}
         >
-          Retry Cloudflare check
+          {error} Retry
         </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="turnstile-host flex w-full min-w-0 flex-col items-center justify-center gap-1 overflow-visible [filter:none] [transform:none]">
-      <div
-        ref={containerRef}
-        className="mx-auto block max-w-full overflow-visible"
-        style={{ width: box.widthPx, minHeight: box.heightPx }}
-      />
-      <p className="text-[10px] text-muted-foreground">
-        Secured by Cloudflare — complete the check before signing in.
-      </p>
+      ) : (
+        <p className="text-[10px] text-muted-foreground">
+          Secured by Cloudflare — complete the check before signing in.
+        </p>
+      )}
     </div>
   );
 });

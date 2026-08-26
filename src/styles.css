@@ -587,18 +587,11 @@ body {
   min-height: 100%;
 }
 
-/*
- * Mobile Safari clips Cloudflare Turnstile's challenge iframe when html/body
- * use overflow-x: hidden. Auth pages must let the widget complete.
- */
-html:has([data-auth-layout]),
-html:has([data-auth-layout]) body {
-  overflow-x: visible;
-}
-
 .turnstile-host iframe {
-  display: block;
+  display: block !important;
   max-width: 100%;
+  visibility: visible !important;
+  opacity: 1 !important;
 }
 
 /*

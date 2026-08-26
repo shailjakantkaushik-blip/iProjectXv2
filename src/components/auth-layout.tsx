@@ -9,6 +9,7 @@ import {
 } from "@/lib/landing-config";
 import { applyFaviconHref, DEFAULT_FAVICON_HREF } from "@/lib/favicon";
 import { PUBLIC_AUTH_LOGO_HREF } from "@/lib/live-landing-logo";
+import { TURNSTILE_SRC } from "@/components/turnstile";
 
 export type AuthBrand = {
   name: string;
@@ -200,6 +201,8 @@ export function AuthLayout({
       data-auth-layout=""
       className={cn("flex min-h-screen overflow-x-visible bg-background", className)}
     >
+      {/* Start Turnstile during HTML parse — Mobile Safari is too late if we wait for React. */}
+      <script src={TURNSTILE_SRC} async />
       {/* Brand panel — desktop */}
       <aside
         className="relative hidden w-[44%] max-w-xl flex-col justify-between overflow-x-hidden px-10 py-10 lg:flex xl:w-[46%]"

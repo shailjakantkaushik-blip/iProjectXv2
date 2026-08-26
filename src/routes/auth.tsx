@@ -147,6 +147,7 @@ export const Route = createFileRoute("/auth")({
         href: loaderData?.platformBrand.logo_url || PUBLIC_AUTH_LOGO_HREF,
       },
     ],
+    scripts: [{ src: TURNSTILE_SRC, async: true }],
   }),
   loader: async ({ deps }): Promise<AuthLoaderData> => loadAuthPublicConfig(deps.org),
   staleTime: 60_000,
