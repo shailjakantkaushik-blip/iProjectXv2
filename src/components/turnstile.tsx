@@ -50,10 +50,6 @@ function readIosSafari(): boolean {
   );
 }
 
-function initialTurnstileSize(): TurnstileWidgetSize {
-  return readIosSafari() ? "compact" : "normal";
-}
-
 function loadScript(): Promise<void> {
   if (typeof window === "undefined") return Promise.resolve();
   if (window.turnstile) return Promise.resolve();
