@@ -3,22 +3,53 @@ export type TurnstileWidgetSize = "normal" | "compact";
 /** Cloudflare `normal` is the standard 300×65 checkbox. `flexible` stretches into a large block. */
 export const TURNSTILE_NORMAL_WIDTH_PX = 300;
 
+/** Tailwind `sm` — phones and large phones, including iPhone Pro Max (~430). */
+export const TURNSTILE_PHONE_VIEWPORT_PX = 640;
+
 /**
- * Prefer the viewport so card padding does not force the square compact widget
- * on typical phones. The 300×65 checkbox still fits a 320px screen.
+ * iOS / iPadOS WebKit (every iOS browser). Used to force the compact widget so
+ * the interactive challenge is not clipped by Mobile Safari.
  */
-export function turnstileHostWidth(containerPx: number, viewportPx: number): number {
-  const host = containerPx > 0 ? containerPx : 0;
-  const viewport = viewportPx > 0 ? viewportPx : 0;
-  return Math.max(host, viewport);
+export function isIosWebKit(
+  userAgent: string,
+  platform: string,
+  maxTouchPoints: number,
+): boolean {
+  const ua = userAgent || "";
+  if (/iP(hone|od|ad)/.test(ua)) return true;
+  return platform === "MacIntel" && maxTouchPoints > 1;
 }
 
 /**
  * Pick the official Turnstile size for the host card.
- * Use `normal` (standard login widget) whenever it fits; `compact` only on
- * very narrow phones so the iframe is not clipped. Never `flexible` — that
- * fills the form and looks like a large square.
+ *
+ * Phones and iOS Safari use `compact` (130×120). The 300×65 `normal` widget
+ * plus Cloudflare's follow-up challenge is clipped by Mobile Safari when the
+ * page uses overflow-x clipping. Never `flexible` — that fills the form and
+ * looks like a large square.
  */
+export function turnstileSizeForHost(
+  containerPx: number,
+  viewportPx: number,
+  iosWebKit = false,
+): TurnstileWidgetSize {
+  if (iosWebKit) return "compact";
+  if (viewportPx > 0 && viewportPx < TURNSTILE_PHONE_VIEWPORT_PX) return "compact";
+  if (containerPx > 0 && containerPx < TURNSTILE_NORMAL_WIDTH_PX) return "compact";
+  return "normal";
+}
+
+/** @deprecated Prefer turnstileSizeForHost — kept for existing imports. */
 export function turnstileSizeForWidth(widthPx: number): TurnstileWidgetSize {
-  return widthPx > 0 && widthPx < TURNSTILE_NORMAL_WIDTH_PX ? "compact" : "normal";
+  return turnstileSizeForHost(widthPx, widthPx);
+}
+
+/**
+ * Host width used only when we still need a single number (tests / callers).
+ * Prefer the actual card so padding can select compact; viewport is a fallback
+ * when the card has not laid out yet.
+ */
+export function turnstileHostWidth(containerPx: number, viewportPx: number): number {
+  if (containerPx > 0) return containerPx;
+  return viewportPx > 0 ? viewportPx : 0;
 }

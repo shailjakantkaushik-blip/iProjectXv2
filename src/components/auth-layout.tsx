@@ -196,7 +196,10 @@ export function AuthLayout({
   };
 
   return (
-    <div className={cn("flex min-h-screen max-w-[100vw] bg-background", className)}>
+    <div
+      data-auth-layout=""
+      className={cn("flex min-h-screen overflow-x-visible bg-background", className)}
+    >
       {/* Brand panel — desktop */}
       <aside
         className="relative hidden w-[44%] max-w-xl flex-col justify-between overflow-x-hidden px-10 py-10 lg:flex xl:w-[46%]"
@@ -315,7 +318,7 @@ export function AuthLayout({
               )}
             </div>
 
-            <div className="rounded-xl border border-border/80 bg-card/80 p-5 shadow-sm backdrop-blur-sm sm:p-6">
+            <div className="overflow-visible rounded-xl border border-border/80 bg-card p-5 shadow-sm sm:p-6">
               {children}
             </div>
 

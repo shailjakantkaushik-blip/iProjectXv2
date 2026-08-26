@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
-import { turnstileHostWidth, turnstileSizeForWidth } from "@/lib/turnstile-size";
+import { isIosWebKit, turnstileSizeForHost } from "@/lib/turnstile-size";
 
-export { turnstileSizeForWidth } from "@/lib/turnstile-size";
+export { turnstileSizeForHost, turnstileSizeForWidth } from "@/lib/turnstile-size";
 
 export const TURNSTILE_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 
@@ -101,11 +101,14 @@ export const TurnstileWidget = memo(function TurnstileWidget({
     if (!siteKey || !containerRef.current) return;
     let cancelled = false;
     setError(null);
-    const measureWidth = () => {
+    const measureSize = () => {
       const el = containerRef.current;
       const host = el?.parentElement?.clientWidth || el?.clientWidth || 0;
       const viewport = typeof window !== "undefined" ? window.innerWidth : 0;
-      return turnstileHostWidth(host, viewport);
+      const iosWebKit =
+        typeof navigator !== "undefined" &&
+        isIosWebKit(navigator.userAgent, navigator.platform, navigator.maxTouchPoints || 0);
+      return turnstileSizeForHost(host, viewport, iosWebKit);
     };
     const mount = () => {
       if (cancelled || !window.turnstile || !containerRef.current) return;
@@ -117,12 +120,14 @@ export const TurnstileWidget = memo(function TurnstileWidget({
         }
         widgetIdRef.current = null;
       }
-      const size = turnstileSizeForWidth(measureWidth());
+      const size = measureSize();
       widgetIdRef.current = window.turnstile.render(containerRef.current, {
         sitekey: siteKey,
         theme,
         size,
         appearance: "always",
+        retry: "auto",
+        "refresh-expired": "auto",
         callback: (token: string) => onTokenRef.current(token),
         "expired-callback": () => {
           onExpireRef.current?.();
@@ -192,7 +197,7 @@ export const TurnstileWidget = memo(function TurnstileWidget({
   }
 
   return (
-    <div className="flex min-h-[65px] w-full min-w-0 flex-col items-center justify-center gap-1 overflow-visible">
+    <div className="turnstile-host flex min-h-[65px] w-full min-w-0 flex-col items-center justify-center gap-1 overflow-visible [filter:none] [transform:none]">
       <div ref={containerRef} className="flex max-w-full justify-center overflow-visible" />
       <p className="text-[10px] text-muted-foreground">
         Secured by Cloudflare — complete the check before signing in.
