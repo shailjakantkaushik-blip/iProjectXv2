@@ -159,7 +159,7 @@ const E2E_APP_PATHS = [
   "/platform/testing",
 ];
 
-const PERF_PATHS = ["/", "/auth", "/contact", "/api/public/landing-logo"];
+const PERF_PATHS = ["/", "/auth", "/contact", "/brand/landing.webp", "/api/public/landing-logo"];
 
 /** Concurrent GETs per public path. Hard cap so the server function cannot become a self-DoS. */
 const LOAD_CONCURRENCY = 8;
@@ -427,7 +427,11 @@ export async function runPlatformCommercialSuite(deps: PlatformSuiteDeps): Promi
               must(page.status === 200, `status ${page.status}`);
               noTenantLeak(page.body, path);
               if (path === "/") {
-                must(page.body.includes("/api/public/landing-logo"), "landing logo img missing");
+                must(
+                  page.body.includes("/brand/landing.webp") ||
+                    page.body.includes("/api/public/landing-logo"),
+                  "landing logo img missing",
+                );
                 must(page.body.includes("landing-nav-open"), "native mobile menu missing");
               }
               return "200 · no tenant SSR leak";

@@ -19,12 +19,15 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as AuthenticatedAppRouteImport } from './routes/_authenticated/app'
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated/onboarding'
 import { Route as AuthenticatedPlatformRouteImport } from './routes/_authenticated/platform'
+import { Route as BrandAuthDotwebpRouteImport } from './routes/brand/auth[.]webp'
+import { Route as BrandLandingDotwebpRouteImport } from './routes/brand/landing[.]webp'
 import { Route as LegalSlugRouteImport } from './routes/legal.$slug'
 import { Route as AuthenticatedAppIndexRouteImport } from './routes/_authenticated/app.index'
 import { Route as AuthenticatedAppAboutRouteImport } from './routes/_authenticated/app.about'
 import { Route as AuthenticatedAppActionsRouteImport } from './routes/_authenticated/app.actions'
 import { Route as AuthenticatedAppAgileRouteImport } from './routes/_authenticated/app.agile'
 import { Route as AuthenticatedAppAiAssistRouteImport } from './routes/_authenticated/app.ai-assist'
+import { Route as AuthenticatedAppAlertEmailsRouteImport } from './routes/_authenticated/app.alert-emails'
 import { Route as AuthenticatedAppAuditLogRouteImport } from './routes/_authenticated/app.audit-log'
 import { Route as AuthenticatedAppBenefitsRouteImport } from './routes/_authenticated/app.benefits'
 import { Route as AuthenticatedAppBillingRouteImport } from './routes/_authenticated/app.billing'
@@ -78,7 +81,6 @@ import { Route as AuthenticatedAppRoadmapGovernanceRouteImport } from './routes/
 import { Route as AuthenticatedAppScenariosRouteImport } from './routes/_authenticated/app.scenarios'
 import { Route as AuthenticatedAppScheduleCpmRouteImport } from './routes/_authenticated/app.schedule-cpm'
 import { Route as AuthenticatedAppSettingsRouteImport } from './routes/_authenticated/app.settings'
-import { Route as AuthenticatedAppAlertEmailsRouteImport } from './routes/_authenticated/app.alert-emails'
 import { Route as AuthenticatedAppStageGateConfigRouteImport } from './routes/_authenticated/app.stage-gate-config'
 import { Route as AuthenticatedAppStageGatesRouteImport } from './routes/_authenticated/app.stage-gates'
 import { Route as AuthenticatedAppStakeholdersRouteImport } from './routes/_authenticated/app.stakeholders'
@@ -89,6 +91,7 @@ import { Route as AuthenticatedAppTimelineRouteImport } from './routes/_authenti
 import { Route as AuthenticatedAppTimesheetsRouteImport } from './routes/_authenticated/app.timesheets'
 import { Route as AuthenticatedAppWorkBoardRouteImport } from './routes/_authenticated/app.work-board'
 import { Route as AuthenticatedAppWorkItemsRouteImport } from './routes/_authenticated/app.work-items'
+import { Route as AuthenticatedPlatformAlertEmailsRouteImport } from './routes/_authenticated/platform.alert-emails'
 import { Route as AuthenticatedPlatformBrandingRouteImport } from './routes/_authenticated/platform.branding'
 import { Route as AuthenticatedPlatformEoiRouteImport } from './routes/_authenticated/platform.eoi'
 import { Route as AuthenticatedPlatformExpensesRouteImport } from './routes/_authenticated/platform.expenses'
@@ -105,21 +108,20 @@ import { Route as AuthenticatedPlatformPoliciesRouteImport } from './routes/_aut
 import { Route as AuthenticatedPlatformProjectPurgeRouteImport } from './routes/_authenticated/platform.project-purge'
 import { Route as AuthenticatedPlatformRolesRouteImport } from './routes/_authenticated/platform.roles'
 import { Route as AuthenticatedPlatformSecurityRouteImport } from './routes/_authenticated/platform.security'
-import { Route as AuthenticatedPlatformTestingRouteImport } from './routes/_authenticated/platform.testing'
 import { Route as AuthenticatedPlatformSettingsRouteImport } from './routes/_authenticated/platform.settings'
-import { Route as AuthenticatedPlatformAlertEmailsRouteImport } from './routes/_authenticated/platform.alert-emails'
 import { Route as AuthenticatedPlatformSubscriptionsRouteImport } from './routes/_authenticated/platform.subscriptions'
 import { Route as AuthenticatedPlatformSupportRouteImport } from './routes/_authenticated/platform.support'
+import { Route as AuthenticatedPlatformTestingRouteImport } from './routes/_authenticated/platform.testing'
+import { Route as ApiPublicLandingLogoRouteImport } from './routes/api/public/landing-logo'
 import { Route as OSlugLoginRouteImport } from './routes/o.$slug.login'
 import { Route as AuthenticatedAppInvoiceIdRouteImport } from './routes/_authenticated/app.invoice.$id'
 import { Route as AuthenticatedAppProjectsIndexRouteImport } from './routes/_authenticated/app.projects.index'
 import { Route as AuthenticatedAppProjectsIdRouteImport } from './routes/_authenticated/app.projects.$id'
 import { Route as AuthenticatedAppProjectsNewRouteImport } from './routes/_authenticated/app.projects.new'
 import { Route as AuthenticatedPlatformInvoiceIdRouteImport } from './routes/_authenticated/platform.invoice.$id'
-import { Route as ApiPublicHooksBillingRunRouteImport } from './routes/api/public/hooks/billing-run'
 import { Route as ApiPublicHooksAlertsDigestRouteImport } from './routes/api/public/hooks/alerts-digest'
+import { Route as ApiPublicHooksBillingRunRouteImport } from './routes/api/public/hooks/billing-run'
 import { Route as ApiPublicHooksIntegrationWebhookRouteImport } from './routes/api/public/hooks/integration-webhook'
-import { Route as ApiPublicLandingLogoRouteImport } from './routes/api/public/landing-logo'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -170,6 +172,16 @@ const AuthenticatedPlatformRoute = AuthenticatedPlatformRouteImport.update({
   path: '/platform',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const BrandAuthDotwebpRoute = BrandAuthDotwebpRouteImport.update({
+  id: '/brand/auth.webp',
+  path: '/brand/auth.webp',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BrandLandingDotwebpRoute = BrandLandingDotwebpRouteImport.update({
+  id: '/brand/landing.webp',
+  path: '/brand/landing.webp',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LegalSlugRoute = LegalSlugRouteImport.update({
   id: '/legal/$slug',
   path: '/legal/$slug',
@@ -199,6 +211,12 @@ const AuthenticatedAppAiAssistRoute =
   AuthenticatedAppAiAssistRouteImport.update({
     id: '/ai-assist',
     path: '/ai-assist',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
+const AuthenticatedAppAlertEmailsRoute =
+  AuthenticatedAppAlertEmailsRouteImport.update({
+    id: '/alert-emails',
+    path: '/alert-emails',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
 const AuthenticatedAppAuditLogRoute =
@@ -512,12 +530,6 @@ const AuthenticatedAppSettingsRoute =
     path: '/settings',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
-const AuthenticatedAppAlertEmailsRoute =
-  AuthenticatedAppAlertEmailsRouteImport.update({
-    id: '/alert-emails',
-    path: '/alert-emails',
-    getParentRoute: () => AuthenticatedAppRoute,
-  } as any)
 const AuthenticatedAppStageGateConfigRoute =
   AuthenticatedAppStageGateConfigRouteImport.update({
     id: '/stage-gate-config',
@@ -575,6 +587,12 @@ const AuthenticatedAppWorkItemsRoute =
     id: '/work-items',
     path: '/work-items',
     getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
+const AuthenticatedPlatformAlertEmailsRoute =
+  AuthenticatedPlatformAlertEmailsRouteImport.update({
+    id: '/alert-emails',
+    path: '/alert-emails',
+    getParentRoute: () => AuthenticatedPlatformRoute,
   } as any)
 const AuthenticatedPlatformBrandingRoute =
   AuthenticatedPlatformBrandingRouteImport.update({
@@ -672,22 +690,10 @@ const AuthenticatedPlatformSecurityRoute =
     path: '/security',
     getParentRoute: () => AuthenticatedPlatformRoute,
   } as any)
-const AuthenticatedPlatformTestingRoute =
-  AuthenticatedPlatformTestingRouteImport.update({
-    id: '/testing',
-    path: '/testing',
-    getParentRoute: () => AuthenticatedPlatformRoute,
-  } as any)
 const AuthenticatedPlatformSettingsRoute =
   AuthenticatedPlatformSettingsRouteImport.update({
     id: '/settings',
     path: '/settings',
-    getParentRoute: () => AuthenticatedPlatformRoute,
-  } as any)
-const AuthenticatedPlatformAlertEmailsRoute =
-  AuthenticatedPlatformAlertEmailsRouteImport.update({
-    id: '/alert-emails',
-    path: '/alert-emails',
     getParentRoute: () => AuthenticatedPlatformRoute,
   } as any)
 const AuthenticatedPlatformSubscriptionsRoute =
@@ -702,6 +708,17 @@ const AuthenticatedPlatformSupportRoute =
     path: '/support',
     getParentRoute: () => AuthenticatedPlatformRoute,
   } as any)
+const AuthenticatedPlatformTestingRoute =
+  AuthenticatedPlatformTestingRouteImport.update({
+    id: '/testing',
+    path: '/testing',
+    getParentRoute: () => AuthenticatedPlatformRoute,
+  } as any)
+const ApiPublicLandingLogoRoute = ApiPublicLandingLogoRouteImport.update({
+  id: '/api/public/landing-logo',
+  path: '/api/public/landing-logo',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OSlugLoginRoute = OSlugLoginRouteImport.update({
   id: '/o/$slug/login',
   path: '/o/$slug/login',
@@ -737,16 +754,16 @@ const AuthenticatedPlatformInvoiceIdRoute =
     path: '/invoice/$id',
     getParentRoute: () => AuthenticatedPlatformRoute,
   } as any)
-const ApiPublicHooksBillingRunRoute =
-  ApiPublicHooksBillingRunRouteImport.update({
-    id: '/api/public/hooks/billing-run',
-    path: '/api/public/hooks/billing-run',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const ApiPublicHooksAlertsDigestRoute =
   ApiPublicHooksAlertsDigestRouteImport.update({
     id: '/api/public/hooks/alerts-digest',
     path: '/api/public/hooks/alerts-digest',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicHooksBillingRunRoute =
+  ApiPublicHooksBillingRunRouteImport.update({
+    id: '/api/public/hooks/billing-run',
+    path: '/api/public/hooks/billing-run',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiPublicHooksIntegrationWebhookRoute =
@@ -755,11 +772,6 @@ const ApiPublicHooksIntegrationWebhookRoute =
     path: '/api/public/hooks/integration-webhook',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiPublicLandingLogoRoute = ApiPublicLandingLogoRouteImport.update({
-  id: '/api/public/landing-logo',
-  path: '/api/public/landing-logo',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -771,11 +783,14 @@ export interface FileRoutesByFullPath {
   '/app': typeof AuthenticatedAppRouteWithChildren
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/platform': typeof AuthenticatedPlatformRouteWithChildren
+  '/brand/auth.webp': typeof BrandAuthDotwebpRoute
+  '/brand/landing.webp': typeof BrandLandingDotwebpRoute
   '/legal/$slug': typeof LegalSlugRoute
   '/app/about': typeof AuthenticatedAppAboutRoute
   '/app/actions': typeof AuthenticatedAppActionsRoute
   '/app/agile': typeof AuthenticatedAppAgileRoute
   '/app/ai-assist': typeof AuthenticatedAppAiAssistRoute
+  '/app/alert-emails': typeof AuthenticatedAppAlertEmailsRoute
   '/app/audit-log': typeof AuthenticatedAppAuditLogRoute
   '/app/benefits': typeof AuthenticatedAppBenefitsRoute
   '/app/billing': typeof AuthenticatedAppBillingRoute
@@ -829,7 +844,6 @@ export interface FileRoutesByFullPath {
   '/app/scenarios': typeof AuthenticatedAppScenariosRoute
   '/app/schedule-cpm': typeof AuthenticatedAppScheduleCpmRoute
   '/app/settings': typeof AuthenticatedAppSettingsRoute
-  '/app/alert-emails': typeof AuthenticatedAppAlertEmailsRoute
   '/app/stage-gate-config': typeof AuthenticatedAppStageGateConfigRoute
   '/app/stage-gates': typeof AuthenticatedAppStageGatesRoute
   '/app/stakeholders': typeof AuthenticatedAppStakeholdersRoute
@@ -840,6 +854,7 @@ export interface FileRoutesByFullPath {
   '/app/timesheets': typeof AuthenticatedAppTimesheetsRoute
   '/app/work-board': typeof AuthenticatedAppWorkBoardRoute
   '/app/work-items': typeof AuthenticatedAppWorkItemsRoute
+  '/platform/alert-emails': typeof AuthenticatedPlatformAlertEmailsRoute
   '/platform/branding': typeof AuthenticatedPlatformBrandingRoute
   '/platform/eoi': typeof AuthenticatedPlatformEoiRoute
   '/platform/expenses': typeof AuthenticatedPlatformExpensesRoute
@@ -856,21 +871,20 @@ export interface FileRoutesByFullPath {
   '/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
   '/platform/roles': typeof AuthenticatedPlatformRolesRoute
   '/platform/security': typeof AuthenticatedPlatformSecurityRoute
-  '/platform/testing': typeof AuthenticatedPlatformTestingRoute
   '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
-  '/platform/alert-emails': typeof AuthenticatedPlatformAlertEmailsRoute
   '/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
   '/platform/support': typeof AuthenticatedPlatformSupportRoute
+  '/platform/testing': typeof AuthenticatedPlatformTestingRoute
+  '/api/public/landing-logo': typeof ApiPublicLandingLogoRoute
   '/o/$slug/login': typeof OSlugLoginRoute
   '/app/': typeof AuthenticatedAppIndexRoute
   '/app/invoice/$id': typeof AuthenticatedAppInvoiceIdRoute
   '/app/projects/$id': typeof AuthenticatedAppProjectsIdRoute
   '/app/projects/new': typeof AuthenticatedAppProjectsNewRoute
   '/platform/invoice/$id': typeof AuthenticatedPlatformInvoiceIdRoute
-  '/api/public/hooks/billing-run': typeof ApiPublicHooksBillingRunRoute
   '/api/public/hooks/alerts-digest': typeof ApiPublicHooksAlertsDigestRoute
+  '/api/public/hooks/billing-run': typeof ApiPublicHooksBillingRunRoute
   '/api/public/hooks/integration-webhook': typeof ApiPublicHooksIntegrationWebhookRoute
-  '/api/public/landing-logo': typeof ApiPublicLandingLogoRoute
   '/app/projects/': typeof AuthenticatedAppProjectsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -882,11 +896,14 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/platform': typeof AuthenticatedPlatformRouteWithChildren
+  '/brand/auth.webp': typeof BrandAuthDotwebpRoute
+  '/brand/landing.webp': typeof BrandLandingDotwebpRoute
   '/legal/$slug': typeof LegalSlugRoute
   '/app/about': typeof AuthenticatedAppAboutRoute
   '/app/actions': typeof AuthenticatedAppActionsRoute
   '/app/agile': typeof AuthenticatedAppAgileRoute
   '/app/ai-assist': typeof AuthenticatedAppAiAssistRoute
+  '/app/alert-emails': typeof AuthenticatedAppAlertEmailsRoute
   '/app/audit-log': typeof AuthenticatedAppAuditLogRoute
   '/app/benefits': typeof AuthenticatedAppBenefitsRoute
   '/app/billing': typeof AuthenticatedAppBillingRoute
@@ -939,7 +956,6 @@ export interface FileRoutesByTo {
   '/app/scenarios': typeof AuthenticatedAppScenariosRoute
   '/app/schedule-cpm': typeof AuthenticatedAppScheduleCpmRoute
   '/app/settings': typeof AuthenticatedAppSettingsRoute
-  '/app/alert-emails': typeof AuthenticatedAppAlertEmailsRoute
   '/app/stage-gate-config': typeof AuthenticatedAppStageGateConfigRoute
   '/app/stage-gates': typeof AuthenticatedAppStageGatesRoute
   '/app/stakeholders': typeof AuthenticatedAppStakeholdersRoute
@@ -950,6 +966,7 @@ export interface FileRoutesByTo {
   '/app/timesheets': typeof AuthenticatedAppTimesheetsRoute
   '/app/work-board': typeof AuthenticatedAppWorkBoardRoute
   '/app/work-items': typeof AuthenticatedAppWorkItemsRoute
+  '/platform/alert-emails': typeof AuthenticatedPlatformAlertEmailsRoute
   '/platform/branding': typeof AuthenticatedPlatformBrandingRoute
   '/platform/eoi': typeof AuthenticatedPlatformEoiRoute
   '/platform/expenses': typeof AuthenticatedPlatformExpensesRoute
@@ -966,21 +983,20 @@ export interface FileRoutesByTo {
   '/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
   '/platform/roles': typeof AuthenticatedPlatformRolesRoute
   '/platform/security': typeof AuthenticatedPlatformSecurityRoute
-  '/platform/testing': typeof AuthenticatedPlatformTestingRoute
   '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
-  '/platform/alert-emails': typeof AuthenticatedPlatformAlertEmailsRoute
   '/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
   '/platform/support': typeof AuthenticatedPlatformSupportRoute
+  '/platform/testing': typeof AuthenticatedPlatformTestingRoute
+  '/api/public/landing-logo': typeof ApiPublicLandingLogoRoute
   '/o/$slug/login': typeof OSlugLoginRoute
   '/app': typeof AuthenticatedAppIndexRoute
   '/app/invoice/$id': typeof AuthenticatedAppInvoiceIdRoute
   '/app/projects/$id': typeof AuthenticatedAppProjectsIdRoute
   '/app/projects/new': typeof AuthenticatedAppProjectsNewRoute
   '/platform/invoice/$id': typeof AuthenticatedPlatformInvoiceIdRoute
-  '/api/public/hooks/billing-run': typeof ApiPublicHooksBillingRunRoute
   '/api/public/hooks/alerts-digest': typeof ApiPublicHooksAlertsDigestRoute
+  '/api/public/hooks/billing-run': typeof ApiPublicHooksBillingRunRoute
   '/api/public/hooks/integration-webhook': typeof ApiPublicHooksIntegrationWebhookRoute
-  '/api/public/landing-logo': typeof ApiPublicLandingLogoRoute
   '/app/projects': typeof AuthenticatedAppProjectsIndexRoute
 }
 export interface FileRoutesById {
@@ -995,11 +1011,14 @@ export interface FileRoutesById {
   '/_authenticated/app': typeof AuthenticatedAppRouteWithChildren
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
   '/_authenticated/platform': typeof AuthenticatedPlatformRouteWithChildren
+  '/brand/auth.webp': typeof BrandAuthDotwebpRoute
+  '/brand/landing.webp': typeof BrandLandingDotwebpRoute
   '/legal/$slug': typeof LegalSlugRoute
   '/_authenticated/app/about': typeof AuthenticatedAppAboutRoute
   '/_authenticated/app/actions': typeof AuthenticatedAppActionsRoute
   '/_authenticated/app/agile': typeof AuthenticatedAppAgileRoute
   '/_authenticated/app/ai-assist': typeof AuthenticatedAppAiAssistRoute
+  '/_authenticated/app/alert-emails': typeof AuthenticatedAppAlertEmailsRoute
   '/_authenticated/app/audit-log': typeof AuthenticatedAppAuditLogRoute
   '/_authenticated/app/benefits': typeof AuthenticatedAppBenefitsRoute
   '/_authenticated/app/billing': typeof AuthenticatedAppBillingRoute
@@ -1053,7 +1072,6 @@ export interface FileRoutesById {
   '/_authenticated/app/scenarios': typeof AuthenticatedAppScenariosRoute
   '/_authenticated/app/schedule-cpm': typeof AuthenticatedAppScheduleCpmRoute
   '/_authenticated/app/settings': typeof AuthenticatedAppSettingsRoute
-  '/_authenticated/app/alert-emails': typeof AuthenticatedAppAlertEmailsRoute
   '/_authenticated/app/stage-gate-config': typeof AuthenticatedAppStageGateConfigRoute
   '/_authenticated/app/stage-gates': typeof AuthenticatedAppStageGatesRoute
   '/_authenticated/app/stakeholders': typeof AuthenticatedAppStakeholdersRoute
@@ -1064,6 +1082,7 @@ export interface FileRoutesById {
   '/_authenticated/app/timesheets': typeof AuthenticatedAppTimesheetsRoute
   '/_authenticated/app/work-board': typeof AuthenticatedAppWorkBoardRoute
   '/_authenticated/app/work-items': typeof AuthenticatedAppWorkItemsRoute
+  '/_authenticated/platform/alert-emails': typeof AuthenticatedPlatformAlertEmailsRoute
   '/_authenticated/platform/branding': typeof AuthenticatedPlatformBrandingRoute
   '/_authenticated/platform/eoi': typeof AuthenticatedPlatformEoiRoute
   '/_authenticated/platform/expenses': typeof AuthenticatedPlatformExpensesRoute
@@ -1080,21 +1099,20 @@ export interface FileRoutesById {
   '/_authenticated/platform/project-purge': typeof AuthenticatedPlatformProjectPurgeRoute
   '/_authenticated/platform/roles': typeof AuthenticatedPlatformRolesRoute
   '/_authenticated/platform/security': typeof AuthenticatedPlatformSecurityRoute
-  '/_authenticated/platform/testing': typeof AuthenticatedPlatformTestingRoute
   '/_authenticated/platform/settings': typeof AuthenticatedPlatformSettingsRoute
-  '/_authenticated/platform/alert-emails': typeof AuthenticatedPlatformAlertEmailsRoute
   '/_authenticated/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
   '/_authenticated/platform/support': typeof AuthenticatedPlatformSupportRoute
+  '/_authenticated/platform/testing': typeof AuthenticatedPlatformTestingRoute
+  '/api/public/landing-logo': typeof ApiPublicLandingLogoRoute
   '/o/$slug/login': typeof OSlugLoginRoute
   '/_authenticated/app/': typeof AuthenticatedAppIndexRoute
   '/_authenticated/app/invoice/$id': typeof AuthenticatedAppInvoiceIdRoute
   '/_authenticated/app/projects/$id': typeof AuthenticatedAppProjectsIdRoute
   '/_authenticated/app/projects/new': typeof AuthenticatedAppProjectsNewRoute
   '/_authenticated/platform/invoice/$id': typeof AuthenticatedPlatformInvoiceIdRoute
-  '/api/public/hooks/billing-run': typeof ApiPublicHooksBillingRunRoute
   '/api/public/hooks/alerts-digest': typeof ApiPublicHooksAlertsDigestRoute
+  '/api/public/hooks/billing-run': typeof ApiPublicHooksBillingRunRoute
   '/api/public/hooks/integration-webhook': typeof ApiPublicHooksIntegrationWebhookRoute
-  '/api/public/landing-logo': typeof ApiPublicLandingLogoRoute
   '/_authenticated/app/projects/': typeof AuthenticatedAppProjectsIndexRoute
 }
 export interface FileRouteTypes {
@@ -1109,11 +1127,14 @@ export interface FileRouteTypes {
     | '/app'
     | '/onboarding'
     | '/platform'
+    | '/brand/auth.webp'
+    | '/brand/landing.webp'
     | '/legal/$slug'
     | '/app/about'
     | '/app/actions'
     | '/app/agile'
     | '/app/ai-assist'
+    | '/app/alert-emails'
     | '/app/audit-log'
     | '/app/benefits'
     | '/app/billing'
@@ -1151,9 +1172,9 @@ export interface FileRouteTypes {
     | '/app/portfolio-pulse'
     | '/app/portfolio-segmentation'
     | '/app/prioritisation'
-    | '/app/project-forecast'
     | '/app/programs'
     | '/app/project-access'
+    | '/app/project-forecast'
     | '/app/project-infographic'
     | '/app/project-purge'
     | '/app/projects'
@@ -1167,7 +1188,6 @@ export interface FileRouteTypes {
     | '/app/scenarios'
     | '/app/schedule-cpm'
     | '/app/settings'
-    | '/app/alert-emails'
     | '/app/stage-gate-config'
     | '/app/stage-gates'
     | '/app/stakeholders'
@@ -1178,6 +1198,7 @@ export interface FileRouteTypes {
     | '/app/timesheets'
     | '/app/work-board'
     | '/app/work-items'
+    | '/platform/alert-emails'
     | '/platform/branding'
     | '/platform/eoi'
     | '/platform/expenses'
@@ -1194,21 +1215,20 @@ export interface FileRouteTypes {
     | '/platform/project-purge'
     | '/platform/roles'
     | '/platform/security'
-    | '/platform/testing'
     | '/platform/settings'
-    | '/platform/alert-emails'
     | '/platform/subscriptions'
     | '/platform/support'
+    | '/platform/testing'
+    | '/api/public/landing-logo'
     | '/o/$slug/login'
     | '/app/'
     | '/app/invoice/$id'
     | '/app/projects/$id'
     | '/app/projects/new'
     | '/platform/invoice/$id'
-    | '/api/public/hooks/billing-run'
     | '/api/public/hooks/alerts-digest'
+    | '/api/public/hooks/billing-run'
     | '/api/public/hooks/integration-webhook'
-    | '/api/public/landing-logo'
     | '/app/projects/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -1220,11 +1240,14 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/onboarding'
     | '/platform'
+    | '/brand/auth.webp'
+    | '/brand/landing.webp'
     | '/legal/$slug'
     | '/app/about'
     | '/app/actions'
     | '/app/agile'
     | '/app/ai-assist'
+    | '/app/alert-emails'
     | '/app/audit-log'
     | '/app/benefits'
     | '/app/billing'
@@ -1262,9 +1285,9 @@ export interface FileRouteTypes {
     | '/app/portfolio-pulse'
     | '/app/portfolio-segmentation'
     | '/app/prioritisation'
-    | '/app/project-forecast'
     | '/app/programs'
     | '/app/project-access'
+    | '/app/project-forecast'
     | '/app/project-infographic'
     | '/app/project-purge'
     | '/app/release-register'
@@ -1277,7 +1300,6 @@ export interface FileRouteTypes {
     | '/app/scenarios'
     | '/app/schedule-cpm'
     | '/app/settings'
-    | '/app/alert-emails'
     | '/app/stage-gate-config'
     | '/app/stage-gates'
     | '/app/stakeholders'
@@ -1288,6 +1310,7 @@ export interface FileRouteTypes {
     | '/app/timesheets'
     | '/app/work-board'
     | '/app/work-items'
+    | '/platform/alert-emails'
     | '/platform/branding'
     | '/platform/eoi'
     | '/platform/expenses'
@@ -1304,21 +1327,20 @@ export interface FileRouteTypes {
     | '/platform/project-purge'
     | '/platform/roles'
     | '/platform/security'
-    | '/platform/testing'
     | '/platform/settings'
-    | '/platform/alert-emails'
     | '/platform/subscriptions'
     | '/platform/support'
+    | '/platform/testing'
+    | '/api/public/landing-logo'
     | '/o/$slug/login'
     | '/app'
     | '/app/invoice/$id'
     | '/app/projects/$id'
     | '/app/projects/new'
     | '/platform/invoice/$id'
-    | '/api/public/hooks/billing-run'
     | '/api/public/hooks/alerts-digest'
+    | '/api/public/hooks/billing-run'
     | '/api/public/hooks/integration-webhook'
-    | '/api/public/landing-logo'
     | '/app/projects'
   id:
     | '__root__'
@@ -1332,11 +1354,14 @@ export interface FileRouteTypes {
     | '/_authenticated/app'
     | '/_authenticated/onboarding'
     | '/_authenticated/platform'
+    | '/brand/auth.webp'
+    | '/brand/landing.webp'
     | '/legal/$slug'
     | '/_authenticated/app/about'
     | '/_authenticated/app/actions'
     | '/_authenticated/app/agile'
     | '/_authenticated/app/ai-assist'
+    | '/_authenticated/app/alert-emails'
     | '/_authenticated/app/audit-log'
     | '/_authenticated/app/benefits'
     | '/_authenticated/app/billing'
@@ -1374,9 +1399,9 @@ export interface FileRouteTypes {
     | '/_authenticated/app/portfolio-pulse'
     | '/_authenticated/app/portfolio-segmentation'
     | '/_authenticated/app/prioritisation'
-    | '/_authenticated/app/project-forecast'
     | '/_authenticated/app/programs'
     | '/_authenticated/app/project-access'
+    | '/_authenticated/app/project-forecast'
     | '/_authenticated/app/project-infographic'
     | '/_authenticated/app/project-purge'
     | '/_authenticated/app/projects'
@@ -1390,7 +1415,6 @@ export interface FileRouteTypes {
     | '/_authenticated/app/scenarios'
     | '/_authenticated/app/schedule-cpm'
     | '/_authenticated/app/settings'
-    | '/_authenticated/app/alert-emails'
     | '/_authenticated/app/stage-gate-config'
     | '/_authenticated/app/stage-gates'
     | '/_authenticated/app/stakeholders'
@@ -1401,6 +1425,7 @@ export interface FileRouteTypes {
     | '/_authenticated/app/timesheets'
     | '/_authenticated/app/work-board'
     | '/_authenticated/app/work-items'
+    | '/_authenticated/platform/alert-emails'
     | '/_authenticated/platform/branding'
     | '/_authenticated/platform/eoi'
     | '/_authenticated/platform/expenses'
@@ -1417,21 +1442,20 @@ export interface FileRouteTypes {
     | '/_authenticated/platform/project-purge'
     | '/_authenticated/platform/roles'
     | '/_authenticated/platform/security'
-    | '/_authenticated/platform/testing'
     | '/_authenticated/platform/settings'
-    | '/_authenticated/platform/alert-emails'
     | '/_authenticated/platform/subscriptions'
     | '/_authenticated/platform/support'
+    | '/_authenticated/platform/testing'
+    | '/api/public/landing-logo'
     | '/o/$slug/login'
     | '/_authenticated/app/'
     | '/_authenticated/app/invoice/$id'
     | '/_authenticated/app/projects/$id'
     | '/_authenticated/app/projects/new'
     | '/_authenticated/platform/invoice/$id'
-    | '/api/public/hooks/billing-run'
     | '/api/public/hooks/alerts-digest'
+    | '/api/public/hooks/billing-run'
     | '/api/public/hooks/integration-webhook'
-    | '/api/public/landing-logo'
     | '/_authenticated/app/projects/'
   fileRoutesById: FileRoutesById
 }
@@ -1443,12 +1467,14 @@ export interface RootRouteChildren {
   ForcePasswordChangeRoute: typeof ForcePasswordChangeRoute
   MfaRoute: typeof MfaRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  BrandAuthDotwebpRoute: typeof BrandAuthDotwebpRoute
+  BrandLandingDotwebpRoute: typeof BrandLandingDotwebpRoute
   LegalSlugRoute: typeof LegalSlugRoute
-  OSlugLoginRoute: typeof OSlugLoginRoute
-  ApiPublicHooksBillingRunRoute: typeof ApiPublicHooksBillingRunRoute
-  ApiPublicHooksAlertsDigestRoute: typeof ApiPublicHooksAlertsDigestRoute
-  ApiPublicHooksIntegrationWebhookRoute: typeof ApiPublicHooksIntegrationWebhookRoute
   ApiPublicLandingLogoRoute: typeof ApiPublicLandingLogoRoute
+  OSlugLoginRoute: typeof OSlugLoginRoute
+  ApiPublicHooksAlertsDigestRoute: typeof ApiPublicHooksAlertsDigestRoute
+  ApiPublicHooksBillingRunRoute: typeof ApiPublicHooksBillingRunRoute
+  ApiPublicHooksIntegrationWebhookRoute: typeof ApiPublicHooksIntegrationWebhookRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -1523,6 +1549,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPlatformRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/brand/auth.webp': {
+      id: '/brand/auth.webp'
+      path: '/brand/auth.webp'
+      fullPath: '/brand/auth.webp'
+      preLoaderRoute: typeof BrandAuthDotwebpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/brand/landing.webp': {
+      id: '/brand/landing.webp'
+      path: '/brand/landing.webp'
+      fullPath: '/brand/landing.webp'
+      preLoaderRoute: typeof BrandLandingDotwebpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/legal/$slug': {
       id: '/legal/$slug'
       path: '/legal/$slug'
@@ -1563,6 +1603,13 @@ declare module '@tanstack/react-router' {
       path: '/ai-assist'
       fullPath: '/app/ai-assist'
       preLoaderRoute: typeof AuthenticatedAppAiAssistRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/app/alert-emails': {
+      id: '/_authenticated/app/alert-emails'
+      path: '/alert-emails'
+      fullPath: '/app/alert-emails'
+      preLoaderRoute: typeof AuthenticatedAppAlertEmailsRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
     '/_authenticated/app/audit-log': {
@@ -1824,13 +1871,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppPrioritisationRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
-    '/_authenticated/app/project-forecast': {
-      id: '/_authenticated/app/project-forecast'
-      path: '/project-forecast'
-      fullPath: '/app/project-forecast'
-      preLoaderRoute: typeof AuthenticatedAppProjectForecastRouteImport
-      parentRoute: typeof AuthenticatedAppRoute
-    }
     '/_authenticated/app/programs': {
       id: '/_authenticated/app/programs'
       path: '/programs'
@@ -1843,6 +1883,13 @@ declare module '@tanstack/react-router' {
       path: '/project-access'
       fullPath: '/app/project-access'
       preLoaderRoute: typeof AuthenticatedAppProjectAccessRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/app/project-forecast': {
+      id: '/_authenticated/app/project-forecast'
+      path: '/project-forecast'
+      fullPath: '/app/project-forecast'
+      preLoaderRoute: typeof AuthenticatedAppProjectForecastRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
     '/_authenticated/app/project-infographic': {
@@ -1936,13 +1983,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppSettingsRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
-    '/_authenticated/app/alert-emails': {
-      id: '/_authenticated/app/alert-emails'
-      path: '/alert-emails'
-      fullPath: '/app/alert-emails'
-      preLoaderRoute: typeof AuthenticatedAppAlertEmailsRouteImport
-      parentRoute: typeof AuthenticatedAppRoute
-    }
     '/_authenticated/app/stage-gate-config': {
       id: '/_authenticated/app/stage-gate-config'
       path: '/stage-gate-config'
@@ -2012,6 +2052,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/app/work-items'
       preLoaderRoute: typeof AuthenticatedAppWorkItemsRouteImport
       parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/platform/alert-emails': {
+      id: '/_authenticated/platform/alert-emails'
+      path: '/alert-emails'
+      fullPath: '/platform/alert-emails'
+      preLoaderRoute: typeof AuthenticatedPlatformAlertEmailsRouteImport
+      parentRoute: typeof AuthenticatedPlatformRoute
     }
     '/_authenticated/platform/branding': {
       id: '/_authenticated/platform/branding'
@@ -2125,25 +2172,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPlatformSecurityRouteImport
       parentRoute: typeof AuthenticatedPlatformRoute
     }
-    '/_authenticated/platform/testing': {
-      id: '/_authenticated/platform/testing'
-      path: '/testing'
-      fullPath: '/platform/testing'
-      preLoaderRoute: typeof AuthenticatedPlatformTestingRouteImport
-      parentRoute: typeof AuthenticatedPlatformRoute
-    }
     '/_authenticated/platform/settings': {
       id: '/_authenticated/platform/settings'
       path: '/settings'
       fullPath: '/platform/settings'
       preLoaderRoute: typeof AuthenticatedPlatformSettingsRouteImport
-      parentRoute: typeof AuthenticatedPlatformRoute
-    }
-    '/_authenticated/platform/alert-emails': {
-      id: '/_authenticated/platform/alert-emails'
-      path: '/alert-emails'
-      fullPath: '/platform/alert-emails'
-      preLoaderRoute: typeof AuthenticatedPlatformAlertEmailsRouteImport
       parentRoute: typeof AuthenticatedPlatformRoute
     }
     '/_authenticated/platform/subscriptions': {
@@ -2159,6 +2192,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/platform/support'
       preLoaderRoute: typeof AuthenticatedPlatformSupportRouteImport
       parentRoute: typeof AuthenticatedPlatformRoute
+    }
+    '/_authenticated/platform/testing': {
+      id: '/_authenticated/platform/testing'
+      path: '/testing'
+      fullPath: '/platform/testing'
+      preLoaderRoute: typeof AuthenticatedPlatformTestingRouteImport
+      parentRoute: typeof AuthenticatedPlatformRoute
+    }
+    '/api/public/landing-logo': {
+      id: '/api/public/landing-logo'
+      path: '/api/public/landing-logo'
+      fullPath: '/api/public/landing-logo'
+      preLoaderRoute: typeof ApiPublicLandingLogoRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/o/$slug/login': {
       id: '/o/$slug/login'
@@ -2202,13 +2249,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPlatformInvoiceIdRouteImport
       parentRoute: typeof AuthenticatedPlatformRoute
     }
-    '/api/public/hooks/billing-run': {
-      id: '/api/public/hooks/billing-run'
-      path: '/api/public/hooks/billing-run'
-      fullPath: '/api/public/hooks/billing-run'
-      preLoaderRoute: typeof ApiPublicHooksBillingRunRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/public/hooks/alerts-digest': {
       id: '/api/public/hooks/alerts-digest'
       path: '/api/public/hooks/alerts-digest'
@@ -2216,18 +2256,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksAlertsDigestRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/billing-run': {
+      id: '/api/public/hooks/billing-run'
+      path: '/api/public/hooks/billing-run'
+      fullPath: '/api/public/hooks/billing-run'
+      preLoaderRoute: typeof ApiPublicHooksBillingRunRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/integration-webhook': {
       id: '/api/public/hooks/integration-webhook'
       path: '/api/public/hooks/integration-webhook'
       fullPath: '/api/public/hooks/integration-webhook'
       preLoaderRoute: typeof ApiPublicHooksIntegrationWebhookRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/landing-logo': {
-      id: '/api/public/landing-logo'
-      path: '/api/public/landing-logo'
-      fullPath: '/api/public/landing-logo'
-      preLoaderRoute: typeof ApiPublicLandingLogoRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -2256,6 +2296,7 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppActionsRoute: typeof AuthenticatedAppActionsRoute
   AuthenticatedAppAgileRoute: typeof AuthenticatedAppAgileRoute
   AuthenticatedAppAiAssistRoute: typeof AuthenticatedAppAiAssistRoute
+  AuthenticatedAppAlertEmailsRoute: typeof AuthenticatedAppAlertEmailsRoute
   AuthenticatedAppAuditLogRoute: typeof AuthenticatedAppAuditLogRoute
   AuthenticatedAppBenefitsRoute: typeof AuthenticatedAppBenefitsRoute
   AuthenticatedAppBillingRoute: typeof AuthenticatedAppBillingRoute
@@ -2293,9 +2334,9 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppPortfolioPulseRoute: typeof AuthenticatedAppPortfolioPulseRoute
   AuthenticatedAppPortfolioSegmentationRoute: typeof AuthenticatedAppPortfolioSegmentationRoute
   AuthenticatedAppPrioritisationRoute: typeof AuthenticatedAppPrioritisationRoute
-  AuthenticatedAppProjectForecastRoute: typeof AuthenticatedAppProjectForecastRoute
   AuthenticatedAppProgramsRoute: typeof AuthenticatedAppProgramsRoute
   AuthenticatedAppProjectAccessRoute: typeof AuthenticatedAppProjectAccessRoute
+  AuthenticatedAppProjectForecastRoute: typeof AuthenticatedAppProjectForecastRoute
   AuthenticatedAppProjectInfographicRoute: typeof AuthenticatedAppProjectInfographicRoute
   AuthenticatedAppProjectPurgeRoute: typeof AuthenticatedAppProjectPurgeRoute
   AuthenticatedAppProjectsRoute: typeof AuthenticatedAppProjectsRouteWithChildren
@@ -2321,7 +2362,6 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppWorkItemsRoute: typeof AuthenticatedAppWorkItemsRoute
   AuthenticatedAppIndexRoute: typeof AuthenticatedAppIndexRoute
   AuthenticatedAppInvoiceIdRoute: typeof AuthenticatedAppInvoiceIdRoute
-  AuthenticatedAppAlertEmailsRoute: typeof AuthenticatedAppAlertEmailsRoute
 }
 
 const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
@@ -2329,6 +2369,7 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppActionsRoute: AuthenticatedAppActionsRoute,
   AuthenticatedAppAgileRoute: AuthenticatedAppAgileRoute,
   AuthenticatedAppAiAssistRoute: AuthenticatedAppAiAssistRoute,
+  AuthenticatedAppAlertEmailsRoute: AuthenticatedAppAlertEmailsRoute,
   AuthenticatedAppAuditLogRoute: AuthenticatedAppAuditLogRoute,
   AuthenticatedAppBenefitsRoute: AuthenticatedAppBenefitsRoute,
   AuthenticatedAppBillingRoute: AuthenticatedAppBillingRoute,
@@ -2353,7 +2394,8 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
     AuthenticatedAppGovernanceChannelsRoute,
   AuthenticatedAppHowMoneyWorksRoute: AuthenticatedAppHowMoneyWorksRoute,
   AuthenticatedAppIntegrationsRoute: AuthenticatedAppIntegrationsRoute,
-  AuthenticatedAppInvestmentCommitteeRoute: AuthenticatedAppInvestmentCommitteeRoute,
+  AuthenticatedAppInvestmentCommitteeRoute:
+    AuthenticatedAppInvestmentCommitteeRoute,
   AuthenticatedAppIssuesRoute: AuthenticatedAppIssuesRoute,
   AuthenticatedAppLatestUpdatesRoute: AuthenticatedAppLatestUpdatesRoute,
   AuthenticatedAppLegalRoute: AuthenticatedAppLegalRoute,
@@ -2370,9 +2412,9 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppPortfolioSegmentationRoute:
     AuthenticatedAppPortfolioSegmentationRoute,
   AuthenticatedAppPrioritisationRoute: AuthenticatedAppPrioritisationRoute,
-  AuthenticatedAppProjectForecastRoute: AuthenticatedAppProjectForecastRoute,
   AuthenticatedAppProgramsRoute: AuthenticatedAppProgramsRoute,
   AuthenticatedAppProjectAccessRoute: AuthenticatedAppProjectAccessRoute,
+  AuthenticatedAppProjectForecastRoute: AuthenticatedAppProjectForecastRoute,
   AuthenticatedAppProjectInfographicRoute:
     AuthenticatedAppProjectInfographicRoute,
   AuthenticatedAppProjectPurgeRoute: AuthenticatedAppProjectPurgeRoute,
@@ -2391,7 +2433,8 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppStageGateConfigRoute: AuthenticatedAppStageGateConfigRoute,
   AuthenticatedAppStageGatesRoute: AuthenticatedAppStageGatesRoute,
   AuthenticatedAppStakeholdersRoute: AuthenticatedAppStakeholdersRoute,
-  AuthenticatedAppStrategicAlignmentRoute: AuthenticatedAppStrategicAlignmentRoute,
+  AuthenticatedAppStrategicAlignmentRoute:
+    AuthenticatedAppStrategicAlignmentRoute,
   AuthenticatedAppSupportRoute: AuthenticatedAppSupportRoute,
   AuthenticatedAppTeamRoute: AuthenticatedAppTeamRoute,
   AuthenticatedAppTimelineRoute: AuthenticatedAppTimelineRoute,
@@ -2400,13 +2443,13 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppWorkItemsRoute: AuthenticatedAppWorkItemsRoute,
   AuthenticatedAppIndexRoute: AuthenticatedAppIndexRoute,
   AuthenticatedAppInvoiceIdRoute: AuthenticatedAppInvoiceIdRoute,
-  AuthenticatedAppAlertEmailsRoute: AuthenticatedAppAlertEmailsRoute,
 }
 
 const AuthenticatedAppRouteWithChildren =
   AuthenticatedAppRoute._addFileChildren(AuthenticatedAppRouteChildren)
 
 interface AuthenticatedPlatformRouteChildren {
+  AuthenticatedPlatformAlertEmailsRoute: typeof AuthenticatedPlatformAlertEmailsRoute
   AuthenticatedPlatformBrandingRoute: typeof AuthenticatedPlatformBrandingRoute
   AuthenticatedPlatformEoiRoute: typeof AuthenticatedPlatformEoiRoute
   AuthenticatedPlatformExpensesRoute: typeof AuthenticatedPlatformExpensesRoute
@@ -2423,15 +2466,15 @@ interface AuthenticatedPlatformRouteChildren {
   AuthenticatedPlatformProjectPurgeRoute: typeof AuthenticatedPlatformProjectPurgeRoute
   AuthenticatedPlatformRolesRoute: typeof AuthenticatedPlatformRolesRoute
   AuthenticatedPlatformSecurityRoute: typeof AuthenticatedPlatformSecurityRoute
-  AuthenticatedPlatformTestingRoute: typeof AuthenticatedPlatformTestingRoute
   AuthenticatedPlatformSettingsRoute: typeof AuthenticatedPlatformSettingsRoute
   AuthenticatedPlatformSubscriptionsRoute: typeof AuthenticatedPlatformSubscriptionsRoute
   AuthenticatedPlatformSupportRoute: typeof AuthenticatedPlatformSupportRoute
+  AuthenticatedPlatformTestingRoute: typeof AuthenticatedPlatformTestingRoute
   AuthenticatedPlatformInvoiceIdRoute: typeof AuthenticatedPlatformInvoiceIdRoute
-  AuthenticatedPlatformAlertEmailsRoute: typeof AuthenticatedPlatformAlertEmailsRoute
 }
 
 const AuthenticatedPlatformRouteChildren: AuthenticatedPlatformRouteChildren = {
+  AuthenticatedPlatformAlertEmailsRoute: AuthenticatedPlatformAlertEmailsRoute,
   AuthenticatedPlatformBrandingRoute: AuthenticatedPlatformBrandingRoute,
   AuthenticatedPlatformEoiRoute: AuthenticatedPlatformEoiRoute,
   AuthenticatedPlatformExpensesRoute: AuthenticatedPlatformExpensesRoute,
@@ -2451,13 +2494,12 @@ const AuthenticatedPlatformRouteChildren: AuthenticatedPlatformRouteChildren = {
     AuthenticatedPlatformProjectPurgeRoute,
   AuthenticatedPlatformRolesRoute: AuthenticatedPlatformRolesRoute,
   AuthenticatedPlatformSecurityRoute: AuthenticatedPlatformSecurityRoute,
-  AuthenticatedPlatformTestingRoute: AuthenticatedPlatformTestingRoute,
   AuthenticatedPlatformSettingsRoute: AuthenticatedPlatformSettingsRoute,
   AuthenticatedPlatformSubscriptionsRoute:
     AuthenticatedPlatformSubscriptionsRoute,
   AuthenticatedPlatformSupportRoute: AuthenticatedPlatformSupportRoute,
+  AuthenticatedPlatformTestingRoute: AuthenticatedPlatformTestingRoute,
   AuthenticatedPlatformInvoiceIdRoute: AuthenticatedPlatformInvoiceIdRoute,
-  AuthenticatedPlatformAlertEmailsRoute: AuthenticatedPlatformAlertEmailsRoute,
 }
 
 const AuthenticatedPlatformRouteWithChildren =
@@ -2488,13 +2530,25 @@ const rootRouteChildren: RootRouteChildren = {
   ForcePasswordChangeRoute: ForcePasswordChangeRoute,
   MfaRoute: MfaRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  BrandAuthDotwebpRoute: BrandAuthDotwebpRoute,
+  BrandLandingDotwebpRoute: BrandLandingDotwebpRoute,
   LegalSlugRoute: LegalSlugRoute,
-  OSlugLoginRoute: OSlugLoginRoute,
-  ApiPublicHooksBillingRunRoute: ApiPublicHooksBillingRunRoute,
-  ApiPublicHooksAlertsDigestRoute: ApiPublicHooksAlertsDigestRoute,
-  ApiPublicHooksIntegrationWebhookRoute: ApiPublicHooksIntegrationWebhookRoute,
   ApiPublicLandingLogoRoute: ApiPublicLandingLogoRoute,
+  OSlugLoginRoute: OSlugLoginRoute,
+  ApiPublicHooksAlertsDigestRoute: ApiPublicHooksAlertsDigestRoute,
+  ApiPublicHooksBillingRunRoute: ApiPublicHooksBillingRunRoute,
+  ApiPublicHooksIntegrationWebhookRoute: ApiPublicHooksIntegrationWebhookRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

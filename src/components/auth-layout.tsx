@@ -9,6 +9,7 @@ import {
 } from "@/lib/landing-config";
 import { applyFaviconHref, DEFAULT_FAVICON_HREF } from "@/lib/favicon";
 import { PUBLIC_AUTH_LOGO_HREF } from "@/lib/live-landing-logo";
+import { sanitizeLandingLogoCookieUrl } from "@/lib/landing-logo-cookie";
 
 export type AuthBrand = {
   name: string;
@@ -85,7 +86,7 @@ function LogoMark({
         className="w-auto object-contain"
         style={{ height: dims.heightPx, maxWidth: dims.maxWidthPx }}
         fetchPriority="high"
-        decoding="async"
+        decoding="sync"
       />
     );
   }
@@ -119,7 +120,7 @@ export function AuthLayout({
   const displayLogo =
     useOrg && org?.logo_url
       ? org.logo_url
-      : PUBLIC_AUTH_LOGO_HREF;
+      : sanitizeLandingLogoCookieUrl(platform.logo_url) || PUBLIC_AUTH_LOGO_HREF;
   const tagline = platform.tagline || "Enterprise PMO Command Center";
   const logoSize: LogoDisplaySize =
     useOrg && org?.logo_size_auth

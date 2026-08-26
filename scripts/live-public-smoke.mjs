@@ -29,7 +29,10 @@ async function checkHost(host) {
   if (home.res.status !== 200) fail(`${host}/ status ${home.res.status}`);
   else ok(`${host}/ 200`);
 
-  if (!home.body.includes('src="/api/public/landing-logo"')) {
+  if (
+    !home.body.includes('src="/brand/landing.webp"') &&
+    !home.body.includes('src="/api/public/landing-logo"')
+  ) {
     fail(`${host}/ first HTML missing landing-logo img`);
   } else ok(`${host}/ landing-logo img`);
 
@@ -54,7 +57,13 @@ async function checkHost(host) {
   const type = logo.headers.get("content-type") || "";
   if (logo.status !== 200 || !type.startsWith("image/")) {
     fail(`${host}/api/public/landing-logo ${logo.status} ${type}`);
-  } else ok(`${host}/api/public/landing-logo ${type}`);
+  } else ok(`${host}/api/public/landing-logo ${type} (checkpoint)`);
+
+  const brand = await fetch(`${host}/brand/landing.webp`, { redirect: "follow" });
+  const brandType = brand.headers.get("content-type") || "";
+  if (brand.status !== 200 || !brandType.startsWith("image/")) {
+    fail(`${host}/brand/landing.webp ${brand.status} ${brandType}`);
+  } else ok(`${host}/brand/landing.webp ${brandType}`);
 }
 
 for (const host of HOSTS) {

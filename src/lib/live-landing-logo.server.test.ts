@@ -5,13 +5,19 @@ import {
   parseLiveLogoSurface,
   pickLiveLogoCandidate,
 } from "./live-landing-logo-parse.ts";
-import { visiblePublicLogoUrl } from "./live-landing-logo.ts";
+import { visiblePublicLogoUrl, PUBLIC_AUTH_LOGO_HREF, PUBLIC_LANDING_LOGO_HREF, CHECKPOINT_PUBLIC_LANDING_LOGO_HREF } from "./live-landing-logo.ts";
 
 describe("visiblePublicLogoUrl", () => {
   it("never returns empty — packaged mark when config is blank", () => {
     assert.equal(visiblePublicLogoUrl(""), "/brand/iprojectx-mark.webp");
     assert.equal(visiblePublicLogoUrl(null), "/brand/iprojectx-mark.webp");
     assert.equal(visiblePublicLogoUrl("https://cdn.example/logo.png"), "https://cdn.example/logo.png");
+  });
+
+  it("paints static brand files first; keeps the API as a checkpoint", () => {
+    assert.equal(PUBLIC_LANDING_LOGO_HREF, "/brand/landing.webp");
+    assert.equal(PUBLIC_AUTH_LOGO_HREF, "/brand/auth.webp");
+    assert.equal(CHECKPOINT_PUBLIC_LANDING_LOGO_HREF, "/api/public/landing-logo");
   });
 });
 
