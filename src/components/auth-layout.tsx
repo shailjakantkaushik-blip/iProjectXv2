@@ -318,7 +318,7 @@ export function AuthLayout({
               )}
             </div>
 
-            <div className="overflow-visible rounded-xl border border-border/80 bg-card p-5 shadow-sm sm:p-6">
+            <div className="overflow-visible rounded-xl border border-border/80 bg-card p-4 shadow-sm sm:p-6">
               {children}
             </div>
 

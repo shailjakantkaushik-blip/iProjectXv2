@@ -1,12 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  isIosSafariBrowser,
   isIosWebKit,
   turnstileBoxForSize,
   turnstileHostWidth,
   turnstileSizeForHost,
   turnstileSizeForWidth,
 } from "./turnstile-size.ts";
+
+const IPHONE_SAFARI =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
+const IPHONE_CHROME =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/120.0.6099.119 Mobile/15E148 Safari/604.1";
 
 describe("turnstileSizeForHost", () => {
   it("uses the standard normal widget on typical phones and desktop cards", () => {
@@ -16,14 +22,14 @@ describe("turnstileSizeForHost", () => {
     assert.equal(turnstileSizeForHost(400, 768), "normal");
   });
 
-  it("uses compact only when the card is narrower than the 300px checkbox", () => {
-    assert.equal(turnstileSizeForHost(248, 390), "compact");
-    assert.equal(turnstileSizeForHost(299, 1024), "compact");
+  it("uses compact on Mobile Safari so the checkbox is not clipped", () => {
+    assert.equal(turnstileSizeForHost(318, 390, true), "compact");
+    assert.equal(turnstileSizeForHost(800, 844, true), "compact");
   });
 
-  it("does not force compact on iOS when the card can fit the normal widget", () => {
-    assert.equal(turnstileSizeForHost(318, 390, true), "normal");
-    assert.equal(turnstileSizeForHost(800, 844, true), "normal");
+  it("uses compact when the card is narrower than the 300px checkbox", () => {
+    assert.equal(turnstileSizeForHost(248, 390), "compact");
+    assert.equal(turnstileSizeForHost(299, 1024), "compact");
   });
 
   it("falls back to normal when width is unknown (never flexible)", () => {
@@ -51,17 +57,12 @@ describe("turnstileHostWidth", () => {
   });
 });
 
-describe("isIosWebKit", () => {
-  it("detects iPhone and iPadOS", () => {
-    assert.equal(
-      isIosWebKit(
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
-        "iPhone",
-        5,
-      ),
-      true,
-    );
-    assert.equal(isIosWebKit("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", "MacIntel", 5), true);
-    assert.equal(isIosWebKit("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Win32", 0), false);
+describe("isIosSafariBrowser", () => {
+  it("detects stock Mobile Safari and not Chrome-in-app or the home-screen PWA", () => {
+    assert.equal(isIosSafariBrowser(IPHONE_SAFARI, "iPhone", 5, false), true);
+    assert.equal(isIosSafariBrowser(IPHONE_CHROME, "iPhone", 5, false), false);
+    assert.equal(isIosSafariBrowser(IPHONE_SAFARI, "iPhone", 5, true), false);
+    assert.equal(isIosWebKit(IPHONE_CHROME, "iPhone", 5), true);
+    assert.equal(isIosSafariBrowser("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Win32", 0), false);
   });
 });
