@@ -52,17 +52,19 @@ export function readLandingLogoCookieBrowser(): string {
 
 /** Configured landing mark size so first HTML matches hydrate (no 32px→xl jump). */
 export const LANDING_LOGO_SIZE_COOKIE = "pmo_lsz";
+/** Configured auth / sign-in mark size so login does not paint small then jump. */
+export const AUTH_LOGO_SIZE_COOKIE = "pmo_asz";
 
 export type LandingLogoSizeCookie = { heightPx: number; maxWidthPx: number };
 
-export function parseLandingLogoSizeCookie(cookieHeader: string): LandingLogoSizeCookie | null {
+function parseNamedSizeCookie(cookieHeader: string, cookieName: string): LandingLogoSizeCookie | null {
   if (!cookieHeader) return null;
   const parts = cookieHeader.split(";");
   for (const part of parts) {
     const idx = part.indexOf("=");
     if (idx < 0) continue;
     const name = part.slice(0, idx).trim();
-    if (name !== LANDING_LOGO_SIZE_COOKIE) continue;
+    if (name !== cookieName) continue;
     let value = part.slice(idx + 1).trim();
     try {
       value = decodeURIComponent(value);
@@ -72,6 +74,14 @@ export function parseLandingLogoSizeCookie(cookieHeader: string): LandingLogoSiz
     return sanitizeLandingLogoSizeCookie(value);
   }
   return null;
+}
+
+export function parseLandingLogoSizeCookie(cookieHeader: string): LandingLogoSizeCookie | null {
+  return parseNamedSizeCookie(cookieHeader, LANDING_LOGO_SIZE_COOKIE);
+}
+
+export function parseAuthLogoSizeCookie(cookieHeader: string): LandingLogoSizeCookie | null {
+  return parseNamedSizeCookie(cookieHeader, AUTH_LOGO_SIZE_COOKIE);
 }
 
 export function sanitizeLandingLogoSizeCookie(raw: unknown): LandingLogoSizeCookie | null {
@@ -98,18 +108,35 @@ export function readLandingLogoSizeCookieBrowser(): LandingLogoSizeCookie | null
   }
 }
 
-export function writeLandingLogoSizeCookie(dims: LandingLogoSizeCookie | null | undefined) {
+function writeNamedSizeCookie(cookieName: string, dims: LandingLogoSizeCookie | null | undefined) {
   if (typeof document === "undefined") return;
   try {
     if (!dims) {
-      document.cookie = `${LANDING_LOGO_SIZE_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
+      document.cookie = `${cookieName}=; Path=/; Max-Age=0; SameSite=Lax`;
       return;
     }
     const safe = sanitizeLandingLogoSizeCookie(formatLandingLogoSizeCookie(dims));
     if (!safe) return;
-    document.cookie = `${LANDING_LOGO_SIZE_COOKIE}=${formatLandingLogoSizeCookie(safe)}; Path=/; Max-Age=${MAX_AGE_SEC}; SameSite=Lax`;
+    document.cookie = `${cookieName}=${formatLandingLogoSizeCookie(safe)}; Path=/; Max-Age=${MAX_AGE_SEC}; SameSite=Lax`;
   } catch {
     /* private / cookie blocked */
+  }
+}
+
+export function writeLandingLogoSizeCookie(dims: LandingLogoSizeCookie | null | undefined) {
+  writeNamedSizeCookie(LANDING_LOGO_SIZE_COOKIE, dims);
+}
+
+export function writeAuthLogoSizeCookie(dims: LandingLogoSizeCookie | null | undefined) {
+  writeNamedSizeCookie(AUTH_LOGO_SIZE_COOKIE, dims);
+}
+
+export function readAuthLogoSizeCookieBrowser(): LandingLogoSizeCookie | null {
+  if (typeof document === "undefined") return null;
+  try {
+    return parseAuthLogoSizeCookie(document.cookie);
+  } catch {
+    return null;
   }
 }
 

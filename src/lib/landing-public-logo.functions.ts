@@ -43,3 +43,14 @@ export const resolveDocumentLandingLogoDims = createServerFn({ method: "GET" }).
     return fetchPublicLandingLogoDims();
   },
 );
+
+/** Configured auth mark size for the first HTML. Cookie, then a slim DB read. */
+export const resolveDocumentAuthLogoDims = createServerFn({ method: "GET" }).handler(
+  async (): Promise<{ heightPx: number; maxWidthPx: number } | null> => {
+    const { readAuthLogoSizeCookieFromRequest } = await import("@/lib/landing-logo-cookie.server");
+    const cookie = await readAuthLogoSizeCookieFromRequest();
+    if (cookie) return cookie;
+    const { fetchPublicAuthLogoDims } = await import("@/lib/fetch-landing-logo.server");
+    return fetchPublicAuthLogoDims();
+  },
+);

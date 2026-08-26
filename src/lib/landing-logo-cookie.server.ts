@@ -1,5 +1,6 @@
 import {
   parseAuthLogoCookie,
+  parseAuthLogoSizeCookie,
   parseLandingLogoCookie,
   parseLandingLogoSizeCookie,
   type LandingLogoSizeCookie,
@@ -28,6 +29,15 @@ export async function readLandingLogoSizeCookieFromRequest(): Promise<LandingLog
   try {
     const { getRequest } = await import("@tanstack/react-start/server");
     return parseLandingLogoSizeCookie(getRequest()?.headers?.get("cookie") ?? "");
+  } catch {
+    return null;
+  }
+}
+
+export async function readAuthLogoSizeCookieFromRequest(): Promise<LandingLogoSizeCookie | null> {
+  try {
+    const { getRequest } = await import("@tanstack/react-start/server");
+    return parseAuthLogoSizeCookie(getRequest()?.headers?.get("cookie") ?? "");
   } catch {
     return null;
   }

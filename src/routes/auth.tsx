@@ -23,6 +23,7 @@ import { verifyTurnstile } from "@/lib/turnstile.functions";
 import { getMfaStatus } from "@/lib/mfa";
 import { recordAuthSecurityEvent, recordFailedLogin } from "@/lib/auth-events.functions";
 import {
+  applyAuthLogoDims,
   fetchLandingConfig,
   DEFAULT_LANDING,
   readCachedLandingConfig,
@@ -49,11 +50,8 @@ import { clearOrgAuthEntry, rememberOrgAuthEntry } from "@/lib/org-auth-entry";
 import { AlertTriangle } from "lucide-react";
 import { RouteErrorView } from "@/components/route-error";
 import { PUBLIC_AUTH_LOGO_HREF } from "@/lib/live-landing-logo";
-import { peekDocumentAuthLogoUrl } from "@/lib/landing-public-logo.functions";
-import {
-  readAuthLogoCookieBrowser,
-  sanitizeLandingLogoCookieUrl,
-} from "@/lib/landing-logo-cookie";
+import { resolveDocumentAuthLogoDims } from "@/lib/landing-public-logo.functions";
+import { readAuthLogoSizeCookieBrowser } from "@/lib/landing-logo-cookie";
 
 type OrgAccessAlert = {
   title: string;
@@ -73,30 +71,35 @@ type AuthLoaderData = {
   orgRequested: boolean;
 };
 
-function toAuthPlatformBrand(brand: LandingConfig["brand"], cookieUrl = ""): AuthBrand {
-  // https CDN only — never a data: URL in HTML (Safari hydrate).
-  const liveHttps = sanitizeLandingLogoCookieUrl(resolveBrandLogoUrl(brand, "auth"));
-  return {
-    name: brand.name,
-    logo_url: liveHttps || sanitizeLandingLogoCookieUrl(cookieUrl) || PUBLIC_AUTH_LOGO_HREF,
-    tagline: brand.tagline,
-    logo_size_auth: brand.logo_size_auth,
-    logo_custom_auth: brand.logo_custom_auth,
-  };
+function toAuthPlatformBrand(
+  brand: LandingConfig["brand"],
+  dims?: { heightPx: number; maxWidthPx: number } | null,
+): AuthBrand {
+  // Same-origin file only — never swap to a CDN/data URL after first paint.
+  return applyAuthLogoDims(
+    {
+      name: brand.name,
+      logo_url: PUBLIC_AUTH_LOGO_HREF,
+      tagline: brand.tagline,
+      logo_size_auth: brand.logo_size_auth,
+      logo_custom_auth: brand.logo_custom_auth,
+    },
+    dims,
+  );
 }
 
-async function authLogoCookieHref(): Promise<string> {
-  if (typeof window !== "undefined") return readAuthLogoCookieBrowser();
+async function authLogoDims(): Promise<{ heightPx: number; maxWidthPx: number } | null> {
+  if (typeof window !== "undefined") return readAuthLogoSizeCookieBrowser();
   try {
-    return await peekDocumentAuthLogoUrl();
+    return await resolveDocumentAuthLogoDims();
   } catch {
-    return "";
+    return null;
   }
 }
 
 async function loadAuthPublicConfig(orgSlug?: string): Promise<AuthLoaderData> {
   const slug = orgSlug?.trim() || "";
-  const cookieUrl = await authLogoCookieHref();
+  const dims = await authLogoDims();
   const cached =
     typeof window !== "undefined" ? getFreshLandingConfigSnapshot() ?? readCachedLandingConfig() : null;
   let orgBrand: AuthOrgBrand = null;
@@ -118,7 +121,7 @@ async function loadAuthPublicConfig(orgSlug?: string): Promise<AuthLoaderData> {
     }
   }
   return {
-    platformBrand: toAuthPlatformBrand(cached?.brand ?? DEFAULT_LANDING.brand, cookieUrl),
+    platformBrand: toAuthPlatformBrand(cached?.brand ?? DEFAULT_LANDING.brand, cached ? null : dims),
     signupEnabled: cached?.signup_enabled === true,
     orgBrand,
     orgRequested: Boolean(slug),
@@ -166,15 +169,18 @@ function authShellBrand(): AuthBrand {
     typeof window !== "undefined"
       ? getFreshLandingConfigSnapshot() ?? readCachedLandingConfig()
       : null;
-  const cookieUrl = typeof window !== "undefined" ? readAuthLogoCookieBrowser() : "";
-  if (cached) return toAuthPlatformBrand(cached.brand, cookieUrl);
-  return {
-    name: DEFAULT_LANDING.brand.name,
-    tagline: DEFAULT_LANDING.brand.tagline,
-    logo_url: cookieUrl || PUBLIC_AUTH_LOGO_HREF,
-    logo_size_auth: DEFAULT_LANDING.brand.logo_size_auth,
-    logo_custom_auth: DEFAULT_LANDING.brand.logo_custom_auth,
-  };
+  const dims = typeof window !== "undefined" ? readAuthLogoSizeCookieBrowser() : null;
+  if (cached) return toAuthPlatformBrand(cached.brand);
+  return applyAuthLogoDims(
+    {
+      name: DEFAULT_LANDING.brand.name,
+      tagline: DEFAULT_LANDING.brand.tagline,
+      logo_url: PUBLIC_AUTH_LOGO_HREF,
+      logo_size_auth: DEFAULT_LANDING.brand.logo_size_auth,
+      logo_custom_auth: DEFAULT_LANDING.brand.logo_custom_auth,
+    },
+    dims,
+  );
 }
 
 function readOrgFromLocation(): string | undefined {
@@ -244,7 +250,7 @@ function AuthPage() {
   useLayoutEffect(() => {
     const cached = getFreshLandingConfigSnapshot() ?? readCachedLandingConfig();
     if (!cached) return;
-    setPlatformBrand(toAuthPlatformBrand(cached.brand, readAuthLogoCookieBrowser()));
+    setPlatformBrand(toAuthPlatformBrand(cached.brand));
     if (cached.signup_enabled === true) setSignupEnabled(true);
   }, []);
 
@@ -260,7 +266,7 @@ function AuthPage() {
     void fetchLandingConfig()
       .then((cfg) => {
         if (cancelled) return;
-        setPlatformBrand(toAuthPlatformBrand(cfg.brand, readAuthLogoCookieBrowser()));
+        setPlatformBrand(toAuthPlatformBrand(cfg.brand));
         setSignupEnabled(cfg.signup_enabled === true);
       })
       .catch(() => {});

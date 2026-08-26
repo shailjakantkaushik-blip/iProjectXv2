@@ -7,6 +7,7 @@ import {
 import { mergeBrandSurfaceLogos, resolvePublicLandingLogoUrl } from "@/lib/public-landing-logo";
 import {
   writeAuthLogoCookie,
+  writeAuthLogoSizeCookie,
   writeLandingLogoCookie,
   writeLandingLogoSizeCookie,
 } from "@/lib/landing-logo-cookie";
@@ -229,6 +230,18 @@ export function applyLandingLogoDims(
       logo_size_landing: "custom",
       logo_custom_landing: custom,
     },
+  };
+}
+
+/** Bake auth mark size into first HTML so login does not paint small then jump. */
+export function applyAuthLogoDims<
+  T extends { logo_size_auth?: LogoDisplaySize; logo_custom_auth?: LogoCustomDims },
+>(brand: T, dims: { heightPx: number; maxWidthPx: number } | null | undefined): T {
+  if (!dims) return brand;
+  return {
+    ...brand,
+    logo_size_auth: "custom",
+    logo_custom_auth: clampLogoCustom(dims),
   };
 }
 
@@ -1620,6 +1633,7 @@ export function writeCachedLandingConfig(config: LandingConfig) {
     writeLandingLogoCookie(resolvePublicLandingLogoUrl(config.brand));
     writeAuthLogoCookie(resolveBrandLogoUrl(config.brand, "auth"));
     writeLandingLogoSizeCookie(logoSizeDims(config.brand.logo_size_landing, config.brand.logo_custom_landing));
+    writeAuthLogoSizeCookie(logoSizeDims(config.brand.logo_size_auth, config.brand.logo_custom_auth));
     if (prev === next) return;
     window.localStorage.setItem(LANDING_CONFIG_CACHE_KEY, next);
     // Drop pre-v2 cache that could still paint stale logos.

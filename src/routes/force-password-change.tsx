@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { completeForcedPasswordChange } from "@/lib/platform-admin.functions";
 import { ProcessingOverlay } from "@/components/processing-animation";
-import { DEFAULT_LANDING, fetchLandingConfig, resolveBrandLogoUrl } from "@/lib/landing-config";
+import { applyAuthLogoDims, DEFAULT_LANDING, fetchLandingConfig } from "@/lib/landing-config";
 import { AuthLayout, PasswordField, type AuthBrand } from "@/components/auth-layout";
+import { PUBLIC_AUTH_LOGO_HREF } from "@/lib/live-landing-logo";
+import { readAuthLogoSizeCookieBrowser } from "@/lib/landing-logo-cookie";
 import { readOrgAuthEntrySlug } from "@/lib/org-auth-entry";
 
 export const Route = createFileRoute("/force-password-change")({
@@ -22,13 +24,16 @@ export const Route = createFileRoute("/force-password-change")({
 });
 
 function toAuthBrand(brand: typeof DEFAULT_LANDING.brand): AuthBrand {
-  return {
-    name: brand.name,
-    logo_url: resolveBrandLogoUrl(brand, "auth"),
-    tagline: brand.tagline,
-    logo_size_auth: brand.logo_size_auth,
-    logo_custom_auth: brand.logo_custom_auth,
-  };
+  return applyAuthLogoDims(
+    {
+      name: brand.name,
+      logo_url: PUBLIC_AUTH_LOGO_HREF,
+      tagline: brand.tagline,
+      logo_size_auth: brand.logo_size_auth,
+      logo_custom_auth: brand.logo_custom_auth,
+    },
+    readAuthLogoSizeCookieBrowser(),
+  );
 }
 
 function ForcePwdPage() {
