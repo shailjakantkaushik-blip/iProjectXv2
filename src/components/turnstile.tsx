@@ -1,5 +1,6 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
+  isIosSafariBrowser,
   turnstileBoxForSize,
   turnstileSizeForHost,
   type TurnstileWidgetSize,
@@ -38,6 +39,21 @@ export function resetTurnstileLoader() {
   loadPromise = null;
 }
 
+function readIosSafari(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const standalone = Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+  return isIosSafariBrowser(
+    navigator.userAgent,
+    navigator.platform,
+    navigator.maxTouchPoints || 0,
+    standalone,
+  );
+}
+
+function initialTurnstileSize(): TurnstileWidgetSize {
+  return readIosSafari() ? "compact" : "normal";
+}
+
 function loadScript(): Promise<void> {
   if (typeof window === "undefined") return Promise.resolve();
   if (window.turnstile) return Promise.resolve();
@@ -56,7 +72,6 @@ function loadScript(): Promise<void> {
     const s = document.createElement("script");
     s.src = TURNSTILE_SRC;
     s.async = true;
-    s.defer = true;
     s.onload = () => resolve();
     s.onerror = () => reject(new Error("Failed to load Turnstile"));
     document.head.appendChild(s);
@@ -65,6 +80,25 @@ function loadScript(): Promise<void> {
     throw error;
   });
   return loadPromise;
+}
+
+/** Safari can fire script load before window.turnstile is attached. */
+function waitForTurnstile(timeoutMs = 4000): Promise<void> {
+  return loadScript().then(() => {
+    if (typeof window !== "undefined" && window.turnstile) return;
+    return new Promise((resolve, reject) => {
+      const started = Date.now();
+      const id = window.setInterval(() => {
+        if (window.turnstile) {
+          window.clearInterval(id);
+          resolve();
+        } else if (Date.now() - started > timeoutMs) {
+          window.clearInterval(id);
+          reject(new Error("Turnstile API missing"));
+        }
+      }, 40);
+    });
+  });
 }
 
 interface Props {
@@ -103,15 +137,30 @@ export const TurnstileWidget = memo(function TurnstileWidget({
   const siteKey = getTurnstileSiteKey();
   const box = turnstileBoxForSize(size);
 
+  useLayoutEffect(() => {
+    if (readIosSafari()) setSize("compact");
+  }, []);
+
   useEffect(() => {
     if (!siteKey || !containerRef.current) return;
     let cancelled = false;
+    let watchdog = 0;
     setError(null);
     const measureSize = () => {
       const el = containerRef.current;
       const host = el?.parentElement?.clientWidth || el?.clientWidth || 0;
       const viewport = typeof window !== "undefined" ? window.innerWidth : 0;
-      return turnstileSizeForHost(host, viewport);
+      return turnstileSizeForHost(host, viewport, readIosSafari());
+    };
+    const revealIframe = () => {
+      const iframe = containerRef.current?.querySelector("iframe");
+      if (iframe) {
+        iframe.setAttribute("loading", "eager");
+        iframe.style.maxWidth = "100%";
+        iframe.style.display = "block";
+        return true;
+      }
+      return false;
     };
     const mount = () => {
       if (cancelled || !window.turnstile || !containerRef.current) return;
@@ -145,18 +194,22 @@ export const TurnstileWidget = memo(function TurnstileWidget({
         },
       });
       prevResetNonceRef.current = resetNonce;
+      revealIframe();
+      watchdog = window.setTimeout(() => {
+        if (cancelled) return;
+        if (!revealIframe()) {
+          setError("Cloudflare check did not appear. Tap to retry.");
+        }
+      }, 2500);
     };
-    // Measure after layout so a 0-width first paint does not stretch the widget.
-    const frame = requestAnimationFrame(() => {
-      loadScript()
-        .then(mount)
-        .catch(() => {
-          if (!cancelled) setError("Cloudflare check did not load. Tap to retry.");
-        });
-    });
+    waitForTurnstile()
+      .then(mount)
+      .catch(() => {
+        if (!cancelled) setError("Cloudflare check did not load. Tap to retry.");
+      });
     return () => {
       cancelled = true;
-      cancelAnimationFrame(frame);
+      if (watchdog) window.clearTimeout(watchdog);
       if (widgetIdRef.current && window.turnstile) {
         try {
           window.turnstile.remove(widgetIdRef.current);
