@@ -29,11 +29,19 @@ export function isTurnstileFrameControl(
 }
 
 export function readTurnstileFrameToken(data: unknown): string | null {
-  if (!data || typeof data !== "object") return null;
-  const payload = data as { source?: unknown; token?: unknown; type?: unknown };
-  if (payload.source !== TURNSTILE_FRAME_MESSAGE_SOURCE) return null;
-  if (payload.type === "ready" || payload.type === "ack") return null;
-  return typeof payload.token === "string" ? payload.token : null;
+  let payload: unknown = data;
+  if (typeof payload === "string") {
+    try {
+      payload = JSON.parse(payload) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  if (!payload || typeof payload !== "object") return null;
+  const message = payload as { source?: unknown; token?: unknown; type?: unknown };
+  if (message.source !== TURNSTILE_FRAME_MESSAGE_SOURCE) return null;
+  if (message.type === "ready" || message.type === "ack") return null;
+  return typeof message.token === "string" ? message.token : null;
 }
 
 type FrameWindow = {

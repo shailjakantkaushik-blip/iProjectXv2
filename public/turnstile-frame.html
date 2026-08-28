@@ -22,13 +22,37 @@
         var lastToken = "";
         var acked = false;
         var retryTimer = 0;
+        var STORAGE_KEY = "iprojectx.turnstile.token";
+        var INPUT_ID = "turnstile-token-bridge";
+        var EVENT_NAME = "iprojectx-turnstile-token";
+
+        function writeParent(token) {
+          try {
+            var input = parent.document.getElementById(INPUT_ID);
+            if (input) input.value = token || "";
+          } catch (e) {}
+          try {
+            if (token) parent.sessionStorage.setItem(STORAGE_KEY, token);
+            else parent.sessionStorage.removeItem(STORAGE_KEY);
+          } catch (e) {}
+          try {
+            if (token) parent.localStorage.setItem(STORAGE_KEY, token);
+            else parent.localStorage.removeItem(STORAGE_KEY);
+          } catch (e) {}
+          try {
+            parent.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: token || "" }));
+          } catch (e) {}
+        }
 
         function notify(token) {
           lastToken = token || "";
-          parent.postMessage(
-            { source: "iprojectx-turnstile", token: lastToken },
-            location.origin,
-          );
+          writeParent(lastToken);
+          try {
+            parent.postMessage(
+              { source: "iprojectx-turnstile", token: lastToken },
+              "*",
+            );
+          } catch (e) {}
         }
 
         function stopRetry() {
@@ -44,18 +68,41 @@
           var n = 0;
           retryTimer = setInterval(function () {
             n += 1;
-            if (acked || n > 24 || !lastToken) {
+            if (!lastToken) {
               stopRetry();
               return;
             }
-            notify(lastToken);
+            writeParent(lastToken);
+            if (acked && n > 8) {
+              stopRetry();
+              return;
+            }
+            try {
+              parent.postMessage(
+                { source: "iprojectx-turnstile", token: lastToken },
+                "*",
+              );
+            } catch (e) {}
+            if (n > 40) stopRetry();
           }, 250);
         }
 
+        function readWidgetToken() {
+          var value = "";
+          try {
+            if (window.turnstile && typeof window.turnstile.getResponse === "function") {
+              value = window.turnstile.getResponse() || "";
+            }
+          } catch (e) {}
+          if (!value) {
+            var field = document.querySelector('[name="cf-turnstile-response"]');
+            value = field && field.value ? field.value : "";
+          }
+          return value || "";
+        }
+
         window.iprojectxLastTurnstileToken = function () {
-          if (lastToken) return lastToken;
-          var field = document.querySelector('[name="cf-turnstile-response"]');
-          return field && field.value ? field.value : "";
+          return lastToken || readWidgetToken();
         };
 
         window.iprojectxTurnstileOk = function (token) {
@@ -64,24 +111,42 @@
           startRetry();
         };
         window.iprojectxTurnstileExpire = function () {
-          acked = false;
-          stopRetry();
-          notify("");
+          if (!lastToken && !readWidgetToken()) {
+            acked = false;
+            stopRetry();
+            notify("");
+          }
         };
 
         window.addEventListener("message", function (event) {
-          if (event.origin !== location.origin) return;
           var data = event.data;
+          if (typeof data === "string") {
+            try {
+              data = JSON.parse(data);
+            } catch (e) {
+              return;
+            }
+          }
           if (!data || data.source !== "iprojectx-turnstile") return;
           if (data.type === "ack") {
             acked = true;
-            stopRetry();
             return;
           }
           if (data.type === "ready") {
             if (lastToken) notify(lastToken);
           }
         });
+
+        setInterval(function () {
+          var value = readWidgetToken();
+          if (value && value !== lastToken) {
+            acked = false;
+            notify(value);
+            startRetry();
+          } else if (lastToken) {
+            writeParent(lastToken);
+          }
+        }, 400);
 
         var el = document.getElementById("widget");
         el.className = "cf-turnstile";
@@ -93,7 +158,6 @@
         el.setAttribute("data-response-field-name", "cf-turnstile-response");
         el.setAttribute("data-callback", "iprojectxTurnstileOk");
         el.setAttribute("data-expired-callback", "iprojectxTurnstileExpire");
-        el.setAttribute("data-error-callback", "iprojectxTurnstileExpire");
       })();
     </script>
   </body>

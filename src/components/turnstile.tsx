@@ -5,6 +5,7 @@ import {
   turnstileFrameControlMessage,
   turnstileFrameSrc,
 } from "@/lib/turnstile-frame";
+import { TURNSTILE_TOKEN_EVENT } from "@/lib/turnstile-token-bridge";
 import {
   TURNSTILE_NORMAL_HEIGHT_PX,
   TURNSTILE_NORMAL_WIDTH_PX,
@@ -34,8 +35,9 @@ interface Props {
  * Standard Cloudflare checkbox (300×65 rectangle) on every surface.
  *
  * The widget lives in a same-origin frame so a cold phone-browser open of
- * /auth can paint it without waiting on React. On success the frame retries
- * the token until this page is listening, so Sign in can enable.
+ * /auth can paint it. On success the frame writes the token onto this page
+ * (hidden input / sessionStorage / event) so Sign in can enable even when
+ * postMessage is missed.
  */
 export const TurnstileWidget = memo(function TurnstileWidget({
   onToken,
@@ -62,16 +64,17 @@ export const TurnstileWidget = memo(function TurnstileWidget({
       }
       gotTokenRef.current = true;
       onTokenRef.current(token);
-      const win = iframeRef.current?.contentWindow;
       try {
-        win?.postMessage(turnstileFrameControlMessage("ack"), window.location.origin);
+        iframeRef.current?.contentWindow?.postMessage(
+          turnstileFrameControlMessage("ack"),
+          "*",
+        );
       } catch {
         /* ignore */
       }
     };
 
     const pullFromFrame = () => {
-      if (gotTokenRef.current) return;
       const token = readTurnstileTokenFromFrameWindow(
         iframeRef.current?.contentWindow as {
           iprojectxLastTurnstileToken?: () => string;
@@ -82,9 +85,11 @@ export const TurnstileWidget = memo(function TurnstileWidget({
     };
 
     const pingReady = () => {
-      const win = iframeRef.current?.contentWindow;
       try {
-        win?.postMessage(turnstileFrameControlMessage("ready"), window.location.origin);
+        iframeRef.current?.contentWindow?.postMessage(
+          turnstileFrameControlMessage("ready"),
+          "*",
+        );
       } catch {
         /* ignore */
       }
@@ -92,27 +97,28 @@ export const TurnstileWidget = memo(function TurnstileWidget({
     };
 
     const onMessage = (event: MessageEvent) => {
-      const frameWindow = iframeRef.current?.contentWindow;
-      const fromThisFrame = Boolean(frameWindow && event.source === frameWindow);
-      if (event.source && frameWindow && !fromThisFrame) return;
-      if (!fromThisFrame && event.origin !== window.location.origin) return;
       const token = readTurnstileFrameToken(event.data);
       if (token == null) return;
       acceptToken(token);
     };
 
+    const onBridge = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (typeof detail === "string") acceptToken(detail);
+    };
+
     window.addEventListener("message", onMessage);
+    window.addEventListener(TURNSTILE_TOKEN_EVENT, onBridge);
     const iframe = iframeRef.current;
     iframe?.addEventListener("load", pingReady);
     pingReady();
     const poll = window.setInterval(pingReady, 300);
-    const stop = window.setTimeout(() => window.clearInterval(poll), 12_000);
 
     return () => {
       window.removeEventListener("message", onMessage);
+      window.removeEventListener(TURNSTILE_TOKEN_EVENT, onBridge);
       iframe?.removeEventListener("load", pingReady);
       window.clearInterval(poll);
-      window.clearTimeout(stop);
     };
   }, [resetNonce]);
 
