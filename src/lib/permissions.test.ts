@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
-import { PAGES, pageKey, resolveCanViewPage } from "./permissions-acl.ts";
+import { fileURLToPath } from "node:url";
+import { PAGES, capabilityKey, pageKey, resolveCanViewPage } from "./permissions-acl.ts";
 
 describe("page ACL", () => {
   it("admins and org admins see every non-admin-only page", () => {
@@ -49,6 +52,22 @@ describe("page ACL", () => {
     ]) {
       assert.ok(paths.has(required), `missing page ${required}`);
     }
+  });
+
+  it("stores capabilities as capability::<id> in the permissions matrix", () => {
+    assert.equal(capabilityKey("timesheet_cost_view"), "capability::timesheet_cost_view");
+    assert.equal(capabilityKey("data_editor"), "capability::data_editor");
+  });
+
+  it("imports capabilityKey into permissions.ts so Timesheets and Resources can resolve cost view", () => {
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(join(dir, "permissions.ts"), "utf8");
+    // `export { capabilityKey } from` does not bind the name. useCapabilityPermission
+    // calls capabilityKey() and throws ReferenceError if it is only re-exported.
+    assert.match(
+      src,
+      /\bimport\s*\{[\s\S]*\bcapabilityKey\b[\s\S]*\}\s*from\s*["']@\/lib\/permissions-acl["']/,
+    );
   });
 
   it("registers the leftover signed-in commercial surfaces", () => {
