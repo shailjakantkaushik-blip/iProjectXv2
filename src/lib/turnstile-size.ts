@@ -22,3 +22,6 @@ export function turnstileHostWidth(containerPx: number, viewportPx: number): num
 export function turnstileSizeForWidth(widthPx: number): TurnstileWidgetSize {
   return widthPx > 0 && widthPx < TURNSTILE_NORMAL_WIDTH_PX ? "compact" : "normal";
 }
+
+/** Stable empty innerHTML so React will not reset Cloudflare’s iframe children. */
+export const TURNSTILE_SLOT_INNER_HTML = { __html: "" };
