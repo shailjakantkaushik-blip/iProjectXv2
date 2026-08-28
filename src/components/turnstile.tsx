@@ -1,9 +1,9 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { isTurnstileScriptSrc } from "@/lib/turnstile-load";
 import {
+  turnstileAuthWidgetSize,
   turnstileBoxForSize,
-  turnstileSizeForHost,
-  type TurnstileWidgetSize,
+  turnstileContainerHasIframe,
 } from "@/lib/turnstile-size";
 
 export { turnstileSizeForHost, turnstileSizeForWidth } from "@/lib/turnstile-size";
@@ -69,8 +69,6 @@ function loadScript(): Promise<void> {
       };
       document.head.appendChild(s);
     }
-    // Always poll. The first-HTML script on Mobile Safari fires `load` before
-    // this module runs, so waiting on that event hangs and the checkbox never mounts.
     const started = Date.now();
     const poll = window.setInterval(() => {
       if (window.turnstile) {
@@ -108,13 +106,10 @@ interface Props {
 
 /**
  * Cloudflare Turnstile widget.
- * Callbacks are held in refs so parent re-renders do not remount/reset the
- * challenge (which felt like the login page "refreshing").
- * Memoized so auth form state updates (e.g. token stored) do not recreate the iframe.
  *
- * Never replace the host node with an error-only tree — that unmounts the
- * iframe. Mobile Safari is slow to paint it; tearing it down at 2.5s was why
- * the checkbox never appeared.
+ * Login always mounts the official 300×65 checkbox (never compact). Compact
+ * reserved a tall empty gray box on Mobile Safari. The iframe is rendered
+ * after mount; if it still is missing we retry without tearing down the host.
  */
 export const TurnstileWidget = memo(function TurnstileWidget({
   onToken,
@@ -129,22 +124,22 @@ export const TurnstileWidget = memo(function TurnstileWidget({
   const prevResetNonceRef = useRef(resetNonce);
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
-  const [size, setSize] = useState<TurnstileWidgetSize>("normal");
+  const [iframeReady, setIframeReady] = useState(false);
   onTokenRef.current = onToken;
   onExpireRef.current = onExpire;
   const siteKey = getTurnstileSiteKey();
+  const size = turnstileAuthWidgetSize();
   const box = turnstileBoxForSize(size);
 
   useEffect(() => {
     if (!siteKey || !containerRef.current) return;
     let cancelled = false;
     setError(null);
-    const measureSize = () => {
-      const el = containerRef.current;
-      const host = el?.parentElement?.clientWidth || el?.clientWidth || 0;
-      const viewport = typeof window !== "undefined" ? window.innerWidth : 0;
-      return turnstileSizeForHost(host, viewport);
-    };
+    setIframeReady(false);
+
+    const hostHasIframe = () =>
+      turnstileContainerHasIframe(containerRef.current?.innerHTML ?? "");
+
     const mount = () => {
       if (cancelled || !window.turnstile || !containerRef.current) return;
       if (widgetIdRef.current) {
@@ -155,12 +150,11 @@ export const TurnstileWidget = memo(function TurnstileWidget({
         }
         widgetIdRef.current = null;
       }
-      const nextSize = measureSize();
-      setSize(nextSize);
+      containerRef.current.replaceChildren();
       widgetIdRef.current = window.turnstile.render(containerRef.current, {
         sitekey: siteKey,
         theme,
-        size: nextSize,
+        size,
         appearance: "always",
         retry: "auto",
         "refresh-expired": "auto",
@@ -177,14 +171,31 @@ export const TurnstileWidget = memo(function TurnstileWidget({
         },
       });
       prevResetNonceRef.current = resetNonce;
+      if (hostHasIframe()) setIframeReady(true);
     };
+
     loadScript()
       .then(mount)
       .catch(() => {
         if (!cancelled) setError("Cloudflare check did not load. Tap to retry.");
       });
+
+    const watchdog = window.setTimeout(() => {
+      if (cancelled) return;
+      if (!hostHasIframe()) mount();
+    }, 1800);
+    const seen = window.setInterval(() => {
+      if (cancelled) return;
+      if (hostHasIframe()) {
+        setIframeReady(true);
+        window.clearInterval(seen);
+      }
+    }, 200);
+
     return () => {
       cancelled = true;
+      window.clearTimeout(watchdog);
+      window.clearInterval(seen);
       if (widgetIdRef.current && window.turnstile) {
         try {
           window.turnstile.remove(widgetIdRef.current);
@@ -194,7 +205,7 @@ export const TurnstileWidget = memo(function TurnstileWidget({
         widgetIdRef.current = null;
       }
     };
-  }, [siteKey, theme, retry]);
+  }, [siteKey, theme, retry, size]);
 
   useEffect(() => {
     if (prevResetNonceRef.current === resetNonce) return;
@@ -210,13 +221,12 @@ export const TurnstileWidget = memo(function TurnstileWidget({
   if (!siteKey) return null;
 
   return (
-    <div className="turnstile-host flex w-full flex-col items-center justify-center gap-1 overflow-visible [filter:none] [transform:none]">
+    <div className="turnstile-host flex w-full flex-col items-center justify-center gap-1 overflow-visible">
       <div
         ref={containerRef}
-        className="mx-auto block overflow-visible rounded-md bg-muted/40"
+        className="mx-auto block overflow-visible"
         style={{
           width: box.widthPx,
-          height: box.heightPx,
           minWidth: box.widthPx,
           minHeight: box.heightPx,
         }}
@@ -235,7 +245,9 @@ export const TurnstileWidget = memo(function TurnstileWidget({
         </button>
       ) : (
         <p className="text-[10px] text-muted-foreground">
-          Secured by Cloudflare — complete the check before signing in.
+          {iframeReady
+            ? "Secured by Cloudflare — complete the check before signing in."
+            : "Loading Cloudflare check…"}
         </p>
       )}
     </div>

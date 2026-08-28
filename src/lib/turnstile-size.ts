@@ -66,7 +66,21 @@ export function turnstileSizeForHost(
   return width > 0 && width < TURNSTILE_NORMAL_WIDTH_PX ? "compact" : "normal";
 }
 
-/** @deprecated Prefer turnstileSizeForHost — kept for existing imports. */
+/**
+ * Login always uses the 300×65 checkbox. Compact (150×140) is what painted the
+ * empty gray tombstone on Mobile Safari in production.
+ */
+export function turnstileAuthWidgetSize(): TurnstileWidgetSize {
+  return "normal";
+}
+
+/**
+ * True when Cloudflare has injected its challenge iframe.
+ */
+export function turnstileContainerHasIframe(html: string | null | undefined): boolean {
+  return typeof html === "string" && /<iframe[\s>]/i.test(html);
+}
+
 export function turnstileSizeForWidth(widthPx: number): TurnstileWidgetSize {
   return turnstileSizeForHost(widthPx, widthPx);
 }
