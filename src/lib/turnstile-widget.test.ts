@@ -1,18 +1,29 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { turnstileBoxForSize, turnstileSizeForViewport } from "./turnstile-size.ts";
 
-const src = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), "../components/turnstile.tsx"),
-  "utf8",
-);
+describe("turnstileSizeForViewport", () => {
+  it("uses the square compact widget on phones", () => {
+    assert.equal(turnstileSizeForViewport(320), "compact");
+    assert.equal(turnstileSizeForViewport(390), "compact");
+    assert.equal(turnstileSizeForViewport(430), "compact");
+    assert.equal(turnstileSizeForViewport(767), "compact");
+  });
 
-describe("early August Turnstile widget", () => {
-  it("does not force a size (Cloudflare default checkbox) and always shows the check", () => {
-    assert.match(src, /appearance:\s*"always"/);
-    assert.doesNotMatch(src, /size:\s*"/);
-    assert.doesNotMatch(src, /TURNSTILE_SLOT_INNER_HTML|dangerouslySetInnerHTML|singletonHost/);
+  it("uses the standard rectangle on desktop and laptop", () => {
+    assert.equal(turnstileSizeForViewport(768), "normal");
+    assert.equal(turnstileSizeForViewport(1024), "normal");
+    assert.equal(turnstileSizeForViewport(1280), "normal");
+    assert.equal(turnstileSizeForViewport(0), "normal");
+  });
+});
+
+describe("turnstileBoxForSize", () => {
+  it("reserves the official compact square so the phone widget can paint", () => {
+    assert.deepEqual(turnstileBoxForSize("compact"), { widthPx: 150, heightPx: 140 });
+  });
+
+  it("reserves the official rectangle on desktop", () => {
+    assert.deepEqual(turnstileBoxForSize("normal"), { widthPx: 300, heightPx: 65 });
   });
 });

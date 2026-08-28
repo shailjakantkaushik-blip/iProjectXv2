@@ -1,4 +1,9 @@
-import { memo, useEffect, useRef } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  turnstileBoxForSize,
+  turnstileSizeForViewport,
+  type TurnstileWidgetSize,
+} from "@/lib/turnstile-size";
 
 const TURNSTILE_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 
@@ -21,6 +26,10 @@ export function getTurnstileSiteKey(): string | undefined {
   );
 }
 
+export function isTurnstileEnabled(): boolean {
+  return Boolean(getTurnstileSiteKey());
+}
+
 let loadPromise: Promise<void> | null = null;
 function loadScript(): Promise<void> {
   if (typeof window === "undefined") return Promise.resolve();
@@ -38,20 +47,22 @@ function loadScript(): Promise<void> {
   return loadPromise;
 }
 
+function readViewportSize(): TurnstileWidgetSize {
+  if (typeof window === "undefined") return "normal";
+  return turnstileSizeForViewport(window.innerWidth);
+}
+
 interface Props {
   onToken: (token: string) => void;
   onExpire?: () => void;
   theme?: "light" | "dark" | "auto";
-  /**
-   * Increment to force a widget reset after a token is consumed or a sign-in
-   * attempt fails. Without this, Sign in stays disabled until a full refresh.
-   */
   resetNonce?: number;
 }
 
 /**
- * Cloudflare Turnstile widget — same implementation as 7 Aug 2026 (`7171b39`),
- * the last login build before the late-August mobile/Safari experiments.
+ * Login Cloudflare check.
+ * Phones get the compact square (150×140) that recently painted on mobile.
+ * Desktop / laptop keep the standard 300×65 rectangle.
  */
 export const TurnstileWidget = memo(function TurnstileWidget({
   onToken,
@@ -64,17 +75,24 @@ export const TurnstileWidget = memo(function TurnstileWidget({
   const onTokenRef = useRef(onToken);
   const onExpireRef = useRef(onExpire);
   const prevResetNonceRef = useRef(resetNonce);
+  const [size, setSize] = useState<TurnstileWidgetSize>("normal");
+  const [ready, setReady] = useState(false);
   onTokenRef.current = onToken;
   onExpireRef.current = onExpire;
   const siteKey = getTurnstileSiteKey();
+  const box = turnstileBoxForSize(size);
+
+  useLayoutEffect(() => {
+    setSize(readViewportSize());
+    setReady(true);
+  }, []);
 
   useEffect(() => {
-    if (!siteKey || !containerRef.current) return;
+    if (!ready || !siteKey || !containerRef.current) return;
     let cancelled = false;
     loadScript()
       .then(() => {
         if (cancelled || !window.turnstile || !containerRef.current) return;
-        // Avoid double-render if effect re-runs before cleanup finishes.
         if (widgetIdRef.current) {
           try {
             window.turnstile.remove(widgetIdRef.current);
@@ -86,7 +104,7 @@ export const TurnstileWidget = memo(function TurnstileWidget({
         widgetIdRef.current = window.turnstile.render(containerRef.current, {
           sitekey: siteKey,
           theme,
-          // Always show the widget so users can see the Cloudflare check.
+          size,
           appearance: "always",
           callback: (token: string) => onTokenRef.current(token),
           "expired-callback": () => {
@@ -110,7 +128,7 @@ export const TurnstileWidget = memo(function TurnstileWidget({
         widgetIdRef.current = null;
       }
     };
-  }, [siteKey, theme]);
+  }, [ready, siteKey, theme, size]);
 
   useEffect(() => {
     if (prevResetNonceRef.current === resetNonce) return;
@@ -125,15 +143,20 @@ export const TurnstileWidget = memo(function TurnstileWidget({
 
   if (!siteKey) return null;
   return (
-    <div className="flex min-h-[65px] flex-col items-center justify-center gap-1">
-      <div ref={containerRef} className="flex justify-center" />
+    <div className="flex w-full flex-col items-center justify-center gap-1">
+      <div
+        ref={containerRef}
+        className="flex justify-center"
+        suppressHydrationWarning
+        style={{
+          width: box.widthPx,
+          minWidth: box.widthPx,
+          minHeight: box.heightPx,
+        }}
+      />
       <p className="text-[10px] text-muted-foreground">
         Secured by Cloudflare — complete the check before signing in.
       </p>
     </div>
   );
 });
-
-export function isTurnstileEnabled(): boolean {
-  return Boolean(getTurnstileSiteKey());
-}
