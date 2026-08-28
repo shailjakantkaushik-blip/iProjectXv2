@@ -592,38 +592,6 @@ html:has([data-auth-layout]) body {
   overflow-x: visible;
 }
 
-/* WebKit clips cross-origin iframes inside border-radius / overflow ancestors. */
-.auth-card {
-  -webkit-mask-image: none;
-  mask-image: none;
-  transform: none;
-  filter: none;
-}
-
-.turnstile-host,
-.turnstile-host > div {
-  overflow: visible !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-  transform: none !important;
-  filter: none !important;
-  -webkit-transform: none !important;
-}
-
-.turnstile-host iframe {
-  display: block !important;
-  width: 300px !important;
-  height: 65px !important;
-  max-width: none !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-  position: relative !important;
-  z-index: 2 !important;
-  pointer-events: auto !important;
-  transform: none !important;
-  -webkit-transform: none !important;
-}
-
 /*
  * Paint budget: mobile already felt faster because ≤1024px skipped fixed
  * backgrounds + glass blur. Apply the same mitigations on laptop/desktop —
