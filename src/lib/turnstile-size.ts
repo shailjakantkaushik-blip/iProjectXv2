@@ -4,11 +4,10 @@ export type TurnstileWidgetSize = "normal" | "compact";
 export const TURNSTILE_NORMAL_WIDTH_PX = 300;
 export const TURNSTILE_NORMAL_HEIGHT_PX = 65;
 
-/** Official compact footprint — this is the square box that paints on phones. */
+/** Official compact footprint — the square box that paints on phones. */
 export const TURNSTILE_COMPACT_WIDTH_PX = 150;
 export const TURNSTILE_COMPACT_HEIGHT_PX = 140;
 
-/** Phones and small portrait tablets. Laptops stay on the rectangle. */
 export const TURNSTILE_MOBILE_MAX_PX = 767;
 
 export function turnstileBoxForSize(size: TurnstileWidgetSize): {
@@ -21,9 +20,29 @@ export function turnstileBoxForSize(size: TurnstileWidgetSize): {
 }
 
 /**
- * Mobile: compact (square 150×140) — that is the widget that recently showed
- * on phones. Desktop / laptop: normal (rectangle 300×65).
+ * True for real phone / tablet browsers (including iPhone Chrome/Firefox,
+ * Android, and iOS “desktop site” which still reports as iOS/WebKit).
  */
+export function isPhoneBrowser(input: {
+  userAgent?: string;
+  platform?: string;
+  maxTouchPoints?: number;
+  viewportPx?: number;
+}): boolean {
+  const ua = input.userAgent || "";
+  if (/iP(hone|od|ad)/.test(ua)) return true;
+  if (/Android/i.test(ua)) return true;
+  if (input.platform === "MacIntel" && (input.maxTouchPoints || 0) > 1) return true;
+  const width = input.viewportPx || 0;
+  return width > 0 && width <= TURNSTILE_MOBILE_MAX_PX;
+}
+
+/** Phone: square compact. Desktop / laptop: rectangle. */
+export function turnstileSizeForDevice(isPhone: boolean): TurnstileWidgetSize {
+  return isPhone ? "compact" : "normal";
+}
+
+/** @deprecated Prefer turnstileSizeForDevice — kept for tests. */
 export function turnstileSizeForViewport(viewportPx: number): TurnstileWidgetSize {
-  return viewportPx > 0 && viewportPx <= TURNSTILE_MOBILE_MAX_PX ? "compact" : "normal";
+  return turnstileSizeForDevice(isPhoneBrowser({ viewportPx }));
 }
