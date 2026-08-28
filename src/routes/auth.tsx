@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { TurnstileWidget, isTurnstileEnabled } from "@/components/turnstile";
+import { readLiveTurnstileTokenFromDom } from "@/lib/turnstile-frame";
 import { verifyTurnstile } from "@/lib/turnstile.functions";
 import { getMfaStatus } from "@/lib/mfa";
 import { recordAuthSecurityEvent, recordFailedLogin } from "@/lib/auth-events.functions";
@@ -445,6 +446,17 @@ function AuthPage() {
   }, []);
   const handleExpire = useCallback(() => setCaptchaToken(null), []);
 
+  useEffect(() => {
+    if (!captchaRequired || captchaToken) return;
+    const pull = () => {
+      const token = readLiveTurnstileTokenFromDom();
+      if (token) setCaptchaToken(token);
+    };
+    pull();
+    const id = window.setInterval(pull, 400);
+    return () => window.clearInterval(id);
+  }, [captchaRequired, captchaToken, captchaResetNonce]);
+
   /** Clear a used/invalid captcha and ask the widget for a fresh challenge. */
   const refreshCaptcha = useCallback(() => {
     setCaptchaToken(null);
@@ -453,12 +465,13 @@ function AuthPage() {
 
   const ensureCaptcha = async (): Promise<boolean> => {
     if (!captchaRequired) return true;
-    if (!captchaToken) {
+    const token = captchaToken || readLiveTurnstileTokenFromDom();
+    if (!token) {
       toast.error("Please complete the human check.");
       return false;
     }
     try {
-      await verifyTurnstile({ data: { token: captchaToken } });
+      await verifyTurnstile({ data: { token } });
       // Token is single-use after server verify — drop it so Sign in cannot
       // stay enabled on a dead token if the rest of the flow fails.
       setCaptchaToken(null);
