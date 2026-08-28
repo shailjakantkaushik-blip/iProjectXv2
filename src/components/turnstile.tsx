@@ -3,7 +3,8 @@ import { isTurnstileScriptSrc } from "@/lib/turnstile-load";
 import {
   turnstileAuthWidgetSize,
   turnstileBoxForSize,
-  turnstileContainerHasIframe,
+  turnstileHostHasWidget,
+  turnstileShouldRemount,
 } from "@/lib/turnstile-size";
 
 export { turnstileSizeForHost, turnstileSizeForWidth } from "@/lib/turnstile-size";
@@ -16,6 +17,7 @@ declare global {
       render: (el: HTMLElement, opts: Record<string, unknown>) => string;
       reset: (id?: string) => void;
       remove: (id?: string) => void;
+      ready?: (cb: () => void) => void;
     };
   }
 }
@@ -124,7 +126,6 @@ export const TurnstileWidget = memo(function TurnstileWidget({
   const prevResetNonceRef = useRef(resetNonce);
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
-  const [iframeReady, setIframeReady] = useState(false);
   onTokenRef.current = onToken;
   onExpireRef.current = onExpire;
   const siteKey = getTurnstileSiteKey();
@@ -135,13 +136,18 @@ export const TurnstileWidget = memo(function TurnstileWidget({
     if (!siteKey || !containerRef.current) return;
     let cancelled = false;
     setError(null);
-    setIframeReady(false);
-
-    const hostHasIframe = () =>
-      turnstileContainerHasIframe(containerRef.current?.innerHTML ?? "");
 
     const mount = () => {
       if (cancelled || !window.turnstile || !containerRef.current) return;
+      const hasIframe = turnstileHostHasWidget(containerRef.current);
+      if (
+        !turnstileShouldRemount({
+          widgetId: widgetIdRef.current,
+          hasIframe,
+        })
+      ) {
+        return;
+      }
       if (widgetIdRef.current) {
         try {
           window.turnstile.remove(widgetIdRef.current);
@@ -171,31 +177,33 @@ export const TurnstileWidget = memo(function TurnstileWidget({
         },
       });
       prevResetNonceRef.current = resetNonce;
-      if (hostHasIframe()) setIframeReady(true);
+    };
+
+    const start = () => {
+      if (cancelled) return;
+      if (typeof window.turnstile?.ready === "function") {
+        window.turnstile.ready(mount);
+        return;
+      }
+      mount();
     };
 
     loadScript()
-      .then(mount)
+      .then(start)
       .catch(() => {
         if (!cancelled) setError("Cloudflare check did not load. Tap to retry.");
       });
 
-    const watchdog = window.setTimeout(() => {
+    const failTimer = window.setTimeout(() => {
       if (cancelled) return;
-      if (!hostHasIframe()) mount();
-    }, 1800);
-    const seen = window.setInterval(() => {
-      if (cancelled) return;
-      if (hostHasIframe()) {
-        setIframeReady(true);
-        window.clearInterval(seen);
+      if (!turnstileHostHasWidget(containerRef.current) && !widgetIdRef.current) {
+        setError("Cloudflare check did not load. Tap to retry.");
       }
-    }, 200);
+    }, 8000);
 
     return () => {
       cancelled = true;
-      window.clearTimeout(watchdog);
-      window.clearInterval(seen);
+      window.clearTimeout(failTimer);
       if (widgetIdRef.current && window.turnstile) {
         try {
           window.turnstile.remove(widgetIdRef.current);
@@ -245,9 +253,7 @@ export const TurnstileWidget = memo(function TurnstileWidget({
         </button>
       ) : (
         <p className="text-[10px] text-muted-foreground">
-          {iframeReady
-            ? "Secured by Cloudflare — complete the check before signing in."
-            : "Loading Cloudflare check…"}
+          Secured by Cloudflare — complete the check before signing in.
         </p>
       )}
     </div>
