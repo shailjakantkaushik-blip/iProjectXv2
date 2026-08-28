@@ -19,7 +19,7 @@
       (function () {
         var params = new URLSearchParams(location.search);
         var key = params.get("k") || "";
-        var size = params.get("size") === "normal" ? "normal" : "compact";
+        var size = "normal";
         function notify(token) {
           parent.postMessage(
             { source: "iprojectx-turnstile", token: token || "" },

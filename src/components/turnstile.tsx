@@ -1,10 +1,8 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef } from "react";
 import { readTurnstileFrameToken, turnstileFrameSrc } from "@/lib/turnstile-frame";
 import {
-  isPhoneBrowser,
-  turnstileBoxForSize,
-  turnstileSizeForDevice,
-  type TurnstileWidgetSize,
+  TURNSTILE_NORMAL_HEIGHT_PX,
+  TURNSTILE_NORMAL_WIDTH_PX,
 } from "@/lib/turnstile-size";
 
 export function getTurnstileSiteKey(): string | undefined {
@@ -20,18 +18,6 @@ export function isTurnstileEnabled(): boolean {
   return Boolean(getTurnstileSiteKey());
 }
 
-function readDeviceSize(): TurnstileWidgetSize {
-  if (typeof window === "undefined") return "compact";
-  return turnstileSizeForDevice(
-    isPhoneBrowser({
-      userAgent: navigator.userAgent,
-      platform: navigator.platform,
-      maxTouchPoints: navigator.maxTouchPoints || 0,
-      viewportPx: window.innerWidth,
-    }),
-  );
-}
-
 interface Props {
   onToken: (token: string) => void;
   onExpire?: () => void;
@@ -40,12 +26,11 @@ interface Props {
 }
 
 /**
- * Login Cloudflare check for mobile browsers.
+ * Standard Cloudflare checkbox (300×65 rectangle) on every surface:
+ * desktop, laptop, web app, and phone browsers.
  *
- * In-app / SPA navigation already has JS running, so a React widget can work.
- * A cold open in Safari/Chrome (the phone browser) often never paints that
- * widget. Host Cloudflare’s official implicit widget in a same-origin frame
- * so it does not depend on React hydration.
+ * The widget lives in a same-origin frame so a cold Safari/Chrome open of
+ * /auth can paint it without waiting on React hydration.
  */
 export const TurnstileWidget = memo(function TurnstileWidget({
   onToken,
@@ -54,15 +39,9 @@ export const TurnstileWidget = memo(function TurnstileWidget({
 }: Props) {
   const onTokenRef = useRef(onToken);
   const onExpireRef = useRef(onExpire);
-  const [size, setSize] = useState<TurnstileWidgetSize>("compact");
   onTokenRef.current = onToken;
   onExpireRef.current = onExpire;
   const siteKey = getTurnstileSiteKey();
-  const box = turnstileBoxForSize(size);
-
-  useLayoutEffect(() => {
-    setSize(readDeviceSize());
-  }, []);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -81,14 +60,15 @@ export const TurnstileWidget = memo(function TurnstileWidget({
   return (
     <div className="auth-turnstile flex w-full flex-col items-center justify-center gap-1 overflow-visible">
       <iframe
-        key={`${size}-${resetNonce}`}
+        key={resetNonce}
         title="Cloudflare security check"
-        src={turnstileFrameSrc(siteKey, size)}
-        width={box.widthPx}
-        height={box.heightPx}
+        src={turnstileFrameSrc(siteKey)}
+        width={TURNSTILE_NORMAL_WIDTH_PX}
+        height={TURNSTILE_NORMAL_HEIGHT_PX}
         style={{
-          width: box.widthPx,
-          height: box.heightPx,
+          width: TURNSTILE_NORMAL_WIDTH_PX,
+          height: TURNSTILE_NORMAL_HEIGHT_PX,
+          maxWidth: "none",
           border: 0,
           overflow: "hidden",
         }}

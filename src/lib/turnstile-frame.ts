@@ -1,10 +1,10 @@
 export const TURNSTILE_FRAME_PATH = "/turnstile-frame.html";
 export const TURNSTILE_FRAME_MESSAGE_SOURCE = "iprojectx-turnstile";
 
-export function turnstileFrameSrc(siteKey: string, size: "normal" | "compact"): string {
+export function turnstileFrameSrc(siteKey: string): string {
   const params = new URLSearchParams({
     k: siteKey,
-    size,
+    size: "normal",
   });
   return `${TURNSTILE_FRAME_PATH}?${params.toString()}`;
 }
