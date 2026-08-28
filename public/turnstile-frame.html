@@ -19,25 +19,78 @@
       (function () {
         var params = new URLSearchParams(location.search);
         var key = params.get("k") || "";
-        var size = "normal";
+        var lastToken = "";
+        var acked = false;
+        var retryTimer = 0;
+
         function notify(token) {
+          lastToken = token || "";
           parent.postMessage(
-            { source: "iprojectx-turnstile", token: token || "" },
+            { source: "iprojectx-turnstile", token: lastToken },
             location.origin,
           );
         }
+
+        function stopRetry() {
+          if (retryTimer) {
+            clearInterval(retryTimer);
+            retryTimer = 0;
+          }
+        }
+
+        function startRetry() {
+          stopRetry();
+          if (!lastToken) return;
+          var n = 0;
+          retryTimer = setInterval(function () {
+            n += 1;
+            if (acked || n > 24 || !lastToken) {
+              stopRetry();
+              return;
+            }
+            notify(lastToken);
+          }, 250);
+        }
+
+        window.iprojectxLastTurnstileToken = function () {
+          if (lastToken) return lastToken;
+          var field = document.querySelector('[name="cf-turnstile-response"]');
+          return field && field.value ? field.value : "";
+        };
+
         window.iprojectxTurnstileOk = function (token) {
+          acked = false;
           notify(token);
+          startRetry();
         };
         window.iprojectxTurnstileExpire = function () {
+          acked = false;
+          stopRetry();
           notify("");
         };
+
+        window.addEventListener("message", function (event) {
+          if (event.origin !== location.origin) return;
+          var data = event.data;
+          if (!data || data.source !== "iprojectx-turnstile") return;
+          if (data.type === "ack") {
+            acked = true;
+            stopRetry();
+            return;
+          }
+          if (data.type === "ready") {
+            if (lastToken) notify(lastToken);
+          }
+        });
+
         var el = document.getElementById("widget");
         el.className = "cf-turnstile";
         el.setAttribute("data-sitekey", key);
-        el.setAttribute("data-size", size);
+        el.setAttribute("data-size", "normal");
         el.setAttribute("data-theme", "auto");
         el.setAttribute("data-appearance", "always");
+        el.setAttribute("data-response-field", "true");
+        el.setAttribute("data-response-field-name", "cf-turnstile-response");
         el.setAttribute("data-callback", "iprojectxTurnstileOk");
         el.setAttribute("data-expired-callback", "iprojectxTurnstileExpire");
         el.setAttribute("data-error-callback", "iprojectxTurnstileExpire");

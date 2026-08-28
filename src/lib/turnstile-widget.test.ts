@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { readTurnstileFrameToken, turnstileFrameSrc } from "./turnstile-frame.ts";
+import {
+  isTurnstileFrameControl,
+  readTurnstileFrameToken,
+  readTurnstileTokenFromFrameWindow,
+  turnstileFrameControlMessage,
+  turnstileFrameSrc,
+} from "./turnstile-frame.ts";
 import { turnstileAuthWidgetSize, turnstileBoxForSize } from "./turnstile-size.ts";
 
 describe("turnstileAuthWidgetSize", () => {
@@ -26,5 +32,32 @@ describe("turnstile frame", () => {
     assert.equal(readTurnstileFrameToken({ source: "iprojectx-turnstile", token: "" }), "");
     assert.equal(readTurnstileFrameToken({ source: "other", token: "abc" }), null);
     assert.equal(readTurnstileFrameToken(null), null);
+  });
+
+  it("does not treat handshake control messages as tokens", () => {
+    assert.equal(readTurnstileFrameToken(turnstileFrameControlMessage("ready")), null);
+    assert.equal(readTurnstileFrameToken(turnstileFrameControlMessage("ack")), null);
+    assert.equal(isTurnstileFrameControl(turnstileFrameControlMessage("ready"), "ready"), true);
+    assert.equal(isTurnstileFrameControl(turnstileFrameControlMessage("ack"), "ack"), true);
+    assert.equal(isTurnstileFrameControl({ source: "iprojectx-turnstile", token: "abc" }, "ready"), false);
+  });
+
+  it("reads a token the iframe already collected", () => {
+    assert.equal(
+      readTurnstileTokenFromFrameWindow({
+        iprojectxLastTurnstileToken: () => "from-api",
+      }),
+      "from-api",
+    );
+    assert.equal(
+      readTurnstileTokenFromFrameWindow({
+        document: {
+          querySelector: () => ({ value: "from-field" }),
+        },
+      }),
+      "from-field",
+    );
+    assert.equal(readTurnstileTokenFromFrameWindow({}), null);
+    assert.equal(readTurnstileTokenFromFrameWindow(null), null);
   });
 });
