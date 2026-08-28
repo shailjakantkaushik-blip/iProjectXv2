@@ -95,6 +95,13 @@ export function turnstileShouldRemount(options: {
   return true;
 }
 
+/**
+ * Stable empty innerHTML so React will not reset the host on parent re-renders.
+ * Without this, login (brand fetch, session, typing) re-renders the empty div
+ * and React deletes Cloudflare’s iframe — the checkbox never stays on mobile.
+ */
+export const TURNSTILE_HOST_INNER_HTML = { __html: "" };
+
 export function turnstileSizeForWidth(widthPx: number): TurnstileWidgetSize {
   return turnstileSizeForHost(widthPx, widthPx);
 }

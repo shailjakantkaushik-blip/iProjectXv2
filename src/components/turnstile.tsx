@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { isTurnstileScriptSrc } from "@/lib/turnstile-load";
 import {
+  TURNSTILE_HOST_INNER_HTML,
   turnstileAuthWidgetSize,
   turnstileBoxForSize,
   turnstileHostHasWidget,
@@ -109,16 +110,17 @@ interface Props {
 /**
  * Cloudflare Turnstile widget.
  *
- * Login always mounts the official 300×65 checkbox (never compact). Do not
- * remount after render() returns — Safari innerHTML misses the live iframe
- * and a remount loop left login stuck on “Loading Cloudflare check…”.
+ * Login always mounts the official 300×65 checkbox (never compact).
+ * The host uses stable empty innerHTML so React parent updates cannot delete
+ * Cloudflare’s iframe (that is why the checkbox vanished on mobile).
  */
-export const TurnstileWidget = memo(function TurnstileWidget({
-  onToken,
-  onExpire,
-  theme = "light",
-  resetNonce = 0,
-}: Props) {
+export const TurnstileWidget = memo(
+  function TurnstileWidget({
+    onToken,
+    onExpire,
+    theme = "light",
+    resetNonce = 0,
+  }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
   const onTokenRef = useRef(onToken);
@@ -135,7 +137,6 @@ export const TurnstileWidget = memo(function TurnstileWidget({
   useEffect(() => {
     if (!siteKey || !containerRef.current) return;
     let cancelled = false;
-    setError(null);
 
     const mount = () => {
       if (cancelled || !window.turnstile || !containerRef.current) return;
@@ -233,6 +234,8 @@ export const TurnstileWidget = memo(function TurnstileWidget({
       <div
         ref={containerRef}
         className="mx-auto block overflow-visible"
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={TURNSTILE_HOST_INNER_HTML}
         style={{
           width: box.widthPx,
           minWidth: box.widthPx,
@@ -258,4 +261,7 @@ export const TurnstileWidget = memo(function TurnstileWidget({
       )}
     </div>
   );
-});
+},
+(prev, next) =>
+  prev.theme === next.theme && prev.resetNonce === next.resetNonce,
+);
