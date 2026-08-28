@@ -20,6 +20,12 @@ import {
 import { toast } from "sonner";
 import { TurnstileWidget, isTurnstileEnabled } from "@/components/turnstile";
 import { readLiveTurnstileTokenFromDom } from "@/lib/turnstile-frame";
+import {
+  clearTurnstileTokenBridge,
+  readTurnstileTokenFromBridge,
+  TURNSTILE_TOKEN_EVENT,
+  TURNSTILE_TOKEN_INPUT_ID,
+} from "@/lib/turnstile-token-bridge";
 import { verifyTurnstile } from "@/lib/turnstile.functions";
 import { getMfaStatus } from "@/lib/mfa";
 import { recordAuthSecurityEvent, recordFailedLogin } from "@/lib/auth-events.functions";
@@ -444,28 +450,46 @@ function AuthPage() {
   const handleToken = useCallback((t: string) => {
     setCaptchaToken((prev) => (prev === t ? prev : t));
   }, []);
-  const handleExpire = useCallback(() => setCaptchaToken(null), []);
+  const handleExpire = useCallback(() => {
+    clearTurnstileTokenBridge();
+    setCaptchaToken(null);
+  }, []);
 
   useEffect(() => {
-    if (!captchaRequired || captchaToken) return;
+    if (!captchaRequired) return;
     const pull = () => {
-      const token = readLiveTurnstileTokenFromDom();
-      if (token) setCaptchaToken(token);
+      const token = readTurnstileTokenFromBridge() || readLiveTurnstileTokenFromDom();
+      if (token) setCaptchaToken((prev) => prev || token);
     };
+    const onBridge = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (typeof detail === "string" && detail) setCaptchaToken(detail);
+    };
+    window.addEventListener(TURNSTILE_TOKEN_EVENT, onBridge);
     pull();
-    const id = window.setInterval(pull, 400);
-    return () => window.clearInterval(id);
-  }, [captchaRequired, captchaToken, captchaResetNonce]);
+    const id = window.setInterval(pull, 300);
+    return () => {
+      window.removeEventListener(TURNSTILE_TOKEN_EVENT, onBridge);
+      window.clearInterval(id);
+    };
+  }, [captchaRequired, captchaResetNonce]);
 
   /** Clear a used/invalid captcha and ask the widget for a fresh challenge. */
   const refreshCaptcha = useCallback(() => {
+    clearTurnstileTokenBridge();
     setCaptchaToken(null);
     setCaptchaResetNonce((n) => n + 1);
   }, []);
 
   const ensureCaptcha = async (): Promise<boolean> => {
     if (!captchaRequired) return true;
-    const token = captchaToken || readLiveTurnstileTokenFromDom();
+    const readToken = () =>
+      captchaToken || readTurnstileTokenFromBridge() || readLiveTurnstileTokenFromDom();
+    let token = readToken();
+    if (!token) {
+      await new Promise((resolve) => window.setTimeout(resolve, 500));
+      token = readToken();
+    }
     if (!token) {
       toast.error("Please complete the human check.");
       return false;
@@ -475,6 +499,7 @@ function AuthPage() {
       // Token is single-use after server verify — drop it so Sign in cannot
       // stay enabled on a dead token if the rest of the flow fails.
       setCaptchaToken(null);
+      clearTurnstileTokenBridge();
       return true;
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Human check failed. Try again.");
@@ -730,7 +755,6 @@ function AuthPage() {
     }
   };
 
-  const submitDisabled = busy || (captchaRequired && !captchaToken);
   const brand = platformBrand;
   const orgLoginDescription = orgBrand
     ? `Sign in with your ${orgBrand.name} account. Only members of this organisation can use this link.`
@@ -821,10 +845,11 @@ function AuthPage() {
               resetNonce={captchaResetNonce}
             />
           )}
+          <input type="hidden" id={TURNSTILE_TOKEN_INPUT_ID} name="cf-turnstile-response" readOnly />
           <Button
             type="submit"
             className="h-10 w-full"
-            disabled={busy || !forgotEmail || (captchaRequired && !captchaToken)}
+            disabled={busy}
           >
             {busy ? "Sending…" : "Send reset link"}
           </Button>
@@ -864,6 +889,7 @@ function AuthPage() {
       }
     >
       {orgAlertBanner}
+      <input type="hidden" id={TURNSTILE_TOKEN_INPUT_ID} name="cf-turnstile-response" readOnly />
       {!loading && session && !switchingAccount && !orgGateBlocked ? (
         <div className="space-y-4 pt-2">
           <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm">
@@ -909,7 +935,6 @@ function AuthPage() {
               onToken={handleToken}
               onExpire={handleExpire}
               captchaResetNonce={captchaResetNonce}
-              submitDisabled={submitDisabled}
               busy={busy}
               sso={orgBrand?.sso ?? null}
               onSso={onSsoSignIn}
@@ -956,7 +981,7 @@ function AuthPage() {
                   resetNonce={captchaResetNonce}
                 />
               )}
-              <Button type="submit" className="h-10 w-full" disabled={submitDisabled}>
+              <Button type="submit" className="h-10 w-full" disabled={busy}>
                 {busy ? "Creating…" : "Create account"}
               </Button>
             </form>
@@ -970,7 +995,6 @@ function AuthPage() {
           onToken={handleToken}
           onExpire={handleExpire}
           captchaResetNonce={captchaResetNonce}
-          submitDisabled={submitDisabled}
           busy={busy}
           sso={orgBrand?.sso ?? null}
           onSso={onSsoSignIn}
@@ -988,7 +1012,6 @@ function SignInForm({
   onToken,
   onExpire,
   captchaResetNonce,
-  submitDisabled,
   busy,
   sso,
   onSso,
@@ -999,7 +1022,6 @@ function SignInForm({
   onToken: (t: string) => void;
   onExpire: () => void;
   captchaResetNonce: number;
-  submitDisabled: boolean;
   busy: boolean;
   sso: NonNullable<AuthOrgBrand>["sso"] | null | undefined;
   onSso: () => void;
@@ -1027,7 +1049,7 @@ function SignInForm({
             type="button"
             variant="outline"
             className="h-10 w-full"
-            disabled={busy || submitDisabled}
+            disabled={busy}
             onClick={() => void onSso()}
           >
             {busy ? "Redirecting…" : sso.button_label || "Sign in with SSO"}
@@ -1083,7 +1105,7 @@ function SignInForm({
       {captchaRequired && (
         <TurnstileWidget onToken={onToken} onExpire={onExpire} resetNonce={captchaResetNonce} />
       )}
-      <Button type="submit" className="h-10 w-full" disabled={submitDisabled}>
+      <Button type="submit" className="h-10 w-full" disabled={busy}>
         {busy ? "Signing in…" : "Sign in"}
       </Button>
     </form>

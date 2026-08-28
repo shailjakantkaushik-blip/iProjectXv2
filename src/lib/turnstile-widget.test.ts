@@ -7,6 +7,7 @@ import {
   turnstileFrameControlMessage,
   turnstileFrameSrc,
 } from "./turnstile-frame.ts";
+import { TURNSTILE_TOKEN_INPUT_ID } from "./turnstile-token-bridge.ts";
 import { turnstileAuthWidgetSize, turnstileBoxForSize } from "./turnstile-size.ts";
 
 describe("turnstileAuthWidgetSize", () => {
@@ -40,6 +41,17 @@ describe("turnstile frame", () => {
     assert.equal(isTurnstileFrameControl(turnstileFrameControlMessage("ready"), "ready"), true);
     assert.equal(isTurnstileFrameControl(turnstileFrameControlMessage("ack"), "ack"), true);
     assert.equal(isTurnstileFrameControl({ source: "iprojectx-turnstile", token: "abc" }, "ready"), false);
+  });
+
+  it("accepts JSON-string postMessage payloads from older WebKit", () => {
+    assert.equal(
+      readTurnstileFrameToken(JSON.stringify({ source: "iprojectx-turnstile", token: "abc" })),
+      "abc",
+    );
+  });
+
+  it("exposes a parent-page token bridge the frame can write", () => {
+    assert.equal(TURNSTILE_TOKEN_INPUT_ID, "turnstile-token-bridge");
   });
 
   it("reads a token the iframe already collected", () => {
