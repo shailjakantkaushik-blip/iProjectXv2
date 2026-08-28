@@ -5,8 +5,9 @@ import {
   isIosWebKit,
   turnstileAuthWidgetSize,
   turnstileBoxForSize,
-  turnstileContainerHasIframe,
+  turnstileHostHasWidget,
   turnstileHostWidth,
+  turnstileShouldRemount,
   turnstileSizeForHost,
   turnstileSizeForWidth,
 } from "./turnstile-size.ts";
@@ -52,14 +53,22 @@ describe("turnstileAuthWidgetSize", () => {
   });
 });
 
-describe("turnstileContainerHasIframe", () => {
-  it("detects when Cloudflare has injected its iframe", () => {
-    assert.equal(turnstileContainerHasIframe(""), false);
-    assert.equal(turnstileContainerHasIframe("<div></div>"), false);
+describe("turnstileHostHasWidget", () => {
+  it("uses querySelector, not innerHTML, so Safari live iframes count", () => {
+    assert.equal(turnstileHostHasWidget(null), false);
+    assert.equal(turnstileHostHasWidget({ querySelector: () => null }), false);
     assert.equal(
-      turnstileContainerHasIframe('<iframe src="https://challenges.cloudflare.com/"></iframe>'),
+      turnstileHostHasWidget({ querySelector: (sel) => (sel === "iframe" ? {} : null) }),
       true,
     );
+  });
+});
+
+describe("turnstileShouldRemount", () => {
+  it("does not remount after render returns an id (avoids the loading loop)", () => {
+    assert.equal(turnstileShouldRemount({ widgetId: "0", hasIframe: false }), false);
+    assert.equal(turnstileShouldRemount({ widgetId: null, hasIframe: true }), false);
+    assert.equal(turnstileShouldRemount({ widgetId: null, hasIframe: false }), true);
   });
 });
 

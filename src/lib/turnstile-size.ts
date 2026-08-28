@@ -76,9 +76,23 @@ export function turnstileAuthWidgetSize(): TurnstileWidgetSize {
 
 /**
  * True when Cloudflare has injected its challenge iframe.
+ * Use querySelector — Mobile Safari's innerHTML is often empty for a live
+ * cross-origin iframe, which made login sit on “Loading Cloudflare check…”.
  */
-export function turnstileContainerHasIframe(html: string | null | undefined): boolean {
-  return typeof html === "string" && /<iframe[\s>]/i.test(html);
+export function turnstileHostHasWidget(
+  host: { querySelector?: (sel: string) => unknown } | null | undefined,
+): boolean {
+  return Boolean(host?.querySelector?.("iframe"));
+}
+
+/** Do not remount if render already returned an id or the iframe is in the DOM. */
+export function turnstileShouldRemount(options: {
+  widgetId: string | null | undefined;
+  hasIframe: boolean;
+}): boolean {
+  if (options.widgetId) return false;
+  if (options.hasIframe) return false;
+  return true;
 }
 
 export function turnstileSizeForWidth(widthPx: number): TurnstileWidgetSize {
