@@ -1,7 +1,8 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
+  isPhoneBrowser,
   turnstileBoxForSize,
-  turnstileSizeForViewport,
+  turnstileSizeForDevice,
   type TurnstileWidgetSize,
 } from "@/lib/turnstile-size";
 
@@ -31,25 +32,49 @@ export function isTurnstileEnabled(): boolean {
 }
 
 let loadPromise: Promise<void> | null = null;
+
 function loadScript(): Promise<void> {
   if (typeof window === "undefined") return Promise.resolve();
   if (window.turnstile) return Promise.resolve();
   if (loadPromise) return loadPromise;
   loadPromise = new Promise((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = TURNSTILE_SRC;
-    s.async = true;
-    s.defer = true;
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error("Failed to load Turnstile"));
-    document.head.appendChild(s);
+    if (!document.querySelector(`script[src="${TURNSTILE_SRC}"]`)) {
+      const s = document.createElement("script");
+      s.src = TURNSTILE_SRC;
+      s.async = true;
+      s.onerror = () => {
+        loadPromise = null;
+        reject(new Error("Failed to load Turnstile"));
+      };
+      document.head.appendChild(s);
+    }
+    const started = Date.now();
+    const poll = window.setInterval(() => {
+      if (window.turnstile) {
+        window.clearInterval(poll);
+        resolve();
+        return;
+      }
+      if (Date.now() - started > 15000) {
+        window.clearInterval(poll);
+        loadPromise = null;
+        reject(new Error("Turnstile API missing"));
+      }
+    }, 40);
   });
   return loadPromise;
 }
 
-function readViewportSize(): TurnstileWidgetSize {
-  if (typeof window === "undefined") return "normal";
-  return turnstileSizeForViewport(window.innerWidth);
+function readDeviceSize(): TurnstileWidgetSize {
+  if (typeof window === "undefined") return "compact";
+  return turnstileSizeForDevice(
+    isPhoneBrowser({
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+      maxTouchPoints: navigator.maxTouchPoints || 0,
+      viewportPx: window.innerWidth,
+    }),
+  );
 }
 
 interface Props {
@@ -61,8 +86,8 @@ interface Props {
 
 /**
  * Login Cloudflare check.
- * Phones get the compact square (150×140) that recently painted on mobile.
- * Desktop / laptop keep the standard 300×65 rectangle.
+ * First HTML uses the phone square (150×140) so a 300px desktop box is never
+ * clipped on mobile. Desktop / laptop switch to the 300×65 rectangle.
  */
 export const TurnstileWidget = memo(function TurnstileWidget({
   onToken,
@@ -75,7 +100,7 @@ export const TurnstileWidget = memo(function TurnstileWidget({
   const onTokenRef = useRef(onToken);
   const onExpireRef = useRef(onExpire);
   const prevResetNonceRef = useRef(resetNonce);
-  const [size, setSize] = useState<TurnstileWidgetSize>("normal");
+  const [size, setSize] = useState<TurnstileWidgetSize>("compact");
   const [ready, setReady] = useState(false);
   onTokenRef.current = onToken;
   onExpireRef.current = onExpire;
@@ -83,7 +108,7 @@ export const TurnstileWidget = memo(function TurnstileWidget({
   const box = turnstileBoxForSize(size);
 
   useLayoutEffect(() => {
-    setSize(readViewportSize());
+    setSize(readDeviceSize());
     setReady(true);
   }, []);
 
@@ -93,6 +118,9 @@ export const TurnstileWidget = memo(function TurnstileWidget({
     loadScript()
       .then(() => {
         if (cancelled || !window.turnstile || !containerRef.current) return;
+        if (widgetIdRef.current && containerRef.current.querySelector("iframe")) {
+          return;
+        }
         if (widgetIdRef.current) {
           try {
             window.turnstile.remove(widgetIdRef.current);
@@ -119,14 +147,6 @@ export const TurnstileWidget = memo(function TurnstileWidget({
       .catch((e) => console.error(e));
     return () => {
       cancelled = true;
-      if (widgetIdRef.current && window.turnstile) {
-        try {
-          window.turnstile.remove(widgetIdRef.current);
-        } catch {
-          /* noop */
-        }
-        widgetIdRef.current = null;
-      }
     };
   }, [ready, siteKey, theme, size]);
 
@@ -143,10 +163,10 @@ export const TurnstileWidget = memo(function TurnstileWidget({
 
   if (!siteKey) return null;
   return (
-    <div className="flex w-full flex-col items-center justify-center gap-1">
+    <div className="auth-turnstile flex w-full flex-col items-center justify-center gap-1 overflow-visible">
       <div
         ref={containerRef}
-        className="flex justify-center"
+        className="flex justify-center overflow-visible"
         suppressHydrationWarning
         style={{
           width: box.widthPx,
