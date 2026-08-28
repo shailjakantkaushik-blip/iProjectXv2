@@ -1,22 +1,11 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import {
   isPhoneBrowser,
   turnstileBoxForSize,
   turnstileSizeForDevice,
   type TurnstileWidgetSize,
 } from "@/lib/turnstile-size";
-
-const TURNSTILE_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-
-declare global {
-  interface Window {
-    turnstile?: {
-      render: (el: HTMLElement, opts: Record<string, unknown>) => string;
-      reset: (id?: string) => void;
-      remove: (id?: string) => void;
-    };
-  }
-}
 
 export function getTurnstileSiteKey(): string | undefined {
   const env = import.meta.env as Record<string, string | undefined>;
@@ -29,40 +18,6 @@ export function getTurnstileSiteKey(): string | undefined {
 
 export function isTurnstileEnabled(): boolean {
   return Boolean(getTurnstileSiteKey());
-}
-
-let loadPromise: Promise<void> | null = null;
-
-function loadScript(): Promise<void> {
-  if (typeof window === "undefined") return Promise.resolve();
-  if (window.turnstile) return Promise.resolve();
-  if (loadPromise) return loadPromise;
-  loadPromise = new Promise((resolve, reject) => {
-    if (!document.querySelector(`script[src="${TURNSTILE_SRC}"]`)) {
-      const s = document.createElement("script");
-      s.src = TURNSTILE_SRC;
-      s.async = true;
-      s.onerror = () => {
-        loadPromise = null;
-        reject(new Error("Failed to load Turnstile"));
-      };
-      document.head.appendChild(s);
-    }
-    const started = Date.now();
-    const poll = window.setInterval(() => {
-      if (window.turnstile) {
-        window.clearInterval(poll);
-        resolve();
-        return;
-      }
-      if (Date.now() - started > 15000) {
-        window.clearInterval(poll);
-        loadPromise = null;
-        reject(new Error("Turnstile API missing"));
-      }
-    }, 40);
-  });
-  return loadPromise;
 }
 
 function readDeviceSize(): TurnstileWidgetSize {
@@ -85,9 +40,10 @@ interface Props {
 }
 
 /**
- * Login Cloudflare check.
- * First HTML uses the phone square (150×140) so a 300px desktop box is never
- * clipped on mobile. Desktop / laptop switch to the 300×65 rectangle.
+ * Cloudflare Turnstile via the official React wrapper
+ * (`@marsidev/react-turnstile`). The widget is client-only (Turnstile cannot
+ * run during SSR). Phones use compact (150×140 square); desktop/laptop use
+ * the standard 300×65 rectangle.
  */
 export const TurnstileWidget = memo(function TurnstileWidget({
   onToken,
@@ -95,13 +51,12 @@ export const TurnstileWidget = memo(function TurnstileWidget({
   theme = "auto",
   resetNonce = 0,
 }: Props) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const widgetIdRef = useRef<string | null>(null);
+  const widgetRef = useRef<TurnstileInstance | undefined>(undefined);
   const onTokenRef = useRef(onToken);
   const onExpireRef = useRef(onExpire);
   const prevResetNonceRef = useRef(resetNonce);
+  const [mounted, setMounted] = useState(false);
   const [size, setSize] = useState<TurnstileWidgetSize>("compact");
-  const [ready, setReady] = useState(false);
   onTokenRef.current = onToken;
   onExpireRef.current = onExpire;
   const siteKey = getTurnstileSiteKey();
@@ -109,71 +64,45 @@ export const TurnstileWidget = memo(function TurnstileWidget({
 
   useLayoutEffect(() => {
     setSize(readDeviceSize());
-    setReady(true);
+    setMounted(true);
   }, []);
-
-  useEffect(() => {
-    if (!ready || !siteKey || !containerRef.current) return;
-    let cancelled = false;
-    loadScript()
-      .then(() => {
-        if (cancelled || !window.turnstile || !containerRef.current) return;
-        if (widgetIdRef.current && containerRef.current.querySelector("iframe")) {
-          return;
-        }
-        if (widgetIdRef.current) {
-          try {
-            window.turnstile.remove(widgetIdRef.current);
-          } catch {
-            /* noop */
-          }
-          widgetIdRef.current = null;
-        }
-        widgetIdRef.current = window.turnstile.render(containerRef.current, {
-          sitekey: siteKey,
-          theme,
-          size,
-          appearance: "always",
-          callback: (token: string) => onTokenRef.current(token),
-          "expired-callback": () => {
-            onExpireRef.current?.();
-            if (widgetIdRef.current && window.turnstile) {
-              window.turnstile.reset(widgetIdRef.current);
-            }
-          },
-        });
-        prevResetNonceRef.current = resetNonce;
-      })
-      .catch((e) => console.error(e));
-    return () => {
-      cancelled = true;
-    };
-  }, [ready, siteKey, theme, size]);
 
   useEffect(() => {
     if (prevResetNonceRef.current === resetNonce) return;
     prevResetNonceRef.current = resetNonce;
-    if (!widgetIdRef.current || !window.turnstile) return;
-    try {
-      window.turnstile.reset(widgetIdRef.current);
-    } catch {
-      /* noop */
-    }
+    widgetRef.current?.reset();
   }, [resetNonce]);
 
   if (!siteKey) return null;
+
   return (
     <div className="auth-turnstile flex w-full flex-col items-center justify-center gap-1 overflow-visible">
       <div
-        ref={containerRef}
-        className="flex justify-center overflow-visible"
-        suppressHydrationWarning
+        className="flex items-center justify-center overflow-visible"
         style={{
           width: box.widthPx,
           minWidth: box.widthPx,
           minHeight: box.heightPx,
         }}
-      />
+      >
+        {mounted ? (
+          <Turnstile
+            ref={widgetRef}
+            siteKey={siteKey}
+            options={{
+              theme,
+              size,
+              appearance: "always",
+              retry: "auto",
+              refreshExpired: "auto",
+            }}
+            scriptOptions={{ async: true, defer: true, appendTo: "head" }}
+            onSuccess={(token) => onTokenRef.current(token)}
+            onExpire={() => onExpireRef.current?.()}
+            onError={() => onExpireRef.current?.()}
+          />
+        ) : null}
+      </div>
       <p className="text-[10px] text-muted-foreground">
         Secured by Cloudflare — complete the check before signing in.
       </p>
