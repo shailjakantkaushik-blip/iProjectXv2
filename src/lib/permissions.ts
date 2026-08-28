@@ -1,6 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { canEditProjects, useAuth, type AppRole } from "@/lib/auth-context";
+import {
+  ADMIN_ONLY_PAGES,
+  PAGES,
+  capabilityKey,
+  pageKey,
+  resolveCanViewPage,
+} from "@/lib/permissions-acl";
+
+export {
+  ADMIN_ONLY_PAGES,
+  PAGES,
+  capabilityKey,
+  pageKey,
+  resolveCanViewPage,
+};
 
 export const EDITABLE_TABLES: { name: string; label: string }[] = [
   { name: "projects", label: "Projects" },
@@ -53,15 +68,6 @@ export const CAPABILITIES: {
       "View FTE labor cost (Cost quick view, Org reporting) and access Resource setup rates. Tick View. Default: Org Admin + Project Manager.",
   },
 ];
-
-export {
-  ADMIN_ONLY_PAGES,
-  PAGES,
-  capabilityKey,
-  pageKey,
-  resolveCanViewPage,
-} from "@/lib/permissions-acl";
-import { resolveCanViewPage } from "@/lib/permissions-acl";
 
 export function useAllowedPages(): { isReady: boolean; canView: (path: string) => boolean } {
   const { roles } = useAuth();
