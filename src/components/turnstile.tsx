@@ -1,14 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
-import { isTurnstileScriptSrc } from "@/lib/turnstile-load";
-import {
-  TURNSTILE_HOST_INNER_HTML,
-  turnstileAuthWidgetSize,
-  turnstileBoxForSize,
-  turnstileHostHasWidget,
-  turnstileShouldRemount,
-} from "@/lib/turnstile-size";
+import { turnstileHostWidth, turnstileSizeForWidth } from "@/lib/turnstile-size";
 
-export { turnstileSizeForHost, turnstileSizeForWidth } from "@/lib/turnstile-size";
+export { turnstileSizeForWidth } from "@/lib/turnstile-size";
 
 export const TURNSTILE_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 
@@ -18,7 +11,6 @@ declare global {
       render: (el: HTMLElement, opts: Record<string, unknown>) => string;
       reset: (id?: string) => void;
       remove: (id?: string) => void;
-      ready?: (cb: () => void) => void;
     };
   }
 }
@@ -42,58 +34,39 @@ export function resetTurnstileLoader() {
   loadPromise = null;
 }
 
-function existingTurnstileScript(): HTMLScriptElement | null {
-  const scripts = document.querySelectorAll("script[src]");
-  for (const node of scripts) {
-    const el = node as HTMLScriptElement;
-    if (isTurnstileScriptSrc(el.getAttribute("src") || el.src)) return el;
-  }
-  return null;
-}
-
 /**
- * Resolve when `window.turnstile` exists. Do not wait on `script.onload` —
- * the auth HTML starts the tag during parse, and Mobile Safari fires `load`
- * before this module runs.
+ * Load api.js the same way login did when Cloudflare showed on every mobile
+ * browser: insert the script from React and wait for onload. Do not start the
+ * tag in the first HTML — that missed `load` on phones and the checkbox never
+ * mounted.
  */
 function loadScript(): Promise<void> {
   if (typeof window === "undefined") return Promise.resolve();
   if (window.turnstile) return Promise.resolve();
   if (loadPromise) return loadPromise;
   loadPromise = new Promise((resolve, reject) => {
-    const existing = existingTurnstileScript();
-    if (!existing) {
-      const s = document.createElement("script");
-      s.src = TURNSTILE_SRC;
-      s.async = true;
-      s.onerror = () => {
-        loadPromise = null;
-        reject(new Error("Failed to load Turnstile"));
-      };
-      document.head.appendChild(s);
-    }
-    const started = Date.now();
-    const poll = window.setInterval(() => {
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${TURNSTILE_SRC}"]`);
+    if (existing) {
       if (window.turnstile) {
-        window.clearInterval(poll);
         resolve();
         return;
       }
-      if (Date.now() - started > 15000) {
-        window.clearInterval(poll);
-        loadPromise = null;
-        reject(new Error("Turnstile API missing"));
-      }
-    }, 40);
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("Failed to load Turnstile")), { once: true });
+      return;
+    }
+    const s = document.createElement("script");
+    s.src = TURNSTILE_SRC;
+    s.async = true;
+    s.defer = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("Failed to load Turnstile"));
+    document.head.appendChild(s);
   }).catch((error) => {
     loadPromise = null;
     throw error;
   });
   return loadPromise;
-}
-
-if (typeof window !== "undefined") {
-  void loadScript();
 }
 
 interface Props {
@@ -108,19 +81,15 @@ interface Props {
 }
 
 /**
- * Cloudflare Turnstile widget.
- *
- * Login always mounts the official 300×65 checkbox (never compact).
- * The host uses stable empty innerHTML so React parent updates cannot delete
- * Cloudflare’s iframe (that is why the checkbox vanished on mobile).
+ * Cloudflare Turnstile widget — restored from the last login build that
+ * showed the checkbox on mobile Chrome, Safari, and Firefox (`4921548`).
  */
-export const TurnstileWidget = memo(
-  function TurnstileWidget({
-    onToken,
-    onExpire,
-    theme = "light",
-    resetNonce = 0,
-  }: Props) {
+export const TurnstileWidget = memo(function TurnstileWidget({
+  onToken,
+  onExpire,
+  theme = "auto",
+  resetNonce = 0,
+}: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
   const onTokenRef = useRef(onToken);
@@ -131,24 +100,19 @@ export const TurnstileWidget = memo(
   onTokenRef.current = onToken;
   onExpireRef.current = onExpire;
   const siteKey = getTurnstileSiteKey();
-  const size = turnstileAuthWidgetSize();
-  const box = turnstileBoxForSize(size);
 
   useEffect(() => {
     if (!siteKey || !containerRef.current) return;
     let cancelled = false;
-
+    setError(null);
+    const measureWidth = () => {
+      const el = containerRef.current;
+      const host = el?.parentElement?.clientWidth || el?.clientWidth || 0;
+      const viewport = typeof window !== "undefined" ? window.innerWidth : 0;
+      return turnstileHostWidth(host, viewport);
+    };
     const mount = () => {
       if (cancelled || !window.turnstile || !containerRef.current) return;
-      const hasIframe = turnstileHostHasWidget(containerRef.current);
-      if (
-        !turnstileShouldRemount({
-          widgetId: widgetIdRef.current,
-          hasIframe,
-        })
-      ) {
-        return;
-      }
       if (widgetIdRef.current) {
         try {
           window.turnstile.remove(widgetIdRef.current);
@@ -157,14 +121,12 @@ export const TurnstileWidget = memo(
         }
         widgetIdRef.current = null;
       }
-      containerRef.current.replaceChildren();
+      const size = turnstileSizeForWidth(measureWidth());
       widgetIdRef.current = window.turnstile.render(containerRef.current, {
         sitekey: siteKey,
         theme,
         size,
         appearance: "always",
-        retry: "auto",
-        "refresh-expired": "auto",
         callback: (token: string) => onTokenRef.current(token),
         "expired-callback": () => {
           onExpireRef.current?.();
@@ -179,32 +141,17 @@ export const TurnstileWidget = memo(
       });
       prevResetNonceRef.current = resetNonce;
     };
-
-    const start = () => {
-      if (cancelled) return;
-      if (typeof window.turnstile?.ready === "function") {
-        window.turnstile.ready(mount);
-        return;
-      }
-      mount();
-    };
-
-    loadScript()
-      .then(start)
-      .catch(() => {
-        if (!cancelled) setError("Cloudflare check did not load. Tap to retry.");
-      });
-
-    const failTimer = window.setTimeout(() => {
-      if (cancelled) return;
-      if (!turnstileHostHasWidget(containerRef.current) && !widgetIdRef.current) {
-        setError("Cloudflare check did not load. Tap to retry.");
-      }
-    }, 8000);
-
+    // Measure after layout so a 0-width first paint does not stretch the widget.
+    const frame = requestAnimationFrame(() => {
+      loadScript()
+        .then(mount)
+        .catch(() => {
+          if (!cancelled) setError("Cloudflare check did not load. Tap to retry.");
+        });
+    });
     return () => {
       cancelled = true;
-      window.clearTimeout(failTimer);
+      cancelAnimationFrame(frame);
       if (widgetIdRef.current && window.turnstile) {
         try {
           window.turnstile.remove(widgetIdRef.current);
@@ -214,7 +161,7 @@ export const TurnstileWidget = memo(
         widgetIdRef.current = null;
       }
     };
-  }, [siteKey, theme, retry, size]);
+  }, [siteKey, theme, retry]);
 
   useEffect(() => {
     if (prevResetNonceRef.current === resetNonce) return;
@@ -229,20 +176,10 @@ export const TurnstileWidget = memo(
 
   if (!siteKey) return null;
 
-  return (
-    <div className="turnstile-host flex w-full flex-col items-center justify-center gap-1 overflow-visible">
-      <div
-        ref={containerRef}
-        className="mx-auto block overflow-visible"
-        suppressHydrationWarning
-        dangerouslySetInnerHTML={TURNSTILE_HOST_INNER_HTML}
-        style={{
-          width: box.widthPx,
-          minWidth: box.widthPx,
-          minHeight: box.heightPx,
-        }}
-      />
-      {error ? (
+  if (error) {
+    return (
+      <div className="flex min-h-[65px] w-full min-w-0 flex-col items-center justify-center gap-2 text-center">
+        <p className="text-xs text-muted-foreground">{error}</p>
         <button
           type="button"
           className="text-xs font-medium text-primary hover:underline"
@@ -252,16 +189,18 @@ export const TurnstileWidget = memo(
             setRetry((n) => n + 1);
           }}
         >
-          {error} Retry
+          Retry Cloudflare check
         </button>
-      ) : (
-        <p className="text-[10px] text-muted-foreground">
-          Secured by Cloudflare — complete the check before signing in.
-        </p>
-      )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-[65px] w-full min-w-0 flex-col items-center justify-center gap-1 overflow-visible">
+      <div ref={containerRef} className="flex max-w-full justify-center overflow-visible" />
+      <p className="text-[10px] text-muted-foreground">
+        Secured by Cloudflare — complete the check before signing in.
+      </p>
     </div>
   );
-},
-(prev, next) =>
-  prev.theme === next.theme && prev.resetNonce === next.resetNonce,
-);
+});
