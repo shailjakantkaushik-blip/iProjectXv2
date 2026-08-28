@@ -109,9 +109,9 @@ interface Props {
 /**
  * Cloudflare Turnstile widget.
  *
- * Login always mounts the official 300×65 checkbox (never compact). Compact
- * reserved a tall empty gray box on Mobile Safari. The iframe is rendered
- * after mount; if it still is missing we retry without tearing down the host.
+ * Login always mounts the official 300×65 checkbox (never compact). Do not
+ * remount after render() returns — Safari innerHTML misses the live iframe
+ * and a remount loop left login stuck on “Loading Cloudflare check…”.
  */
 export const TurnstileWidget = memo(function TurnstileWidget({
   onToken,
