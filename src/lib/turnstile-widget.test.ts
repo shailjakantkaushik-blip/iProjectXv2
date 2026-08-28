@@ -8,6 +8,7 @@ import {
   turnstileSizeForHost,
   turnstileSizeForWidth,
 } from "./turnstile-size.ts";
+import { isTurnstileScriptSrc, turnstileMustPollApi } from "./turnstile-load.ts";
 
 const IPHONE_SAFARI =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
@@ -22,9 +23,9 @@ describe("turnstileSizeForHost", () => {
     assert.equal(turnstileSizeForHost(400, 768), "normal");
   });
 
-  it("uses compact on Mobile Safari so the checkbox is not clipped", () => {
-    assert.equal(turnstileSizeForHost(318, 390, true), "compact");
-    assert.equal(turnstileSizeForHost(800, 844, true), "compact");
+  it("uses the same 300×65 checkbox on Mobile Safari as Chrome-in-app", () => {
+    assert.equal(turnstileSizeForHost(318, 390, true), "normal");
+    assert.equal(turnstileSizeForHost(352, 844, true), "normal");
   });
 
   it("uses compact when the card is narrower than the 300px checkbox", () => {
@@ -64,5 +65,39 @@ describe("isIosSafariBrowser", () => {
     assert.equal(isIosSafariBrowser(IPHONE_SAFARI, "iPhone", 5, true), false);
     assert.equal(isIosWebKit(IPHONE_CHROME, "iPhone", 5), true);
     assert.equal(isIosSafariBrowser("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Win32", 0), false);
+  });
+});
+
+describe("turnstileMustPollApi", () => {
+  it("polls when the first HTML already started the script (Safari misses onload)", () => {
+    assert.equal(
+      turnstileMustPollApi({ turnstilePresent: false, scriptAlreadyInDocument: true }),
+      true,
+    );
+  });
+
+  it("does not wait when the API is already on window", () => {
+    assert.equal(
+      turnstileMustPollApi({ turnstilePresent: true, scriptAlreadyInDocument: true }),
+      false,
+    );
+  });
+
+  it("still polls after we insert the script ourselves", () => {
+    assert.equal(
+      turnstileMustPollApi({ turnstilePresent: false, scriptAlreadyInDocument: false }),
+      false,
+    );
+  });
+});
+
+describe("isTurnstileScriptSrc", () => {
+  it("matches explicit and bare Turnstile api.js URLs", () => {
+    assert.equal(
+      isTurnstileScriptSrc("https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"),
+      true,
+    );
+    assert.equal(isTurnstileScriptSrc("https://challenges.cloudflare.com/turnstile/v0/api.js"), true);
+    assert.equal(isTurnstileScriptSrc("https://example.com/other.js"), false);
   });
 });

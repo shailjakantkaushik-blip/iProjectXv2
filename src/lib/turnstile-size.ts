@@ -23,7 +23,7 @@ export function isIosWebKit(
 
 /**
  * Stock Mobile Safari only. Chrome/Firefox/Edge in-app browsers and the
- * home-screen PWA are excluded — those already show the normal checkbox.
+ * home-screen PWA are excluded.
  */
 export function isIosSafariBrowser(
   userAgent: string,
@@ -49,16 +49,19 @@ export function turnstileBoxForSize(size: TurnstileWidgetSize): {
 /**
  * Pick the official Turnstile size for the host card.
  *
- * Mobile Safari clips the 300×65 checkbox (overflow + tight card padding) and
- * the iframe does not paint. Use compact (150×140) there. Other mobile apps
- * and desktop keep the standard checkbox when it fits. Never `flexible`.
+ * Typical phones (390px viewport, 16px page padding, 16px card padding) still
+ * have ≥300px — use the same 300×65 checkbox that already works in Chrome
+ * in-app. Compact only when the card is actually narrower than 300px.
+ * Never `flexible` (it can expand into a large square).
+ *
+ * Do not special-case Mobile Safari to compact: that path painted an empty
+ * box while Chrome on the same phone showed the checkbox.
  */
 export function turnstileSizeForHost(
   containerPx: number,
   viewportPx: number,
-  iosSafari = false,
+  _iosSafari = false,
 ): TurnstileWidgetSize {
-  if (iosSafari) return "compact";
   const width = containerPx > 0 ? containerPx : viewportPx > 0 ? viewportPx : 0;
   return width > 0 && width < TURNSTILE_NORMAL_WIDTH_PX ? "compact" : "normal";
 }
