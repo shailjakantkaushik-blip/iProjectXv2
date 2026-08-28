@@ -18,7 +18,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { TURNSTILE_SRC, TurnstileWidget, isTurnstileEnabled } from "@/components/turnstile";
+import { TurnstileWidget, isTurnstileEnabled } from "@/components/turnstile";
 import { verifyTurnstile } from "@/lib/turnstile.functions";
 import { getMfaStatus } from "@/lib/mfa";
 import { recordAuthSecurityEvent, recordFailedLogin } from "@/lib/auth-events.functions";
@@ -139,16 +139,12 @@ export const Route = createFileRoute("/auth")({
       { name: "robots", content: "noindex" },
     ],
     links: [
-      { rel: "preconnect", href: "https://challenges.cloudflare.com" },
       {
         rel: "preload",
         as: "image",
         href: loaderData?.platformBrand.logo_url || PUBLIC_AUTH_LOGO_HREF,
       },
     ],
-    // Real script tag — not rel=preload. WebKit (every iPhone browser) will
-    // not execute a later-inserted script of the same URL after preload.
-    scripts: [{ src: TURNSTILE_SRC, async: true }],
   }),
   loader: async ({ deps }): Promise<AuthLoaderData> => loadAuthPublicConfig(deps.org),
   staleTime: 60_000,
