@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cloudflare check</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: transparent;
+      }
+    </style>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  </head>
+  <body>
+    <div id="widget"></div>
+    <script>
+      (function () {
+        var params = new URLSearchParams(location.search);
+        var key = params.get("k") || "";
+        var size = params.get("size") === "normal" ? "normal" : "compact";
+        function notify(token) {
+          parent.postMessage(
+            { source: "iprojectx-turnstile", token: token || "" },
+            location.origin,
+          );
+        }
+        window.iprojectxTurnstileOk = function (token) {
+          notify(token);
+        };
+        window.iprojectxTurnstileExpire = function () {
+          notify("");
+        };
+        var el = document.getElementById("widget");
+        el.className = "cf-turnstile";
+        el.setAttribute("data-sitekey", key);
+        el.setAttribute("data-size", size);
+        el.setAttribute("data-theme", "auto");
+        el.setAttribute("data-appearance", "always");
+        el.setAttribute("data-callback", "iprojectxTurnstileOk");
+        el.setAttribute("data-expired-callback", "iprojectxTurnstileExpire");
+        el.setAttribute("data-error-callback", "iprojectxTurnstileExpire");
+      })();
+    </script>
+  </body>
+</html>

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
-import { fileURLToPath } from "node:url";
+import {
+  readTurnstileFrameToken,
+  turnstileFrameSrc,
+} from "./turnstile-frame.ts";
 import {
   isPhoneBrowser,
   turnstileBoxForSize,
@@ -54,13 +55,22 @@ describe("turnstileBoxForSize", () => {
   });
 });
 
-describe("official React Turnstile wrapper", () => {
-  it("uses @marsidev/react-turnstile for client-side rendering", () => {
-    const src = readFileSync(
-      join(dirname(fileURLToPath(import.meta.url)), "../components/turnstile.tsx"),
-      "utf8",
+describe("turnstile frame", () => {
+  it("builds a same-origin implicit widget URL", () => {
+    assert.equal(
+      turnstileFrameSrc("0xTestKey", "compact"),
+      "/turnstile-frame.html?k=0xTestKey&size=compact",
     );
-    assert.match(src, /@marsidev\/react-turnstile/);
-    assert.match(src, /appearance:\s*"always"/);
+    assert.equal(
+      turnstileFrameSrc("0xTestKey", "normal"),
+      "/turnstile-frame.html?k=0xTestKey&size=normal",
+    );
+  });
+
+  it("accepts only same-origin frame token messages", () => {
+    assert.equal(readTurnstileFrameToken({ source: "iprojectx-turnstile", token: "abc" }), "abc");
+    assert.equal(readTurnstileFrameToken({ source: "iprojectx-turnstile", token: "" }), "");
+    assert.equal(readTurnstileFrameToken({ source: "other", token: "abc" }), null);
+    assert.equal(readTurnstileFrameToken(null), null);
   });
 });

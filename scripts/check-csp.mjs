@@ -17,9 +17,13 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const vercel = JSON.parse(readFileSync(join(root, "vercel.json"), "utf8"));
 
-const csp = vercel?.headers
-  ?.flatMap((h) => h.headers ?? [])
-  ?.find((h) => h.key === "Content-Security-Policy")?.value;
+const policies = (vercel?.headers ?? [])
+  .flatMap((block) => block.headers ?? [])
+  .filter((h) => h.key === "Content-Security-Policy")
+  .map((h) => h.value)
+  .filter((value) => typeof value === "string");
+
+const csp = policies.find((value) => value.includes("frame-ancestors 'none'")) || policies[0];
 
 if (!csp || typeof csp !== "string") {
   console.error("check-csp: missing Content-Security-Policy in vercel.json");
@@ -47,6 +51,18 @@ if (!scriptSrc.includes("'unsafe-inline'")) {
 
 if (!scriptSrc.includes("https://challenges.cloudflare.com")) {
   console.error("check-csp: FAIL — script-src must allow Cloudflare Turnstile");
+  process.exit(1);
+}
+
+const frameSrc = csp
+  .split(";")
+  .map((d) => d.trim())
+  .find((d) => d.startsWith("frame-src "));
+
+if (!frameSrc?.includes("https://challenges.cloudflare.com") || !frameSrc.includes("'self'")) {
+  console.error(
+    "check-csp: FAIL — frame-src must allow 'self' (login Turnstile host frame) and Cloudflare",
+  );
   process.exit(1);
 }
 
