@@ -3,7 +3,9 @@ import { describe, it } from "node:test";
 import {
   isIosSafariBrowser,
   isIosWebKit,
+  turnstileAuthWidgetSize,
   turnstileBoxForSize,
+  turnstileContainerHasIframe,
   turnstileHostWidth,
   turnstileSizeForHost,
   turnstileSizeForWidth,
@@ -37,6 +39,27 @@ describe("turnstileSizeForHost", () => {
     assert.equal(turnstileSizeForHost(0, 0), "normal");
     assert.equal(turnstileSizeForHost(-1, -1), "normal");
     assert.equal(turnstileSizeForWidth(0), "normal");
+  });
+});
+
+describe("turnstileAuthWidgetSize", () => {
+  it("always uses the 300×65 checkbox on login — never the empty compact tombstone", () => {
+    assert.equal(turnstileAuthWidgetSize(), "normal");
+    assert.deepEqual(turnstileBoxForSize(turnstileAuthWidgetSize()), {
+      widthPx: 300,
+      heightPx: 65,
+    });
+  });
+});
+
+describe("turnstileContainerHasIframe", () => {
+  it("detects when Cloudflare has injected its iframe", () => {
+    assert.equal(turnstileContainerHasIframe(""), false);
+    assert.equal(turnstileContainerHasIframe("<div></div>"), false);
+    assert.equal(
+      turnstileContainerHasIframe('<iframe src="https://challenges.cloudflare.com/"></iframe>'),
+      true,
+    );
   });
 });
 
