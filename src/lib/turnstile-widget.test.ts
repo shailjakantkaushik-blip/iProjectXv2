@@ -5,6 +5,7 @@ import {
   isIosWebKit,
   turnstileAuthWidgetSize,
   turnstileBoxForSize,
+  TURNSTILE_HOST_INNER_HTML,
   turnstileHostHasWidget,
   turnstileHostWidth,
   turnstileShouldRemount,
@@ -69,6 +70,12 @@ describe("turnstileShouldRemount", () => {
     assert.equal(turnstileShouldRemount({ widgetId: "0", hasIframe: false }), false);
     assert.equal(turnstileShouldRemount({ widgetId: null, hasIframe: true }), false);
     assert.equal(turnstileShouldRemount({ widgetId: null, hasIframe: false }), true);
+  });
+});
+
+describe("TURNSTILE_HOST_INNER_HTML", () => {
+  it("is a stable empty innerHTML so React will not wipe Cloudflare’s iframe", () => {
+    assert.equal(TURNSTILE_HOST_INNER_HTML.__html, "");
   });
 });
 
