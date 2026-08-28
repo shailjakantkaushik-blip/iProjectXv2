@@ -1,5 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
+import { readTurnstileFrameToken, turnstileFrameSrc } from "@/lib/turnstile-frame";
 import {
   isPhoneBrowser,
   turnstileBoxForSize,
@@ -40,22 +40,20 @@ interface Props {
 }
 
 /**
- * Cloudflare Turnstile via the official React wrapper
- * (`@marsidev/react-turnstile`). The widget is client-only (Turnstile cannot
- * run during SSR). Phones use compact (150×140 square); desktop/laptop use
- * the standard 300×65 rectangle.
+ * Login Cloudflare check for mobile browsers.
+ *
+ * In-app / SPA navigation already has JS running, so a React widget can work.
+ * A cold open in Safari/Chrome (the phone browser) often never paints that
+ * widget. Host Cloudflare’s official implicit widget in a same-origin frame
+ * so it does not depend on React hydration.
  */
 export const TurnstileWidget = memo(function TurnstileWidget({
   onToken,
   onExpire,
-  theme = "auto",
   resetNonce = 0,
 }: Props) {
-  const widgetRef = useRef<TurnstileInstance | undefined>(undefined);
   const onTokenRef = useRef(onToken);
   const onExpireRef = useRef(onExpire);
-  const prevResetNonceRef = useRef(resetNonce);
-  const [mounted, setMounted] = useState(false);
   const [size, setSize] = useState<TurnstileWidgetSize>("compact");
   onTokenRef.current = onToken;
   onExpireRef.current = onExpire;
@@ -64,45 +62,37 @@ export const TurnstileWidget = memo(function TurnstileWidget({
 
   useLayoutEffect(() => {
     setSize(readDeviceSize());
-    setMounted(true);
   }, []);
 
   useEffect(() => {
-    if (prevResetNonceRef.current === resetNonce) return;
-    prevResetNonceRef.current = resetNonce;
-    widgetRef.current?.reset();
-  }, [resetNonce]);
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const token = readTurnstileFrameToken(event.data);
+      if (token == null) return;
+      if (token) onTokenRef.current(token);
+      else onExpireRef.current?.();
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
 
   if (!siteKey) return null;
 
   return (
     <div className="auth-turnstile flex w-full flex-col items-center justify-center gap-1 overflow-visible">
-      <div
-        className="flex items-center justify-center overflow-visible"
+      <iframe
+        key={`${size}-${resetNonce}`}
+        title="Cloudflare security check"
+        src={turnstileFrameSrc(siteKey, size)}
+        width={box.widthPx}
+        height={box.heightPx}
         style={{
           width: box.widthPx,
-          minWidth: box.widthPx,
-          minHeight: box.heightPx,
+          height: box.heightPx,
+          border: 0,
+          overflow: "hidden",
         }}
-      >
-        {mounted ? (
-          <Turnstile
-            ref={widgetRef}
-            siteKey={siteKey}
-            options={{
-              theme,
-              size,
-              appearance: "always",
-              retry: "auto",
-              refreshExpired: "auto",
-            }}
-            scriptOptions={{ async: true, defer: true, appendTo: "head" }}
-            onSuccess={(token) => onTokenRef.current(token)}
-            onExpire={() => onExpireRef.current?.()}
-            onError={() => onExpireRef.current?.()}
-          />
-        ) : null}
-      </div>
+      />
       <p className="text-[10px] text-muted-foreground">
         Secured by Cloudflare — complete the check before signing in.
       </p>
