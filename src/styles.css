@@ -587,9 +587,14 @@ body {
   min-height: 100%;
 }
 
+html:has([data-auth-layout]),
+html:has([data-auth-layout]) body {
+  overflow-x: visible;
+}
+
 .turnstile-host iframe {
   display: block !important;
-  max-width: 100%;
+  max-width: none !important;
   visibility: visible !important;
   opacity: 1 !important;
 }

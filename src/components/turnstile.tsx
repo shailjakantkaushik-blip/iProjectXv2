@@ -1,6 +1,6 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
+import { isTurnstileScriptSrc } from "@/lib/turnstile-load";
 import {
-  isIosSafariBrowser,
   turnstileBoxForSize,
   turnstileSizeForHost,
   type TurnstileWidgetSize,
@@ -39,62 +39,56 @@ export function resetTurnstileLoader() {
   loadPromise = null;
 }
 
-function readIosSafari(): boolean {
-  if (typeof navigator === "undefined") return false;
-  const standalone = Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
-  return isIosSafariBrowser(
-    navigator.userAgent,
-    navigator.platform,
-    navigator.maxTouchPoints || 0,
-    standalone,
-  );
+function existingTurnstileScript(): HTMLScriptElement | null {
+  const scripts = document.querySelectorAll("script[src]");
+  for (const node of scripts) {
+    const el = node as HTMLScriptElement;
+    if (isTurnstileScriptSrc(el.getAttribute("src") || el.src)) return el;
+  }
+  return null;
 }
 
+/**
+ * Resolve when `window.turnstile` exists. Do not wait on `script.onload` —
+ * the auth HTML starts the tag during parse, and Mobile Safari fires `load`
+ * before this module runs.
+ */
 function loadScript(): Promise<void> {
   if (typeof window === "undefined") return Promise.resolve();
   if (window.turnstile) return Promise.resolve();
   if (loadPromise) return loadPromise;
   loadPromise = new Promise((resolve, reject) => {
-    const existing = document.querySelector<HTMLScriptElement>(`script[src="${TURNSTILE_SRC}"]`);
-    if (existing) {
+    const existing = existingTurnstileScript();
+    if (!existing) {
+      const s = document.createElement("script");
+      s.src = TURNSTILE_SRC;
+      s.async = true;
+      s.onerror = () => {
+        loadPromise = null;
+        reject(new Error("Failed to load Turnstile"));
+      };
+      document.head.appendChild(s);
+    }
+    // Always poll. The first-HTML script on Mobile Safari fires `load` before
+    // this module runs, so waiting on that event hangs and the checkbox never mounts.
+    const started = Date.now();
+    const poll = window.setInterval(() => {
       if (window.turnstile) {
+        window.clearInterval(poll);
         resolve();
         return;
       }
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("Failed to load Turnstile")), { once: true });
-      return;
-    }
-    const s = document.createElement("script");
-    s.src = TURNSTILE_SRC;
-    s.async = true;
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error("Failed to load Turnstile"));
-    document.head.appendChild(s);
+      if (Date.now() - started > 15000) {
+        window.clearInterval(poll);
+        loadPromise = null;
+        reject(new Error("Turnstile API missing"));
+      }
+    }, 40);
   }).catch((error) => {
     loadPromise = null;
     throw error;
   });
   return loadPromise;
-}
-
-/** Safari can fire script load before window.turnstile is attached. */
-function waitForTurnstile(timeoutMs = 12000): Promise<void> {
-  return loadScript().then(() => {
-    if (typeof window !== "undefined" && window.turnstile) return;
-    return new Promise((resolve, reject) => {
-      const started = Date.now();
-      const id = window.setInterval(() => {
-        if (window.turnstile) {
-          window.clearInterval(id);
-          resolve();
-        } else if (Date.now() - started > timeoutMs) {
-          window.clearInterval(id);
-          reject(new Error("Turnstile API missing"));
-        }
-      }, 40);
-    });
-  });
 }
 
 if (typeof window !== "undefined") {
@@ -141,10 +135,6 @@ export const TurnstileWidget = memo(function TurnstileWidget({
   const siteKey = getTurnstileSiteKey();
   const box = turnstileBoxForSize(size);
 
-  useLayoutEffect(() => {
-    if (readIosSafari()) setSize("compact");
-  }, []);
-
   useEffect(() => {
     if (!siteKey || !containerRef.current) return;
     let cancelled = false;
@@ -153,7 +143,7 @@ export const TurnstileWidget = memo(function TurnstileWidget({
       const el = containerRef.current;
       const host = el?.parentElement?.clientWidth || el?.clientWidth || 0;
       const viewport = typeof window !== "undefined" ? window.innerWidth : 0;
-      return turnstileSizeForHost(host, viewport, readIosSafari());
+      return turnstileSizeForHost(host, viewport);
     };
     const mount = () => {
       if (cancelled || !window.turnstile || !containerRef.current) return;
@@ -188,7 +178,7 @@ export const TurnstileWidget = memo(function TurnstileWidget({
       });
       prevResetNonceRef.current = resetNonce;
     };
-    waitForTurnstile()
+    loadScript()
       .then(mount)
       .catch(() => {
         if (!cancelled) setError("Cloudflare check did not load. Tap to retry.");
@@ -220,11 +210,16 @@ export const TurnstileWidget = memo(function TurnstileWidget({
   if (!siteKey) return null;
 
   return (
-    <div className="turnstile-host flex w-full min-w-0 flex-col items-center justify-center gap-1 overflow-visible [filter:none] [transform:none]">
+    <div className="turnstile-host flex w-full flex-col items-center justify-center gap-1 overflow-visible [filter:none] [transform:none]">
       <div
         ref={containerRef}
-        className="mx-auto block max-w-full overflow-visible rounded-md bg-muted/40"
-        style={{ width: box.widthPx, minHeight: box.heightPx }}
+        className="mx-auto block overflow-visible rounded-md bg-muted/40"
+        style={{
+          width: box.widthPx,
+          height: box.heightPx,
+          minWidth: box.widthPx,
+          minHeight: box.heightPx,
+        }}
       />
       {error ? (
         <button
