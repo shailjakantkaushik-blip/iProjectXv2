@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   isPhoneBrowser,
   turnstileBoxForSize,
@@ -48,5 +51,16 @@ describe("turnstileBoxForSize", () => {
   it("reserves official footprints so the widget can paint", () => {
     assert.deepEqual(turnstileBoxForSize("compact"), { widthPx: 150, heightPx: 140 });
     assert.deepEqual(turnstileBoxForSize("normal"), { widthPx: 300, heightPx: 65 });
+  });
+});
+
+describe("official React Turnstile wrapper", () => {
+  it("uses @marsidev/react-turnstile for client-side rendering", () => {
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../components/turnstile.tsx"),
+      "utf8",
+    );
+    assert.match(src, /@marsidev\/react-turnstile/);
+    assert.match(src, /appearance:\s*"always"/);
   });
 });
