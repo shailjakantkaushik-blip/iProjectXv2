@@ -605,7 +605,9 @@ html:has([data-auth-layout]) body {
 
 .auth-turnstile iframe {
   display: block;
-  max-width: 100%;
+  width: 300px;
+  height: 65px;
+  max-width: none;
 }
 
 /*
