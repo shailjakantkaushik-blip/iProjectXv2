@@ -1,6 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 
+export { normalizeTimelineLaneDates } from "./timeline-lane-dates";
+
 export type ProjectStream = Tables<"project_streams">;
 export type ProjectStreamInsert = TablesInsert<"project_streams">;
 export type ProjectStreamUpdate = TablesUpdate<"project_streams">;
@@ -58,6 +60,8 @@ export function streamToTimelineLane(
     status?: string | null;
     priority?: string | null;
     theme?: string | null;
+    portfolio?: string | null;
+    portfolio_category?: string | null;
     benefits_realised?: number | null;
     benefits_target?: number | null;
   },
@@ -93,6 +97,8 @@ export function streamToTimelineLane(
     project_code: project.project_code,
     program: project.program,
     // Grouping dimensions stay at project level for portfolio/executive views
+    portfolio: project.portfolio ?? null,
+    portfolio_category: project.portfolio_category ?? null,
     status: project.status ?? s.status ?? null,
     priority: project.priority ?? null,
     theme: project.theme ?? null,

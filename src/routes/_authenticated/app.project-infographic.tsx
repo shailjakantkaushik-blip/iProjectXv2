@@ -85,6 +85,7 @@ import {
   formatStreamCode,
   formatStreamLabel,
   gatesForTimelineLane,
+  normalizeTimelineLaneDates,
 } from "@/lib/project-streams";
 import {
   deliveryMethodsQueryKey,
@@ -527,11 +528,7 @@ function InfographicPage() {
       resolvePhase: (p, streamGates) => resolveCurrentStage(p, streamGates, []),
       includeProjectRollup: showProjectTimeline,
     })
-      .map((lane: any) => ({
-        ...lane,
-        start_date: lane.planned_start_date || lane.actual_start_date || lane.start_date,
-        end_date: lane.actual_end_date || lane.planned_end_date || lane.end_date,
-      }))
+      .map((lane: any) => normalizeTimelineLaneDates(lane))
       .filter((p: any) => p.start_date && p.end_date);
   }, [project, projectStreams, gates, showProjectTimeline]);
   const { data: planForecast } = useQuery({
@@ -1729,7 +1726,7 @@ function InfographicPage() {
           </div>
         </SectionFrame>
 
-        {/* Project Timeline — matches Executive Dashboard timeline */}
+        {/* Project Timeline — same Gantt as Executive Timeline and Roadmap */}
         <SectionFrame>
           <SectionTitle>📅 Project Timeline</SectionTitle>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm mb-4">

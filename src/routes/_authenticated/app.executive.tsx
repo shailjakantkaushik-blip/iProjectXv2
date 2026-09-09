@@ -28,7 +28,6 @@ import { exportElementPDF } from "@/components/page-export";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { CategoryTick } from "@/components/chart-category-tick";
 import { ExpandablePanel } from "@/components/expandable-panel";
-import { ChevronDown, ChevronRight } from "lucide-react";
 import { RAG_COLORS, PRIORITY_COLORS, CHART_SERIES } from "@/lib/chart-theme";
 import { PageLoading } from "@/components/page-loading";
 import { QueryErrorPanel } from "@/components/query-error-panel";
@@ -39,7 +38,6 @@ import {
   normLabel,
   resolveCurrentStage as resolveStageShared,
 } from "@/lib/project-phase";
-import { fyOf, projectScheduleEnd, projectScheduleStart } from "@/lib/project-dates";
 import { portfolioSegmentLabels, projectPortfolio } from "@/lib/project-health";
 import {
   computeEngineHealth,
@@ -57,14 +55,12 @@ import {
 import { fyScopedBudget, monthlyInFyLabels } from "@/lib/fy-allocation-scope";
 import {
   expandProjectsToTimelineLanes,
-  gatesForTimelineLane,
   fetchOrgStreams,
   formatProjectStreamRef,
   formatStreamLabel,
-  summarizeTimelineLaneFinancials,
+  normalizeTimelineLaneDates,
 } from "@/lib/project-streams";
-import { darkenHex, scheduleCompletionPct } from "@/lib/schedule-progress";
-import { computeTimelineBounds } from "@/components/portfolio-timeline";
+import { computeTimelineBounds, GanttGroup } from "@/components/portfolio-timeline";
 import {
   ExecutivePortfolioFilters,
   applyExecutivePortfolioFilters,
@@ -343,7 +339,8 @@ function ExecutiveDashboard() {
     return m;
   }, [filtered, gatesByProject, monthlyByProject, healthLookups, fyStartMonth, parentCtx]);
 
-  const engineRagOf = (p: { id?: string }) => engineRagById.get(String(p.id || "")) || null;
+  const engineRagOf = (p: { id?: string; project_id?: string }) =>
+    engineRagById.get(String(p.project_id || p.id || "")) || null;
 
   // KPI totals + sparklines — memoized so filter typing doesn't rescan monthly ×8.
   const { approvedFunding, totalIncurred, totalForecast, remaining, kpis, ragData, capexBars } =
@@ -653,7 +650,9 @@ function ExecutiveDashboard() {
       gates: gates as any[],
       resolvePhase: (p, streamGates) => resolveStageShared(p, streamGates, orgPhases),
       includeProjectRollup: showProjectTimeline,
-    });
+    })
+      .map((lane: any) => normalizeTimelineLaneDates(lane))
+      .filter((p: any) => p.start_date && p.end_date);
   }, [filtered, streams, gates, orgPhases, showProjectTimeline]);
 
   const timelineGroups = useMemo(() => {
@@ -661,7 +660,7 @@ function ExecutiveDashboard() {
     const keyFor = (p: any): string => {
       switch (timelineView) {
         case "Portfolio":
-          return p.portfolio || "Unassigned";
+          return projectPortfolio(p) || p.portfolio || "Unassigned";
         case "Program":
           return p.program || "Unassigned";
         case "Health":
@@ -677,7 +676,6 @@ function ExecutiveDashboard() {
       }
     };
     timelineLanes.forEach((p: any) => {
-      if (!projectScheduleStart(p) || !projectScheduleEnd(p)) return;
       const k = keyFor(p);
       if (!groups.has(k)) groups.set(k, []);
       groups.get(k)!.push(p);
@@ -1276,7 +1274,6 @@ function ExecutiveDashboard() {
                       items={items}
                       bounds={groupBounds}
                       gates={gates as any[]}
-                      orgPhases={orgPhases}
                       collapsed={!!collapsed[groupName]}
                       onToggle={() => toggleCollapse(groupName)}
                       showProjectTimeline={showProjectTimeline}
@@ -1464,635 +1461,6 @@ function Empty({ msg = "No data" }: { msg?: string }) {
   return (
     <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
       {msg}
-    </div>
-  );
-}
-
-type TimelineBounds = {
-  start: Date;
-  end: Date;
-  totalMs: number;
-  months: { key: string; label: string; year: number; monthIndex: number; fy: string }[];
-  fyGroups: { fy: string; span: number }[];
-};
-
-function GanttGroup({
-  title,
-  items,
-  bounds,
-  gates,
-  orgPhases = [],
-  collapsed,
-  onToggle,
-  showProjectTimeline,
-  onShowProjectTimelineChange,
-}: {
-  title: string;
-  items: any[];
-  bounds: TimelineBounds;
-  gates: any[];
-  orgPhases?: string[];
-  collapsed: boolean;
-  onToggle: () => void;
-  showProjectTimeline?: boolean;
-  onShowProjectTimelineChange?: (v: boolean) => void;
-}) {
-  // Hooks must run unconditionally before any throw / early return (React #310).
-  const [showGates, setShowGates] = useState(true);
-  const [showPvA, setShowPvA] = useState(false);
-
-  const phaseOf = (p: any) =>
-    p.is_project_rollup
-      ? p.current_phase || null
-      : resolveStageShared(p, gatesForTimelineLane(p, gates), orgPhases);
-  const { start: rangeStart, totalMs, months, fyGroups } = bounds;
-  const monthShort = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-  ];
-  const now = new Date();
-  const monthCount = months.length || 1;
-  // Align to the equal-width month grid used by the header. See portfolio-timeline.tsx.
-  const dateToPct = (d: Date) => {
-    if (!months.length || Number.isNaN(d.getTime())) return 0;
-    const y = d.getFullYear();
-    const m = d.getMonth();
-    const idx = months.findIndex((mm) => mm.year === y && mm.monthIndex === m);
-    if (idx === -1) {
-      const first = months[0];
-      const last = months[monthCount - 1];
-      const firstMs = new Date(first.year, first.monthIndex, 1).getTime();
-      const lastMs = new Date(last.year, last.monthIndex + 1, 0, 23, 59, 59).getTime();
-      if (d.getTime() < firstMs) return -1;
-      if (d.getTime() > lastMs) return 101;
-      return 0;
-    }
-    const daysInMonth = new Date(y, m + 1, 0).getDate();
-    const frac = (d.getDate() - 1 + d.getHours() / 24) / daysInMonth;
-    return ((idx + frac) / monthCount) * 100;
-  };
-  const todayPct = dateToPct(now);
-  const fmtShort = (d: Date) =>
-    `${d.getDate()} ${monthShort[d.getMonth()]}-${String(d.getFullYear()).slice(-2)}`;
-  // Reference totalMs/rangeStart so TS doesn't flag them as unused after refactor.
-  void totalMs;
-  void rangeStart;
-
-  const COL_PROJECT = 240;
-  const COL_SPONSOR = 130;
-  const COL_FIN = 200;
-  const LEFT = COL_PROJECT + COL_SPONSOR + COL_FIN;
-
-  // aggregate group financials without double-counting rollup + stream lanes
-  const fin = summarizeTimelineLaneFinancials(items);
-  const groupIncurred = fin.incurred;
-  const groupApproved = fin.approved;
-  const groupFAC = fin.fac;
-  const groupBenefits = fin.benefits;
-  const groupUtil = fin.utilPct;
-  const rGreen = fin.green;
-  const rAmber = fin.amber;
-  const rRed = fin.red;
-
-  const Stat = ({ label, value }: { label: string; value: React.ReactNode }) => (
-    <div className="flex flex-col items-start leading-tight">
-      <span className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </span>
-      <span className="text-[12px] font-semibold tabular-nums text-foreground">{value}</span>
-    </div>
-  );
-
-  const rangeLabel =
-    fyGroups.length === 0
-      ? "—"
-      : fyGroups.length === 1
-        ? fyGroups[0].fy
-        : `${fyGroups[0].fy} – ${fyGroups[fyGroups.length - 1].fy}`;
-
-  return (
-    <div className="relative rounded-md border border-border bg-surface shadow-sm">
-      {/* Collapsible header with portfolio summary row */}
-      <button
-        onClick={onToggle}
-        className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-3 py-2 text-left hover:bg-muted/50"
-        aria-expanded={!collapsed}
-      >
-        <div className="flex min-w-0 items-center gap-2">
-          {collapsed ? (
-            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-          ) : (
-            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-          )}
-          <span className="truncate text-sm font-semibold text-foreground">{title}</span>
-          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-            {rangeLabel}
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
-          <Stat label="Projects" value={fin.projectCount} />
-          <Stat label="Approved" value={money(groupApproved)} />
-          <Stat label="Actual" value={money(groupIncurred)} />
-          <Stat label="FAC" value={money(groupFAC)} />
-          <Stat label="Utilisation" value={`${groupUtil}%`} />
-          <Stat label="Benefits" value={money(groupBenefits)} />
-          <div className="flex flex-col items-start leading-tight">
-            <span className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
-              RAG
-            </span>
-            <span className="flex items-center gap-1.5 text-[12px] font-semibold tabular-nums text-foreground">
-              <span
-                className="inline-block h-2.5 w-2.5 rounded-full"
-                style={{ background: RAG_COLORS.Green }}
-              />
-              {rGreen}
-              <span
-                className="ml-1 inline-block h-2.5 w-2.5 rounded-full"
-                style={{ background: RAG_COLORS.Amber }}
-              />
-              {rAmber}
-              <span
-                className="ml-1 inline-block h-2.5 w-2.5 rounded-full"
-                style={{ background: RAG_COLORS.Red }}
-              />
-              {rRed}
-            </span>
-          </div>
-        </div>
-      </button>
-
-      {!collapsed && (
-        <div className="border-t border-border p-3 overflow-x-auto">
-          <div style={{ minWidth: LEFT + Math.max(560, monthCount * 34) }}>
-            {/* Timeline controls — left of grid, never over the RAG summary in the header */}
-            <div className="mb-2 flex flex-wrap items-center gap-2">
-              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-0.5 text-[10px] font-medium text-foreground hover:bg-muted">
-                <input
-                  type="checkbox"
-                  checked={showPvA}
-                  onChange={(e) => setShowPvA(e.target.checked)}
-                  className="h-3 w-3"
-                />
-                Planned vs Actual
-              </label>
-              {onShowProjectTimelineChange && (
-                <label
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-0.5 text-[10px] font-medium text-foreground hover:bg-muted"
-                  title="Show project rollup lane (start→end + financials from streams)"
-                >
-                  <input
-                    type="checkbox"
-                    checked={!!showProjectTimeline}
-                    onChange={(e) => onShowProjectTimelineChange(e.target.checked)}
-                    className="h-3 w-3"
-                  />
-                  Project timeline
-                </label>
-              )}
-              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-0.5 text-[10px] font-medium text-foreground hover:bg-muted">
-                <input
-                  type="checkbox"
-                  checked={showGates}
-                  onChange={(e) => setShowGates(e.target.checked)}
-                  className="h-3 w-3"
-                />
-                Stage gates
-              </label>
-            </div>
-
-            {/* FY header row */}
-            <div className="flex items-stretch text-[10px] font-semibold uppercase tracking-wide">
-              <div style={{ width: LEFT }} className="shrink-0" />
-              <div
-                className="grid flex-1"
-                style={{ gridTemplateColumns: `repeat(${monthCount}, minmax(34px, 1fr))` }}
-              >
-                {fyGroups.map((g, i) => (
-                  <div
-                    key={`${g.fy}-${i}`}
-                    className="border-l border-border/60 bg-muted/40 py-1 text-center text-primary"
-                    style={{ gridColumn: `span ${g.span}` }}
-                  >
-                    {g.fy}
-                  </div>
-                ))}
-              </div>
-            </div>
-            {/* Month header row */}
-            <div className="flex items-center border-b border-border pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              <div style={{ width: COL_PROJECT }} className="shrink-0 pl-1">
-                Project / Stream
-              </div>
-              <div style={{ width: COL_SPONSOR }} className="shrink-0">
-                Sponsor · Phase
-              </div>
-              <div style={{ width: COL_FIN }} className="shrink-0">
-                Budget · Incurred · %
-              </div>
-              <div
-                className="relative grid flex-1"
-                style={{ gridTemplateColumns: `repeat(${monthCount}, minmax(34px, 1fr))` }}
-              >
-                {months.map((m) => (
-                  <div key={m.key} className="border-l border-border/60 pl-1 text-center">
-                    {m.label}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="relative">
-              {items.map((p: any) => {
-                const projectId = p.project_id || p.id;
-                const startIso = projectScheduleStart(p);
-                const endIso = projectScheduleEnd(p);
-                const s = startIso ? new Date(startIso).getTime() : NaN;
-                const e = endIso ? new Date(endIso).getTime() : NaN;
-                const rawStartPct = dateToPct(new Date(s));
-                const rawEndPct = dateToPct(new Date(e));
-                const startPct = Math.max(0, Math.min(100, rawStartPct));
-                const endPct = Math.max(0, Math.min(100, rawEndPct));
-                const widthPct = Math.max(0.6, endPct - startPct);
-                const clippedLeft = rawStartPct < 0;
-                const clippedRight = rawEndPct > 100;
-                const color = RAG_COLORS[displayRag(p) as string] || "#64748b";
-                const budget = Number(p.budget || 0);
-                const incurred = projectIncurred(p);
-                const pct = budget > 0 ? Math.min(100, Math.round((incurred / budget) * 100)) : 0;
-                const overBudget = incurred > budget && budget > 0;
-                const schedPct = scheduleCompletionPct(s, e);
-                const doneColor = darkenHex(color, 0.4);
-                const projGates = gatesForTimelineLane(p, gates)
-                  .filter((g: any) => g.planned_date || g.actual_date)
-                  .sort(
-                    (a: any, b: any) =>
-                      new Date(a.actual_date || a.planned_date).getTime() -
-                      new Date(b.actual_date || b.planned_date).getTime(),
-                  );
-                const rowKey = p.is_project_rollup ? `rollup:${projectId}` : p.id;
-
-                return (
-                  <div
-                    key={rowKey}
-                    className="flex items-center border-b border-border/40 py-2 hover:bg-muted/30"
-                  >
-                    <div
-                      style={{ width: COL_PROJECT }}
-                      className={`shrink-0 self-stretch pl-1 pr-2 ${
-                        p.is_project_rollup
-                          ? "rounded-sm bg-muted/55"
-                          : p.is_stream_lane
-                            ? "bg-transparent"
-                            : ""
-                      }`}
-                    >
-                      <Link
-                        to="/app/project-infographic"
-                        search={{ pid: projectId }}
-                        className={`block truncate text-[12px] hover:text-primary hover:underline ${
-                          p.is_project_rollup
-                            ? "font-semibold text-foreground"
-                            : "font-medium text-foreground/80"
-                        }`}
-                        title={p.name}
-                      >
-                        {p.is_project_rollup ? (
-                          <>
-                            <span>{p.name}</span>
-                            <span className="ml-1.5 rounded bg-primary/10 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary">
-                              Project
-                            </span>
-                          </>
-                        ) : p.is_stream_lane && (p.stream_name || p.stream_code) ? (
-                          <>
-                            <span className="font-normal text-muted-foreground">
-                              {p.project_name || "Project"}
-                            </span>
-                            <span className="text-muted-foreground"> · </span>
-                            <span className="font-medium text-foreground/75">
-                              {p.stream_name || p.stream_code}
-                            </span>
-                            {p.stream_code ? (
-                              <span className="ml-1.5 rounded bg-muted px-1 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
-                                {p.stream_code}
-                              </span>
-                            ) : null}
-                          </>
-                        ) : (
-                          p.name
-                        )}
-                      </Link>
-                      <div className="truncate text-[10px] text-muted-foreground">
-                        {p.is_stream_lane && p.stream_ref ? (
-                          <Link
-                            to="/app/project-infographic"
-                            search={{ pid: projectId }}
-                            className="font-mono text-primary hover:underline"
-                            title="Project · stream code"
-                          >
-                            {p.stream_ref}
-                          </Link>
-                        ) : p.project_code ? (
-                          <Link
-                            to="/app/project-infographic"
-                            search={{ pid: projectId }}
-                            className="font-mono text-primary hover:underline"
-                          >
-                            {p.project_code}
-                          </Link>
-                        ) : (
-                          "—"
-                        )}{" "}
-                        ·{" "}
-                        {p.is_project_rollup
-                          ? "Rollup"
-                          : p.is_stream_lane
-                            ? "Stream"
-                            : p.program || "Unassigned"}
-                        {(p.is_stream_lane || p.is_project_rollup) && p.program
-                          ? ` · ${p.program}`
-                          : ""}
-                      </div>
-                    </div>
-                    <div style={{ width: COL_SPONSOR }} className="shrink-0 pr-2">
-                      <div className="truncate text-[11px] text-foreground">{p.sponsor || "—"}</div>
-                      <div className="truncate text-[10px] text-muted-foreground">
-                        {phaseOf(p) || "—"}
-                      </div>
-                    </div>
-                    <div style={{ width: COL_FIN }} className="shrink-0 pr-2">
-                      <div className="text-[11px] font-medium tabular-nums text-foreground">
-                        {money(budget)} <span className="text-muted-foreground">·</span>{" "}
-                        {money(incurred)}
-                      </div>
-                      <div className="mt-0.5 flex items-center gap-1">
-                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                          <div
-                            className="h-full rounded-full"
-                            style={{ width: `${pct}%`, background: overBudget ? "#dc2626" : color }}
-                          />
-                        </div>
-                        <span
-                          className={`text-[10px] tabular-nums ${overBudget ? "text-red-600 font-semibold" : "text-muted-foreground"}`}
-                        >
-                          {pct}%
-                        </span>
-                      </div>
-                    </div>
-                    <div
-                      className={`relative ${showPvA ? "h-14" : "h-10"} flex-1 rounded bg-muted/30 ${
-                        showGates ? "overflow-visible" : ""
-                      }`}
-                    >
-                      {/* month gridlines with stronger FY dividers */}
-                      <div
-                        className="pointer-events-none absolute inset-0 grid"
-                        style={{ gridTemplateColumns: `repeat(${monthCount}, minmax(34px, 1fr))` }}
-                      >
-                        {months.map((m, i) => {
-                          const prev = months[i - 1];
-                          const fyBreak = prev && prev.fy !== m.fy;
-                          return (
-                            <div
-                              key={m.key}
-                              className={
-                                fyBreak
-                                  ? "border-l-2 border-primary/40"
-                                  : "border-l border-border/40"
-                              }
-                            />
-                          );
-                        })}
-                      </div>
-                      {/* schedule bar(s) */}
-                      {(() => {
-                        if (!showPvA) {
-                          return (
-                            <div
-                              className="absolute top-2 h-6 shadow-sm"
-                              style={{
-                                left: `${startPct}%`,
-                                width: `${widthPct}%`,
-                                background: color,
-                                opacity: 0.9,
-                                borderTopLeftRadius: clippedLeft ? 0 : 6,
-                                borderBottomLeftRadius: clippedLeft ? 0 : 6,
-                                borderTopRightRadius: clippedRight ? 0 : 6,
-                                borderBottomRightRadius: clippedRight ? 0 : 6,
-                              }}
-                              title={
-                                p.is_project_rollup
-                                  ? `${startIso} → ${endIso} · Schedule ${schedPct}% complete`
-                                  : `${startIso} → ${endIso} · ${money(budget)} budget · ${money(incurred)} incurred (${pct}%)`
-                              }
-                            >
-                              {p.is_project_rollup ? (
-                                <div
-                                  className="h-full"
-                                  style={{
-                                    width: `${schedPct}%`,
-                                    background: doneColor,
-                                    borderTopLeftRadius: clippedLeft ? 0 : 6,
-                                    borderBottomLeftRadius: clippedLeft ? 0 : 6,
-                                  }}
-                                />
-                              ) : (
-                                <div
-                                  className="h-full"
-                                  style={{
-                                    width: `${pct}%`,
-                                    background: "rgba(255,255,255,0.28)",
-                                    borderTopLeftRadius: clippedLeft ? 0 : 6,
-                                    borderBottomLeftRadius: clippedLeft ? 0 : 6,
-                                  }}
-                                />
-                              )}
-                              {widthPct > 10 && (
-                                <div className="absolute inset-0 flex items-center justify-between px-2 text-[10px] font-medium text-white">
-                                  <span className="truncate">
-                                    {fmtShort(new Date(s))} → {fmtShort(new Date(e))}
-                                  </span>
-                                  <span className="tabular-nums font-semibold">
-                                    {p.is_project_rollup
-                                      ? `${schedPct}%`
-                                      : `${money(incurred)}/${money(budget)}`}
-                                  </span>
-                                </div>
-                              )}
-                              {p.is_project_rollup && widthPct <= 10 && (
-                                <div className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-white">
-                                  {schedPct}%
-                                </div>
-                              )}
-                            </div>
-                          );
-                        }
-                        const pS = p.planned_start_date
-                          ? new Date(p.planned_start_date).getTime()
-                          : s;
-                        const pE = p.planned_end_date ? new Date(p.planned_end_date).getTime() : e;
-                        const aS = p.actual_start_date
-                          ? new Date(p.actual_start_date).getTime()
-                          : s;
-                        const aE = p.actual_end_date ? new Date(p.actual_end_date).getTime() : e;
-                        const seg = (start: number, end: number) => {
-                          const rs = dateToPct(new Date(start));
-                          const re = dateToPct(new Date(end));
-                          const ls = Math.max(0, Math.min(100, rs));
-                          const le = Math.max(0, Math.min(100, re));
-                          return { left: ls, width: Math.max(0.6, le - ls) };
-                        };
-                        const plan = seg(pS, pE);
-                        const act = seg(aS, aE);
-                        const slipDays = Math.round((aE - pE) / 86400000);
-                        return (
-                          <>
-                            <div
-                              className="absolute top-0.5 h-4 rounded border-2 border-dashed"
-                              style={{
-                                left: `${plan.left}%`,
-                                width: `${plan.width}%`,
-                                borderColor: color,
-                                background: "transparent",
-                              }}
-                              title={`Planned · ${p.planned_start_date || p.start_date} → ${p.planned_end_date || p.end_date}`}
-                            >
-                              {plan.width > 10 && (
-                                <div
-                                  className="absolute inset-0 flex items-center px-2 text-[9px] font-medium"
-                                  style={{ color }}
-                                >
-                                  <span className="truncate">
-                                    Plan: {fmtShort(new Date(pS))} → {fmtShort(new Date(pE))}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                            <div
-                              className="absolute bottom-0.5 h-4 rounded shadow-sm"
-                              style={{
-                                left: `${act.left}%`,
-                                width: `${act.width}%`,
-                                background: color,
-                                opacity: 0.9,
-                              }}
-                              title={
-                                p.is_project_rollup
-                                  ? `Actual · Schedule ${schedPct}% · slip ${slipDays >= 0 ? "+" : ""}${slipDays}d`
-                                  : `Actual · ${p.actual_start_date || p.start_date} → ${p.actual_end_date || p.end_date} · slip ${slipDays >= 0 ? "+" : ""}${slipDays}d`
-                              }
-                            >
-                              {p.is_project_rollup ? (
-                                <div
-                                  className="h-full rounded-l"
-                                  style={{ width: `${schedPct}%`, background: doneColor }}
-                                />
-                              ) : (
-                                <div
-                                  className="h-full rounded-l"
-                                  style={{ width: `${pct}%`, background: "rgba(255,255,255,0.28)" }}
-                                />
-                              )}
-                              {act.width > 10 && (
-                                <div className="absolute inset-0 flex items-center justify-between px-2 text-[9px] font-medium text-white">
-                                  <span className="truncate">
-                                    Actual: {fmtShort(new Date(aS))} → {fmtShort(new Date(aE))}
-                                  </span>
-                                  <span className="tabular-nums">
-                                    {p.is_project_rollup
-                                      ? `${schedPct}%`
-                                      : `${slipDays >= 0 ? "+" : ""}${slipDays}d`}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          </>
-                        );
-                      })()}
-                      {/* Stage gate markers */}
-                      {showGates &&
-                        projGates.map((g: any, idx: number) => {
-                          const gd = new Date(g.actual_date || g.planned_date).getTime();
-                          let pctX = dateToPct(new Date(gd));
-                          const outside = pctX < 0 || pctX > 100;
-                          pctX = Math.max(0.5, Math.min(99.5, pctX));
-                          const st = String(g.status || "Pending").toLowerCase();
-                          const isDone =
-                            st.includes("approv") ||
-                            st.includes("complete") ||
-                            st.includes("pass") ||
-                            !!g.actual_date;
-                          const gcolor = isDone
-                            ? "#15803d"
-                            : st.includes("reject") || st.includes("fail")
-                              ? "#dc2626"
-                              : st.includes("progress") || st.includes("review")
-                                ? "#f59e0b"
-                                : "#3b82f6";
-                          const label = String(g.gate_name || "Gate");
-                          const stagger = idx % 2 === 0 ? "top-0" : "bottom-0";
-                          return (
-                            <div
-                              key={g.id}
-                              className={`absolute z-20 -translate-x-1/2 ${stagger}`}
-                              style={{ left: `${pctX}%`, opacity: outside ? 0.5 : 1 }}
-                              title={`${label} · planned ${g.planned_date || "—"}${g.actual_date ? ` · actual ${g.actual_date}` : ""} · ${g.status || "Pending"}${outside ? " (outside visible range)" : ""}`}
-                            >
-                              <div className="flex flex-col items-center">
-                                <div
-                                  className="relative h-3 w-3 rotate-45 border border-white shadow"
-                                  style={{ background: gcolor }}
-                                >
-                                  {isDone && (
-                                    <span className="absolute inset-0 -rotate-45 flex items-center justify-center text-[8px] font-bold leading-none text-white">
-                                      ✓
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="mt-0.5 max-w-[80px] truncate rounded bg-white/95 px-1 text-[8px] font-medium text-foreground shadow-sm">
-                                  {label.slice(0, 14)}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                    </div>
-                  </div>
-                );
-              })}
-              {todayPct >= 0 && todayPct <= 100 && (
-                <div className="pointer-events-none absolute inset-0 z-10 flex">
-                  <div style={{ width: LEFT }} className="shrink-0" />
-                  <div className="relative flex-1">
-                    <div
-                      className="absolute top-0 bottom-0"
-                      style={{ left: `${todayPct}%`, borderLeft: "2px dashed #dc2626" }}
-                    >
-                      <div className="-ml-6 mt-1 whitespace-nowrap rounded bg-red-600 px-1.5 py-0.5 text-[9px] font-semibold text-white">
-                        {now.toLocaleDateString("en-GB", {
-                          day: "2-digit",
-                          month: "short",
-                          year: "2-digit",
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
