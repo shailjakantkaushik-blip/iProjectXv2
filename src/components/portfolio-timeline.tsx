@@ -136,7 +136,7 @@ export function computeTimelineBounds(
 }
 
 export function GanttGroup({
-  title, items, bounds, gates, collapsed, onToggle, showPlannedVsActual = false, showGates,
+  title, items, bounds, gates, collapsed, onToggle, showPlannedVsActual, showGates,
   showProjectTimeline, onShowProjectTimelineChange,
 }: {
   title: string; items: any[]; bounds: TimelineBounds;
@@ -150,8 +150,11 @@ export function GanttGroup({
   onShowProjectTimelineChange?: (v: boolean) => void;
 }) {
   const [internalShowGates, setInternalShowGates] = useState(true);
+  const [internalShowPvA, setInternalShowPvA] = useState(false);
   const isControlled = showGates !== undefined;
+  const pvaControlled = showPlannedVsActual !== undefined;
   const effectiveShowGates = isControlled ? !!showGates : internalShowGates;
+  const effectivePva = pvaControlled ? !!showPlannedVsActual : internalShowPvA;
   const showProjectToggle = typeof onShowProjectTimelineChange === "function";
   const { start: rangeStart, totalMs, months, fyGroups } = bounds;
   const monthShort = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -214,7 +217,7 @@ export function GanttGroup({
         ? fyGroups[0].fy
         : `${fyGroups[0].fy} – ${fyGroups[fyGroups.length - 1].fy}`;
 
-  const showInlineControls = showProjectToggle || !isControlled;
+  const showInlineControls = showProjectToggle || !isControlled || !pvaControlled;
 
   return (
     <div className="relative rounded-md border border-border bg-surface shadow-sm">
@@ -251,6 +254,20 @@ export function GanttGroup({
           {/* Controls stay left of the grid — never over the RAG summary in the header */}
           {showInlineControls && (
             <div className="mb-2 flex flex-wrap items-center gap-2">
+              {!pvaControlled && (
+                <label
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-0.5 text-[10px] font-medium text-foreground hover:bg-muted"
+                  title="Show planned vs actual bars and stage-gate dates"
+                >
+                  <input
+                    type="checkbox"
+                    checked={effectivePva}
+                    onChange={(e) => setInternalShowPvA(e.target.checked)}
+                    className="h-3 w-3"
+                  />
+                  Planned vs Actual
+                </label>
+              )}
               {showProjectToggle && (
                 <label
                   className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2 py-0.5 text-[10px] font-medium text-foreground hover:bg-muted"
@@ -431,7 +448,7 @@ export function GanttGroup({
                     </div>
                   </div>
                   <div
-                    className={`relative ${showPlannedVsActual ? "h-14" : "h-10"} flex-1 rounded bg-muted/30 ${
+                    className={`relative ${effectivePva ? "h-14" : "h-10"} flex-1 rounded bg-muted/30 ${
                       effectiveShowGates ? "overflow-visible" : "overflow-hidden"
                     }`}
                   >
@@ -443,7 +460,7 @@ export function GanttGroup({
                       })}
                     </div>
 
-                    {showPlannedVsActual ? (
+                    {effectivePva ? (
                       <>
                         {/* Planned bar (top) */}
                         <div
@@ -539,7 +556,7 @@ export function GanttGroup({
                       </div>
                     )}
 
-                    {effectiveShowGates && (showPlannedVsActual ? (
+                    {effectiveShowGates && (effectivePva ? (
                       <>
                         {/* Planned-date gates aligned with the planned (top) bar */}
                         {projGates.filter((g: any) => g.planned_date).map((g: any) => {

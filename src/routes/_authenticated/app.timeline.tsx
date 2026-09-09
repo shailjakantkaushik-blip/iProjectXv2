@@ -16,6 +16,7 @@ import {
 import {
   expandProjectsToTimelineLanes,
   fetchOrgStreams,
+  normalizeTimelineLaneDates,
 } from "@/lib/project-streams";
 import { fetchStageGates } from "@/lib/stage-gates";
 import { displayRag } from "@/lib/ops-enhancements";
@@ -177,20 +178,12 @@ function TimelinePage() {
 
   // ---------- Combined planned + actual dataset (stream lanes when enabled) ----------
   const combinedProjects = useMemo(() => {
-    const base = filtered.map((p: any) => ({
-      ...p,
-      start_date: p.planned_start_date || p.actual_start_date || p.start_date,
-      end_date: p.actual_end_date || p.planned_end_date || p.end_date,
-    }));
+    const base = filtered.map((p: any) => normalizeTimelineLaneDates(p));
     const lanes = expandProjectsToTimelineLanes(base, streams as any[], {
       gates: gates as any[],
       resolvePhase: (p, streamGates) => resolveCurrentStage(p, streamGates, orgPhases),
       includeProjectRollup: showProjectTimeline,
-    }).map((lane: any) => ({
-      ...lane,
-      start_date: lane.planned_start_date || lane.actual_start_date || lane.start_date,
-      end_date: lane.actual_end_date || lane.planned_end_date || lane.end_date,
-    }));
+    }).map((lane: any) => normalizeTimelineLaneDates(lane));
     return lanes.filter((p: any) => p.start_date && p.end_date);
   }, [filtered, streams, gates, orgPhases, showProjectTimeline]);
 
