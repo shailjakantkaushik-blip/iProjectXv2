@@ -668,15 +668,15 @@ export function ProjectRegister() {
                         display={(v) => {
                           const rag = shownRagOf({ ...p, rag: v });
                           return (
-                          <RagChip
-                            rag={rag}
-                            manual={isRagOverridden(p)}
-                            explain={explainRag({
-                              rag,
-                              source: isRagOverridden(p) ? "register" : undefined,
-                              overridden: isRagOverridden(p),
-                            })}
-                          />
+                            <RagChip
+                              rag={rag}
+                              manual={isRagOverridden(p)}
+                              explain={explainRag({
+                                rag,
+                                source: isRagOverridden(p) ? "register" : undefined,
+                                overridden: isRagOverridden(p),
+                              })}
+                            />
                           );
                         }}
                       />

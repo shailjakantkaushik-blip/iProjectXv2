@@ -88,17 +88,13 @@ export function effectiveRag(
   calculated?: string | null,
 ) {
   if (isRagOverridden(project)) return String(project?.rag_override).trim();
-  const calc =
-    canonicalRag(calculated) || canonicalRag(project?.health_engine_rag ?? null);
+  const calc = canonicalRag(calculated) || canonicalRag(project?.health_engine_rag ?? null);
   if (calc) return calc;
   return project?.rag || null;
 }
 
 /** Same as {@link effectiveRag} — pass the engine colour as the second argument. */
-export function displayRag(
-  project: RagProjectLike | null | undefined,
-  calculated?: string | null,
-) {
+export function displayRag(project: RagProjectLike | null | undefined, calculated?: string | null) {
   return effectiveRag(project, calculated);
 }
 

@@ -2,16 +2,10 @@ import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { supabase } from "@/integrations/supabase/client";
-import {
-  FINANCIALS_MONTHLY_SELECT,
-  PROJECT_PORTFOLIO_SELECT,
-} from "@/lib/query-selects";
+import { FINANCIALS_MONTHLY_SELECT, PROJECT_PORTFOLIO_SELECT } from "@/lib/query-selects";
 import { parentEnvelopeContext } from "@/lib/hierarchy-envelope";
 import { shownRag, type RagProjectLike } from "@/lib/ops-enhancements";
-import {
-  buildEngineRagById,
-  useHealthEngineLookups,
-} from "@/hooks/use-health-engine-lookups";
+import { buildEngineRagById, useHealthEngineLookups } from "@/hooks/use-health-engine-lookups";
 
 type Ctx = {
   byId: Map<string, string>;
