@@ -203,6 +203,25 @@ export function programPotsAllocated(
   return sum;
 }
 
+/** Keep envelope pots that belong to the caller's visible projects. */
+export function filterHierarchyEnvelopesByProjects(
+  rows: HierarchyEnvelopeRow[],
+  projects: HierarchyProjectLike[],
+): HierarchyEnvelopeRow[] {
+  const alignments = new Set(projects.map((p) => normalizeHierarchyName(p.portfolio)));
+  const programs = new Set(
+    projects.map(
+      (p) => `${normalizeHierarchyName(p.portfolio)}\0${normalizeHierarchyName(p.program)}`,
+    ),
+  );
+  return rows.filter((row) => {
+    if (row.layer === "alignment") return alignments.has(normalizeHierarchyName(row.name));
+    return programs.has(
+      `${normalizeHierarchyName(row.parent_name)}\0${normalizeHierarchyName(row.name)}`,
+    );
+  });
+}
+
 export function collectAlignmentNames(
   projects: HierarchyProjectLike[],
   rows: HierarchyEnvelopeRow[] | null | undefined,

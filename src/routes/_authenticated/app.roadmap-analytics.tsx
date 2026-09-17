@@ -42,6 +42,7 @@ type Project = {
 };
 
 import { CHART_SERIES } from "@/lib/chart-theme";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 const THEME_COLORS: Record<string, string> = {
   Transform: CHART_SERIES[0],
   Grow: CHART_SERIES[2],
@@ -103,11 +104,12 @@ function RoadmapAnalyticsPage() {
   const shownRagOf = useShownRag();
   const [iterations, setIterations] = useState(2000);
 
-  const { data: projects = [] } = useQuery({
+  const { data: projectsRaw = [] } = useQuery({
     queryKey: ["projects-roadmap", organization?.id],
     queryFn: async () => ((await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*")).data as Project[]) ?? [],
     enabled: !!organization,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
 
   const enriched = useMemo(
     () =>

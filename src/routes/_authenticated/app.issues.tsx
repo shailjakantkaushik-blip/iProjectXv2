@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { ISSUES_SELECT, selectWithRaidCodeFallback } from "@/lib/query-selects";
-import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
 import { fetchOrgStreams } from "@/lib/project-streams";
 import { RaidStreamSelect } from "@/components/raid-stream-select";
 import { useAuth } from "@/lib/auth-context";
@@ -14,6 +13,7 @@ import { EditableCell } from "@/components/editable-cell";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
+import { useProjectOptions } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/issues")({
   component: IssuesPage,
@@ -27,11 +27,7 @@ function IssuesPage() {
   const orgId = organization?.id;
   const qc = useQueryClient();
 
-  const { data: projects = [] } = useQuery({
-    queryKey: projectOptionsQueryKey(orgId),
-    queryFn: fetchProjectOptions,
-    enabled: !!orgId,
-  });
+  const { data: projects = [] } = useProjectOptions(orgId);
   const { data: streams = [] } = useQuery({
     queryKey: ["project_streams", orgId],
     queryFn: () => fetchOrgStreams(orgId!),

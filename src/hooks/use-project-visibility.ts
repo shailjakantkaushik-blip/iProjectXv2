@@ -1,5 +1,7 @@
 import { useCallback, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
+import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
 import {
   callerHasLimitedVisibility,
   filterProjectsByVisibility,
@@ -32,4 +34,26 @@ export function useProjectVisibility() {
   );
 
   return { cfg, limited, filterProjects, filterStreams, userId };
+}
+
+/** Project picker lists — same grants as Project Access. */
+export function useProjectOptions(orgId: string | null | undefined, staleTime = 15_000) {
+  const { filterProjects } = useProjectVisibility();
+  const q = useQuery({
+    queryKey: projectOptionsQueryKey(orgId),
+    queryFn: fetchProjectOptions,
+    enabled: !!orgId,
+    staleTime,
+  });
+  const data = useMemo(
+    () => filterProjects((q.data ?? []) as VisibilityProject[]),
+    [q.data, filterProjects],
+  );
+  return { ...q, data };
+}
+
+/** Scope an already-fetched project catalog to Project Access grants. */
+export function useScopedProjects<T extends VisibilityProject>(rows: T[] | undefined): T[] {
+  const { filterProjects } = useProjectVisibility();
+  return useMemo(() => filterProjects(rows ?? []), [rows, filterProjects]);
 }

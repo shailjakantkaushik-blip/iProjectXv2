@@ -37,6 +37,7 @@ import { ExpandablePanel } from "@/components/expandable-panel";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/risk-roadmap")({
   head: () => ({
@@ -63,7 +64,7 @@ function RiskRoadmapPage() {
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [sevFilter, setSevFilter] = useState<string>("All");
 
-  const { data: projects = [] } = useQuery({
+  const { data: projectsRaw = [] } = useQuery({
     queryKey: ["projects", organization?.id],
     queryFn: async () =>
       (
@@ -75,6 +76,7 @@ function RiskRoadmapPage() {
       ).data ?? [],
     enabled: !!organization,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
   const { data: gateDefs = [] } = useQuery({
     queryKey: ["stage_gate_definitions", organization?.id],
     queryFn: async () =>

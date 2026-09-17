@@ -7,6 +7,7 @@ import { Link } from "@tanstack/react-router";
 import { Activity, ArrowRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
+import { useProjectVisibility } from "@/hooks/use-project-visibility";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/project-selects";
 import { FINANCIALS_MONTHLY_SELECT } from "@/lib/query-selects";
 import { MAX_PAGE_SIZE } from "@/lib/portfolio-paging";
@@ -59,6 +60,7 @@ export function PortfolioPulsePanel({
   showFilters?: boolean;
 }) {
   const { organization } = useAuth();
+  const { filterProjects } = useProjectVisibility();
   const orgId = organization?.id;
   const fyStartMonth = organization?.fy_start_month || 4;
   const [filters, setFilters] = useState<ExecutivePortfolioFilterState>(emptyExecutiveFilters);
@@ -230,12 +232,12 @@ export function PortfolioPulsePanel({
       decisionsQ.isLoading);
 
   const filteredProjects = useMemo(() => {
-    const all = projectsQ.data ?? [];
+    const all = filterProjects(projectsQ.data ?? []);
     return applyExecutivePortfolioFilters(all, filters, fyStartMonth, {
       gates: gatesQ.data ?? [],
       fyAllocations: (fyAllocQ.data ?? []) as any[],
     });
-  }, [projectsQ.data, filters, fyStartMonth, gatesQ.data, fyAllocQ.data]);
+  }, [projectsQ.data, filterProjects, filters, fyStartMonth, gatesQ.data, fyAllocQ.data]);
 
   const snapshotScope = useMemo(() => executiveFilterScopeKey(filters), [filters]);
 

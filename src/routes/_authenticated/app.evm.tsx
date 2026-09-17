@@ -25,6 +25,7 @@ import {
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Cell } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { EntityComments } from "@/components/entity-comments";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/evm")({
   component: EvmPage,
@@ -68,7 +69,7 @@ function EvmPage() {
   const [filters, setFilters] = useState<PortfolioFilterState>(emptyFilters);
   const [selectedId, setSelectedId] = useState<string>("");
 
-  const { data: projects = [], isLoading } = useQuery({
+  const { data: projectsRaw = [], isLoading } = useQuery({
     queryKey: ["projects", orgId, "evm"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -80,6 +81,7 @@ function EvmPage() {
     },
     enabled: !!orgId,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
 
   const { data: workItems = [] } = useQuery({
     queryKey: ["work_items", orgId, "evm"],

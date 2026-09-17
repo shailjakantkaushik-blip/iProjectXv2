@@ -37,6 +37,7 @@ import type { MonthlyFinanceRow } from "@/lib/finance-lifecycle";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/budget-vs-plan")({
   component: BudgetVsPlanPage,
@@ -60,7 +61,7 @@ function BudgetVsPlanPage() {
   const [filters, setFilters] = useState<PortfolioFilterState>(emptyFilters);
   const [fySelected, setFySelected] = useState<string[]>([]);
 
-  const { data: projects = [] } = useQuery({
+  const { data: projectsRaw = [] } = useQuery({
     queryKey: ["projects", organization?.id],
     queryFn: async () =>
       sortProjectsByCodeName(
@@ -72,6 +73,7 @@ function BudgetVsPlanPage() {
       ),
     enabled: !!organization,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
   const { data: fyAlloc = [] } = useQuery({
     queryKey: ["fy_allocations", organization?.id],
     queryFn: async () => (await supabase.from("fy_allocations").select("*").order("fy")).data ?? [],

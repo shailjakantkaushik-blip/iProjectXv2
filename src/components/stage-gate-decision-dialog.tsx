@@ -19,15 +19,12 @@ import {
   type OrgMember,
 } from "@/lib/decision-approval";
 import { forumSelectNames, loadGovernanceChannels } from "@/lib/governance-forums";
-import {
-  fetchProjectOptions,
-  projectOptionsQueryKey,
-} from "@/lib/project-options";
 import { fetchOrgStreams } from "@/lib/project-streams";
 import { defaultStageGateDecisionTitle } from "@/lib/stage-gate-decision-fields";
 import { recordStageGateDecision } from "@/lib/stage-gate-decision";
 import { fetchGateChecklistBlockReason } from "@/lib/stage-gate-checklist";
 import { normalizeGateStatus } from "@/lib/stage-gate-approval";
+import { useProjectOptions } from "@/hooks/use-project-visibility";
 
 export type StageGateDecisionRequest = {
   gateId: string;
@@ -70,11 +67,7 @@ function StageGateDecisionDialog({
   const orgId = organization?.id;
   const qc = useQueryClient();
 
-  const { data: projects = [] } = useQuery({
-    queryKey: projectOptionsQueryKey(orgId),
-    queryFn: fetchProjectOptions,
-    enabled: !!orgId,
-  });
+  const { data: projects = [] } = useProjectOptions(orgId);
 
   const { data: members = [] } = useQuery({
     queryKey: ["org-members", orgId],

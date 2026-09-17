@@ -48,6 +48,7 @@ import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-tabl
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
 import { explainForecast, explainGeneric } from "@/lib/explain-metric";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/phase-financials")({
   component: PhaseFinancialsPage,
@@ -74,7 +75,7 @@ function PhaseFinancialsPage() {
   const engineRagById = useEngineRagMap();
   const [filters, setFilters] = useState<PortfolioFilterState>(emptyFilters);
 
-  const { data: projects = [] } = useQuery({
+  const { data: projectsRaw = [] } = useQuery({
     queryKey: ["projects", organization?.id],
     queryFn: async () =>
       (
@@ -86,6 +87,7 @@ function PhaseFinancialsPage() {
       ).data ?? [],
     enabled: !!organization,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
 
   const { data: gateDefs = [] } = useQuery({
     queryKey: ["stage_gate_definitions", organization?.id],

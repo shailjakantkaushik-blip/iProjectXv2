@@ -48,6 +48,7 @@ import {
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/fy-allocation")({
   component: FYAllocationPage,
@@ -88,7 +89,7 @@ function FYAllocationPage() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<"allocate" | "portfolio" | "roadmap">("allocate");
 
-  const { data: projects = [] } = useQuery({
+  const { data: projectsRaw = [] } = useQuery({
     queryKey: ["projects", organization?.id],
     queryFn: async () =>
       (await supabase
@@ -98,6 +99,7 @@ function FYAllocationPage() {
         .order("name")).data ?? [],
     enabled: !!organization,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
   const { data: alloc = [] } = useQuery({
     queryKey: ["fy_allocations", organization?.id],
     queryFn: async () => (await supabase.from("fy_allocations").select("*").order("fy")).data ?? [],

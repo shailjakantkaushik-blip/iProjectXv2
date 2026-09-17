@@ -5,8 +5,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  fetchProjectOptions,
-  projectOptionsQueryKey,
   compareProjectsByCodeName,
   projectUsesStageGates,
   projectUsesSprints,
@@ -44,6 +42,7 @@ import { listPortfolioWorkItems } from "@/lib/portfolio.functions";
 import { DEFAULT_PAGE_SIZE } from "@/lib/portfolio-paging";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useProjectOptions } from "@/hooks/use-project-visibility";
 
 type WorkItemsSearch = {
   mine?: boolean;
@@ -124,11 +123,7 @@ function WorkItemsPage() {
     setOffset(0);
   }, [fProject, fStream, fGate, fSprint, fStatus, fProgram, fAlignment, fLate, mineOnly]);
 
-  const { data: projects = [] } = useQuery({
-    queryKey: projectOptionsQueryKey(orgId),
-    queryFn: fetchProjectOptions,
-    enabled: !!orgId,
-  });
+  const { data: projects = [] } = useProjectOptions(orgId);
 
   const { data: streams = [] } = useQuery({
     queryKey: ["project_streams", orgId],

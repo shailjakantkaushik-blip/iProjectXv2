@@ -48,6 +48,7 @@ import {
 import { Download } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/resources")({
   component: ResourcesPage,
@@ -174,7 +175,7 @@ function ResourcesPage() {
         .data as Allocation[]) ?? [],
     enabled: !!organization,
   });
-  const { data: projects = [] } = useQuery({
+  const { data: projectsRaw = [] } = useQuery({
     queryKey: ["projects", organization?.id, "resources"],
     queryFn: async () =>
       ((
@@ -186,6 +187,7 @@ function ResourcesPage() {
       ).data as Project[]) ?? [],
     enabled: !!organization,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
   const { data: streams = [] } = useQuery({
     queryKey: ["project_streams", organization?.id, "resources"],
     queryFn: async () =>

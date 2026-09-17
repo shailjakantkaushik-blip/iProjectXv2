@@ -16,6 +16,7 @@ import { ColumnarToolbar } from "@/components/columnar-toolbar";
 import { CHART_SERIES } from "@/lib/chart-theme";
 import { deliveryMethodsQueryKey, fetchDeliveryMethods } from "@/lib/delivery-methods";
 import { buildStageGateFlows, type StageGateDefLike } from "@/lib/stage-gate-flow";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/roadmap-governance")({
   component: RoadmapGovPage,
@@ -39,7 +40,7 @@ function RoadmapGovPage() {
   const shownRagOf = useShownRag();
   const orgId = organization?.id;
   const {
-    data: projects = [],
+    data: projectsRaw = [],
     isError: projectsError,
     refetch: refetchProjects,
   } = useQuery({
@@ -54,6 +55,7 @@ function RoadmapGovPage() {
     enabled: !!organization,
     retry: 1,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
 
   const { data: gateDefs = [] } = useQuery({
     queryKey: ["stage_gate_definitions", organization?.id],

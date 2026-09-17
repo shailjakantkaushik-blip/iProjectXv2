@@ -14,6 +14,7 @@ import {
   projectIncurred,
   projectTargetRoi,
 } from "@/lib/project-finance";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/report-builder")({
   component: ReportBuilderPage,
@@ -58,7 +59,7 @@ function ReportBuilderPage() {
   const [portfolioF, setPortfolioF] = useState("All");
   const [statusF, setStatusF] = useState("All");
 
-  const { data: projects = [] } = useQuery({
+  const { data: projectsRaw = [] } = useQuery({
     queryKey: ["projects", orgId, "report-builder"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -75,6 +76,7 @@ function ReportBuilderPage() {
     },
     enabled: !!orgId,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
 
   const { data: workItems = [] } = useQuery({
     queryKey: ["work_items", orgId, "report-builder"],

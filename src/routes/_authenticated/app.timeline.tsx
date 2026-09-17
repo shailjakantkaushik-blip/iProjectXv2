@@ -25,6 +25,7 @@ import {
   projectMatchesGateStatusFilter,
   type GateStatusFilter,
 } from "@/lib/stage-gate-approval";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/timeline")({
   component: TimelinePage,
@@ -55,7 +56,7 @@ function TimelinePage() {
   const shownRagOf = useShownRag();
   const qc = useQueryClient();
 
-  const { data: projects = [] } = useQuery({
+  const { data: projectsRaw = [] } = useQuery({
     queryKey: ["projects", organization?.id],
     queryFn: async () => {
       const { data, error } = await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*").order("start_date", { ascending: true });
@@ -64,6 +65,7 @@ function TimelinePage() {
     },
     enabled: !!organization,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
 
   const { data: gates = [] } = useQuery({
     queryKey: ["stage_gates", organization?.id],

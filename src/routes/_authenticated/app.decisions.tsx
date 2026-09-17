@@ -4,8 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  fetchProjectOptions,
-  projectOptionsQueryKey,
   compareProjectsByCodeName,
 } from "@/lib/project-options";
 import {
@@ -40,6 +38,7 @@ import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
 import { ForumSelect } from "@/components/forum-select";
 import { forumSelectNames, loadGovernanceChannels } from "@/lib/governance-forums";
+import { useProjectOptions } from "@/hooks/use-project-visibility";
 
 type DecisionsSearch = {
   awaiting?: "me" | "all";
@@ -64,11 +63,7 @@ function DecisionsPage() {
     if (search.awaiting === "me") setAwaitingOnly(true);
   }, [search.awaiting]);
 
-  const { data: projects = [] } = useQuery({
-    queryKey: projectOptionsQueryKey(orgId),
-    queryFn: fetchProjectOptions,
-    enabled: !!orgId,
-  });
+  const { data: projects = [] } = useProjectOptions(orgId);
 
   const { data: members = [] } = useQuery({
     queryKey: ["org-members", orgId],

@@ -19,8 +19,6 @@ import { SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/strea
 import { toast } from "sonner";
 import { List, Plus, Trash2 } from "lucide-react";
 import {
-  fetchProjectOptions,
-  projectOptionsQueryKey,
   writeLastProjectId,
 } from "@/lib/project-options";
 import { cn } from "@/lib/utils";
@@ -43,6 +41,7 @@ import {
   parseForecastPhaseNotes,
 } from "@/lib/project-forecast";
 import { ProjectGovernanceForums } from "@/components/governance-hierarchy";
+import { useProjectOptions } from "@/hooks/use-project-visibility";
 
 type ProjectTab =
   "overview" | "summary" | "decisions" | "work" | "governance" | "finance" | "streams" | "phases";
@@ -96,12 +95,7 @@ function ProjectDetail() {
   const [busy, setBusy] = useState(false);
   const orgId = organization?.id;
 
-  const { data: projectOptions = [] } = useQuery({
-    queryKey: projectOptionsQueryKey(orgId),
-    queryFn: fetchProjectOptions,
-    enabled: !!orgId,
-    staleTime: 15_000,
-  });
+  const { data: projectOptions = [] } = useProjectOptions(orgId);
 
   useEffect(() => {
     if (id && orgId) writeLastProjectId(orgId, id);

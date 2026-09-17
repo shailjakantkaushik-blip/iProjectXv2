@@ -7,6 +7,7 @@ import { PROJECT_PORTFOLIO_SELECT } from "@/lib/query-selects";
 import { PROJECT_OPS_EXTRAS } from "@/lib/project-selects";
 import { sortProjectsByCodeName } from "@/lib/project-sort";
 import { useAuth, canEditProjects } from "@/lib/auth-context";
+import { useProjectVisibility } from "@/hooks/use-project-visibility";
 import { SectionFrame, SectionTitle, PageHeading, KpiCard, RagChip } from "@/components/streamlit";
 import { explainRag } from "@/lib/explain-metric";
 import { isRagOverridden } from "@/lib/ops-enhancements";
@@ -35,6 +36,7 @@ import { useHierarchyEnvelopes } from "@/hooks/use-hierarchy-envelopes";
 import { HierarchyEnvelopeField } from "@/components/hierarchy-envelope-field";
 import { HierarchyEnvelopeBoard } from "@/components/hierarchy-envelope-board";
 import {
+  filterHierarchyEnvelopesByProjects,
   lookupHierarchyEnvelope,
   normalizeHierarchyName,
   parentEnvelopeStatus,
@@ -75,12 +77,13 @@ function fmtDate(d: any) {
 }
 function ProgramsPage() {
   const { organization, loading: authLoading, roles } = useAuth();
+  const { filterProjects, limited } = useProjectVisibility();
   const shownRagOf = useShownRag();
   const orgId = organization?.id;
   const canEdit = canEditProjects(roles);
   const envelopes = useHierarchyEnvelopes(orgId);
   const {
-    data: projects = [],
+    data: projectsRaw = [],
     isLoading,
     isError,
     error,
@@ -103,6 +106,18 @@ function ProgramsPage() {
     retry: 2,
     staleTime: 15_000,
   });
+
+  const projects = useMemo(
+    () => filterProjects(projectsRaw as { id: string }[]),
+    [projectsRaw, filterProjects],
+  );
+  const visibleEnvelopes = useMemo(
+    () =>
+      limited
+        ? filterHierarchyEnvelopesByProjects(envelopes.rows, projects as never)
+        : envelopes.rows,
+    [limited, envelopes.rows, projects],
+  );
 
   const [selectedProgram, setSelectedProgram] = useState<string>("");
 
@@ -336,10 +351,11 @@ function ProgramsPage() {
 
       <HierarchyEnvelopeBoard
         projects={projects as never}
-        rows={envelopes.rows}
+        rows={visibleEnvelopes}
         index={envelopes.index}
         canEdit={canEdit}
         onSave={envelopes.saveEnvelope}
+        namesFromProjectsOnly={limited}
       />
 
       <SectionFrame>

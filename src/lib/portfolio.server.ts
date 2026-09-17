@@ -97,7 +97,9 @@ async function loadCallerAccess(
     userClient.from("organizations").select("ui_config").eq("id", orgId).maybeSingle(),
     userClient.from("user_roles").select("role").eq("user_id", userId),
   ]);
-  const cfg = visibilityConfigFromOrg(org as { ui_config?: { project_visibility?: unknown } } | null);
+  const cfg = visibilityConfigFromOrg(
+    org as { ui_config?: { project_visibility?: unknown } } | null,
+  );
   const roles = ((roleRows ?? []) as { role?: string }[]).map((r) => String(r.role || ""));
   return { roles, cfg, limited: callerHasLimitedVisibility(cfg, userId, roles) };
 }
@@ -156,7 +158,7 @@ export async function listPortfolioProjectsPage(opts: {
     return q;
   };
 
-  if (filterAfter) {
+  if (filterAfter || access.limited) {
     let q = db
       .from("projects")
       .select(PROJECT_VISIBILITY_SELECT)
@@ -173,12 +175,18 @@ export async function listPortfolioProjectsPage(opts: {
       const visible = sortProjectsByCodeName(
         applyVisibility((retry.data ?? []) as VisibilityProject[], access, opts.userId),
       ) as JsonRow[];
-      return { ...toPageResult(visible.slice(offset, offset + limit), visible.length, offset, limit), mode };
+      return {
+        ...toPageResult(visible.slice(offset, offset + limit), visible.length, offset, limit),
+        mode,
+      };
     }
     const visible = sortProjectsByCodeName(
       applyVisibility((data ?? []) as VisibilityProject[], access, opts.userId),
     ) as JsonRow[];
-    return { ...toPageResult(visible.slice(offset, offset + limit), visible.length, offset, limit), mode };
+    return {
+      ...toPageResult(visible.slice(offset, offset + limit), visible.length, offset, limit),
+      mode,
+    };
   }
 
   let q = db
@@ -270,11 +278,7 @@ export async function getOrgKpiSummary(opts: {
     }
   }
   if (pErr) throw new Error(pErr.message);
-  const projects = applyVisibility(
-    (rawProjects ?? []) as VisibilityProject[],
-    access,
-    opts.userId,
-  );
+  const projects = applyVisibility((rawProjects ?? []) as VisibilityProject[], access, opts.userId);
 
   let project_count = 0;
   let active_count = 0;
@@ -291,17 +295,17 @@ export async function getOrgKpiSummary(opts: {
     project_count += 1;
     const st = String((p as any).status || "").toLowerCase();
     if (!/closed|complete|cancelled/.test(st)) active_count += 1;
-    const rag = String(displayRag(p as { rag?: string | null; rag_override?: string | null }) || "").toLowerCase();
+    const rag = String(
+      displayRag(p as { rag?: string | null; rag_override?: string | null }) || "",
+    ).toLowerCase();
     if (rag === "green" || rag === "g") rag_green += 1;
     else if (rag === "amber" || rag === "yellow" || rag === "a") rag_amber += 1;
     else if (rag === "red" || rag === "r") rag_red += 1;
     const budget = Number((p as any).budget) || 0;
     const approved =
-      budget ||
-      (Number((p as any).capex_approved) || 0) + (Number((p as any).opex_approved) || 0);
+      budget || (Number((p as any).capex_approved) || 0) + (Number((p as any).opex_approved) || 0);
     approved_funding += approved;
-    incurred +=
-      (Number((p as any).capex_incurred) || 0) + (Number((p as any).opex_incurred) || 0);
+    incurred += (Number((p as any).capex_incurred) || 0) + (Number((p as any).opex_incurred) || 0);
     const fac = Number((p as any).forecast_at_completion) || 0;
     forecast_at_completion += fac || approved;
     benefits_target += Number((p as any).benefits_target) || 0;
@@ -365,7 +369,9 @@ export async function getPortfolioProjectStats(opts: {
   // Fallback: light column scan when RPC not yet applied, or caller is scoped.
   const { data: rawRows, error: qErr } = await client
     .from("projects")
-    .select("id,status,rag,rag_override,program,priority,budget,capex_incurred,portfolio,functional_area,pm_user_id")
+    .select(
+      "id,status,rag,rag_override,program,priority,budget,capex_incurred,portfolio,functional_area,pm_user_id",
+    )
     .eq("org_id", opts.orgId);
   if (qErr) throw new Error(qErr.message);
   const rows = applyVisibility((rawRows ?? []) as VisibilityProject[], access, opts.userId);
@@ -380,7 +386,10 @@ export async function getPortfolioProjectStats(opts: {
   let capex_incurred = 0;
 
   for (const p of rows ?? []) {
-    const rag = String(displayRag(p as { rag?: string | null; rag_override?: string | null }) || "Unknown").trim() || "Unknown";
+    const rag =
+      String(
+        displayRag(p as { rag?: string | null; rag_override?: string | null }) || "Unknown",
+      ).trim() || "Unknown";
     const status = String((p as any).status || "Unknown").trim() || "Unknown";
     const program = String((p as any).program || "Unassigned").trim() || "Unassigned";
     const priority = String((p as any).priority || "Unassigned").trim() || "Unassigned";
@@ -423,10 +432,13 @@ export async function listWorkItemsPage(opts: {
   await assertCallerInOrg(opts.userClient, opts.userId, opts.orgId);
   const offset = normalizeOffset(opts.offset);
   const limit = clampPageSize(opts.limit);
-  const { client, mode, filterAfter } = await resolveVisibleReadClient({
-    userClient: opts.userClient,
-    orgId: opts.orgId,
-  });
+  const [{ client, mode, filterAfter }, access] = await Promise.all([
+    resolveVisibleReadClient({
+      userClient: opts.userClient,
+      orgId: opts.orgId,
+    }),
+    loadCallerAccess(opts.userClient, opts.userId, opts.orgId),
+  ]);
   const db = client as any;
 
   const applyItemFilters = (q: any) => {
@@ -438,8 +450,7 @@ export async function listWorkItemsPage(opts: {
     return q;
   };
 
-  if (filterAfter) {
-    const access = await loadCallerAccess(opts.userClient, opts.userId, opts.orgId);
+  if (filterAfter || access.limited) {
     const { data: projs, error: pErr } = await db
       .from("projects")
       .select("id,program,portfolio,functional_area,pm_user_id")
@@ -449,7 +460,10 @@ export async function listWorkItemsPage(opts: {
       applyVisibility((projs ?? []) as VisibilityProject[], access, opts.userId).map((p) => p.id),
     );
     const { data, error } = await applyItemFilters(
-      db.from("work_items").select(WORK_ITEMS_SELECT).eq("org_id", opts.orgId)
+      db
+        .from("work_items")
+        .select(WORK_ITEMS_SELECT)
+        .eq("org_id", opts.orgId)
         .order("sort_order", { ascending: true })
         .order("planned_end", { ascending: true }),
     );
@@ -457,7 +471,10 @@ export async function listWorkItemsPage(opts: {
     const rows = ((data ?? []) as JsonRow[]).filter((w) =>
       visibleIds.has(String((w as { project_id?: string }).project_id || "")),
     );
-    return { ...toPageResult(rows.slice(offset, offset + limit), rows.length, offset, limit), mode };
+    return {
+      ...toPageResult(rows.slice(offset, offset + limit), rows.length, offset, limit),
+      mode,
+    };
   }
 
   let q = db

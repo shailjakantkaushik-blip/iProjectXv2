@@ -23,6 +23,7 @@ import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/s
 import { CartoonWelcomeBanner } from "@/components/cartoon-mascots";
 import { PortfolioPulsePanel } from "@/components/portfolio-pulse-panel";
 import { useAuth, type AppRole } from "@/lib/auth-context";
+import { useProjectVisibility } from "@/hooks/use-project-visibility";
 import { canActOnDecision } from "@/lib/decision-approval";
 import { useAllowedPages } from "@/lib/permissions";
 import { PROJECT_HOME_SELECT, projectHomeQueryKey } from "@/lib/project-selects";
@@ -36,9 +37,7 @@ export const Route = createFileRoute("/_authenticated/app/")({
 function money(n: number) {
   return (
     "$" +
-    new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(
-      n || 0,
-    )
+    new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n || 0)
   );
 }
 
@@ -192,6 +191,7 @@ function roleHomeLabel(roles: AppRole[]) {
 
 function Home() {
   const { organization, profile, session, roles } = useAuth();
+  const { filterProjects } = useProjectVisibility();
   const shownRagOf = useShownRag();
   const { canView } = useAllowedPages();
   const firstName = profile?.full_name?.split(" ")[0];
@@ -201,17 +201,19 @@ function Home() {
     [roles, canView],
   );
 
-  const { data: projects = [], isLoading } = useQuery({
+  const { data: projectsRaw = [], isLoading } = useQuery({
     queryKey: projectHomeQueryKey(organization?.id),
     queryFn: async () => {
       const { data, error } = await supabase.from("projects").select(PROJECT_HOME_SELECT);
-      if (error) throw error;
-      if (error) throw error;
       if (error) throw error;
       return sortProjectsByCodeName((data ?? []) as any[]);
     },
     enabled: !!organization,
   });
+  const projects = useMemo(
+    () => filterProjects(projectsRaw as { id: string }[]),
+    [projectsRaw, filterProjects],
+  );
 
   const { data: decisions = [] } = useQuery({
     queryKey: ["decisions", organization?.id],
@@ -223,7 +225,9 @@ function Home() {
   const totalBudget = projects.reduce((s, p) => s + Number(p.budget || 0), 0);
   const active = projects.filter((p) => p.status === "In Progress").length;
   const completed = projects.filter((p) => p.status === "Completed").length;
-  const atRisk = projects.filter((p) => shownRagOf(p) === "Red" || shownRagOf(p) === "Amber").length;
+  const atRisk = projects.filter(
+    (p) => shownRagOf(p) === "Red" || shownRagOf(p) === "Amber",
+  ).length;
   const myApprovals = decisions.filter((d: any) => canActOnDecision(d, userId)).length;
 
   return (
@@ -279,9 +283,7 @@ function Home() {
         )}
       </SectionFrame>
 
-      {canView("/app/portfolio-pulse") ? (
-        <PortfolioPulsePanel compact showFilters={false} />
-      ) : null}
+      {canView("/app/portfolio-pulse") ? <PortfolioPulsePanel compact showFilters={false} /> : null}
 
       <SectionFrame>
         <SectionTitle>Jump to · tailored for your role</SectionTitle>

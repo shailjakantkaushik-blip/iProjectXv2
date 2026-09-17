@@ -14,6 +14,7 @@ import { sumBenefitsTarget, sumBenefitsRealised } from "@/lib/project-finance";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/benefits")({
   component: BenefitsPage,
@@ -23,7 +24,7 @@ const fmt = (n: number) => `$${Math.round(n).toLocaleString()}`;
 
 function BenefitsPage() {
   const { organization } = useAuth();
-  const { data: projects = [] } = useQuery({
+  const { data: projectsRaw = [] } = useQuery({
     queryKey: ["projects", organization?.id],
     queryFn: async () => {
       const wide = await supabase
@@ -38,6 +39,7 @@ function BenefitsPage() {
     },
     enabled: !!organization,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
 
   const { data: benefits = [] } = useQuery({
     queryKey: ["benefits", organization?.id],

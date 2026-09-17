@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   childApprovedByProgram,
   envelopeLookupKey,
+  filterHierarchyEnvelopesByProjects,
   overlayParentEnvelopeRag,
   parentEnvelopeStatus,
   programApprovedKey,
@@ -11,10 +12,7 @@ import {
 describe("hierarchy envelopes stay above project and FY slices", () => {
   it("scopes program pots under Strategic Alignment", () => {
     assert.equal(programApprovedKey("Digital", "Core"), "Digital|||Core");
-    assert.equal(
-      envelopeLookupKey("program", "Core", "Digital"),
-      "program:digital|core",
-    );
+    assert.equal(envelopeLookupKey("program", "Core", "Digital"), "program:digital|core");
     assert.equal(envelopeLookupKey("alignment", "Digital"), "alignment:digital");
   });
 
@@ -38,5 +36,21 @@ describe("hierarchy envelopes stay above project and FY slices", () => {
   it("parent pot can worsen a child RAG but never improves it", () => {
     assert.equal(overlayParentEnvelopeRag("Green", parentEnvelopeStatus(100, 95)), "Amber");
     assert.equal(overlayParentEnvelopeRag("Red", parentEnvelopeStatus(100, 80)), "Red");
+  });
+
+  it("drops pots for alignments and programs the caller cannot see", () => {
+    const rows = [
+      { layer: "alignment" as const, name: "Digital", envelope: 10 },
+      { layer: "alignment" as const, name: "Ops", envelope: 20 },
+      { layer: "program" as const, parent_name: "Digital", name: "Core", envelope: 5 },
+      { layer: "program" as const, parent_name: "Ops", name: "Run", envelope: 8 },
+    ];
+    const kept = filterHierarchyEnvelopesByProjects(rows, [
+      { portfolio: "Digital", program: "Core" },
+    ]);
+    assert.deepEqual(
+      kept.map((r) => `${r.layer}:${r.name}`),
+      ["alignment:Digital", "program:Core"],
+    );
   });
 });
