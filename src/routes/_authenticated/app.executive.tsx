@@ -70,6 +70,7 @@ import {
 } from "@/components/portfolio-filters";
 import { unwrapList } from "@/lib/query";
 import { listPortfolioProjects } from "@/lib/portfolio.functions";
+import { useProjectVisibility } from "@/hooks/use-project-visibility";
 import { MAX_PAGE_SIZE } from "@/lib/portfolio-paging";
 import { ExplainThis } from "@/components/explain-this";
 import {
@@ -130,7 +131,8 @@ function moneyM(n: number) {
 }
 
 function ExecutiveDashboard() {
-  const { organization } = useAuth();
+  const { organization, user } = useAuth();
+  const { filterProjects } = useProjectVisibility();
   const shownRagOf = useShownRag();
   const qc = useQueryClient();
   const listProjects = useServerFn(listPortfolioProjects);
@@ -145,7 +147,7 @@ function ExecutiveDashboard() {
   const [exporting, setExporting] = useState(false);
 
   const projectsQ = useQuery({
-    queryKey: ["projects", organization?.id, "executive"],
+    queryKey: ["projects", organization?.id, "executive", user?.id],
     queryFn: async () => {
       try {
         const page = await listProjects({
@@ -253,7 +255,10 @@ function ExecutiveDashboard() {
     staleTime: 60_000,
   });
 
-  const projects = projectsQ.data ?? [];
+  const projects = useMemo(
+    () => filterProjects((projectsQ.data ?? []) as { id: string }[]),
+    [projectsQ.data, filterProjects],
+  );
   const gates = gatesQ.data ?? [];
   const streams = streamsQ.data ?? [];
   const gateDefs = gateDefsQ.data ?? [];

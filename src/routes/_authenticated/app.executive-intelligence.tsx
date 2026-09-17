@@ -36,6 +36,7 @@ import {
 import { projectBenefitsRealised, projectBenefitsTarget } from "@/lib/project-finance";
 import { withEngineRag } from "@/lib/ops-enhancements";
 import { useEngineRagMap } from "@/components/engine-rag-provider";
+import { useProjectVisibility } from "@/hooks/use-project-visibility";
 import { GovernanceChainPanel } from "@/components/governance-chain-panel";
 import { isDecisionAwaiting } from "@/lib/decision-approval";
 import { toast } from "sonner";
@@ -60,6 +61,7 @@ function ExecutiveIntelligencePage() {
   const { organization } = useAuth();
   const orgId = organization?.id;
   const engineRagById = useEngineRagMap();
+  const { filterProjects } = useProjectVisibility();
   const [seedId, setSeedId] = useState("");
   const [delayWeeks, setDelayWeeks] = useState(6);
   const [fundingBudget, setFundingBudget] = useState("5000000");
@@ -165,7 +167,10 @@ function ExecutiveIntelligencePage() {
     enabled: !!orgId,
   });
 
-  const projects = projectsQ.data ?? [];
+  const projects = useMemo(
+    () => filterProjects((projectsQ.data ?? []) as { id: string }[]),
+    [projectsQ.data, filterProjects],
+  );
   const dependencies = depsQ.data ?? [];
   const activeSeed = seedId || projects[0]?.id || "";
 

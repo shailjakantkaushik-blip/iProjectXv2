@@ -14,6 +14,13 @@ import {
   type PageResult,
 } from "@/lib/portfolio-paging";
 import { sortProjectsByCodeName } from "@/lib/project-sort";
+import {
+  callerHasLimitedVisibility,
+  filterProjectsByVisibility,
+  visibilityConfigFromOrg,
+  type ProjectVisibilityConfig,
+  type VisibilityProject,
+} from "@/lib/project-visibility";
 
 export type PortfolioProjectFilters = {
   program?: string | null;
@@ -73,6 +80,48 @@ async function assertCallerInOrg(
   }
 }
 
+const PROJECT_VISIBILITY_SELECT = `${PROJECT_PORTFOLIO_SELECT},functional_area`;
+
+type CallerAccess = {
+  roles: string[];
+  cfg: ProjectVisibilityConfig;
+  limited: boolean;
+};
+
+async function loadCallerAccess(
+  userClient: SupabaseClient,
+  userId: string,
+  orgId: string,
+): Promise<CallerAccess> {
+  const [{ data: org }, { data: roleRows }] = await Promise.all([
+    userClient.from("organizations").select("ui_config").eq("id", orgId).maybeSingle(),
+    userClient.from("user_roles").select("role").eq("user_id", userId),
+  ]);
+  const cfg = visibilityConfigFromOrg(org as { ui_config?: { project_visibility?: unknown } } | null);
+  const roles = ((roleRows ?? []) as { role?: string }[]).map((r) => String(r.role || ""));
+  return { roles, cfg, limited: callerHasLimitedVisibility(cfg, userId, roles) };
+}
+
+function applyVisibility<T extends VisibilityProject>(
+  rows: T[],
+  access: CallerAccess,
+  userId: string,
+): T[] {
+  return filterProjectsByVisibility(rows, userId, access.roles, access.cfg);
+}
+
+/** Platform reads use the caller JWT so RLS applies. BYOD uses the service role then filters. */
+async function resolveVisibleReadClient(opts: {
+  userClient: SupabaseClient;
+  orgId: string;
+}): Promise<{ client: SupabaseClient; mode: "platform" | "byod"; filterAfter: boolean }> {
+  const resolved = await resolveOrgDataClient(opts.orgId);
+  if (resolved.mode === "byod") {
+    return { client: resolved.client, mode: "byod", filterAfter: true };
+  }
+  return { client: opts.userClient, mode: "platform", filterAfter: false };
+}
+
 export async function listPortfolioProjectsPage(opts: {
   userClient: SupabaseClient;
   userId: string;
@@ -84,8 +133,53 @@ export async function listPortfolioProjectsPage(opts: {
   await assertCallerInOrg(opts.userClient, opts.userId, opts.orgId);
   const offset = normalizeOffset(opts.offset);
   const limit = clampPageSize(opts.limit);
-  const { client, mode } = await resolveOrgDataClient(opts.orgId);
+  const [{ client, mode, filterAfter }, access] = await Promise.all([
+    resolveVisibleReadClient({ userClient: opts.userClient, orgId: opts.orgId }),
+    loadCallerAccess(opts.userClient, opts.userId, opts.orgId),
+  ]);
   const db = client as any;
+
+  const applyRowFilters = (q: any) => {
+    const f = opts.filters ?? {};
+    if (f.program && f.program !== "All") q = q.eq("program", f.program);
+    if (f.status && f.status !== "All") q = q.eq("status", f.status);
+    if (f.rag && f.rag !== "All") {
+      const r = String(f.rag).replace(/[^A-Za-z]/g, "");
+      if (r) {
+        q = q.or(`rag_override.eq.${r},and(rag_override.is.null,rag.eq.${r})`);
+      }
+    }
+    if (f.search?.trim()) {
+      const s = f.search.trim().replace(/%/g, "");
+      q = q.or(`name.ilike.%${s}%,project_code.ilike.%${s}%`);
+    }
+    return q;
+  };
+
+  if (filterAfter) {
+    let q = db
+      .from("projects")
+      .select(PROJECT_VISIBILITY_SELECT)
+      .eq("org_id", opts.orgId)
+      .order("project_code", { ascending: true })
+      .order("name", { ascending: true });
+    q = applyRowFilters(q);
+    const { data, error } = await q;
+    if (error) {
+      const retry = await applyRowFilters(
+        db.from("projects").select(PROJECT_PORTFOLIO_SELECT).eq("org_id", opts.orgId),
+      );
+      if (retry.error) throw new Error(error.message);
+      const visible = sortProjectsByCodeName(
+        applyVisibility((retry.data ?? []) as VisibilityProject[], access, opts.userId),
+      ) as JsonRow[];
+      return { ...toPageResult(visible.slice(offset, offset + limit), visible.length, offset, limit), mode };
+    }
+    const visible = sortProjectsByCodeName(
+      applyVisibility((data ?? []) as VisibilityProject[], access, opts.userId),
+    ) as JsonRow[];
+    return { ...toPageResult(visible.slice(offset, offset + limit), visible.length, offset, limit), mode };
+  }
 
   let q = db
     .from("projects")
@@ -94,20 +188,7 @@ export async function listPortfolioProjectsPage(opts: {
     .order("project_code", { ascending: true })
     .order("name", { ascending: true })
     .range(offset, offset + limit - 1);
-
-  const f = opts.filters ?? {};
-  if (f.program && f.program !== "All") q = q.eq("program", f.program);
-  if (f.status && f.status !== "All") q = q.eq("status", f.status);
-  if (f.rag && f.rag !== "All") {
-    const r = String(f.rag).replace(/[^A-Za-z]/g, "");
-    if (r) {
-      q = q.or(`rag_override.eq.${r},and(rag_override.is.null,rag.eq.${r})`);
-    }
-  }
-  if (f.search?.trim()) {
-    const s = f.search.trim().replace(/%/g, "");
-    q = q.or(`name.ilike.%${s}%,project_code.ilike.%${s}%`);
-  }
+  q = applyRowFilters(q);
 
   const { data, error, count } = await q;
   if (error) throw new Error(error.message);
@@ -123,10 +204,14 @@ export async function getOrgKpiSummary(opts: {
   forceRefresh?: boolean;
 }): Promise<OrgKpiSummary> {
   await assertCallerInOrg(opts.userClient, opts.userId, opts.orgId);
-  const { client, mode } = await resolveOrgDataClient(opts.orgId);
+  const [{ client, mode, filterAfter }, access] = await Promise.all([
+    resolveVisibleReadClient({ userClient: opts.userClient, orgId: opts.orgId }),
+    loadCallerAccess(opts.userClient, opts.userId, opts.orgId),
+  ]);
   const db = client as any;
+  const useOrgCache = !access.limited && !filterAfter;
 
-  if (opts.forceRefresh) {
+  if (useOrgCache && opts.forceRefresh) {
     const { error: refreshErr } = await db.rpc("refresh_org_kpi_summary", {
       p_org_id: opts.orgId,
     });
@@ -135,11 +220,9 @@ export async function getOrgKpiSummary(opts: {
     }
   }
 
-  const { data, error } = await db
-    .from("org_kpi_summaries")
-    .select("*")
-    .eq("org_id", opts.orgId)
-    .maybeSingle();
+  const { data, error } = useOrgCache
+    ? await db.from("org_kpi_summaries").select("*").eq("org_id", opts.orgId).maybeSingle()
+    : { data: null, error: null };
 
   if (!error && data) {
     const row = data as Record<string, unknown>;
@@ -166,14 +249,32 @@ export async function getOrgKpiSummary(opts: {
     };
   }
 
-  // Live fallback when summary table missing / empty.
-  const { data: projects, error: pErr } = await client
-    .from("projects")
-    .select(
-      "status,rag,rag_override,budget,capex_approved,opex_approved,capex_incurred,opex_incurred,forecast_at_completion,benefits_target,benefits_realised",
-    )
-    .eq("org_id", opts.orgId);
+  // Live fallback — also used when the caller is restricted (never serve org-wide cache).
+  const kpiSelect =
+    "id,status,rag,rag_override,budget,capex_approved,opex_approved,capex_incurred,opex_incurred,forecast_at_completion,benefits_target,benefits_realised,portfolio,program,functional_area,pm_user_id";
+  let rawProjects: unknown[] | null = null;
+  let pErr: { message: string } | null = null;
+  {
+    const first = await client.from("projects").select(kpiSelect).eq("org_id", opts.orgId);
+    rawProjects = first.data;
+    pErr = first.error;
+    if (pErr) {
+      const fb = await client
+        .from("projects")
+        .select(
+          "id,status,rag,rag_override,budget,capex_approved,opex_approved,capex_incurred,opex_incurred,forecast_at_completion,benefits_target,benefits_realised,portfolio,program,pm_user_id",
+        )
+        .eq("org_id", opts.orgId);
+      rawProjects = fb.data;
+      pErr = fb.error;
+    }
+  }
   if (pErr) throw new Error(pErr.message);
+  const projects = applyVisibility(
+    (rawProjects ?? []) as VisibilityProject[],
+    access,
+    opts.userId,
+  );
 
   let project_count = 0;
   let active_count = 0;
@@ -236,10 +337,14 @@ export async function getPortfolioProjectStats(opts: {
   orgId: string;
 }): Promise<PortfolioProjectStats> {
   await assertCallerInOrg(opts.userClient, opts.userId, opts.orgId);
-  const { client, mode } = await resolveOrgDataClient(opts.orgId);
-  const { data, error } = await (client as any).rpc("portfolio_project_stats", {
-    p_org_id: opts.orgId,
-  });
+  const [{ client, mode, filterAfter }, access] = await Promise.all([
+    resolveVisibleReadClient({ userClient: opts.userClient, orgId: opts.orgId }),
+    loadCallerAccess(opts.userClient, opts.userId, opts.orgId),
+  ]);
+  const useOrgRpc = !access.limited && !filterAfter;
+  const { data, error } = useOrgRpc
+    ? await (client as any).rpc("portfolio_project_stats", { p_org_id: opts.orgId })
+    : { data: null, error: { message: "scoped" } };
 
   if (!error && data && typeof data === "object") {
     const row = data as Record<string, unknown>;
@@ -257,12 +362,13 @@ export async function getPortfolioProjectStats(opts: {
     };
   }
 
-  // Fallback: light column scan when RPC not yet applied.
-  const { data: rows, error: qErr } = await client
+  // Fallback: light column scan when RPC not yet applied, or caller is scoped.
+  const { data: rawRows, error: qErr } = await client
     .from("projects")
-    .select("status,rag,rag_override,program,priority,budget,capex_incurred")
+    .select("id,status,rag,rag_override,program,priority,budget,capex_incurred,portfolio,functional_area,pm_user_id")
     .eq("org_id", opts.orgId);
-  if (qErr) throw new Error(error?.message || qErr.message);
+  if (qErr) throw new Error(qErr.message);
+  const rows = applyVisibility((rawRows ?? []) as VisibilityProject[], access, opts.userId);
 
   const by_rag: Record<string, number> = {};
   const by_status: Record<string, number> = {};
@@ -317,8 +423,42 @@ export async function listWorkItemsPage(opts: {
   await assertCallerInOrg(opts.userClient, opts.userId, opts.orgId);
   const offset = normalizeOffset(opts.offset);
   const limit = clampPageSize(opts.limit);
-  const { client, mode } = await resolveOrgDataClient(opts.orgId);
+  const { client, mode, filterAfter } = await resolveVisibleReadClient({
+    userClient: opts.userClient,
+    orgId: opts.orgId,
+  });
   const db = client as any;
+
+  const applyItemFilters = (q: any) => {
+    if (opts.projectId) q = q.eq("project_id", opts.projectId);
+    if (opts.streamId) q = q.eq("stream_id", opts.streamId);
+    if (opts.stageGateId) q = q.eq("stage_gate_id", opts.stageGateId);
+    if (opts.sprintId) q = q.eq("sprint_id", opts.sprintId);
+    if (opts.status && opts.status !== "All") q = q.eq("status", opts.status);
+    return q;
+  };
+
+  if (filterAfter) {
+    const access = await loadCallerAccess(opts.userClient, opts.userId, opts.orgId);
+    const { data: projs, error: pErr } = await db
+      .from("projects")
+      .select("id,program,portfolio,functional_area,pm_user_id")
+      .eq("org_id", opts.orgId);
+    if (pErr) throw new Error(pErr.message);
+    const visibleIds = new Set(
+      applyVisibility((projs ?? []) as VisibilityProject[], access, opts.userId).map((p) => p.id),
+    );
+    const { data, error } = await applyItemFilters(
+      db.from("work_items").select(WORK_ITEMS_SELECT).eq("org_id", opts.orgId)
+        .order("sort_order", { ascending: true })
+        .order("planned_end", { ascending: true }),
+    );
+    if (error) throw new Error(error.message);
+    const rows = ((data ?? []) as JsonRow[]).filter((w) =>
+      visibleIds.has(String((w as { project_id?: string }).project_id || "")),
+    );
+    return { ...toPageResult(rows.slice(offset, offset + limit), rows.length, offset, limit), mode };
+  }
 
   let q = db
     .from("work_items")
@@ -327,12 +467,7 @@ export async function listWorkItemsPage(opts: {
     .order("sort_order", { ascending: true })
     .order("planned_end", { ascending: true })
     .range(offset, offset + limit - 1);
-
-  if (opts.projectId) q = q.eq("project_id", opts.projectId);
-  if (opts.streamId) q = q.eq("stream_id", opts.streamId);
-  if (opts.stageGateId) q = q.eq("stage_gate_id", opts.stageGateId);
-  if (opts.sprintId) q = q.eq("sprint_id", opts.sprintId);
-  if (opts.status && opts.status !== "All") q = q.eq("status", opts.status);
+  q = applyItemFilters(q);
 
   const { data, error, count } = await q;
   if (error) throw new Error(error.message);

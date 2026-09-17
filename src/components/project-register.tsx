@@ -39,6 +39,7 @@ import { DEFAULT_PAGE_SIZE } from "@/lib/portfolio-paging";
 import { explainRag } from "@/lib/explain-metric";
 import { FUNCTIONAL_AREAS, isRagOverridden } from "@/lib/ops-enhancements";
 import { useShownRag } from "@/components/engine-rag-provider";
+import { useProjectVisibility } from "@/hooks/use-project-visibility";
 import { PORTFOLIO_CATEGORIES } from "@/lib/project-health";
 import { normalizeHierarchyName } from "@/lib/hierarchy-envelope";
 import { PROJECT_OPS_EXTRAS } from "@/lib/project-selects";
@@ -54,7 +55,8 @@ function money(n: number) {
 
 /** Portfolio inventory with KPIs and inline editing — shown on Programs. */
 export function ProjectRegister() {
-  const { organization, roles, loading: authLoading } = useAuth();
+  const { organization, roles, loading: authLoading, user } = useAuth();
+  const { filterProjects } = useProjectVisibility();
   const shownRagOf = useShownRag();
   const canEdit = canEditProjects(roles);
   const admin = isAdmin(roles);
@@ -79,7 +81,7 @@ export function ProjectRegister() {
     refetch,
     isFetching,
   } = useQuery({
-    queryKey: ["projects", orgId, "page", offset, pageSize],
+    queryKey: ["projects", orgId, "page", offset, pageSize, user?.id],
     queryFn: () =>
       listProjects({
         data: {
@@ -118,8 +120,11 @@ export function ProjectRegister() {
   );
 
   const projects = useMemo(
-    () => pageRows.map((p) => ({ ...p, ...(extrasById.get(p.id) || {}) })),
-    [pageRows, extrasById],
+    () =>
+      filterProjects(
+        pageRows.map((p) => ({ ...p, ...(extrasById.get(p.id) || {}) })),
+      ),
+    [pageRows, extrasById, filterProjects],
   );
 
   const alignmentOptions = useMemo(() => {
@@ -140,14 +145,14 @@ export function ProjectRegister() {
   }, [projects]);
 
   const { data: kpis } = useQuery({
-    queryKey: ["portfolio-kpis", orgId],
+    queryKey: ["portfolio-kpis", orgId, user?.id],
     queryFn: () => fetchKpis({ data: { orgId: orgId! } }),
     enabled: !!orgId,
     staleTime: 60_000,
   });
 
   const { data: stats } = useQuery({
-    queryKey: ["portfolio-stats", orgId],
+    queryKey: ["portfolio-stats", orgId, user?.id],
     queryFn: () => fetchStats({ data: { orgId: orgId! } }),
     enabled: !!orgId,
     staleTime: 60_000,

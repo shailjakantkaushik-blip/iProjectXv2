@@ -14,6 +14,7 @@ import {
 } from "@/lib/stage-gate-approval";
 import { useAuth } from "@/lib/auth-context";
 import { supabase } from "@/integrations/supabase/client";
+import { useProjectVisibility } from "@/hooks/use-project-visibility";
 
 export type PortfolioFilterState = {
   portfolio: string;
@@ -98,7 +99,7 @@ type PanelPos = { top: number; left: number; width: number; maxHeight: number; o
  * clipped by .section-frame overflow scrollports.
  */
 export function ProjectPicker({
-  projects,
+  projects: projectsIn,
   selected,
   onChange,
 }: {
@@ -106,6 +107,8 @@ export function ProjectPicker({
   selected: string[];
   onChange: (v: string[]) => void;
 }) {
+  const { filterProjects } = useProjectVisibility();
+  const projects = useMemo(() => filterProjects(projectsIn ?? []), [projectsIn, filterProjects]);
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [pos, setPos] = useState<PanelPos | null>(null);
@@ -394,7 +397,7 @@ export function FyPicker({
 }
 
 export function PortfolioFilters({
-  projects,
+  projects: projectsIn,
   value,
   onChange,
   phaseOptions,
@@ -407,6 +410,8 @@ export function PortfolioFilters({
   phaseOptions?: string[];
   phaseAllLabel?: string;
 }) {
+  const { filterProjects } = useProjectVisibility();
+  const projects = useMemo(() => filterProjects(projectsIn ?? []), [projectsIn, filterProjects]);
   const { organization } = useAuth();
   const orgId = organization?.id;
   const { data: fetchedGateDefs = [] } = useQuery({
@@ -636,7 +641,7 @@ export function applyExecutivePortfolioFilters<T extends Record<string, any>>(
 }
 
 export function ExecutivePortfolioFilters({
-  projects,
+  projects: projectsIn,
   value,
   onChange,
   fyStartMonth = 4,
@@ -650,6 +655,8 @@ export function ExecutivePortfolioFilters({
   title?: string;
   gateNames?: string[];
 }) {
+  const { filterProjects } = useProjectVisibility();
+  const projects = useMemo(() => filterProjects(projectsIn ?? []), [projectsIn, filterProjects]);
   const { organization } = useAuth();
   const orgId = organization?.id;
   const { data: defs = [] } = useQuery({
