@@ -9,6 +9,7 @@ import {
   STAGE_GATE_DEFINITIONS_SELECT,
 } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
+import { useEngineRagMap } from "@/components/engine-rag-provider";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import { ColumnGlossary } from "@/components/column-glossary";
@@ -95,6 +96,7 @@ const DEFAULT_STAGES = [
 
 function FinancialsPage() {
   const { organization } = useAuth();
+  const engineRagById = useEngineRagMap();
   const qc = useQueryClient();
   const [filters, setFilters] = useState<PortfolioFilterState>(emptyFilters);
   const [fySelected, setFySelected] = useState<string[]>([]);
@@ -187,8 +189,8 @@ function FinancialsPage() {
   }, [fyAlloc, projects, fyStartMonth]);
 
   const baseFiltered = useMemo(
-    () => applyFilters(projects, filters, { phaseMode: "ignore", gates }),
-    [projects, filters, gates],
+    () => applyFilters(projects, filters, { phaseMode: "ignore", gates, engineRagById }),
+    [projects, filters, gates, engineRagById],
   );
 
   const phaseScopedMonthlyByProject = useMemo(() => {

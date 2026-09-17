@@ -26,7 +26,7 @@ import { useAuth, type AppRole } from "@/lib/auth-context";
 import { canActOnDecision } from "@/lib/decision-approval";
 import { useAllowedPages } from "@/lib/permissions";
 import { PROJECT_HOME_SELECT, projectHomeQueryKey } from "@/lib/project-selects";
-import { displayRag } from "@/lib/ops-enhancements";
+import { useShownRag } from "@/components/engine-rag-provider";
 import { sortProjectsByCodeName } from "@/lib/project-sort";
 
 export const Route = createFileRoute("/_authenticated/app/")({
@@ -192,6 +192,7 @@ function roleHomeLabel(roles: AppRole[]) {
 
 function Home() {
   const { organization, profile, session, roles } = useAuth();
+  const shownRagOf = useShownRag();
   const { canView } = useAllowedPages();
   const firstName = profile?.full_name?.split(" ")[0];
   const userId = session?.user?.id;
@@ -222,7 +223,7 @@ function Home() {
   const totalBudget = projects.reduce((s, p) => s + Number(p.budget || 0), 0);
   const active = projects.filter((p) => p.status === "In Progress").length;
   const completed = projects.filter((p) => p.status === "Completed").length;
-  const atRisk = projects.filter((p) => displayRag(p) === "Red" || displayRag(p) === "Amber").length;
+  const atRisk = projects.filter((p) => shownRagOf(p) === "Red" || shownRagOf(p) === "Amber").length;
   const myApprovals = decisions.filter((d: any) => canActOnDecision(d, userId)).length;
 
   return (

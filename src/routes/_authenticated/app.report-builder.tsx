@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/project-selects";
-import { displayRag } from "@/lib/ops-enhancements";
+import { useShownRag } from "@/components/engine-rag-provider";
 import { computeProjectEvm, formatIndex } from "@/lib/evm";
 import {
   projectApprovedFunding,
@@ -41,6 +41,7 @@ const money = (n: number) =>
 
 function ReportBuilderPage() {
   const { organization, session } = useAuth();
+  const shownRagOf = useShownRag();
   const orgId = organization?.id;
   const userId = session?.user?.id;
   const qc = useQueryClient();
@@ -158,7 +159,7 @@ function ReportBuilderPage() {
         roiSum += roi;
         roiN += 1;
       }
-      const rag = String(displayRag(p) || "");
+      const rag = String(shownRagOf(p) || "");
       if (rag === "Red") red += 1;
       else if (rag === "Amber") amber += 1;
       else if (rag === "Green") green += 1;
@@ -179,7 +180,7 @@ function ReportBuilderPage() {
       rag_green: green,
     };
     return map;
-  }, [filtered, wiByProject]);
+  }, [filtered, wiByProject, shownRagOf]);
 
   const portfolios = useMemo(() => {
     const s = new Set<string>();

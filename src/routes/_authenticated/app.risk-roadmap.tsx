@@ -9,6 +9,7 @@ import {
   selectWithRaidCodeFallback,
 } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
+import { useEngineRagMap } from "@/components/engine-rag-provider";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import {
@@ -57,6 +58,7 @@ const SEV_LABEL = (s: number) =>
 
 function RiskRoadmapPage() {
   const { organization } = useAuth();
+  const engineRagById = useEngineRagMap();
   const [filters, setFilters] = useState<PortfolioFilterState>(emptyFilters);
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [sevFilter, setSevFilter] = useState<string>("All");
@@ -107,8 +109,8 @@ function RiskRoadmapPage() {
 
   const projectMap = useMemo(() => new Map(projects.map((p: any) => [p.id, p])), [projects]);
   const filteredProjects = useMemo(
-    () => applyFilters(projects, filters, { gates }),
-    [projects, filters, gates],
+    () => applyFilters(projects, filters, { gates, engineRagById }),
+    [projects, filters, gates, engineRagById],
   );
   const projectIds = useMemo(
     () => new Set(filteredProjects.map((p: any) => p.id)),

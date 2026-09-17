@@ -22,7 +22,8 @@ import {
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
-import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
+import { isRagOverridden } from "@/lib/ops-enhancements";
+import { useShownRag } from "@/components/engine-rag-provider";
 
 export const Route = createFileRoute("/_authenticated/app/scenarios")({
   component: ScenariosPage,
@@ -37,6 +38,7 @@ function money(n: number) {
 
 function ScenariosPage() {
   const { organization, user } = useAuth();
+  const shownRagOf = useShownRag();
   const orgId = organization?.id;
   const qc = useQueryClient();
   const [selectedId, setSelectedId] = useState<string>("");
@@ -132,7 +134,7 @@ function ScenariosPage() {
       {
         key: "rag",
         label: "RAG",
-        getValue: (r) => displayRag(r.project) || "",
+        getValue: (r) => shownRagOf(r.project) || "",
       },
       {
         key: "baseline",
@@ -145,7 +147,7 @@ function ScenariosPage() {
         getValue: (r) => r.adjBudget,
       },
     ],
-    [],
+    [shownRagOf],
   );
   const scenarioTable = useColumnarTable(includedRows, scenarioColumns);
 
@@ -426,8 +428,8 @@ function ScenariosPage() {
                       </td>
                       <td className="text-sm">{p.status ?? "—"}</td>
                       <td className="text-sm">
-                        {displayRag(p) ? (
-                          <RagChip rag={displayRag(p)} manual={isRagOverridden(p)} />
+                        {shownRagOf(p) ? (
+                          <RagChip rag={shownRagOf(p)} manual={isRagOverridden(p)} />
                         ) : (
                           "—"
                         )}

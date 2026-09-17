@@ -12,7 +12,8 @@ import {
   RESOURCES_SELECT,
 } from "@/lib/query-selects";
 import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
-import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
+import { isRagOverridden } from "@/lib/ops-enhancements";
+import { useShownRag } from "@/components/engine-rag-provider";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
 import {
@@ -34,6 +35,7 @@ function normPerson(s: string | null | undefined) {
 
 function MyWorkPage() {
   const { organization, session, profile } = useAuth();
+  const shownRagOf = useShownRag();
   const orgId = organization?.id;
   const userId = session?.user?.id;
   const qc = useQueryClient();
@@ -215,7 +217,7 @@ function MyWorkPage() {
       });
   }, [workItems, userId, assignedWorkItemIds]);
 
-  const atRisk = projects.filter((p: any) => displayRag(p) === "Red" || displayRag(p) === "Amber");
+  const atRisk = projects.filter((p: any) => shownRagOf(p) === "Red" || shownRagOf(p) === "Amber");
 
   const decide = useMutation({
     mutationFn: async ({ id, outcome }: { id: string; outcome: DecisionOutcome }) => {
@@ -346,7 +348,7 @@ function MyWorkPage() {
                     <div className="truncate text-sm font-semibold">{p.name}</div>
                     <div className="text-[11px] text-muted-foreground">{p.project_code}</div>
                   </div>
-                  <RagChip rag={displayRag(p)} manual={isRagOverridden(p)} />
+                  <RagChip rag={shownRagOf(p)} manual={isRagOverridden(p)} />
                 </Link>
               ))}
             </div>

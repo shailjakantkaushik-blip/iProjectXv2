@@ -14,7 +14,8 @@ import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/com
 import { explainRag } from "@/lib/explain-metric";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 import { GATE_STATUS_COLORS as STATUS_COLORS } from "@/lib/chart-theme";
-import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
+import { isRagOverridden } from "@/lib/ops-enhancements";
+import { useShownRag } from "@/components/engine-rag-provider";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { resolveCurrentAndNextGate, resolveCurrentStage } from "@/lib/project-phase";
@@ -46,6 +47,7 @@ export const Route = createFileRoute("/_authenticated/app/stage-gates")({
 
 function StageGatesPage() {
   const { organization } = useAuth();
+  const shownRagOf = useShownRag();
   const orgId = organization?.id;
   const gateDecision = useStageGateDecision();
   const [checklistGateId, setChecklistGateId] = useState("");
@@ -282,7 +284,7 @@ function StageGatesPage() {
             current,
             next,
             phase,
-            rag: s.rag || displayRag(p),
+            rag: s.rag || shownRagOf(p),
           });
         }
       } else {
@@ -298,7 +300,7 @@ function StageGatesPage() {
           current,
           next,
           phase,
-          rag: displayRag(p),
+          rag: shownRagOf(p),
         });
       }
     }
@@ -523,11 +525,11 @@ function StageGatesPage() {
                       <td>
                         <RagChip
                           rag={rag}
-                          manual={isRagOverridden(project) && rag === displayRag(project)}
+                          manual={isRagOverridden(project) && rag === shownRagOf(project)}
                           explain={explainRag({
                             rag,
                             source: "gate",
-                            overridden: isRagOverridden(project) && rag === displayRag(project),
+                            overridden: isRagOverridden(project) && rag === shownRagOf(project),
                           })}
                         />
                       </td>

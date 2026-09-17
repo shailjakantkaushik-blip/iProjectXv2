@@ -34,6 +34,8 @@ import {
   suggestReallocations,
 } from "@/lib/executive-intelligence";
 import { projectBenefitsRealised, projectBenefitsTarget } from "@/lib/project-finance";
+import { withEngineRag } from "@/lib/ops-enhancements";
+import { useEngineRagMap } from "@/components/engine-rag-provider";
 import { GovernanceChainPanel } from "@/components/governance-chain-panel";
 import { isDecisionAwaiting } from "@/lib/decision-approval";
 import { toast } from "sonner";
@@ -57,6 +59,7 @@ const money = (n: number) =>
 function ExecutiveIntelligencePage() {
   const { organization } = useAuth();
   const orgId = organization?.id;
+  const engineRagById = useEngineRagMap();
   const [seedId, setSeedId] = useState("");
   const [delayWeeks, setDelayWeeks] = useState(6);
   const [fundingBudget, setFundingBudget] = useState("5000000");
@@ -205,11 +208,11 @@ function ExecutiveIntelligencePage() {
   const ranked = useMemo(
     () =>
       rankPortfolioInvestments({
-        projects,
+        projects: withEngineRag(projects, engineRagById),
         dependencies,
         benefits: (benefitsQ.data ?? []) as any[],
       }),
-    [projects, dependencies, benefitsQ.data],
+    [projects, dependencies, benefitsQ.data, engineRagById],
   );
 
   const funding = useMemo(

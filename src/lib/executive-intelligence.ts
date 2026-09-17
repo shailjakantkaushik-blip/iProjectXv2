@@ -51,6 +51,7 @@ export type WhatIfProject = {
   status?: string | null;
   rag?: string | null;
   rag_override?: string | null;
+  health_engine_rag?: string | null;
 };
 
 export type WhatIfDependency = {

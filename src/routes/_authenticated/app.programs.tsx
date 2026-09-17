@@ -9,7 +9,8 @@ import { sortProjectsByCodeName } from "@/lib/project-sort";
 import { useAuth, canEditProjects } from "@/lib/auth-context";
 import { SectionFrame, SectionTitle, PageHeading, KpiCard, RagChip } from "@/components/streamlit";
 import { explainRag } from "@/lib/explain-metric";
-import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
+import { isRagOverridden } from "@/lib/ops-enhancements";
+import { useShownRag } from "@/components/engine-rag-provider";
 import { PageExport } from "@/components/page-export";
 import { PageLoading } from "@/components/page-loading";
 import { Button } from "@/components/ui/button";
@@ -74,6 +75,7 @@ function fmtDate(d: any) {
 }
 function ProgramsPage() {
   const { organization, loading: authLoading, roles } = useAuth();
+  const shownRagOf = useShownRag();
   const orgId = organization?.id;
   const canEdit = canEditProjects(roles);
   const envelopes = useHierarchyEnvelopes(orgId);
@@ -143,9 +145,9 @@ function ProgramsPage() {
       cur.actual += inc;
       cur.fac += fc;
       cur.benefits += Number(p.benefits_realised || 0);
-      if (displayRag(p) === "Green") cur.green++;
-      else if (displayRag(p) === "Amber") cur.amber++;
-      else if (displayRag(p) === "Red") cur.red++;
+      if (shownRagOf(p) === "Green") cur.green++;
+      else if (shownRagOf(p) === "Amber") cur.amber++;
+      else if (shownRagOf(p) === "Red") cur.red++;
       if (p.status === "In Progress") cur.active++;
       if (p.status === "Completed") cur.completed++;
       const s = projectScheduleStart(p);
@@ -673,12 +675,12 @@ function ProgramsPage() {
                         <td>{p.sponsor || "—"}</td>
                         <td>{p.status || "—"}</td>
                         <td>
-                          {displayRag(p) ? (
+                          {shownRagOf(p) ? (
                             <RagChip
-                              rag={displayRag(p)}
+                              rag={shownRagOf(p)}
                               manual={isRagOverridden(p)}
                               explain={explainRag({
-                                rag: displayRag(p),
+                                rag: shownRagOf(p),
                                 source: "register",
                                 overridden: isRagOverridden(p),
                               })}

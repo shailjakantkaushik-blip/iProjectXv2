@@ -9,6 +9,7 @@ import {
   STAGE_GATE_DEFINITIONS_SELECT,
 } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
+import { useEngineRagMap } from "@/components/engine-rag-provider";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import {
@@ -70,6 +71,7 @@ const COLORS = ["#3b82f6", "#8b5cf6", "#06b6d4", "#f59e0b", "#22c55e", "#ec4899"
 
 function PhaseFinancialsPage() {
   const { organization } = useAuth();
+  const engineRagById = useEngineRagMap();
   const [filters, setFilters] = useState<PortfolioFilterState>(emptyFilters);
 
   const { data: projects = [] } = useQuery({
@@ -125,8 +127,8 @@ function PhaseFinancialsPage() {
   });
 
   const filtered = useMemo(
-    () => applyFilters(projects, filters, { phaseMode: "ignore", gates }),
-    [projects, filters, gates],
+    () => applyFilters(projects, filters, { phaseMode: "ignore", gates, engineRagById }),
+    [projects, filters, gates, engineRagById],
   );
   const filteredIds = useMemo(() => new Set(filtered.map((p: any) => p.id)), [filtered]);
 
