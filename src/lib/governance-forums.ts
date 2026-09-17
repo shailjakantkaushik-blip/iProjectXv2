@@ -133,9 +133,27 @@ export function inheritedForProject(c: GovernanceChannel, project: ForumProjectL
   return Boolean(project.portfolio) && c.portfolio === project.portfolio;
 }
 
-export function channelsForProjects(channels: GovernanceChannel[], projects: GovernanceProject[]) {
+/**
+ * Same React Query key is used by RAID, Decisions, and Governance Channels.
+ * Some callers cache the full `{ scoped, channels }` pack; others used to cache
+ * a bare array. Normalize so `.filter` never runs on the pack object.
+ */
+export function channelsFromGovernanceQuery(
+  data: { channels?: GovernanceChannel[] } | GovernanceChannel[] | null | undefined,
+): GovernanceChannel[] {
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.channels)) return data.channels;
+  return [];
+}
+
+export function channelsForProjects(
+  channels: GovernanceChannel[] | { channels?: GovernanceChannel[] } | null | undefined,
+  projects: GovernanceProject[],
+) {
   if (!projects.length) return [];
-  return channels.filter((c) => projects.some((p) => inheritedForProject(c, p)));
+  return channelsFromGovernanceQuery(channels).filter((c) =>
+    projects.some((p) => inheritedForProject(c, p)),
+  );
 }
 
 /** Projects the signed-in person is actually on: PM, allocated resource, or stakeholder. */
@@ -197,9 +215,10 @@ function nodesFor(channels: GovernanceChannel[], membersByChannel: Map<string, F
 /** Strategic Alignment → Program → Project tree for the given project set. */
 export function buildGovernanceHierarchy(
   projects: GovernanceProject[],
-  channels: GovernanceChannel[],
+  channels: GovernanceChannel[] | { channels?: GovernanceChannel[] } | null | undefined,
   members: ForumMemberView[],
 ): AlignmentGovernanceBucket[] {
+  const channelRows = channelsFromGovernanceQuery(channels);
   const membersByChannel = new Map<string, ForumMemberView[]>();
   for (const m of members) {
     const list = membersByChannel.get(m.channel_id) || [];
@@ -213,7 +232,7 @@ export function buildGovernanceHierarchy(
 
   return saKeys.map((portfolio) => {
     const saProjects = projects.filter((p) => (p.portfolio || "").trim() === portfolio);
-    const saForums = channels.filter(
+    const saForums = channelRows.filter(
       (c) =>
         (c.scope_level || "strategic_alignment") === "strategic_alignment" &&
         (c.portfolio || "").trim() === portfolio,
@@ -224,7 +243,7 @@ export function buildGovernanceHierarchy(
 
     const programs: ProgramGovernanceBucket[] = programKeys.map((program) => {
       const progProjects = saProjects.filter((p) => (p.program || "").trim() === program);
-      const programForums = channels.filter(
+      const programForums = channelRows.filter(
         (c) => (c.scope_level || "") === "program" && (c.program || "").trim() === program,
       );
       const projectBuckets: ProjectGovernanceBucket[] = [...progProjects]
@@ -232,7 +251,7 @@ export function buildGovernanceHierarchy(
         .map((project) => ({
           project,
           forums: nodesFor(
-            channels.filter(
+            channelRows.filter(
               (c) => (c.scope_level || "") === "project" && c.project_id === project.id,
             ),
             membersByChannel,
@@ -255,7 +274,7 @@ export function buildGovernanceHierarchy(
           .map((project) => ({
             project,
             forums: nodesFor(
-              channels.filter(
+              channelRows.filter(
                 (c) => (c.scope_level || "") === "project" && c.project_id === project.id,
               ),
               membersByChannel,
@@ -280,9 +299,10 @@ export function forumPeopleLine(node: ForumNode) {
 }
 
 export function orgWideForums(
-  channels: GovernanceChannel[],
+  channels: GovernanceChannel[] | { channels?: GovernanceChannel[] } | null | undefined,
   members: ForumMemberView[],
 ): ForumNode[] {
+  const channelRows = channelsFromGovernanceQuery(channels);
   const membersByChannel = new Map<string, ForumMemberView[]>();
   for (const m of members) {
     const list = membersByChannel.get(m.channel_id) || [];
@@ -290,7 +310,7 @@ export function orgWideForums(
     membersByChannel.set(m.channel_id, list);
   }
   return nodesFor(
-    channels.filter(
+    channelRows.filter(
       (c) =>
         (c.scope_level || "strategic_alignment") === "strategic_alignment" &&
         !(c.portfolio || "").trim(),
@@ -317,7 +337,7 @@ function isOrgWideForum(c: GovernanceChannel) {
  * Returns [] when no forums exist — callers should keep a free-text field.
  */
 export function forumSelectNames(
-  channels: GovernanceChannel[],
+  channels: GovernanceChannel[] | { channels?: GovernanceChannel[] } | null | undefined,
   opts?: {
     project?: ForumProjectLike | null;
     extra?: Array<string | null | undefined>;
@@ -326,7 +346,7 @@ export function forumSelectNames(
   const names = new Set<string>();
   const project = opts?.project ?? null;
   const extras = (opts?.extra || []).map((e) => String(e || "").trim()).filter(Boolean);
-  for (const c of channels) {
+  for (const c of channelsFromGovernanceQuery(channels)) {
     const n = String(c.name || "").trim();
     if (!n) continue;
     if (!isActiveGovernanceChannel(c) && !extras.includes(n)) continue;
@@ -337,7 +357,7 @@ export function forumSelectNames(
 }
 
 export function filterGovernanceChannels(
-  channels: GovernanceChannel[],
+  channels: GovernanceChannel[] | { channels?: GovernanceChannel[] } | null | undefined,
   filters: {
     projectId?: string;
     program?: string;
@@ -349,6 +369,7 @@ export function filterGovernanceChannels(
   projects: GovernanceProject[],
   streams: GovernanceStream[],
 ) {
+  const channelRows = channelsFromGovernanceQuery(channels);
   const projectById = new Map(projects.map((p) => [p.id, p]));
   let streamProjectIds: Set<string> | null = null;
   if (filters.streamName) {
@@ -357,7 +378,7 @@ export function filterGovernanceChannels(
     );
   }
 
-  return channels.filter((c) => {
+  return channelRows.filter((c) => {
     if (filters.cadence && (c.cadence || "") !== filters.cadence) return false;
     if (filters.scope && (c.scope_level || "strategic_alignment") !== filters.scope) return false;
 

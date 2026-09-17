@@ -8,6 +8,7 @@ import {
   type ForumNode,
   type GovernanceProject,
   buildGovernanceHierarchy,
+  channelsFromGovernanceQuery,
   forumPeopleLine,
   loadGovernanceChannels,
   projectOptionsLabel,
@@ -201,11 +202,12 @@ export function ProjectGovernanceForums({
   project: GovernanceProject;
   orgId: string;
 }) {
-  const { data: channels = [] } = useQuery({
+  const { data: channelPack } = useQuery({
     queryKey: ["governance_channels", orgId],
-    queryFn: async () => (await loadGovernanceChannels()).channels,
+    queryFn: () => loadGovernanceChannels(),
     enabled: !!orgId,
   });
+  const channels = channelsFromGovernanceQuery(channelPack);
 
   const { data: resources = [] } = useQuery({
     queryKey: ["governance_channel_resources", orgId],

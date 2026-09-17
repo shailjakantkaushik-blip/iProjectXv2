@@ -29,7 +29,11 @@ import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-tabl
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
 import { ForumSelect } from "@/components/forum-select";
-import { forumSelectNames, loadGovernanceChannels } from "@/lib/governance-forums";
+import {
+  channelsFromGovernanceQuery,
+  forumSelectNames,
+  loadGovernanceChannels,
+} from "@/lib/governance-forums";
 
 type Props = {
   projectId: string;
@@ -118,7 +122,7 @@ export function ProjectDecisionsPanel({
     enabled: !!orgId,
     staleTime: 60_000,
   });
-  const forums = channelPack?.channels ?? [];
+  const forums = channelsFromGovernanceQuery(channelPack);
 
   useEffect(() => {
     if (!canEdit || !orgId || !projectId || !methods.length) return;
@@ -239,8 +243,7 @@ export function ProjectDecisionsPanel({
         .eq("id", id);
       if (error) throw error;
       const current = decisions.find((d: { id: string }) => d.id === id) as
-        | { stage_gate_id?: string | null }
-        | undefined;
+        { stage_gate_id?: string | null } | undefined;
       await applyDecisionToStageGate({
         gateId: current?.stage_gate_id || null,
         projectId,
@@ -278,8 +281,7 @@ export function ProjectDecisionsPanel({
       if (error) throw error;
       if ("stage_gate_id" in vars) {
         const current = decisions.find((d: { id: string }) => d.id === vars.id) as
-          | { outcome?: string | null; status?: string | null }
-          | undefined;
+          { outcome?: string | null; status?: string | null } | undefined;
         await applyDecisionToStageGate({
           gateId: vars.stage_gate_id,
           projectId,

@@ -18,7 +18,11 @@ import {
   type DecisionOutcome,
   type OrgMember,
 } from "@/lib/decision-approval";
-import { forumSelectNames, loadGovernanceChannels } from "@/lib/governance-forums";
+import {
+  channelsFromGovernanceQuery,
+  forumSelectNames,
+  loadGovernanceChannels,
+} from "@/lib/governance-forums";
 import { fetchOrgStreams } from "@/lib/project-streams";
 import { defaultStageGateDecisionTitle } from "@/lib/stage-gate-decision-fields";
 import { recordStageGateDecision } from "@/lib/stage-gate-decision";
@@ -95,7 +99,7 @@ function StageGateDecisionDialog({
     enabled: !!orgId,
     staleTime: 60_000,
   });
-  const forums = channelPack?.channels ?? [];
+  const forums = channelsFromGovernanceQuery(channelPack);
 
   const { data: gate } = useQuery({
     queryKey: ["stage_gates", orgId, request.gateId, "decision-dialog"],
@@ -112,16 +116,17 @@ function StageGateDecisionDialog({
   });
 
   const project = useMemo(
-    () => projects.find((p: { id: string }) => p.id === request.projectId) as
-      | {
-          id: string;
-          project_code?: string | null;
-          name?: string | null;
-          program?: string | null;
-          portfolio?: string | null;
-          sponsor?: string | null;
-        }
-      | undefined,
+    () =>
+      projects.find((p: { id: string }) => p.id === request.projectId) as
+        | {
+            id: string;
+            project_code?: string | null;
+            name?: string | null;
+            program?: string | null;
+            portfolio?: string | null;
+            sponsor?: string | null;
+          }
+        | undefined,
     [projects, request.projectId],
   );
 
@@ -158,7 +163,14 @@ function StageGateDecisionDialog({
           ? defaultStageGateDecisionTitle(gateName, requestedOutcome)
           : f.title,
     }));
-  }, [request.streamId, gate?.stream_id, project?.sponsor, profile?.full_name, requestedOutcome, gateName]);
+  }, [
+    request.streamId,
+    gate?.stream_id,
+    project?.sponsor,
+    profile?.full_name,
+    requestedOutcome,
+    gateName,
+  ]);
 
   useEffect(() => {
     const names = forumSelectNames(forums, { project: project || null });
@@ -220,13 +232,18 @@ function StageGateDecisionDialog({
     : "This project";
 
   return (
-    <Dialog open onOpenChange={(open) => { if (!open && !save.isPending) onClose(); }}>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !save.isPending) onClose();
+      }}
+    >
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>Record stage-gate decision</DialogTitle>
           <DialogDescription>
-            Same fields as the Decisions log. Submitting captures this as a new decision and
-            updates stage-gate approval on the project (and matching stream gates).
+            Same fields as the Decisions log. Submitting captures this as a new decision and updates
+            stage-gate approval on the project (and matching stream gates).
           </DialogDescription>
         </DialogHeader>
         <form
