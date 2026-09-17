@@ -307,7 +307,8 @@ export async function ensureProjectLevelGates(opts: {
 /**
  * Set approval status for a gate and keep every row of the same
  * project + gate name in lockstep (project-level and each stream).
- * That way Stage Gates, Overview, and Decisions never diverge.
+ * UI editors should record a Decision first (`recordStageGateDecision`);
+ * this helper is the lockstep write used after that save.
  */
 export async function setStageGateStatus(opts: {
   gateId: string;

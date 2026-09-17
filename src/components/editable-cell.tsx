@@ -8,6 +8,7 @@ import { syncScheduleDates } from "@/lib/project-dates";
 import { persistCurrentPhaseFromGates } from "@/lib/project-phase";
 import { fetchGateChecklistBlockReason } from "@/lib/stage-gate-checklist";
 import { useAuth } from "@/lib/auth-context";
+import { useStageGateDecision } from "@/components/stage-gate-decision-dialog";
 
 type FieldType = "text" | "number" | "date" | "select" | "select-or-new";
 
@@ -32,6 +33,7 @@ export function EditableCell({
   const canEdit = !!forceEditable || tableEdit;
   const { organization } = useAuth();
   const qc = useQueryClient();
+  const gateDecision = useStageGateDecision();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<string>(value == null ? "" : String(value));
   const [saving, setSaving] = useState(false);
@@ -60,7 +62,7 @@ export function EditableCell({
       if (table === "stage_gates" && field === "status") {
         const { data: gate } = await (supabase as any)
           .from("stage_gates")
-          .select("id,gate_name,org_id,project_id")
+          .select("id,gate_name,org_id,project_id,stream_id")
           .eq("id", rowId)
           .maybeSingle();
         if (/approved/i.test(String(payload || "")) && organization?.id) {
@@ -70,6 +72,18 @@ export function EditableCell({
             gateName: String(gate?.gate_name || ""),
           });
           if (reason) throw new Error(reason);
+        }
+        if (gateDecision) {
+          gateDecision.requestStageGateDecision({
+            gateId: rowId,
+            projectId: String(gate?.project_id || ""),
+            status: String(payload || "Pending"),
+            gateName: String(gate?.gate_name || ""),
+            streamId: gate?.stream_id ?? null,
+          });
+          setEditing(false);
+          setDraft(value == null ? "" : String(value));
+          return;
         }
         const { setStageGateStatus } = await import("@/lib/stage-gate-approval");
         await setStageGateStatus({

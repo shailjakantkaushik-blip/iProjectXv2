@@ -20,8 +20,8 @@ import {
   ensureProjectLevelGates,
   gatesForRaidScope,
   remapGateIdForScope,
-  setStageGateStatus,
 } from "@/lib/stage-gate-approval";
+import { applyDecisionToStageGate } from "@/lib/stage-gate-decision";
 import { StageGateApprovalSelect } from "@/components/stage-gate-approval-select";
 import { RaidStreamSelect } from "@/components/raid-stream-select";
 import { fetchOrgStreams } from "@/lib/project-streams";
@@ -201,6 +201,11 @@ export function ProjectDecisionsPanel({
         stage_gate_id: form.stage_gate_id || null,
       } as never);
       if (error) throw error;
+      await applyDecisionToStageGate({
+        gateId: form.stage_gate_id || null,
+        projectId,
+        status: form.outcome,
+      });
     },
     onSuccess: () => {
       invalidate();
@@ -233,6 +238,14 @@ export function ProjectDecisionsPanel({
         .update(patch as never)
         .eq("id", id);
       if (error) throw error;
+      const current = decisions.find((d: { id: string }) => d.id === id) as
+        | { stage_gate_id?: string | null }
+        | undefined;
+      await applyDecisionToStageGate({
+        gateId: current?.stage_gate_id || null,
+        projectId,
+        status: outcome,
+      });
     },
     onSuccess: (_d, vars) => {
       invalidate();
@@ -243,16 +256,6 @@ export function ProjectDecisionsPanel({
             ? "Decision rejected"
             : "Decision updated",
       );
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const setGateStatus = useMutation({
-    mutationFn: (vars: { gateId: string; status: string }) =>
-      setStageGateStatus({ gateId: vars.gateId, projectId, status: vars.status }),
-    onSuccess: () => {
-      invalidate();
-      toast.success("Stage gate approval updated");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -273,6 +276,16 @@ export function ProjectDecisionsPanel({
         .update(patch as never)
         .eq("id", vars.id);
       if (error) throw error;
+      if ("stage_gate_id" in vars) {
+        const current = decisions.find((d: { id: string }) => d.id === vars.id) as
+          | { outcome?: string | null; status?: string | null }
+          | undefined;
+        await applyDecisionToStageGate({
+          gateId: vars.stage_gate_id,
+          projectId,
+          status: current?.outcome || current?.status || null,
+        });
+      }
     },
     onSuccess: () => {
       invalidate();
@@ -323,7 +336,7 @@ export function ProjectDecisionsPanel({
       <p className="mb-3 text-xs text-muted-foreground">
         Assign an organisation user as approver. They receive an in-app notification and can approve
         or reject from here or the Decisions Log. Optionally record against a stream. Link a
-        delivery-method stage gate and set its approval status — that status is kept in sync with
+        delivery-method stage gate — the decision outcome updates project stage-gate approval and
         the Stage Gates page.
         {projectCode || projectName
           ? ` Showing decisions for ${projectCode ? `${projectCode} · ` : ""}${projectName || ""}.`
@@ -400,9 +413,7 @@ export function ProjectDecisionsPanel({
                 gates={methodGates}
                 gateId={form.stage_gate_id}
                 onGateId={(stage_gate_id) => setForm((f) => ({ ...f, stage_gate_id }))}
-                onStatus={(gateId, status) => setGateStatus.mutate({ gateId, status })}
                 canEdit={canEdit}
-                disabled={setGateStatus.isPending}
               />
             </div>
           </div>
@@ -588,11 +599,8 @@ export function ProjectDecisionsPanel({
                                   stage_gate_id: id || null,
                                 })
                               }
-                              onStatus={(gateId, status) =>
-                                setGateStatus.mutate({ gateId, status })
-                              }
                               canEdit={canEdit}
-                              disabled={setGateStatus.isPending || setDecisionGate.isPending}
+                              disabled={setDecisionGate.isPending}
                             />
                           </td>
                           <td className="whitespace-nowrap text-xs">{d.decision_date || "—"}</td>
