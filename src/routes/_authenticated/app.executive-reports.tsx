@@ -14,7 +14,8 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
 import { explainRag } from "@/lib/explain-metric";
-import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
+import { isRagOverridden } from "@/lib/ops-enhancements";
+import { useShownRag } from "@/components/engine-rag-provider";
 import { exportProjects } from "@/lib/excel";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -53,6 +54,7 @@ function EmptyRow({ colSpan, label = "No data yet." }: { colSpan: number; label?
 
 function ExecutiveReportsPage() {
   const { organization } = useAuth();
+  const shownRagOf = useShownRag();
   const orgId = organization?.id;
 
   const projectsQ = useQuery({
@@ -156,9 +158,9 @@ function ExecutiveReportsPage() {
   const opexApproved = projects.reduce((s: number, p: any) => s + num(p.opex_approved), 0);
   const opexIncurred = projects.reduce((s: number, p: any) => s + num(p.opex_incurred), 0);
   const incurred = capexIncurred + opexIncurred;
-  const red = projects.filter((p: any) => displayRag(p) === "Red").length;
-  const amber = projects.filter((p: any) => displayRag(p) === "Amber").length;
-  const green = projects.filter((p: any) => displayRag(p) === "Green").length;
+  const red = projects.filter((p: any) => shownRagOf(p) === "Red").length;
+  const amber = projects.filter((p: any) => shownRagOf(p) === "Amber").length;
+  const green = projects.filter((p: any) => shownRagOf(p) === "Green").length;
 
   const benefitsTarget =
     benefits.reduce((s: number, b: any) => s + num(b.target_value), 0) ||
@@ -230,9 +232,9 @@ function ExecutiveReportsPage() {
       cur.budget += num(p.budget);
       cur.incurred += num(p.capex_incurred) + num(p.opex_incurred);
       cur.benefits += num(p.benefits_realised);
-      if (displayRag(p) === "Green") cur.green++;
-      else if (displayRag(p) === "Amber") cur.amber++;
-      else if (displayRag(p) === "Red") cur.red++;
+      if (shownRagOf(p) === "Green") cur.green++;
+      else if (shownRagOf(p) === "Amber") cur.amber++;
+      else if (shownRagOf(p) === "Red") cur.red++;
       m.set(key, cur);
     });
     return Array.from(m.values()).sort((a, b) => a.name.localeCompare(b.name));
@@ -254,9 +256,9 @@ function ExecutiveReportsPage() {
       cur.count += 1;
       cur.budget += num(p.budget);
       cur.incurred += num(p.capex_incurred) + num(p.opex_incurred);
-      if (displayRag(p) === "Green") cur.green++;
-      else if (displayRag(p) === "Amber") cur.amber++;
-      else if (displayRag(p) === "Red") cur.red++;
+      if (shownRagOf(p) === "Green") cur.green++;
+      else if (shownRagOf(p) === "Amber") cur.amber++;
+      else if (shownRagOf(p) === "Red") cur.red++;
       m.set(key, cur);
     });
     return Array.from(m.values()).sort((a, b) => a.name.localeCompare(b.name));
@@ -360,7 +362,7 @@ function ExecutiveReportsPage() {
             current,
             next,
             count: gs.length,
-            rag: s.rag || displayRag(p),
+            rag: s.rag || shownRagOf(p),
           });
         }
       } else {
@@ -373,7 +375,7 @@ function ExecutiveReportsPage() {
           current,
           next,
           count: gs.length,
-          rag: displayRag(p),
+          rag: shownRagOf(p),
         });
       }
     }
@@ -724,10 +726,10 @@ function ExecutiveReportsPage() {
                           <td>{p.priority || "—"}</td>
                           <td>
                             <RagChip
-                              rag={displayRag(p)}
+                              rag={shownRagOf(p)}
                               manual={isRagOverridden(p)}
                               explain={explainRag({
-                                rag: displayRag(p),
+                                rag: shownRagOf(p),
                                 source: "register",
                                 overridden: isRagOverridden(p),
                               })}

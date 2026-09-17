@@ -11,7 +11,8 @@ import { PageLoading } from "@/components/page-loading";
 import { PageExport } from "@/components/page-export";
 import { Button } from "@/components/ui/button";
 import { PORTFOLIO_CATEGORIES } from "@/lib/project-health";
-import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
+import { isRagOverridden } from "@/lib/ops-enhancements";
+import { useShownRag } from "@/components/engine-rag-provider";
 import { explainRag as explainRagMetric } from "@/lib/explain-metric";
 import { resolveCurrentStage, groupGatesByProject } from "@/lib/project-phase";
 import {
@@ -44,8 +45,8 @@ function readProjectsView(): ProjectsView {
   }
 }
 
-function ragTone(projects: ProjectRow[]) {
-  const rags = projects.map((p) => displayRag(p));
+function ragTone(projects: ProjectRow[], getRag: (p: ProjectRow) => string | null) {
+  const rags = projects.map((p) => getRag(p));
   if (rags.some((r) => r === "Red")) return "Red";
   if (rags.some((r) => r === "Amber")) return "Amber";
   if (rags.some((r) => r === "Green")) return "Green";
@@ -62,6 +63,7 @@ function ragColor(rag: string | null | undefined) {
 
 function ProjectsIndex() {
   const { organization, roles, loading: authLoading } = useAuth();
+  const shownRagOf = useShownRag();
   const canEdit = canEditProjects(roles);
   const orgId = organization?.id;
   const [q, setQ] = useState("");
@@ -154,7 +156,7 @@ function ProjectsIndex() {
     if (bySa.has("Unassigned") && !order.includes("Unassigned")) order.push("Unassigned");
     return order.map((sa) => ({
       name: sa,
-      rag: ragTone([...(bySa.get(sa)?.values() ?? [])].flat()),
+      rag: ragTone([...(bySa.get(sa)?.values() ?? [])].flat(), shownRagOf),
       programCount: bySa.get(sa)?.size ?? 0,
       projectCount: [...(bySa.get(sa)?.values() ?? [])].reduce((n, list) => n + list.length, 0),
       programs: [...(bySa.get(sa)?.keys() ?? [])]
@@ -163,12 +165,12 @@ function ProjectsIndex() {
           const plist = bySa.get(sa)!.get(program)!;
           return {
             name: program,
-            rag: ragTone(plist),
+            rag: ragTone(plist, shownRagOf),
             projects: plist,
           };
         }),
     }));
-  }, [filtered]);
+  }, [filtered, shownRagOf]);
 
   const defaultOpen = useMemo(() => {
     const keys = new Set<string>();
@@ -246,7 +248,7 @@ function ProjectsIndex() {
       {
         key: "rag",
         label: "RAG",
-        getValue: (p) => displayRag(p) || "",
+        getValue: (p) => shownRagOf(p) || "",
       },
       {
         key: "delivery_method",
@@ -267,7 +269,7 @@ function ProjectsIndex() {
         },
       },
     ],
-    [gatesByProject, orgPhases],
+    [gatesByProject, orgPhases, shownRagOf],
   );
 
   const listTable = useColumnarTable(filtered, listColumns);
@@ -391,7 +393,7 @@ function ProjectsIndex() {
                 ) : (
                   listTable.rows.map((p) => {
                     const { current, currentRow, gateStatus } = projectGate(p);
-                    const rag = displayRag(p);
+                    const rag = shownRagOf(p);
                     return (
                       <tr key={p.id}>
                         <td className="font-mono text-xs whitespace-nowrap">
@@ -539,7 +541,7 @@ function ProjectsIndex() {
                                   (g) => String(g.gate_name || "").trim() === String(current).trim(),
                                 );
                                 const gateStatus = normalizeGateStatus(currentRow?.status);
-                                const rag = displayRag(p);
+                                const rag = shownRagOf(p);
                                 return (
                                   <Link
                                     key={p.id}

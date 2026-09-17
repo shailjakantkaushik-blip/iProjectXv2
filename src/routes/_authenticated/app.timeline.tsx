@@ -19,7 +19,7 @@ import {
   normalizeTimelineLaneDates,
 } from "@/lib/project-streams";
 import { fetchStageGates } from "@/lib/stage-gates";
-import { displayRag } from "@/lib/ops-enhancements";
+import { useShownRag } from "@/components/engine-rag-provider";
 import { StageGateStatusFilter } from "@/components/stage-gate-status-filter";
 import {
   projectMatchesGateStatusFilter,
@@ -52,6 +52,7 @@ function fyLabel(d: Date, fyStartMonth: number = 4) {
 
 function TimelinePage() {
   const { organization } = useAuth();
+  const shownRagOf = useShownRag();
   const qc = useQueryClient();
 
   const { data: projects = [] } = useQuery({
@@ -158,7 +159,7 @@ function TimelinePage() {
       if (fProgram !== "All" && (p.program || "") !== fProgram) return false;
       if (fSponsor !== "All" && (p.sponsor || "") !== fSponsor) return false;
       if (fPhase !== "All" && (projectPhase(p) || "") !== fPhase) return false;
-      if (fRag !== "All" && (displayRag(p) || "") !== fRag) return false;
+      if (fRag !== "All" && (shownRagOf(p) || "") !== fRag) return false;
       if (fPriority !== "All" && (p.priority || "") !== fPriority) return false;
       if (fMethod !== "All" && (p.delivery_method || "") !== fMethod) return false;
       if (fSchedule !== "All" && scheduleStatus(p) !== fSchedule) return false;
@@ -167,7 +168,7 @@ function TimelinePage() {
       return true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects, fPids, fProgram, fSponsor, fPhase, fRag, fPriority, fMethod, fSchedule, fSearch, gatesByProject, orgPhases, gates, gateStatusByName]);
+  }, [projects, fPids, fProgram, fSponsor, fPhase, fRag, fPriority, fMethod, fSchedule, fSearch, gatesByProject, orgPhases, gates, gateStatusByName, shownRagOf]);
 
   const resetFilters = () => {
     setFFy("All"); setFProgram("All"); setFSponsor("All"); setFPhase("All");

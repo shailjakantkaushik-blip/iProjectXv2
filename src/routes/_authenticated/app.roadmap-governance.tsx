@@ -6,7 +6,8 @@ import { PROJECT_PORTFOLIO_SELECT, STAGE_GATE_DEFINITIONS_SELECT } from "@/lib/q
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/components/streamlit";
 import { explainRag } from "@/lib/explain-metric";
-import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
+import { isRagOverridden } from "@/lib/ops-enhancements";
+import { useShownRag } from "@/components/engine-rag-provider";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { ExpandableChart } from "@/components/expandable-chart";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
@@ -35,6 +36,7 @@ const STAGE_COLORS = [
 
 function RoadmapGovPage() {
   const { organization } = useAuth();
+  const shownRagOf = useShownRag();
   const orgId = organization?.id;
   const {
     data: projects = [],
@@ -103,12 +105,12 @@ function RoadmapGovPage() {
       { key: "delivery_method", label: "Method" },
       { key: "current_phase", label: "Current Phase" },
       { key: "status", label: "Status" },
-      { key: "rag", label: "RAG" },
+      { key: "rag", label: "RAG", getValue: (p) => shownRagOf(p as never) || "" },
       { key: "sponsor", label: "Sponsor" },
       { key: "target_go_live", label: "Target Go-Live" },
       { key: "end_date", label: "End" },
     ],
-    [],
+    [shownRagOf],
   );
   const table = useColumnarTable(projects, columns);
 
@@ -247,11 +249,11 @@ function RoadmapGovPage() {
                   <td>{p.status}</td>
                   <td>
                     <RagChip
-                      rag={displayRag(p)}
+                      rag={shownRagOf(p)}
                       manual={isRagOverridden(p)}
                       explain={explainRag({
-                        rag: displayRag(p),
-                        source: "register",
+                        rag: shownRagOf(p),
+                        source: isRagOverridden(p) ? "register" : undefined,
                         overridden: isRagOverridden(p),
                       })}
                     />

@@ -4,7 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
 import { fyStartFor as fyStartForOrg, fyEndFor as fyEndForOrg, fyLabel as fyLabelOrg } from "@/lib/fiscal-year";
 import { RAG_COLORS } from "@/lib/chart-theme";
-import { displayRag } from "@/lib/ops-enhancements";
+import { useEngineRagMap, useShownRag } from "@/components/engine-rag-provider";
 import { ExpandablePanel } from "@/components/expandable-panel";
 import { summarizeTimelineLaneFinancials, gatesForTimelineLane } from "@/lib/project-streams";
 import { darkenHex, scheduleCompletionPct } from "@/lib/schedule-progress";
@@ -149,6 +149,8 @@ export function GanttGroup({
   showProjectTimeline?: boolean;
   onShowProjectTimelineChange?: (v: boolean) => void;
 }) {
+  const shownRagOf = useShownRag();
+  const engineRagById = useEngineRagMap();
   const [internalShowGates, setInternalShowGates] = useState(true);
   const [internalShowPvA, setInternalShowPvA] = useState(false);
   const isControlled = showGates !== undefined;
@@ -193,7 +195,7 @@ export function GanttGroup({
   const COL_FIN = 200;
   const LEFT = COL_PROJECT + COL_SPONSOR + COL_FIN;
 
-  const fin = summarizeTimelineLaneFinancials(items);
+  const fin = summarizeTimelineLaneFinancials(items, engineRagById);
   const groupIncurred = fin.incurred;
   const groupApproved = fin.approved;
   const groupFAC = fin.fac;
@@ -339,7 +341,7 @@ export function GanttGroup({
               const aWidthPct = Math.max(0.6, aEndPct - aStartPct);
               const clippedLeft = dateToPct(new Date(primaryS)) < 0;
               const clippedRight = dateToPct(new Date(primaryE)) > 100;
-              const color = RAG_COLORS[displayRag(p) as string] || "#64748b";
+              const color = RAG_COLORS[shownRagOf(p) as string] || "#64748b";
               const budget = Number(p.budget || 0);
               const incurred = Number(p.capex_incurred || 0) + Number(p.opex_incurred || 0);
               const pct = budget > 0 ? Math.min(100, Math.round((incurred / budget) * 100)) : 0;

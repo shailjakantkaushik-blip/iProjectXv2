@@ -16,6 +16,7 @@ export type AssistProject = {
   status?: string | null
   rag?: string | null
   rag_override?: string | null
+  health_engine_rag?: string | null
   budget?: number | null
   capex_approved?: number | null
   capex_incurred?: number | null

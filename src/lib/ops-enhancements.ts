@@ -64,20 +64,65 @@ export function isRagOverridden(project: { rag_override?: string | null } | null
   return o === "Green" || o === "Amber" || o === "Red";
 }
 
-export function displayRag(project: { rag?: string | null; rag_override?: string | null } | null | undefined) {
-  if (isRagOverridden(project)) return String(project?.rag_override).trim();
-  return project?.rag || null;
+export type RagProjectLike = {
+  id?: string | null;
+  project_id?: string | null;
+  rag?: string | null;
+  rag_override?: string | null;
+  /** Attached Health Engine RAG (Green / Amber / Red). */
+  health_engine_rag?: string | null;
+};
+
+function canonicalRag(raw?: string | null): "Green" | "Amber" | "Red" | null {
+  const s = String(raw || "").trim();
+  if (s === "Green" || s === "Amber" || s === "Red") return s;
+  return null;
 }
 
-/** Sponsor override wins; otherwise calculated health RAG, then register RAG. */
+/**
+ * RAG chips / filters: manual override wins, else Health Engine, else the
+ * stored register field (only when the engine has not been scored yet).
+ */
 export function effectiveRag(
-  project: { rag?: string | null; rag_override?: string | null } | null | undefined,
+  project: RagProjectLike | null | undefined,
   calculated?: string | null,
 ) {
   if (isRagOverridden(project)) return String(project?.rag_override).trim();
-  const calc = String(calculated || "").trim();
-  if (calc === "Green" || calc === "Amber" || calc === "Red") return calc;
+  const calc =
+    canonicalRag(calculated) || canonicalRag(project?.health_engine_rag ?? null);
+  if (calc) return calc;
   return project?.rag || null;
+}
+
+/** Same as {@link effectiveRag} — pass the engine colour as the second argument. */
+export function displayRag(
+  project: RagProjectLike | null | undefined,
+  calculated?: string | null,
+) {
+  return effectiveRag(project, calculated);
+}
+
+/** Resolve RAG from an org-wide Health Engine map (override still wins). */
+export function shownRag(
+  project: RagProjectLike | null | undefined,
+  engineById?: Map<string, string> | null,
+) {
+  const id = String(project?.id || project?.project_id || "");
+  return effectiveRag(project, id && engineById ? engineById.get(id) : null);
+}
+
+/** Attach Health Engine RAG so `displayRag` / `effectiveRag` pick it up. */
+export function withEngineRag<T extends RagProjectLike>(
+  projects: T[],
+  engineById?: Map<string, string> | null,
+): T[] {
+  if (!engineById?.size) return projects;
+  return projects.map((p) => {
+    const id = String(p.id || p.project_id || "");
+    const calc = id ? engineById.get(id) : undefined;
+    if (!calc) return p;
+    return { ...p, health_engine_rag: calc };
+  });
 }
 
 export function worstRagOf(rags: Array<string | null | undefined>): "Green" | "Amber" | "Red" {
@@ -90,11 +135,12 @@ export function worstRagOf(rags: Array<string | null | undefined>): "Green" | "A
   return amber ? "Amber" : "Green";
 }
 
-/** Worst colour among steering RAGs (override, else register). */
+/** Worst colour among steering RAGs (override, else Health Engine, else register). */
 export function worstSteeringRag(
-  projects: Array<{ rag?: string | null; rag_override?: string | null }>,
+  projects: RagProjectLike[],
+  engineById?: Map<string, string> | null,
 ): "Green" | "Amber" | "Red" {
-  return worstRagOf(projects.map((p) => displayRag(p)));
+  return worstRagOf(projects.map((p) => shownRag(p, engineById)));
 }
 
 export function workItemScheduleRag(item: {

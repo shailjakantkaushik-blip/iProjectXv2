@@ -1502,9 +1502,9 @@ function InfographicPage() {
             </div>
             <div className="flex flex-col items-end gap-1">
               <RagChip
-                rag={displayRag(project) || overallHealth}
+                rag={overallHealth}
                 manual={isRagOverridden(project)}
-                explain={ragExplains.register}
+                explain={isRagOverridden(project) ? ragExplains.register : ragExplains.overall}
               />
               <div className="text-xs text-muted-foreground">
                 Sponsor:{" "}
@@ -2732,7 +2732,7 @@ function ProjectBrief({
           actual_end_date: project.actual_end_date,
           target_go_live: project.target_go_live,
           priority: project.priority,
-          rag_overall: displayRag(project) || project.rag,
+          rag_overall: overallHealth,
           program: project.program,
           status: project.status,
           brief: {

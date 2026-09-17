@@ -35,7 +35,7 @@ import {
   projectRoiPercent,
 } from "@/lib/project-finance";
 import { projectPortfolio } from "@/lib/project-health";
-import { displayRag } from "@/lib/ops-enhancements";
+import { useShownRag } from "@/components/engine-rag-provider";
 import { sortProjectsByCodeName } from "@/lib/project-sort";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/project-selects";
 
@@ -64,6 +64,7 @@ function money(n: number) {
 
 function Segmentation() {
   const { organization } = useAuth();
+  const shownRagOf = useShownRag();
   const [dim, setDim] = useState<
     "portfolio" | "program" | "priority" | "delivery_method" | "sponsor" | "current_phase"
   >("portfolio");
@@ -82,7 +83,7 @@ function Segmentation() {
     x: projectApprovedFunding(p),
     y: projectRoiPercent(p),
     z: projectBenefitsTarget(p) || projectApprovedFunding(p) || 100000,
-    rag: displayRag(p) || "Amber",
+    rag: shownRagOf(p) || "Amber",
   }));
 
   const segCounts = useMemo(() => {

@@ -5,7 +5,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/project-selects";
 import { FINANCIALS_MONTHLY_SELECT, STAGE_GATE_DEFINITIONS_SELECT } from "@/lib/query-selects";
-import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
+import { isRagOverridden } from "@/lib/ops-enhancements";
+import { useEngineRagMap, useShownRag } from "@/components/engine-rag-provider";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import {
@@ -751,10 +752,12 @@ function PortfolioViewTab({
   phaseOptions: string[];
   gates: any[];
 }) {
+  const engineRagById = useEngineRagMap();
+  const shownRagOf = useShownRag();
   const [filters, setFilters] = useState<PortfolioFilterState>(emptyFilters);
   const filtered = useMemo(
-    () => applyFilters(projects, filters, { gates }),
-    [projects, filters, gates],
+    () => applyFilters(projects, filters, { gates, engineRagById }),
+    [projects, filters, gates, engineRagById],
   );
   const projectMap = useMemo(() => new Map(filtered.map((p: any) => [p.id, p])), [filtered]);
   const ids = useMemo(() => new Set(filtered.map((p: any) => p.id)), [filtered]);
@@ -857,7 +860,7 @@ function PortfolioViewTab({
           peakSource: watch?.peakSource ?? "",
           portfolio: p?.portfolio || p?.portfolio_category || "",
           sponsor: p?.sponsor || "",
-          rag: displayRag(p) || "NA",
+          rag: shownRagOf(p) || "NA",
           ragManual: isRagOverridden(p),
           project: p,
         };
@@ -1200,10 +1203,12 @@ function RoadmapTab({
   phaseOptions: string[];
   gates: any[];
 }) {
+  const engineRagById = useEngineRagMap();
+  const shownRagOf = useShownRag();
   const [filters, setFilters] = useState<PortfolioFilterState>(emptyFilters);
   const filtered = useMemo(
-    () => applyFilters(projects, filters, { gates }),
-    [projects, filters, gates],
+    () => applyFilters(projects, filters, { gates, engineRagById }),
+    [projects, filters, gates, engineRagById],
   );
   const projectMap = useMemo(() => new Map(filtered.map((p: any) => [p.id, p])), [filtered]);
   const ids = useMemo(() => new Set(filtered.map((p: any) => p.id)), [filtered]);
@@ -1220,10 +1225,10 @@ function RoadmapTab({
     return Array.from(set.entries())
       .map(([pid, fs]) => {
         const p: any = projectMap.get(pid);
-        return { id: pid, name: p?.name || pid, rag: displayRag(p) || "NA", fys: fs };
+        return { id: pid, name: p?.name || pid, rag: shownRagOf(p) || "NA", fys: fs };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [rowsF, projectMap]);
+  }, [rowsF, projectMap, shownRagOf]);
 
   const ragColor = (r: string) =>
     r === "Green" ? "#22c55e" : r === "Amber" ? "#f59e0b" : r === "Red" ? "#ef4444" : "#94a3b8";

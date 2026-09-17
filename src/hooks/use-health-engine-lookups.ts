@@ -242,6 +242,36 @@ export function healthExtrasForProject(
   } as Omit<Partial<HealthEngineInput>, "project" | "gates">;
 }
 
+/** Health Engine overall RAG per project id (Green / Amber / Red). */
+export function buildEngineRagById(
+  projects: { id?: string | null }[],
+  lookups: ReturnType<typeof useHealthEngineLookups>,
+  gates: { project_id?: string | null }[] = [],
+  monthly: HealthEngineInput["monthly"] = [],
+  fyStartMonth?: number | null,
+  parentCtx?: ParentEnvelopeContext,
+): Map<string, string> {
+  const gatesByProject = groupRowsByProjectId(gates);
+  const monthlyByProject = groupRowsByProjectId(
+    (monthly ?? []) as { project_id?: string | null }[],
+  );
+  const m = new Map<string, string>();
+  for (const p of projects) {
+    const id = String(p.id || "");
+    if (!id) continue;
+    const health = computeEngineHealth(
+      p as ProjectHealthLike,
+      (gatesByProject.get(id) || []) as StageGateHealthLike[],
+      lookups,
+      (monthlyByProject.get(id) || []) as HealthEngineInput["monthly"],
+      fyStartMonth,
+      parentCtx,
+    );
+    m.set(id, health.overall_rag);
+  }
+  return m;
+}
+
 /** Same Health Engine call the Cockpit matrix uses for the score / mix bar. */
 export function computeEngineHealth(
   project: ProjectHealthLike,

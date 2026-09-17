@@ -7,6 +7,7 @@ import { PageLoading } from "@/components/page-loading";
 import { AppPageDownload } from "@/components/app-page-download";
 import { RouterErrorComponent } from "@/components/route-error";
 import { StageGateDecisionProvider } from "@/components/stage-gate-decision-dialog";
+import { EngineRagProvider } from "@/components/engine-rag-provider";
 
 export const Route = createFileRoute("/_authenticated/app")({
   component: AppLayout,
@@ -99,7 +100,9 @@ function AppLayout() {
   return (
     <AppPageDownload>
       <StageGateDecisionProvider>
-        <Outlet />
+        <EngineRagProvider>
+          <Outlet />
+        </EngineRagProvider>
       </StageGateDecisionProvider>
     </AppPageDownload>
   );

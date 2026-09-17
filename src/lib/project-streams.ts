@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
+import { shownRag, type RagProjectLike } from "@/lib/ops-enhancements";
 
 export { normalizeTimelineLaneDates } from "./timeline-lane-dates";
 
@@ -259,7 +260,10 @@ export function expandProjectsToTimelineLanes(
 }
 
 /** Aggregate group header financials without double-counting project rollup + stream lanes. */
-export function summarizeTimelineLaneFinancials(items: any[]) {
+export function summarizeTimelineLaneFinancials(
+  items: any[],
+  engineById?: Map<string, string> | null,
+) {
   const byPid = new Map<string, any[]>();
   for (const item of items) {
     const pid = String(item.project_id || item.id);
@@ -289,9 +293,10 @@ export function summarizeTimelineLaneFinancials(items: any[]) {
       benefits += Number(row.benefits_realised || 0);
     }
     const ragRow = rollup || use[0];
-    if (ragRow?.rag === "Green") green += 1;
-    else if (ragRow?.rag === "Amber") amber += 1;
-    else if (ragRow?.rag === "Red") red += 1;
+    const rag = shownRag(ragRow as RagProjectLike, engineById);
+    if (rag === "Green") green += 1;
+    else if (rag === "Amber") amber += 1;
+    else if (rag === "Red") red += 1;
   }
   return {
     projectCount: byPid.size,

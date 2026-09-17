@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/query-selects";
-import { displayRag } from "@/lib/ops-enhancements";
+import { useShownRag } from "@/components/engine-rag-provider";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -100,6 +100,7 @@ function fmtM(v: number): string {
 
 function RoadmapAnalyticsPage() {
   const { organization } = useAuth();
+  const shownRagOf = useShownRag();
   const [iterations, setIterations] = useState(2000);
 
   const { data: projects = [] } = useQuery({
@@ -114,10 +115,10 @@ function RoadmapAnalyticsPage() {
         ...p,
         theme: themeFor(p),
         budget: Number(p.budget || p.capex_approved || 0) + Number(p.opex_approved || 0),
-        sigma: riskFactor(displayRag(p)),
-        score: riskScore(displayRag(p)),
+        sigma: riskFactor(shownRagOf(p)),
+        score: riskScore(shownRagOf(p)),
       })),
-    [projects],
+    [projects, shownRagOf],
   );
 
   const approvedBudget = enriched.reduce((s, p) => s + p.budget, 0);

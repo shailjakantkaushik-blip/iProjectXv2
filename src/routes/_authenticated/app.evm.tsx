@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
+import { useEngineRagMap } from "@/components/engine-rag-provider";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import { PageLoading } from "@/components/page-loading";
@@ -62,6 +63,7 @@ const PROJECT_EVM_SELECT = [
 
 function EvmPage() {
   const { organization } = useAuth();
+  const engineRagById = useEngineRagMap();
   const orgId = organization?.id;
   const [filters, setFilters] = useState<PortfolioFilterState>(emptyFilters);
   const [selectedId, setSelectedId] = useState<string>("");
@@ -113,8 +115,8 @@ function EvmPage() {
   });
 
   const filtered = useMemo(
-    () => applyFilters(projects as any[], filters, { gates }),
-    [projects, filters, gates],
+    () => applyFilters(projects as any[], filters, { gates, engineRagById }),
+    [projects, filters, gates, engineRagById],
   );
 
   const wiByProject = useMemo(() => {

@@ -31,7 +31,7 @@ import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-tabl
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
 import { explainRag } from "@/lib/explain-metric";
-import { displayRag, effectiveRag, isRagOverridden } from "@/lib/ops-enhancements";
+import { effectiveRag, isRagOverridden } from "@/lib/ops-enhancements";
 import { ProjectMeetingSummary } from "@/components/project-meeting-summary";
 import { computeEngineHealth, useHealthEngineLookups } from "@/hooks/use-health-engine-lookups";
 import { parentEnvelopeContext } from "@/lib/hierarchy-envelope";
@@ -441,10 +441,10 @@ function ProjectDetail() {
             <span>{project.status || "—"}</span>
             <span>·</span>
             <RagChip
-              rag={shownRag || displayRag(project)}
+              rag={shownRag}
               manual={isRagOverridden(project)}
               explain={explainRag({
-                rag: shownRag || displayRag(project),
+                rag: shownRag,
                 engine: isRagOverridden(project) ? null : engineHealth?.engine,
                 source: isRagOverridden(project) ? "register" : undefined,
                 score: engineHealth?.health_score,

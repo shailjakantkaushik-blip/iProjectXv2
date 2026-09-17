@@ -37,7 +37,8 @@ import {
 } from "@/lib/portfolio.functions";
 import { DEFAULT_PAGE_SIZE } from "@/lib/portfolio-paging";
 import { explainRag } from "@/lib/explain-metric";
-import { FUNCTIONAL_AREAS, displayRag, isRagOverridden } from "@/lib/ops-enhancements";
+import { FUNCTIONAL_AREAS, isRagOverridden } from "@/lib/ops-enhancements";
+import { useShownRag } from "@/components/engine-rag-provider";
 import { PORTFOLIO_CATEGORIES } from "@/lib/project-health";
 import { normalizeHierarchyName } from "@/lib/hierarchy-envelope";
 import { PROJECT_OPS_EXTRAS } from "@/lib/project-selects";
@@ -54,6 +55,7 @@ function money(n: number) {
 /** Portfolio inventory with KPIs and inline editing — shown on Programs. */
 export function ProjectRegister() {
   const { organization, roles, loading: authLoading } = useAuth();
+  const shownRagOf = useShownRag();
   const canEdit = canEditProjects(roles);
   const admin = isAdmin(roles);
   const uploadCap = useCapabilityPermission("template_upload");
@@ -217,7 +219,7 @@ export function ProjectRegister() {
       { key: "sponsor", label: "Sponsor" },
       { key: "priority", label: "Priority" },
       { key: "status", label: "Status" },
-      { key: "rag", label: "RAG" },
+      { key: "rag", label: "RAG", getValue: (p) => shownRagOf(p) || "" },
       { key: "current_phase", label: "Current Phase" },
       { key: "delivery_method", label: "Method" },
       { key: "budget", label: "Budget", getValue: (p) => Number(p.budget || 0) },
@@ -227,7 +229,7 @@ export function ProjectRegister() {
         getValue: (p) => Number(p.capex_incurred || 0),
       },
     ],
-    [],
+    [shownRagOf],
   );
 
   const table = useColumnarTable(filtered, columns);
@@ -663,17 +665,20 @@ export function ProjectRegister() {
                           { label: "Red", value: "Red" },
                         ]}
                         invalidateKeys={["projects"]}
-                        display={(v) => (
+                        display={(v) => {
+                          const rag = shownRagOf({ ...p, rag: v });
+                          return (
                           <RagChip
-                            rag={displayRag({ rag: v, rag_override: p.rag_override })}
+                            rag={rag}
                             manual={isRagOverridden(p)}
                             explain={explainRag({
-                              rag: displayRag({ rag: v, rag_override: p.rag_override }),
-                              source: "register",
+                              rag,
+                              source: isRagOverridden(p) ? "register" : undefined,
                               overridden: isRagOverridden(p),
                             })}
                           />
-                        )}
+                          );
+                        }}
                       />
                     </td>
                     <td>

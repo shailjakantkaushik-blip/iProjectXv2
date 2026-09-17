@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PROJECT_PORTFOLIO_SELECT, STAGE_GATE_DEFINITIONS_SELECT } from "@/lib/query-selects";
-import { displayRag } from "@/lib/ops-enhancements";
+import { useEngineRagMap, useShownRag } from "@/components/engine-rag-provider";
 import { sortProjectsByCodeName } from "@/lib/project-sort";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
@@ -48,6 +48,8 @@ const RAG_COLOR: Record<string, string> = { Red: "#ef4444", Amber: "#f59e0b", Gr
 
 function CostVsBenefitPage() {
   const { organization } = useAuth();
+  const engineRagById = useEngineRagMap();
+  const shownRagOf = useShownRag();
   const [filters, setFilters] = useState<PortfolioFilterState>(emptyFilters);
 
   const { data: projects = [] } = useQuery({
@@ -88,8 +90,8 @@ function CostVsBenefitPage() {
   });
 
   const filtered = useMemo(
-    () => applyFilters(projects, filters, { gates }),
-    [projects, filters, gates],
+    () => applyFilters(projects, filters, { gates, engineRagById }),
+    [projects, filters, gates, engineRagById],
   );
 
   const scored = useMemo(
@@ -235,7 +237,7 @@ function CostVsBenefitPage() {
             />
             <Scatter data={scored}>
               {scored.map((p, i) => (
-                <Cell key={i} fill={RAG_COLOR[displayRag(p) || "Green"] || "#3b82f6"} />
+                <Cell key={i} fill={RAG_COLOR[shownRagOf(p) || "Green"] || "#3b82f6"} />
               ))}
             </Scatter>
           </ScatterChart>

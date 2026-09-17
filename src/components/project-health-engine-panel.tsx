@@ -17,7 +17,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { SectionFrame, SectionTitle, RagChip } from "@/components/streamlit";
-import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
+import { effectiveRag, isRagOverridden } from "@/lib/ops-enhancements";
 import { Button } from "@/components/ui/button";
 import { WORK_ITEMS_SELECT } from "@/lib/query-selects";
 import {
@@ -465,7 +465,7 @@ export function ProjectHealthEnginePanel({
 
   const manualRag = String(project.rag || "").trim();
   const overrideOn = isRagOverridden(project);
-  const shownRag = displayRag(project) || health.rag;
+  const shownRag = effectiveRag(project, health.rag) || health.rag;
   const showDrop =
     health.previousScore != null &&
     health.scoreDelta != null &&

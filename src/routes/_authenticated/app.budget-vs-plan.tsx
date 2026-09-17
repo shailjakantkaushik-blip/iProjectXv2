@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { PROJECT_PORTFOLIO_SELECT, FINANCIALS_MONTHLY_SELECT } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
+import { useEngineRagMap } from "@/components/engine-rag-provider";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import {
@@ -54,6 +55,7 @@ function flagLabel(over: boolean, overBy: number) {
 
 function BudgetVsPlanPage() {
   const { organization } = useAuth();
+  const engineRagById = useEngineRagMap();
   const fyStartMonth = organization?.fy_start_month || 4;
   const [filters, setFilters] = useState<PortfolioFilterState>(emptyFilters);
   const [fySelected, setFySelected] = useState<string[]>([]);
@@ -106,8 +108,8 @@ function BudgetVsPlanPage() {
   }, [fyAlloc, projects, fyStartMonth]);
 
   const filtered = useMemo(
-    () => applyFilters(projects, filters, { gates }),
-    [projects, filters, gates],
+    () => applyFilters(projects, filters, { gates, engineRagById }),
+    [projects, filters, gates, engineRagById],
   );
 
   const rows = useMemo(() => {

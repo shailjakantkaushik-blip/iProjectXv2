@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { compareProjectsByCodeName } from "@/lib/project-options";
 import { fyOf, projectScheduleEnd, projectScheduleStart } from "@/lib/project-dates";
 import { projectTouchesSelectedFy, type FyAllocRowLike } from "@/lib/fy-allocation-scope";
-import { STRATEGIC_ALIGNMENT_LABEL, displayRag } from "@/lib/ops-enhancements";
+import { STRATEGIC_ALIGNMENT_LABEL, shownRag, type RagProjectLike } from "@/lib/ops-enhancements";
 import { StageGateStatusFilter } from "@/components/stage-gate-status-filter";
 import {
   gateStatusFilterActive,
@@ -45,6 +45,8 @@ export type ApplyFiltersOptions = {
    */
   phaseMode?: "current" | "ignore";
   gates?: StageGateApprovalLike[];
+  /** Health Engine RAG by project id — chips and this filter stay in lockstep. */
+  engineRagById?: Map<string, string>;
 };
 
 export function applyFilters<T extends Record<string, any>>(
@@ -62,7 +64,8 @@ export function applyFilters<T extends Record<string, any>>(
     if (f.portfolio !== "All" && (p.portfolio || "Unassigned") !== f.portfolio) return false;
     if (f.program !== "All" && (p.program || "Unassigned") !== f.program) return false;
     if (f.sponsor !== "All" && (p.sponsor || "—") !== f.sponsor) return false;
-    if (f.rag !== "All" && (displayRag(p) || "Green") !== f.rag) return false;
+    if (f.rag !== "All" && (shownRag(p as RagProjectLike, opts?.engineRagById) || "Green") !== f.rag)
+      return false;
     if (
       phaseMode === "current" &&
       f.phase !== "All" &&

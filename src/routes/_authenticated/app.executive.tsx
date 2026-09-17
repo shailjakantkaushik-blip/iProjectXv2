@@ -20,7 +20,8 @@ import {
   LabelList,
 } from "recharts";
 import { SectionFrame, SectionTitle, RagChip } from "@/components/streamlit";
-import { displayRag, isRagOverridden } from "@/lib/ops-enhancements";
+import { isRagOverridden } from "@/lib/ops-enhancements";
+import { useShownRag } from "@/components/engine-rag-provider";
 import { ChartLegendList, legendItemsFromCounts } from "@/components/chart-legend-list";
 import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
@@ -130,6 +131,7 @@ function moneyM(n: number) {
 
 function ExecutiveDashboard() {
   const { organization } = useAuth();
+  const shownRagOf = useShownRag();
   const qc = useQueryClient();
   const listProjects = useServerFn(listPortfolioProjects);
   const [filters, setFilters] = useState<ExecutivePortfolioFilterState>(emptyExecutiveFilters);
@@ -742,7 +744,7 @@ function ExecutiveDashboard() {
             _kanbanKey: `${p.id}:${s.id}`,
             _streamLabel: formatStreamLabel(s),
             _streamRef: formatProjectStreamRef(p, s),
-            _streamRag: s.rag || displayRag(p),
+            _streamRag: s.rag || shownRagOf(p),
           });
         }
       } else {
@@ -752,7 +754,7 @@ function ExecutiveDashboard() {
           _kanbanKey: p.id,
           _streamLabel: null,
           _streamRef: null,
-          _streamRag: displayRag(p),
+          _streamRag: shownRagOf(p),
         });
       }
     }
@@ -821,7 +823,7 @@ function ExecutiveDashboard() {
             sponsor: s.owner || p.sponsor,
             budget: Number(s.budget || 0),
             incurred: Number(s.capex_incurred || 0) + Number(s.opex_incurred || 0),
-            rag: s.rag || displayRag(p),
+            rag: s.rag || shownRagOf(p),
             ragManual: !s.rag && isRagOverridden(p),
             phase: resolveStageShared(p, gs, orgPhases),
           });
@@ -835,7 +837,7 @@ function ExecutiveDashboard() {
           sponsor: p.sponsor,
           budget: projectApprovedFunding(p),
           incurred: projectIncurred(p),
-          rag: displayRag(p),
+          rag: shownRagOf(p),
           ragManual: isRagOverridden(p),
           phase: resolveStageShared(p, gatesByProject.get(p.id) || [], orgPhases),
         });
@@ -1332,7 +1334,7 @@ function ExecutiveDashboard() {
                       </div>
                     ) : (
                       col.items.map((p: any) => {
-                        const rag = (p._streamRag as string) || displayRag(p) || "";
+                        const rag = (p._streamRag as string) || shownRagOf(p) || "";
                         const ragColor = RAG_COLORS[rag] || "var(--muted-foreground)";
                         return (
                           <Link

@@ -16,6 +16,8 @@ import {
 } from "@/lib/assist-access";
 import { askInhouseAi, getInhouseAiStatus } from "@/lib/inhouse-ai.functions";
 import { answerPortfolioQuestion } from "@/lib/local-portfolio-assist";
+import { withEngineRag } from "@/lib/ops-enhancements";
+import { useEngineRagMap } from "@/components/engine-rag-provider";
 import { useAllowedPages } from "@/lib/permissions";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
@@ -41,6 +43,7 @@ const APPROVED_TITLE = "Approved Open AI model";
 function AiAssistPage() {
   const { organization } = useAuth();
   const orgId = organization?.id;
+  const engineRagById = useEngineRagMap();
   const { canView, isReady } = useAllowedPages();
   const askModel = useServerFn(askInhouseAi);
   const statusFn = useServerFn(getInhouseAiStatus);
@@ -134,7 +137,7 @@ function AiAssistPage() {
     }
     return scopeAssistBundle(
       {
-        projects: projects as any[],
+        projects: withEngineRag(projects as any[], engineRagById),
         risks: (allowRisks ? risks : []) as any[],
         decisions: (allowDecisions ? decisions : []) as any[],
         actions: (allowActions ? actions : []) as any[],
@@ -151,6 +154,7 @@ function AiAssistPage() {
     allowRisks,
     allowDecisions,
     allowActions,
+    engineRagById,
   ]);
 
   const localReply = (q: string) =>

@@ -52,7 +52,7 @@ import { getPortfolioKpis, listPortfolioProjects } from "@/lib/portfolio.functio
 import { MAX_PAGE_SIZE } from "@/lib/portfolio-paging";
 import { FINANCIALS_MONTHLY_SELECT } from "@/lib/query-selects";
 import { explainPortfolioSnapshot, explainRag, type MetricExplanation } from "@/lib/explain-metric";
-import { displayRag, effectiveRag, isRagOverridden } from "@/lib/ops-enhancements";
+import { effectiveRag, isRagOverridden } from "@/lib/ops-enhancements";
 import type { MonthlyFinanceRow } from "@/lib/finance-lifecycle";
 import { compareProjectsByCodeName } from "@/lib/project-sort";
 import { isColdLoading } from "@/lib/query-ui";
@@ -739,11 +739,11 @@ function ExecutiveCockpit() {
                       </td>
                       <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                         <RagChip
-                          rag={p.shown_rag || p.overall_rag || displayRag(p)}
-                          label={p.shown_rag || p.overall_rag || displayRag(p)}
+                          rag={p.shown_rag || p.overall_rag || effectiveRag(p, p.overall_rag)}
+                          label={p.shown_rag || p.overall_rag || effectiveRag(p, p.overall_rag)}
                           manual={isRagOverridden(p)}
                           explain={explainRag({
-                            rag: p.shown_rag || p.overall_rag || displayRag(p),
+                            rag: p.shown_rag || p.overall_rag || effectiveRag(p, p.overall_rag),
                             engine: isRagOverridden(p) ? null : p.engine,
                             source: isRagOverridden(p) ? "register" : undefined,
                             overridden: isRagOverridden(p),
