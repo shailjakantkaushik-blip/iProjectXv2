@@ -80,8 +80,9 @@ export function useColumnarTable<T>(rows: T[], columns: ColumnarColumn<T>[]) {
   };
 
   const filtered = useMemo(() => {
+    const list = Array.isArray(rows) ? rows : [];
     const needle = globalQ.trim().toLowerCase();
-    let list = rows.filter((row) => {
+    let next = list.filter((row) => {
       for (const col of columns) {
         if (col.filterable === false) continue;
         const f = filters[col.key];
@@ -96,13 +97,13 @@ export function useColumnarTable<T>(rows: T[], columns: ColumnarColumn<T>[]) {
     if (sortKey && sortDir) {
       const col = columns.find((c) => c.key === sortKey);
       if (col && col.sortable !== false) {
-        list = list.slice().sort((a, b) => {
+        next = next.slice().sort((a, b) => {
           const cmp = compareValues(sortValueOf(a, col), sortValueOf(b, col));
           return sortDir === "asc" ? cmp : -cmp;
         });
       }
     }
-    return list;
+    return next;
     // valueOf is stable per columns; eslint can't see that
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, columns, filters, globalQ, sortKey, sortDir]);
@@ -111,11 +112,11 @@ export function useColumnarTable<T>(rows: T[], columns: ColumnarColumn<T>[]) {
     globalQ.trim().length > 0 ||
     Object.keys(filters).length > 0 ||
     sortKey != null ||
-    filtered.length !== rows.length;
+    filtered.length !== (Array.isArray(rows) ? rows.length : 0);
 
   return {
     rows: filtered,
-    total: rows.length,
+    total: Array.isArray(rows) ? rows.length : 0,
     globalQ,
     setGlobalQ,
     filters,

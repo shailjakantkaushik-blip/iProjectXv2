@@ -6,7 +6,12 @@ import {
   memberLabel,
   normalizeDecisionOutcome,
 } from "./decision-approval.ts";
-import { scopeLabel } from "./governance-forums.ts";
+import {
+  buildGovernanceHierarchy,
+  channelsFromGovernanceQuery,
+  orgWideForums,
+  scopeLabel,
+} from "./governance-forums.ts";
 import { PLATFORM_WATERFALL_GATES } from "./platform-seed.ts";
 import {
   isActiveGateStatus,
@@ -20,9 +25,18 @@ import { gatesForRaidScope, normalizeGateStatus } from "./stage-gate-approval.ts
 describe("RAID + governance on the platform org", () => {
   it("keeps register prefixes and never paints a raw UUID", () => {
     assert.equal(RAID_CODE_PREFIX.risks, "RSK");
-    assert.equal(raidLabel({ raid_code: "RSK-001", title: "Vendor slip" }), "RSK-001 · Vendor slip");
-    assert.equal(memberLabel({ id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", full_name: null, email: null }), "Unknown user");
-    assert.equal(memberLabel({ id: "x", full_name: null, email: "alex.morgan@example.com" }), "alex.morgan@example.com");
+    assert.equal(
+      raidLabel({ raid_code: "RSK-001", title: "Vendor slip" }),
+      "RSK-001 · Vendor slip",
+    );
+    assert.equal(
+      memberLabel({ id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", full_name: null, email: null }),
+      "Unknown user",
+    );
+    assert.equal(
+      memberLabel({ id: "x", full_name: null, email: "alex.morgan@example.com" }),
+      "alex.morgan@example.com",
+    );
   });
 
   it("maps legacy decision status onto the five outcomes", () => {
@@ -34,7 +48,10 @@ describe("RAID + governance on the platform org", () => {
   });
 
   it("resolves current phase onto the seed waterfall list and treats in-review as active", () => {
-    assert.equal(matchPhase("business case / full funding", [...PLATFORM_WATERFALL_GATES]), "Business Case / Full Funding");
+    assert.equal(
+      matchPhase("business case / full funding", [...PLATFORM_WATERFALL_GATES]),
+      "Business Case / Full Funding",
+    );
     assert.equal(isActiveGateStatus("in review"), true);
     assert.equal(isApprovedGateStatus("Approved"), true);
     assert.equal(isDoneGateStatus("passed"), true);
@@ -55,5 +72,57 @@ describe("RAID + governance on the platform org", () => {
     assert.equal(scopeLabel("strategic_alignment"), "Strategic Alignment");
     assert.equal(scopeLabel("program"), "Program");
     assert.equal(scopeLabel("project"), "Project");
+  });
+
+  it("builds RAID forum hierarchy from either a channel pack or a bare array", () => {
+    const row = {
+      id: "c1",
+      org_id: "o",
+      name: "SteerCo",
+      cadence: null,
+      audience: null,
+      purpose: null,
+      chair: null,
+      next_meeting: null,
+      last_meeting: null,
+      cadence_start: null,
+      cadence_end: null,
+      parent_channel_id: null,
+      status: "Active",
+      scope_level: "project",
+      project_id: "p1",
+      program: "Prog",
+      portfolio: "SA",
+    };
+    const project = {
+      id: "p1",
+      name: "Alpha",
+      project_code: "PRJ-1",
+      program: "Prog",
+      portfolio: "SA",
+    };
+    assert.deepEqual(
+      channelsFromGovernanceQuery({ scoped: true, channels: [row] }).map((c) => c.id),
+      ["c1"],
+    );
+    assert.deepEqual(
+      channelsFromGovernanceQuery([row]).map((c) => c.id),
+      ["c1"],
+    );
+    assert.deepEqual(channelsFromGovernanceQuery(null), []);
+    assert.deepEqual(
+      channelsFromGovernanceQuery({ scoped: true } as { channels?: (typeof row)[] }),
+      [],
+    );
+
+    const fromPack = buildGovernanceHierarchy([project], { scoped: true, channels: [row] }, []);
+    const fromArray = buildGovernanceHierarchy([project], [row], []);
+    assert.equal(fromPack.length, 1);
+    assert.equal(fromPack[0].programs[0].projects[0].forums[0].channel.id, "c1");
+    assert.deepEqual(
+      fromPack[0].programs[0].projects[0].forums.map((f) => f.channel.id),
+      fromArray[0].programs[0].projects[0].forums.map((f) => f.channel.id),
+    );
+    assert.equal(orgWideForums({ scoped: true, channels: [row] }, []).length, 0);
   });
 });
