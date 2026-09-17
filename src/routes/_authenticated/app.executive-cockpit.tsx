@@ -49,6 +49,7 @@ import {
 import { computeEngineHealth, useHealthEngineLookups } from "@/hooks/use-health-engine-lookups";
 import { parentEnvelopeContext } from "@/lib/hierarchy-envelope";
 import { getPortfolioKpis, listPortfolioProjects } from "@/lib/portfolio.functions";
+import { useProjectVisibility } from "@/hooks/use-project-visibility";
 import { MAX_PAGE_SIZE } from "@/lib/portfolio-paging";
 import { FINANCIALS_MONTHLY_SELECT } from "@/lib/query-selects";
 import { explainPortfolioSnapshot, explainRag, type MetricExplanation } from "@/lib/explain-metric";
@@ -225,7 +226,8 @@ function MixBar({
 
 function ExecutiveCockpit() {
   const { section } = Route.useSearch();
-  const { organization } = useAuth();
+  const { organization, user } = useAuth();
+  const { filterProjects, limited } = useProjectVisibility();
   const orgId = organization?.id;
   const fyStartMonth = organization?.fy_start_month || 4;
   const listProjects = useServerFn(listPortfolioProjects);
@@ -252,7 +254,7 @@ function ExecutiveCockpit() {
   }, [section]);
 
   const projectsQ = useQuery({
-    queryKey: ["projects", orgId, "cockpit"],
+    queryKey: ["projects", orgId, "cockpit", user?.id],
     queryFn: () =>
       listProjects({
         data: { orgId: orgId!, offset: 0, limit: MAX_PAGE_SIZE },
@@ -260,9 +262,12 @@ function ExecutiveCockpit() {
     enabled: !!orgId,
     staleTime: 60_000,
   });
-  const allProjects = (projectsQ.data?.rows ?? []) as any[];
+  const allProjects = useMemo(
+    () => filterProjects((projectsQ.data?.rows ?? []) as { id: string }[]),
+    [projectsQ.data?.rows, filterProjects],
+  );
   const { data: kpis } = useQuery({
-    queryKey: ["portfolio-kpis", orgId],
+    queryKey: ["portfolio-kpis", orgId, user?.id],
     queryFn: () => fetchKpis({ data: { orgId: orgId! } }),
     enabled: !!orgId,
     staleTime: 60_000,
@@ -524,7 +529,7 @@ function ExecutiveCockpit() {
     return { budget, plan, actual, forecast };
   }, [fySelected, projects, fyAlloc, monthly, fyStartMonth, filtersOn, filteredIds]);
 
-  const useCache = Boolean(kpis?.from_cache) && !filtersOn && !fyMoney;
+  const useCache = Boolean(kpis?.from_cache) && !limited && !filtersOn && !fyMoney;
   const approvedFundingK = fyMoney ? fyMoney.budget : useCache ? kpis!.approved_funding : approvedFunding;
   const actualSpendK = fyMoney ? fyMoney.actual : useCache ? kpis!.incurred : actualSpend;
   const remainingK = Math.max(0, approvedFundingK - actualSpendK);

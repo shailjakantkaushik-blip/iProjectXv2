@@ -7,10 +7,11 @@ import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import { PageLoading } from "@/components/page-loading";
-import { fetchProjectOptions, projectOptionsQueryKey, compareProjectsByCodeName } from "@/lib/project-options";
+import { compareProjectsByCodeName } from "@/lib/project-options";
 import { WORK_ITEMS_SELECT } from "@/lib/query-selects";
 import { computeCriticalPath, type CpmLink } from "@/lib/cpm";
 import { EntityComments } from "@/components/entity-comments";
+import { useProjectOptions } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/schedule-cpm")({
   component: ScheduleCpmPage,
@@ -30,11 +31,7 @@ function ScheduleCpmPage() {
     lag_days: "0",
   });
 
-  const { data: projects = [] } = useQuery({
-    queryKey: projectOptionsQueryKey(orgId),
-    queryFn: fetchProjectOptions,
-    enabled: !!orgId,
-  });
+  const { data: projects = [] } = useProjectOptions(orgId);
   const projectsOrdered = useMemo(() => [...projects].sort(compareProjectsByCodeName), [projects]);
 
   const { data: workItems = [], isLoading: wiLoading } = useQuery({

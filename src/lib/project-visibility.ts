@@ -1,11 +1,14 @@
-import { isPlatformOperatorOnly, type AppRole } from "@/lib/auth-context";
+/** Avoid importing auth-context (tsx) so this module stays unit-testable. */
+function isPlatformOperatorOnly(roles: readonly string[]) {
+  return roles.includes("platform_admin") && !roles.some((r) => r !== "platform_admin");
+}
 
 /** Blank Strategic Alignment / program / functional area in the access tree. */
 export const UNASSIGNED_SCOPE = "(Unassigned)";
 
 export type ProjectVisibilityMode = "all" | "programs" | "projects" | "scoped";
 
-export type VisibilityRole = Exclude<AppRole, "platform_admin" | "admin" | "org_admin">;
+export type VisibilityRole = "executive" | "bu_lead" | "pm";
 
 /** Program × functional area grant (AND). Used when ticking FA under a program. */
 export type ProgramAreaGrant = {
@@ -47,6 +50,8 @@ export type VisibilityProject = {
   program?: string | null;
   portfolio?: string | null;
   functional_area?: string | null;
+  /** Assigned PM — RLS also grants these via can_edit_project when no user override. */
+  pm_user_id?: string | null;
 };
 
 export type VisibilityStream = {
@@ -190,6 +195,21 @@ function parseScopeLists(raw: unknown): Omit<ProjectVisibilityScope, "mode"> {
 
 export function defaultProjectVisibility(): ProjectVisibilityConfig {
   return { rules: [], user_rules: [] };
+}
+
+export function visibilityConfigFromOrg(
+  org: { ui_config?: { project_visibility?: unknown } | null } | null | undefined,
+): ProjectVisibilityConfig {
+  return mergeProjectVisibility(org?.ui_config?.project_visibility);
+}
+
+export function callerHasLimitedVisibility(
+  cfg: ProjectVisibilityConfig,
+  userId: string | null | undefined,
+  userRoles: string[],
+): boolean {
+  const scope = effectiveVisibilityScope(cfg, userId, userRoles);
+  return Boolean(scope && isLimitedVisibilityMode(scope.mode));
 }
 
 export function mergeProjectVisibility(partial: unknown): ProjectVisibilityConfig {
@@ -528,7 +548,7 @@ export function filterStreamsByVisibility<T extends VisibilityStream>(
   streams: T[],
   projectsById: Map<string, VisibilityProject>,
   userId: string | null | undefined,
-  userRoles: AppRole[],
+  userRoles: string[],
   cfg: ProjectVisibilityConfig,
 ): T[] {
   const scope = effectiveVisibilityScope(cfg, userId, userRoles);
@@ -547,7 +567,7 @@ export function filterStreamsByVisibility<T extends VisibilityStream>(
 export function effectiveVisibilityScope(
   cfg: ProjectVisibilityConfig,
   userId: string | null | undefined,
-  userRoles: AppRole[],
+  userRoles: string[],
 ): ProjectVisibilityScope | null {
   if (isPlatformOperatorOnly(userRoles)) {
     return emptyVisibilityScope("scoped");
@@ -571,7 +591,7 @@ export function effectiveVisibilityScope(
 export function filterProjectsByVisibility<T extends VisibilityProject>(
   projects: T[],
   userId: string | null | undefined,
-  userRoles: AppRole[],
+  userRoles: string[],
   cfg: ProjectVisibilityConfig,
   streams?: VisibilityStream[],
 ): T[] {
@@ -600,5 +620,9 @@ export function filterProjectsByVisibility<T extends VisibilityProject>(
   const applicable = cfg.rules.filter((r) => userRoles.includes(r.role));
   if (!applicable.length) return projects;
 
-  return projects.filter((p) => applicable.some((rule) => projectMatchesScope(p, rule, streams)));
+  return projects.filter(
+    (p) =>
+      (userId && String(p.pm_user_id || "") === userId) ||
+      applicable.some((rule) => projectMatchesScope(p, rule, streams)),
+  );
 }

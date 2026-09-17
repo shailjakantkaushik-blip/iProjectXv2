@@ -38,6 +38,7 @@ import {
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/cost-vs-benefit")({
   component: CostVsBenefitPage,
@@ -52,7 +53,7 @@ function CostVsBenefitPage() {
   const shownRagOf = useShownRag();
   const [filters, setFilters] = useState<PortfolioFilterState>(emptyFilters);
 
-  const { data: projects = [] } = useQuery({
+  const { data: projectsRaw = [] } = useQuery({
     queryKey: ["projects", organization?.id],
     queryFn: async () =>
       sortProjectsByCodeName(
@@ -64,6 +65,7 @@ function CostVsBenefitPage() {
       ),
     enabled: !!organization,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
   const { data: gateDefs = [] } = useQuery({
     queryKey: ["stage_gate_definitions", organization?.id],
     queryFn: async () =>

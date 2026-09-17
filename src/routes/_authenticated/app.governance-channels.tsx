@@ -54,6 +54,7 @@ import {
   withEditedMeetingDates,
   expandCadenceMeetingsForChannel,
 } from "@/lib/governance-forums";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/governance-channels")({
   component: GovernanceChannelsPage,
@@ -124,7 +125,7 @@ function GovernanceChannelsPage() {
   const channels = useMemo(() => channelState?.channels ?? [], [channelState]);
   const scoped = channelState?.scoped ?? false;
 
-  const { data: projects = [] } = useQuery({
+  const { data: projectsRaw = [] } = useQuery({
     queryKey: ["governance_channel_projects", organization?.id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -136,6 +137,7 @@ function GovernanceChannelsPage() {
     },
     enabled: !!organization,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
 
   const { data: streams = [] } = useQuery({
     queryKey: ["governance_channel_streams", organization?.id],

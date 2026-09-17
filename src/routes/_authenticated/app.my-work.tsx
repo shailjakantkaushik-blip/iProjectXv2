@@ -11,7 +11,6 @@ import {
   NOTIFICATIONS_SELECT,
   RESOURCES_SELECT,
 } from "@/lib/query-selects";
-import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
 import { isRagOverridden } from "@/lib/ops-enhancements";
 import { useShownRag } from "@/components/engine-rag-provider";
 import { useAuth } from "@/lib/auth-context";
@@ -22,6 +21,7 @@ import {
   isAwaitingApproval,
   type DecisionOutcome,
 } from "@/lib/decision-approval";
+import { useProjectOptions } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/my-work")({
   component: MyWorkPage,
@@ -48,11 +48,7 @@ function MyWorkPage() {
     enabled: !!orgId,
   });
 
-  const { data: projects = [] } = useQuery({
-    queryKey: projectOptionsQueryKey(orgId),
-    queryFn: fetchProjectOptions,
-    enabled: !!orgId,
-  });
+  const { data: projects = [] } = useProjectOptions(orgId);
 
   const { data: actions = [] } = useQuery({
     queryKey: ["actions", orgId],

@@ -7,6 +7,7 @@ import { HEALTH_ENGINE_RISKS_SELECT, PROJECT_PORTFOLIO_SELECT } from "@/lib/quer
 import { PROJECT_OPS_EXTRAS } from "@/lib/project-selects";
 import { sortProjectsByCodeName } from "@/lib/project-sort";
 import { useAuth, canEditProjects } from "@/lib/auth-context";
+import { useProjectVisibility } from "@/hooks/use-project-visibility";
 import { PageHeading, SectionFrame, RagChip } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import { PageLoading } from "@/components/page-loading";
@@ -22,16 +23,14 @@ import { effectiveRag, isRagOverridden } from "@/lib/ops-enhancements";
 import { explainRag } from "@/lib/explain-metric";
 import { isDecisionAwaiting } from "@/lib/decision-approval";
 import { StageGateStatusFilter } from "@/components/stage-gate-status-filter";
-import {
-  projectMatchesGateStatusFilter,
-  type GateStatusFilter,
-} from "@/lib/stage-gate-approval";
+import { projectMatchesGateStatusFilter, type GateStatusFilter } from "@/lib/stage-gate-approval";
 import { useHierarchyEnvelopes } from "@/hooks/use-hierarchy-envelopes";
 import { HierarchyEnvelopeField } from "@/components/hierarchy-envelope-field";
 import { HierarchyEnvelopeBoard } from "@/components/hierarchy-envelope-board";
 import {
   childApprovedByLayer,
   childApprovedByProgram,
+  filterHierarchyEnvelopesByProjects,
   lookupHierarchyEnvelope,
   overlayParentEnvelopeRag,
   parentEnvelopeStatus,
@@ -149,8 +148,7 @@ function rollMetrics(nodes: { metrics: NodeMetrics }[]): NodeMetrics {
   const forecast = nodes.reduce((s, n) => s + n.metrics.forecast, 0);
   const actual = nodes.reduce((s, n) => s + n.metrics.actual, 0);
   const raid = nodes.reduce((s, n) => addRaid(s, n.metrics.raid), { ...EMPTY_RAID });
-  const score =
-    nodes.reduce((s, n) => s + n.metrics.score, 0) / Math.max(1, nodes.length);
+  const score = nodes.reduce((s, n) => s + n.metrics.score, 0) / Math.max(1, nodes.length);
   return {
     budget,
     forecast,
@@ -166,6 +164,7 @@ function rollMetrics(nodes: { metrics: NodeMetrics }[]): NodeMetrics {
 
 function StrategicAlignmentPage() {
   const { organization, loading: authLoading, roles } = useAuth();
+  const { filterProjects, filterStreams, limited } = useProjectVisibility();
   const orgId = organization?.id;
   const canEdit = canEditProjects(roles);
   const envelopes = useHierarchyEnvelopes(orgId);
@@ -174,7 +173,7 @@ function StrategicAlignmentPage() {
   const [gateStatusByName, setGateStatusByName] = useState<GateStatusFilter>({});
 
   const {
-    data: projects = [],
+    data: projectsRaw = [],
     isLoading: projectsLoading,
     isError,
     error,
@@ -196,7 +195,19 @@ function StrategicAlignmentPage() {
     staleTime: 15_000,
   });
 
-  const { data: streams = [] } = useQuery({
+  const projects = useMemo(
+    () => filterProjects(projectsRaw as { id: string }[]),
+    [projectsRaw, filterProjects],
+  );
+  const visibleEnvelopes = useMemo(
+    () =>
+      limited
+        ? filterHierarchyEnvelopesByProjects(envelopes.rows, projects as never)
+        : envelopes.rows,
+    [limited, envelopes.rows, projects],
+  );
+
+  const { data: streamsRaw = [] } = useQuery({
     queryKey: ["project_streams", orgId, "alignment-tree"],
     queryFn: async () => {
       const { data, error: qErr } = await supabase
@@ -211,6 +222,15 @@ function StrategicAlignmentPage() {
     enabled: !!orgId,
     staleTime: 15_000,
   });
+
+  const projectsById = useMemo(
+    () => new Map((projects as { id: string }[]).map((p) => [p.id, p])),
+    [projects],
+  );
+  const streams = useMemo(
+    () => filterStreams(streamsRaw as { id: string; project_id: string }[], projectsById),
+    [streamsRaw, filterStreams, projectsById],
+  );
 
   const { data: gates = [] } = useQuery({
     queryKey: ["stage_gates", orgId],
@@ -291,9 +311,14 @@ function StrategicAlignmentPage() {
     for (const r of raidRows.issues as Array<{ project_id?: string; status?: string }>) {
       bump(r.project_id, "issues", r.status ?? null);
     }
-    for (const r of raidRows.decisions as Array<{ project_id?: string; status?: string; outcome?: string }>) {
+    for (const r of raidRows.decisions as Array<{
+      project_id?: string;
+      status?: string;
+      outcome?: string;
+    }>) {
       if (!r.project_id) continue;
-      if (!isDecisionAwaiting(r) && !isOpenRaid("decisions", r.outcome || r.status || null)) continue;
+      if (!isDecisionAwaiting(r) && !isOpenRaid("decisions", r.outcome || r.status || null))
+        continue;
       const cur = map.get(r.project_id) ?? { ...EMPTY_RAID };
       cur.decisions += 1;
       map.set(r.project_id, cur);
@@ -364,7 +389,8 @@ function StrategicAlignmentPage() {
     const alignmentMap = new Map<string, Map<string, ProjectNode[]>>();
     for (const p of financeProjects) {
       const id = String(p.id);
-      if (!projectMatchesGateStatusFilter(gates as never, id, gateStatusByName, p as never)) continue;
+      if (!projectMatchesGateStatusFilter(gates as never, id, gateStatusByName, p as never))
+        continue;
       const alignment = String(p.portfolio || "").trim() || "Unassigned";
       const program = String(p.program || "").trim() || "Unassigned";
       const health = computeProjectHealth(p as never, (gatesByProject.get(id) ?? []) as never, {
@@ -527,10 +553,11 @@ function StrategicAlignmentPage() {
 
       <HierarchyEnvelopeBoard
         projects={projects as never}
-        rows={envelopes.rows}
+        rows={visibleEnvelopes}
         index={envelopes.index}
         canEdit={canEdit}
         onSave={envelopes.saveEnvelope}
+        namesFromProjectsOnly={limited}
       />
 
       <div className="mb-3">
@@ -543,7 +570,9 @@ function StrategicAlignmentPage() {
 
       {isError ? (
         <SectionFrame>
-          <p className="text-sm text-destructive">{(error as Error)?.message || "Could not load projects."}</p>
+          <p className="text-sm text-destructive">
+            {(error as Error)?.message || "Could not load projects."}
+          </p>
           <Button type="button" className="mt-3" variant="outline" onClick={() => void refetch()}>
             Retry
           </Button>
@@ -754,7 +783,13 @@ function MarkerPill({ kind, n }: { kind: "R" | "A" | "I" | "D"; n: number }) {
           ? "bg-amber-100 text-amber-900"
           : "bg-violet-100 text-violet-800";
   const label =
-    kind === "R" ? "Open risks" : kind === "A" ? "Open actions" : kind === "I" ? "Open issues" : "Open decisions";
+    kind === "R"
+      ? "Open risks"
+      : kind === "A"
+        ? "Open actions"
+        : kind === "I"
+          ? "Open issues"
+          : "Open decisions";
   return (
     <span
       title={label}
@@ -810,7 +845,13 @@ function NodeHeader({
     : "truncate text-sm font-semibold tracking-tight hover:underline";
   const titleNode =
     to === "/app/projects/$id" && params ? (
-      <Link to="/app/projects/$id" params={params} search={search} className={titleClass} title={title}>
+      <Link
+        to="/app/projects/$id"
+        params={params}
+        search={search}
+        className={titleClass}
+        title={title}
+      >
         {title}
       </Link>
     ) : to === "/app/programs" ? (
@@ -818,7 +859,14 @@ function NodeHeader({
         {title}
       </Link>
     ) : (
-      <h2 className={emphasize ? "text-base font-semibold tracking-tight sm:text-lg" : "truncate text-sm font-semibold tracking-tight"} title={title}>
+      <h2
+        className={
+          emphasize
+            ? "text-base font-semibold tracking-tight sm:text-lg"
+            : "truncate text-sm font-semibold tracking-tight"
+        }
+        title={title}
+      >
         {title}
       </h2>
     );
@@ -834,7 +882,11 @@ function NodeHeader({
             aria-expanded={expanded}
             aria-label={expanded ? `Collapse ${title}` : `Expand ${title}`}
           >
-            {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            {expanded ? (
+              <ChevronDown className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5" />
+            )}
           </button>
         ) : null}
         <div className="min-w-0 flex-1">
@@ -857,19 +909,32 @@ function NodeHeader({
           </div>
           <div className="mt-0.5 flex flex-wrap items-baseline gap-2">
             {titleNode}
-            {code ? <span className="font-mono text-[10px] text-muted-foreground">{code}</span> : null}
+            {code ? (
+              <span className="font-mono text-[10px] text-muted-foreground">{code}</span>
+            ) : null}
           </div>
         </div>
       </div>
 
-      <div className={`flex flex-wrap items-center gap-1.5 ${compact ? "mt-1.5" : "mt-2"} ${showToggle && onToggle ? "pl-9" : ""}`}>
-        <span className="rounded-md bg-muted/70 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums" title="Budget">
+      <div
+        className={`flex flex-wrap items-center gap-1.5 ${compact ? "mt-1.5" : "mt-2"} ${showToggle && onToggle ? "pl-9" : ""}`}
+      >
+        <span
+          className="rounded-md bg-muted/70 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums"
+          title="Budget"
+        >
           B {money(metrics.budget)}
         </span>
-        <span className="rounded-md bg-muted/70 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums" title="Forecast">
+        <span
+          className="rounded-md bg-muted/70 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums"
+          title="Forecast"
+        >
           F {money(metrics.forecast)}
         </span>
-        <span className="rounded-md bg-muted/70 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums" title="Actual">
+        <span
+          className="rounded-md bg-muted/70 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums"
+          title="Actual"
+        >
           A {money(metrics.actual)}
         </span>
         <MarkerPill kind="R" n={metrics.raid.risks} />

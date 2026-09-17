@@ -11,6 +11,7 @@ import { ExpandableChart } from "@/components/expandable-chart";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/portfolio-movements")({
   component: Movements,
@@ -24,11 +25,12 @@ function daysBetween(a?: string | null, b?: string | null) {
 function Movements() {
   const { organization } = useAuth();
 
-  const { data: projects = [] } = useQuery({
+  const { data: projectsRaw = [] } = useQuery({
     queryKey: ["projects", organization?.id],
     queryFn: async () => (await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*")).data ?? [],
     enabled: !!organization,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
 
   const { data: gates = [] } = useQuery({
     queryKey: ["stage_gates", organization?.id],

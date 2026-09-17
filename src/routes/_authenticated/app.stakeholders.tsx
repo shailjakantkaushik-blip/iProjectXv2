@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -12,6 +11,7 @@ import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-tabl
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
 import { memberLabel, type OrgMember } from "@/lib/decision-approval";
+import { useProjectOptions } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/stakeholders")({
   component: StakeholdersPage,
@@ -39,11 +39,7 @@ function StakeholdersPage() {
   const orgId = organization?.id;
   const qc = useQueryClient();
 
-  const { data: projects = [] } = useQuery({
-    queryKey: projectOptionsQueryKey(orgId),
-    queryFn: fetchProjectOptions,
-    enabled: !!orgId,
-  });
+  const { data: projects = [] } = useProjectOptions(orgId);
   const { data: stakeholders = [] } = useQuery({
     queryKey: ["stakeholders", orgId],
     queryFn: async () =>

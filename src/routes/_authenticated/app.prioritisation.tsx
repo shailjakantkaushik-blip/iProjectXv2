@@ -18,6 +18,7 @@ import {
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/prioritisation")({
   component: Prioritisation,
@@ -33,7 +34,7 @@ function money(n: number) {
 function Prioritisation() {
   const { organization } = useAuth();
   const qc = useQueryClient();
-  const { data: projects = [] } = useQuery({
+  const { data: projectsRaw = [] } = useQuery({
     queryKey: ["projects", organization?.id, "prioritisation"],
     queryFn: async () => {
       const wide = await supabase
@@ -45,6 +46,7 @@ function Prioritisation() {
     },
     enabled: !!organization,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
 
   const { data: benefits = [] } = useQuery({
     queryKey: ["benefits", organization?.id, "payback"],

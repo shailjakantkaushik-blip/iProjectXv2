@@ -73,6 +73,7 @@ import {
   explainGeneric,
   explainRemaining,
 } from "@/lib/explain-metric";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/financials")({
   component: FinancialsPage,
@@ -103,7 +104,7 @@ function FinancialsPage() {
   const [syncing, setSyncing] = useState(false);
   const fyStartMonth = organization?.fy_start_month || 4;
 
-  const { data: projects = [] } = useQuery({
+  const { data: projectsRaw = [] } = useQuery({
     queryKey: ["projects", organization?.id],
     queryFn: async () =>
       sortProjectsByCodeName(
@@ -115,6 +116,7 @@ function FinancialsPage() {
       ),
     enabled: !!organization,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
   const { data: monthly = [] } = useQuery({
     queryKey: ["financials_monthly", organization?.id],
     queryFn: async () =>

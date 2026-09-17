@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 import { supabase } from "@/integrations/supabase/client";
 import { FINANCIALS_MONTHLY_SELECT, PROJECT_PORTFOLIO_SELECT } from "@/lib/query-selects";
 import { parentEnvelopeContext } from "@/lib/hierarchy-envelope";
@@ -37,7 +38,7 @@ export function EngineRagProvider({ children }: { children: ReactNode }) {
   const fyStartMonth = organization?.fy_start_month || 4;
   const lookups = useHealthEngineLookups(orgId);
 
-  const { data: projects = [] } = useQuery({
+  const { data: projectsRaw = [] } = useQuery({
     queryKey: ["projects", orgId],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -49,6 +50,7 @@ export function EngineRagProvider({ children }: { children: ReactNode }) {
     enabled: !!orgId,
     staleTime: 60_000,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
 
   const { data: gates = [] } = useQuery({
     queryKey: ["stage_gates", orgId],

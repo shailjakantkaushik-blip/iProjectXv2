@@ -13,8 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Plus, Flag, MessageSquare } from "lucide-react";
-import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
 import { useShownRag } from "@/components/engine-rag-provider";
+import { useProjectOptions } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/latest-updates")({
   component: LatestUpdatesPage,
@@ -45,11 +45,7 @@ function LatestUpdatesPage() {
   const [open, setOpen] = useState(false);
 
   // Separate key from full project lists — never overwrite select("*") cache.
-  const { data: projects = [] } = useQuery({
-    queryKey: projectOptionsQueryKey(organization?.id),
-    queryFn: fetchProjectOptions,
-    enabled: !!organization,
-  });
+  const { data: projects = [] } = useProjectOptions(organization?.id);
 
   const { data: updates = [] } = useQuery({
     queryKey: ["status_updates", organization?.id],

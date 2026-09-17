@@ -5,7 +5,6 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
-import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import { ColumnGlossary, type ColumnGlossaryItem } from "@/components/column-glossary";
@@ -47,6 +46,7 @@ import {
   sumHoursByDay,
   weekLoadStatus,
 } from "@/lib/resource-capacity";
+import { useProjectOptions, useScopedProjects } from "@/hooks/use-project-visibility";
 
 type TimesheetTab = "mine" | "approvals" | "cost" | "reports" | "setup";
 type TimesheetsSearch = { tab?: TimesheetTab };
@@ -240,11 +240,7 @@ function TimesheetsPage() {
     enabled: !!orgId,
   });
 
-  const { data: projects = [] } = useQuery({
-    queryKey: projectOptionsQueryKey(orgId),
-    queryFn: fetchProjectOptions,
-    enabled: !!orgId,
-  });
+  const { data: projects = [] } = useProjectOptions(orgId);
 
   const { data: resources = [], isLoading: resourcesLoading } = useQuery({
     queryKey: ["resources", orgId, "timesheet"],
@@ -1705,7 +1701,7 @@ const TIMESHEET_SETUP_GLOSSARY: ColumnGlossaryItem[] = [
 
 function TimesheetCostQuickView() {
   const { organization } = useAuth();
-  const { data: projects = [] } = useQuery({
+  const { data: projectsRaw = [] } = useQuery({
     queryKey: ["projects", organization?.id, "ts-cost"],
     queryFn: async () =>
       (
@@ -1716,6 +1712,7 @@ function TimesheetCostQuickView() {
       ).data ?? [],
     enabled: !!organization,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
   const { data: resources = [] } = useQuery({
     queryKey: ["resources", organization?.id, "ts-cost"],
     queryFn: async () =>

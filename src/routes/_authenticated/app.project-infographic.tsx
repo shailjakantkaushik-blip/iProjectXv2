@@ -112,6 +112,7 @@ import { evaluateProjectHealth } from "@/lib/project-health-engine";
 import { displayRag, effectiveRag, isRagOverridden } from "@/lib/ops-enhancements";
 import { useHierarchyEnvelopes } from "@/hooks/use-hierarchy-envelopes";
 import { parentEnvelopeContext, parentWatchesForProject } from "@/lib/hierarchy-envelope";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/project-infographic")({
   validateSearch: (s: Record<string, unknown>) => ({ pid: (s.pid as string) || "" }),
@@ -394,7 +395,7 @@ function InfographicPage() {
     if (search.pid) setPid(search.pid);
   }, [search.pid]);
 
-  const { data: projects = [] } = useQuery({
+  const { data: projectsRaw = [] } = useQuery({
     // Dedicated key — wider detail select must not overwrite portfolio cache rows.
     queryKey: ["projects", organization?.id, "detail"],
     queryFn: async () =>
@@ -403,6 +404,7 @@ function InfographicPage() {
       ),
     enabled: !!organization,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
 
   const project: any = useMemo(
     () => projects.find((p: any) => p.id === pid) || projects[0],

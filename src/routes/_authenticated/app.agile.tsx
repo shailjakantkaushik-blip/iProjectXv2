@@ -20,13 +20,14 @@ import { ExpandableChart } from "@/components/expandable-chart";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/agile")({ component: Page });
 
 function Page() {
   const { organization } = useAuth();
 
-  const { data: projects = [] } = useQuery({
+  const { data: projectsRaw = [] } = useQuery({
     queryKey: ["agile-projects", organization?.id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -38,6 +39,7 @@ function Page() {
     },
     enabled: !!organization,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
 
   const { data: sprints = [] } = useQuery({
     queryKey: ["sprints", organization?.id],

@@ -38,6 +38,7 @@ import { projectPortfolio } from "@/lib/project-health";
 import { useShownRag } from "@/components/engine-rag-provider";
 import { sortProjectsByCodeName } from "@/lib/project-sort";
 import { PROJECT_PORTFOLIO_SELECT } from "@/lib/project-selects";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/portfolio-segmentation")({
   component: Segmentation,
@@ -69,7 +70,7 @@ function Segmentation() {
     "portfolio" | "program" | "priority" | "delivery_method" | "sponsor" | "current_phase"
   >("portfolio");
 
-  const { data: projects = [] } = useQuery({
+  const { data: projectsRaw = [] } = useQuery({
     queryKey: ["projects", organization?.id],
     queryFn: async () =>
       sortProjectsByCodeName(
@@ -77,6 +78,7 @@ function Segmentation() {
       ),
     enabled: !!organization,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
 
   const scatterData = projects.map((p: any) => ({
     name: p.name,

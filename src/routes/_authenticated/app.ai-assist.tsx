@@ -21,6 +21,7 @@ import { useEngineRagMap } from "@/components/engine-rag-provider";
 import { useAllowedPages } from "@/lib/permissions";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle } from "@/components/streamlit";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/ai-assist")({
   component: AiAssistPage,
@@ -106,12 +107,13 @@ function AiAssistPage() {
   const needProjects =
     allowProjects || allowRisks || allowDecisions || allowActions || allowBudget || allowBenefits;
 
-  const { data: projects = [] } = useQuery({
+  const { data: projectsRaw = [] } = useQuery({
     queryKey: ["projects", orgId, "ai-assist", PROJECT_ASSIST_SELECT],
     queryFn: async () =>
       (await supabase.from("projects").select(PROJECT_ASSIST_SELECT)).data ?? [],
     enabled: !!orgId && needProjects,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
   const { data: risks = [] } = useQuery({
     queryKey: ["risks", orgId, "ai-assist", RISKS_ASSIST_SELECT],
     queryFn: async () =>

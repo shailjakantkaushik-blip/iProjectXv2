@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/projects/")({
   component: ProjectsIndex,
@@ -73,7 +74,7 @@ function ProjectsIndex() {
   const [view, setView] = useState<ProjectsView>(() => readProjectsView());
 
   const {
-    data: projects = [],
+    data: projectsRaw = [],
     isLoading,
     isError,
     error,
@@ -90,6 +91,7 @@ function ProjectsIndex() {
     enabled: !!orgId,
     staleTime: 15_000,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
 
   const { data: gates = [] } = useQuery({
     queryKey: ["stage_gates", orgId],

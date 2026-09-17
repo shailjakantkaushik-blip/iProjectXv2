@@ -24,6 +24,7 @@ import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
 import { isRagOverridden } from "@/lib/ops-enhancements";
 import { useShownRag } from "@/components/engine-rag-provider";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/scenarios")({
   component: ScenariosPage,
@@ -64,7 +65,7 @@ function ScenariosPage() {
 
   const activeId = selectedId || (scenarios[0] as any)?.id || "";
 
-  const { data: projects = [] } = useQuery({
+  const { data: projectsRaw = [] } = useQuery({
     queryKey: ["projects_for_scenarios", orgId],
     queryFn: async () =>
       (
@@ -76,6 +77,7 @@ function ScenariosPage() {
       ).data ?? [],
     enabled: !!orgId,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
 
   const { data: scenarioProjects = [] } = useQuery({
     queryKey: ["scenario_projects", activeId],

@@ -16,6 +16,7 @@ import { PageHeading, SectionFrame, SectionTitle, KpiCard, RagChip } from "@/com
 import { explainRag } from "@/lib/explain-metric";
 import { isRagOverridden } from "@/lib/ops-enhancements";
 import { useShownRag } from "@/components/engine-rag-provider";
+import { useProjectVisibility } from "@/hooks/use-project-visibility";
 import { exportProjects } from "@/lib/excel";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -55,6 +56,7 @@ function EmptyRow({ colSpan, label = "No data yet." }: { colSpan: number; label?
 function ExecutiveReportsPage() {
   const { organization } = useAuth();
   const shownRagOf = useShownRag();
+  const { filterProjects } = useProjectVisibility();
   const orgId = organization?.id;
 
   const projectsQ = useQuery({
@@ -68,7 +70,10 @@ function ExecutiveReportsPage() {
     },
     enabled: !!orgId,
   });
-  const projects = projectsQ.data ?? [];
+  const projects = useMemo(
+    () => filterProjects((projectsQ.data ?? []) as { id: string }[]),
+    [projectsQ.data, filterProjects],
+  );
 
   const { data: risks = [] } = useQuery({
     queryKey: ["risks", orgId],

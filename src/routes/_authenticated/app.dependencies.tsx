@@ -39,6 +39,7 @@ type Dep = {
 };
 
 import { DEP_STATUS_COLORS as STATUS_COLORS } from "@/lib/chart-theme";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 
 function normalizeStatus(s?: string | null): "Healthy" | "At Risk" | "Blocked" {
   const v = (s || "").toLowerCase();
@@ -50,7 +51,7 @@ function normalizeStatus(s?: string | null): "Healthy" | "At Risk" | "Blocked" {
 function DependenciesPage() {
   const { organization } = useAuth();
 
-  const { data: projects = [] } = useQuery({
+  const { data: projectsRaw = [] } = useQuery({
     queryKey: ["projects-dep", organization?.id],
     queryFn: async () => {
       const { data, error } = await supabase.from("projects").select(PROJECT_PORTFOLIO_SELECT as "*");
@@ -59,6 +60,7 @@ function DependenciesPage() {
     },
     enabled: !!organization,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
 
   const { data: deps = [] } = useQuery({
     queryKey: ["dependencies", organization?.id],

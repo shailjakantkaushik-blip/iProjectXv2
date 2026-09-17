@@ -31,6 +31,7 @@ export function HierarchyEnvelopeBoard({
   index,
   canEdit,
   onSave,
+  namesFromProjectsOnly = false,
 }: {
   projects: HierarchyProjectLike[];
   rows: HierarchyEnvelopeRow[];
@@ -42,6 +43,8 @@ export function HierarchyEnvelopeBoard({
     envelope: number | null,
     parentName?: string,
   ) => Promise<void>;
+  /** Restricted callers: only names that appear on visible projects. */
+  namesFromProjectsOnly?: boolean;
 }) {
   const [extraSa, setExtraSa] = useState<string[]>([]);
   const [extraProg, setExtraProg] = useState<Record<string, string[]>>({});
@@ -49,20 +52,22 @@ export function HierarchyEnvelopeBoard({
   const [program, setProgram] = useState("");
 
   const saNames = useMemo(() => {
-    const base = collectAlignmentNames(projects, rows, [...PORTFOLIO_CATEGORIES, ...extraSa]);
-    return base;
-  }, [projects, rows, extraSa]);
+    if (namesFromProjectsOnly) {
+      return collectAlignmentNames(projects, [], extraSa);
+    }
+    return collectAlignmentNames(projects, rows, [...PORTFOLIO_CATEGORIES, ...extraSa]);
+  }, [projects, rows, extraSa, namesFromProjectsOnly]);
 
   const programNames = useMemo(() => {
     if (!sa) return [];
-    const extras = extraProg[normalizeHierarchyName(sa)] ?? [];
-    const base = collectProgramNames(projects, rows, sa);
+    const extras = namesFromProjectsOnly ? [] : (extraProg[normalizeHierarchyName(sa)] ?? []);
+    const base = collectProgramNames(projects, namesFromProjectsOnly ? [] : rows, sa);
     return [...new Set([...base, ...extras])].sort((a, b) => a.localeCompare(b));
-  }, [projects, rows, sa, extraProg]);
+  }, [projects, rows, sa, extraProg, namesFromProjectsOnly]);
 
   const saKey = sa ? normalizeHierarchyName(sa) : "";
   const saEnvelope = saKey ? lookupHierarchyEnvelope(index, "alignment", saKey) : null;
-  const saApproved = saKey ? childApprovedByLayer(projects, "alignment").get(saKey) ?? 0 : 0;
+  const saApproved = saKey ? (childApprovedByLayer(projects, "alignment").get(saKey) ?? 0) : 0;
   const pots = saKey ? programPotsAllocated(saKey, programNames, index) : 0;
   const saVsProjects = parentEnvelopeStatus(saEnvelope, saApproved);
   const saVsPots = parentEnvelopeStatus(saEnvelope, pots);
@@ -72,7 +77,7 @@ export function HierarchyEnvelopeBoard({
     saKey && progKey ? lookupHierarchyEnvelope(index, "program", progKey, saKey) : null;
   const progApproved =
     saKey && progKey
-      ? childApprovedByProgram(projects).get(programApprovedKey(saKey, progKey)) ?? 0
+      ? (childApprovedByProgram(projects).get(programApprovedKey(saKey, progKey)) ?? 0)
       : 0;
 
   const programRows = programNames.map((name) => {
@@ -197,10 +202,7 @@ export function HierarchyEnvelopeBoard({
                 </thead>
                 <tbody>
                   {programRows.map((row) => (
-                    <tr
-                      key={row.name}
-                      className={row.name === progKey ? "bg-muted/50" : undefined}
-                    >
+                    <tr key={row.name} className={row.name === progKey ? "bg-muted/50" : undefined}>
                       <td>
                         <button
                           type="button"
@@ -250,8 +252,8 @@ export function HierarchyEnvelopeBoard({
         </>
       ) : (
         <p className="mt-3 text-xs text-muted-foreground">
-          Choose a Strategic Alignment to see and set its envelope, then allocate to programs
-          inside it.
+          Choose a Strategic Alignment to see and set its envelope, then allocate to programs inside
+          it.
         </p>
       )}
     </SectionFrame>

@@ -6,7 +6,6 @@ import { Plus, Lock, Unlock, ChevronDown, ChevronRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, isAdmin } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
-import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
 import { RESOURCES_SELECT, STAGE_GATE_DEFINITIONS_SELECT, STAGE_GATES_SELECT } from "@/lib/query-selects";
 import { dailyRateFromHourly, isProjectKickedOff } from "@/lib/ops-enhancements";
 import { deliveryMethodsQueryKey, fetchDeliveryMethods, findDeliveryMethod } from "@/lib/delivery-methods";
@@ -35,6 +34,7 @@ import {
 import { ForecastPhaseGantt } from "@/components/forecast-phase-gantt";
 import { ForecastResourceBoard } from "@/components/forecast-resource-board";
 import { Button } from "@/components/ui/button";
+import { useProjectOptions } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/project-forecast")({
   component: ProjectForecastPage,
@@ -54,11 +54,7 @@ function ProjectForecastPage() {
   const [phaseDraft, setPhaseDraft] = useState<ForecastPhaseRow[]>([]);
   const [otherCatsOpen, setOtherCatsOpen] = useState(false);
 
-  const { data: allProjects = [] } = useQuery({
-    queryKey: projectOptionsQueryKey(orgId),
-    queryFn: fetchProjectOptions,
-    enabled: !!orgId,
-  });
+  const { data: allProjects = [] } = useProjectOptions(orgId);
   const projects = useMemo(
     () => (allProjects as any[]).filter((p) => isForecastableProjectStatus(p.status)),
     [allProjects],

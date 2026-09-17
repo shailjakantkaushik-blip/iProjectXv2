@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import { PageLoading } from "@/components/page-loading";
@@ -160,16 +161,18 @@ function InvestmentCommitteePage() {
     return names.length ? names.filter((n) => /investment\s*committee|^ic$/i.test(n)) : [];
   }, [channelsQ.data]);
 
+  const icProjects = useScopedProjects(projectsQ.data ?? []);
+
   const projectById = useMemo(() => {
     const m = new Map<string, IcProject>();
-    for (const p of projectsQ.data ?? []) m.set(p.id, p);
+    for (const p of icProjects) m.set(p.id, p);
     return m;
-  }, [projectsQ.data]);
+  }, [icProjects]);
 
   const pack = useMemo(
     () =>
       buildInvestmentCommitteePack({
-        projects: projectsQ.data ?? [],
+        projects: icProjects,
         demand: demandQ.data ?? [],
         gates: gatesQ.data ?? [],
         decisions: decisionsQ.data ?? [],
@@ -188,7 +191,7 @@ function InvestmentCommitteePage() {
         channelNames: channelNames.length ? channelNames : undefined,
       }),
     [
-      projectsQ.data,
+      icProjects,
       demandQ.data,
       gatesQ.data,
       decisionsQ.data,

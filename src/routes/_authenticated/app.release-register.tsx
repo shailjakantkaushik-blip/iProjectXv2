@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchProjectOptions, projectOptionsQueryKey } from "@/lib/project-options";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
@@ -23,17 +22,14 @@ const STATUSES = ["Submitted", "In Review", "Approved", "Rejected", "Deferred"];
 const TYPES = ["Scope", "Schedule", "Budget", "Resource", "Technical", "Governance"];
 const IMPACT = ["Low", "Medium", "High", "Critical"];
 import { RELEASE_STATUS_COLORS as STATUS_COLORS } from "@/lib/chart-theme";
+import { useProjectOptions } from "@/hooks/use-project-visibility";
 
 function ReleaseRegisterPage() {
   const { organization } = useAuth();
   const qc = useQueryClient();
   const orgId = organization?.id;
 
-  const { data: projects = [] } = useQuery({
-    queryKey: projectOptionsQueryKey(orgId),
-    queryFn: fetchProjectOptions,
-    enabled: !!orgId,
-  });
+  const { data: projects = [] } = useProjectOptions(orgId);
   const { data: crs = [] } = useQuery({
     queryKey: ["change_requests", orgId],
     queryFn: async () =>

@@ -40,6 +40,7 @@ import {
   GATE_DIST_STATUSES,
   type MethodGateDistribution,
 } from "@/lib/stage-gate-flow";
+import { useScopedProjects } from "@/hooks/use-project-visibility";
 
 export const Route = createFileRoute("/_authenticated/app/stage-gates")({
   component: StageGatesPage,
@@ -52,7 +53,7 @@ function StageGatesPage() {
   const gateDecision = useStageGateDecision();
   const [checklistGateId, setChecklistGateId] = useState("");
 
-  const { data: projects = [] } = useQuery({
+  const { data: projectsRaw = [] } = useQuery({
     queryKey: ["projects", organization?.id],
     queryFn: async () =>
       sortProjectsByCodeName(
@@ -60,6 +61,7 @@ function StageGatesPage() {
       ),
     enabled: !!organization,
   });
+  const projects = useScopedProjects(projectsRaw as { id: string }[]);
 
   const { data: gates = [] } = useQuery({
     queryKey: ["stage_gates", organization?.id],
