@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -19,7 +19,7 @@ import { ExpandableChart } from "@/components/expandable-chart";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { resolveCurrentAndNextGate, resolveCurrentStage } from "@/lib/project-phase";
 import { fetchOrgStreams, formatProjectStreamRef, formatStreamLabel } from "@/lib/project-streams";
-import { setStageGateStatus } from "@/lib/stage-gate-approval";
+import { useStageGateDecision } from "@/components/stage-gate-decision-dialog";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
@@ -47,7 +47,7 @@ export const Route = createFileRoute("/_authenticated/app/stage-gates")({
 function StageGatesPage() {
   const { organization } = useAuth();
   const orgId = organization?.id;
-  const qc = useQueryClient();
+  const gateDecision = useStageGateDecision();
   const [checklistGateId, setChecklistGateId] = useState("");
 
   const { data: projects = [] } = useQuery({
@@ -195,32 +195,6 @@ function StageGatesPage() {
       ),
     [itemsByGateName, responsesByGateId],
   );
-
-  const setGateStatus = useMutation({
-    mutationFn: async ({
-      id,
-      status,
-      projectId,
-    }: {
-      id: string;
-      status: string;
-      projectId: string;
-    }) => {
-      const g = gates.find((x: any) => x.id === id) as any;
-      if (/approved/i.test(status) && g) {
-        const reason = approvalBlockedReason(summaryForGate(g));
-        if (reason) throw new Error(reason);
-      }
-      await setStageGateStatus({ gateId: id, projectId, status });
-    },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["stage_gates"] });
-      void qc.invalidateQueries({ queryKey: ["projects"] });
-      void qc.invalidateQueries({ queryKey: ["project"] });
-      toast.success("Gate status updated");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
 
   // Gate distribution: one series per delivery method (do not mix templates).
   const distributions = useMemo(
@@ -414,7 +388,7 @@ function StageGatesPage() {
       <PageHeading
         icon="🚦"
         title="Stage Gates"
-        subtitle="Stream / project governance — checklists must be complete before Approve"
+        subtitle="Stream / project governance — changing Next Status records a decision. Checklists must be complete before Approve."
         actions={
           <Link
             to="/app/stage-gate-config"
@@ -585,13 +559,24 @@ function StageGatesPage() {
                             <select
                               className="st-input !py-0.5 !text-xs"
                               value={next.status || "Pending"}
-                              onChange={(e) =>
-                                setGateStatus.mutate({
-                                  id: next.id,
-                                  status: e.target.value,
+                              onChange={(e) => {
+                                const status = e.target.value;
+                                if (status === (next.status || "Pending")) return;
+                                if (/approved/i.test(status)) {
+                                  const reason = approvalBlockedReason(summaryForGate(next));
+                                  if (reason) {
+                                    toast.error(reason);
+                                    return;
+                                  }
+                                }
+                                gateDecision?.requestStageGateDecision({
+                                  gateId: next.id,
                                   projectId: project.id,
-                                })
-                              }
+                                  status,
+                                  gateName: next.gate_name,
+                                  streamId: next.stream_id,
+                                });
+                              }}
                             >
                               {["Pending", "In Review", "Approved", "On Hold", "Rejected"].map(
                                 (s) => (

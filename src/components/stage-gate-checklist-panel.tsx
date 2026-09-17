@@ -10,7 +10,7 @@ import {
   summarizeGateChecklist,
   type GateChecklistSummary,
 } from "@/lib/stage-gate-checklist";
-import { persistCurrentPhaseFromGates } from "@/lib/project-phase";
+import { useStageGateDecision } from "@/components/stage-gate-decision-dialog";
 
 type ChecklistItem = {
   id: string;
@@ -68,6 +68,7 @@ export function StageGateChecklistPanel({
   const orgId = organization?.id;
   const userId = session?.user?.id;
   const qc = useQueryClient();
+  const gateDecision = useStageGateDecision();
   const [notesDraft, setNotesDraft] = useState<Record<string, string>>({});
   const [urlDraft, setUrlDraft] = useState<Record<string, string>>({});
 
@@ -167,27 +168,22 @@ export function StageGateChecklistPanel({
     },
   });
 
-  const approveGate = useMutation({
-    mutationFn: async () => {
-      if (blockReason) throw new Error(blockReason);
-      const { error } = await supabase
-        .from("stage_gates")
-        .update({
-          status: "Approved",
-          actual_date: new Date().toISOString().slice(0, 10),
-        } as never)
-        .eq("id", stageGateId);
-      if (error) throw error;
-      if (projectId) {
-        await persistCurrentPhaseFromGates(supabase as any, projectId);
-      }
-    },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["stage_gates"] });
-      toast.success("Gate approved — checklist complete");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  const requestApprove = () => {
+    if (blockReason) {
+      toast.error(blockReason);
+      return;
+    }
+    if (!projectId) {
+      toast.error("This checklist is missing a project — open it from Stage Gates.");
+      return;
+    }
+    gateDecision?.requestStageGateDecision({
+      gateId: stageGateId,
+      projectId,
+      status: "Approved",
+      gateName,
+    });
+  };
 
   if (itemsQ.isError || respQ.isError) {
     return (
@@ -228,12 +224,12 @@ export function StageGateChecklistPanel({
         {!alreadyApproved ? (
           <button
             type="button"
-            disabled={!!blockReason || approveGate.isPending}
-            title={blockReason || "Approve this gate"}
-            onClick={() => approveGate.mutate()}
+            disabled={!!blockReason}
+            title={blockReason || "Record an approval decision for this gate"}
+            onClick={requestApprove}
             className="ml-auto rounded-md bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {approveGate.isPending ? "Approving…" : "Approve gate"}
+            Approve gate
           </button>
         ) : (
           <span className="ml-auto text-[11px] font-semibold text-emerald-700">Approved</span>

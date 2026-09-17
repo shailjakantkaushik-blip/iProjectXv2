@@ -1,8 +1,8 @@
 import { useEffect } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { SectionFrame, SectionTitle } from "@/components/streamlit";
+import { useStageGateDecision } from "@/components/stage-gate-decision-dialog";
 import {
   deliveryMethodsQueryKey,
   fetchDeliveryMethods,
@@ -15,7 +15,6 @@ import {
   ensureProjectLevelGates,
   normalizeGateStatus,
   projectApprovalGates,
-  setStageGateStatus,
 } from "@/lib/stage-gate-approval";
 import { GATE_STATUS_COLORS } from "@/lib/chart-theme";
 
@@ -33,6 +32,7 @@ export function ProjectStageGateApproval({
   canEdit?: boolean;
 }) {
   const qc = useQueryClient();
+  const gateDecision = useStageGateDecision();
 
   const { data: methods = [] } = useQuery({
     queryKey: deliveryMethodsQueryKey(orgId),
@@ -87,18 +87,6 @@ export function ProjectStageGateApproval({
 
   const rows = projectApprovalGates(gates as never, projectId, methodGateNames);
 
-  const setStatus = useMutation({
-    mutationFn: (vars: { gateId: string; status: string }) =>
-      setStageGateStatus({ gateId: vars.gateId, projectId, status: vars.status }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["stage_gates"] });
-      void qc.invalidateQueries({ queryKey: ["project", projectId] });
-      void qc.invalidateQueries({ queryKey: ["projects"] });
-      toast.success("Stage gate approval updated");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
   if (!usesGates) {
     return (
       <SectionFrame>
@@ -115,9 +103,9 @@ export function ProjectStageGateApproval({
       <SectionTitle>Stage gate approval</SectionTitle>
       <p className="mt-1 text-sm text-muted-foreground">
         Gates that exist on this project, in{" "}
-        {method?.name || deliveryMethodName || "delivery method"} order. Changing status updates
-        every matching gate name on this project (including streams) so the Stage Gates page stays
-        in lockstep.
+        {method?.name || deliveryMethodName || "delivery method"} order. Changing status opens a
+        new decision (same fields as the Decisions log). That decision updates this gate everywhere
+        it is shown, including streams.
       </p>
       <div className="mt-3 overflow-x-auto">
         <table className="st-table">
@@ -146,10 +134,17 @@ export function ProjectStageGateApproval({
                         <select
                           className="st-input max-w-[11rem]"
                           value={status}
-                          disabled={setStatus.isPending}
-                          onChange={(e) =>
-                            setStatus.mutate({ gateId: g.id, status: e.target.value })
-                          }
+                          onChange={(e) => {
+                            const next = e.target.value;
+                            if (!g.id || next === status) return;
+                            gateDecision?.requestStageGateDecision({
+                              gateId: g.id,
+                              projectId,
+                              status: next,
+                              gateName: g.gate_name,
+                              streamId: g.stream_id,
+                            });
+                          }}
                           style={{ borderColor: GATE_STATUS_COLORS[status] }}
                         >
                           {GATE_APPROVAL_STATUSES.map((s) => (

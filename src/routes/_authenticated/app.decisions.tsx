@@ -12,8 +12,8 @@ import {
   ensureProjectLevelGates,
   gatesForRaidScope,
   remapGateIdForScope,
-  setStageGateStatus,
 } from "@/lib/stage-gate-approval";
+import { applyDecisionToStageGate } from "@/lib/stage-gate-decision";
 import { deliveryMethodsQueryKey, fetchDeliveryMethods } from "@/lib/delivery-methods";
 import { StageGateApprovalSelect } from "@/components/stage-gate-approval-select";
 import { RaidStreamSelect } from "@/components/raid-stream-select";
@@ -170,20 +170,20 @@ function DecisionsPage() {
         .update(patch as never)
         .eq("id", id);
       if (error) throw error;
+      const { data: row } = await supabase
+        .from("decisions")
+        .select("project_id,stage_gate_id,outcome,status")
+        .eq("id", id)
+        .maybeSingle();
+      await applyDecisionToStageGate({
+        gateId: (row?.stage_gate_id as string | null) || null,
+        projectId: (row?.project_id as string | null) || null,
+        status: String(row?.outcome || row?.status || ""),
+      });
     },
     onSuccess: () => {
       invalidate();
       toast.success("Decision updated");
-    },
-    onError: (e: any) => toast.error(e.message),
-  });
-
-  const setGateStatus = useMutation({
-    mutationFn: (vars: { gateId: string; projectId: string; status: string }) =>
-      setStageGateStatus(vars),
-    onSuccess: () => {
-      invalidate();
-      toast.success("Stage gate approval updated");
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -247,6 +247,11 @@ function DecisionsPage() {
         notes: form.notes || null,
       } as never);
       if (error) throw error;
+      await applyDecisionToStageGate({
+        gateId: form.stage_gate_id || null,
+        projectId: form.project_id,
+        status: form.outcome,
+      });
     },
     onSuccess: () => {
       invalidate();
@@ -529,12 +534,7 @@ function DecisionsPage() {
               gates={gatesForProject}
               gateId={form.stage_gate_id}
               onGateId={(stage_gate_id) => setForm((f) => ({ ...f, stage_gate_id }))}
-              onStatus={(gateId, status) =>
-                form.project_id
-                  ? setGateStatus.mutate({ gateId, projectId: form.project_id, status })
-                  : undefined
-              }
-              disabled={!form.project_id || setGateStatus.isPending}
+              disabled={!form.project_id}
             />
           </div>
           <ForumSelect
@@ -652,8 +652,8 @@ function DecisionsPage() {
         </form>
         <p className="mt-2 text-xs text-muted-foreground">
           Capture options, recommendation, owner, required date, and impact. Optionally record
-          against a stream. Approver is notified in-app. Stage-gate status stays in sync with the
-          Stage Gates page.
+          against a stream. Approver is notified in-app. Linking a stage gate and setting the
+          outcome updates project stage-gate approval (and the Stage Gates page) in lockstep.
         </p>
       </SectionFrame>
 
@@ -854,14 +854,7 @@ function DecisionsPage() {
                                 patch: { stage_gate_id: id || null },
                               })
                             }
-                            onStatus={(gateId, status) =>
-                              setGateStatus.mutate({
-                                gateId,
-                                projectId: d.project_id,
-                                status,
-                              })
-                            }
-                            disabled={setGateStatus.isPending || updateDecision.isPending}
+                            disabled={updateDecision.isPending}
                           />
                         </td>
                         <td>
