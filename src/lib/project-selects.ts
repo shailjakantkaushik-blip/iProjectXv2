@@ -44,15 +44,28 @@ export const PROJECT_PORTFOLIO_SELECT = [
 ].join(",");
 
 /** Opt-in extras — only use on pages that need them (migration 20260816090000). */
-export const PROJECT_OPS_EXTRAS = [
-  "functional_area",
-  "payback_months",
-  "manual_rank",
-].join(",");
+export const PROJECT_OPS_EXTRAS = ["functional_area", "payback_months", "manual_rank"].join(",");
 
-/** Home dashboard KPIs only. Use a dedicated query key — do not share with portfolio. */
-export const PROJECT_HOME_SELECT =
-  "id,name,status,rag,rag_override,budget,capex_incurred,benefits_realised" as const;
+/**
+ * Home dashboard KPIs. Must include Project Access dimensions
+ * (`portfolio`, `program`, `functional_area`, `pm_user_id`) so the same
+ * grants used on every other page can keep the snapshot in scope.
+ * Dedicated query key — do not share with portfolio.
+ */
+export const PROJECT_HOME_SELECT = [
+  "id",
+  "name",
+  "status",
+  "rag",
+  "rag_override",
+  "budget",
+  "capex_incurred",
+  "benefits_realised",
+  "portfolio",
+  "program",
+  "functional_area",
+  "pm_user_id",
+].join(",");
 
 export function projectHomeQueryKey(orgId: string | null | undefined) {
   return ["projects", orgId, "home"] as const;

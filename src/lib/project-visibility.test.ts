@@ -58,6 +58,41 @@ describe("project visibility scope", () => {
     assert.deepEqual(visible.map((p) => p.id).sort(), ["p1", "p2"]);
   });
 
+  it("drops scoped home KPI rows that omit portfolio / program / PM", () => {
+    const cfg = mergeProjectVisibility({
+      rules: [{ role: "executive", mode: "scoped", programs: ["Core"] }],
+    });
+    const slimHomeRows = [{ id: "p1" }, { id: "p2" }, { id: "p3" }];
+    assert.deepEqual(filterProjectsByVisibility(slimHomeRows, "u1", ["executive"], cfg), []);
+  });
+
+  it("keeps granted home KPI rows when visibility fields are selected", () => {
+    const cfg = mergeProjectVisibility({
+      rules: [{ role: "executive", mode: "scoped", programs: ["Core"] }],
+    });
+    const homeRows = [
+      {
+        id: "p1",
+        portfolio: "Digital",
+        program: "Core",
+        functional_area: "IT",
+        pm_user_id: "u-pm",
+      },
+      {
+        id: "p2",
+        portfolio: "Digital",
+        program: "Growth",
+        functional_area: "Sales",
+        pm_user_id: null,
+      },
+    ];
+    const visible = filterProjectsByVisibility(homeRows, "u1", ["executive"], cfg);
+    assert.deepEqual(
+      visible.map((p) => p.id),
+      ["p1"],
+    );
+  });
+
   it("reads grants from organizations.ui_config", () => {
     const cfg = visibilityConfigFromOrg({
       ui_config: {
