@@ -3,9 +3,7 @@ import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Check, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import {
-  compareProjectsByCodeName,
-} from "@/lib/project-options";
+import { compareProjectsByCodeName } from "@/lib/project-options";
 import {
   ensureProjectLevelGates,
   gatesForRaidScope,
@@ -37,7 +35,11 @@ import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-tabl
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
 import { ForumSelect } from "@/components/forum-select";
-import { forumSelectNames, loadGovernanceChannels } from "@/lib/governance-forums";
+import {
+  channelsFromGovernanceQuery,
+  forumSelectNames,
+  loadGovernanceChannels,
+} from "@/lib/governance-forums";
 import { useProjectOptions } from "@/hooks/use-project-visibility";
 
 type DecisionsSearch = {
@@ -125,7 +127,7 @@ function DecisionsPage() {
     enabled: !!orgId,
     staleTime: 60_000,
   });
-  const forums = channelPack?.channels ?? [];
+  const forums = channelsFromGovernanceQuery(channelPack);
 
   const { data: decisions = [] } = useQuery({
     queryKey: ["decisions", orgId],

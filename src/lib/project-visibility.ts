@@ -595,6 +595,7 @@ export function filterProjectsByVisibility<T extends VisibilityProject>(
   cfg: ProjectVisibilityConfig,
   streams?: VisibilityStream[],
 ): T[] {
+  const rows = Array.isArray(projects) ? projects : [];
   if (isPlatformOperatorOnly(userRoles)) {
     return [];
   }
@@ -602,7 +603,7 @@ export function filterProjectsByVisibility<T extends VisibilityProject>(
   if (userId) {
     const userRule = cfg.user_rules.find((r) => r.user_id === userId);
     if (userRule) {
-      return projects.filter((p) => projectMatchesScope(p, userRule, streams));
+      return rows.filter((p) => projectMatchesScope(p, userRule, streams));
     }
   }
 
@@ -612,15 +613,15 @@ export function filterProjectsByVisibility<T extends VisibilityProject>(
 
   // Org admins see all unless a user override exists.
   if (hasAdminAccessRole(userRoles)) {
-    return projects;
+    return rows;
   }
 
-  if (!cfg.rules.length) return projects;
+  if (!cfg.rules.length) return rows;
 
   const applicable = cfg.rules.filter((r) => userRoles.includes(r.role));
-  if (!applicable.length) return projects;
+  if (!applicable.length) return rows;
 
-  return projects.filter(
+  return rows.filter(
     (p) =>
       (userId && String(p.pm_user_id || "") === userId) ||
       applicable.some((rule) => projectMatchesScope(p, rule, streams)),

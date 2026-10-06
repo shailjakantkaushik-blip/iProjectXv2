@@ -14,7 +14,7 @@ import {
   DECISIONS_SELECT,
 } from "@/lib/query-selects";
 import { PROJECT_OPS_EXTRAS } from "@/lib/project-selects";
-import { loadGovernanceChannels } from "@/lib/governance-forums";
+import { channelsFromGovernanceQuery, loadGovernanceChannels } from "@/lib/governance-forums";
 import {
   buildInvestmentCommitteePack,
   pickInvestmentCommitteeChannel,
@@ -151,11 +151,11 @@ function InvestmentCommitteePage() {
   });
 
   const icChannel = useMemo(
-    () => pickInvestmentCommitteeChannel(channelsQ.data?.channels ?? []),
+    () => pickInvestmentCommitteeChannel(channelsFromGovernanceQuery(channelsQ.data)),
     [channelsQ.data],
   );
   const channelNames = useMemo(() => {
-    const names = (channelsQ.data?.channels ?? [])
+    const names = channelsFromGovernanceQuery(channelsQ.data)
       .map((c) => c.name)
       .filter((n): n is string => Boolean(n));
     return names.length ? names.filter((n) => /investment\s*committee|^ic$/i.test(n)) : [];

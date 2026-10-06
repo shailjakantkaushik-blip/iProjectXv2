@@ -46,6 +46,7 @@ import {
   forumPeopleLine,
   isMissingCadenceWindowColumn,
   loadGovernanceChannels,
+  channelsFromGovernanceQuery,
   orgWideForums,
   projectOptionsLabel,
   resolveMyProjectIds,
@@ -122,7 +123,7 @@ function GovernanceChannelsPage() {
     retry: 1,
   });
 
-  const channels = useMemo(() => channelState?.channels ?? [], [channelState]);
+  const channels = useMemo(() => channelsFromGovernanceQuery(channelState), [channelState]);
   const scoped = channelState?.scoped ?? false;
 
   const { data: projectsRaw = [] } = useQuery({
@@ -346,11 +347,14 @@ function GovernanceChannelsPage() {
     if (!next.id) {
       const cadence = next.cadence || "Monthly";
       const proj = next.project_id ? projects.find((p) => p.id === next.project_id) : undefined;
-      next = withCadenceWindowDates({
-        ...next,
-        cadence,
-        cadence_end: proj?.planned_end_date || next.cadence_end || null,
-      }, { resetMeetings: true });
+      next = withCadenceWindowDates(
+        {
+          ...next,
+          cadence,
+          cadence_end: proj?.planned_end_date || next.cadence_end || null,
+        },
+        { resetMeetings: true },
+      );
     } else {
       next = withCadenceWindowDates(next);
     }
@@ -366,14 +370,17 @@ function GovernanceChannelsPage() {
         const mine = projects.filter((p) => p.pm_user_id === user?.id);
         const first = mine[0];
         setEditing(
-          withCadenceWindowDates({
-            ...next,
-            scope_level: "project",
-            project_id: first?.id || "",
-            program: first?.program || null,
-            portfolio: first?.portfolio || null,
-            cadence_end: first?.planned_end_date || next.cadence_end || null,
-          }, { resetMeetings: true }),
+          withCadenceWindowDates(
+            {
+              ...next,
+              scope_level: "project",
+              project_id: first?.id || "",
+              program: first?.program || null,
+              portfolio: first?.portfolio || null,
+              cadence_end: first?.planned_end_date || next.cadence_end || null,
+            },
+            { resetMeetings: true },
+          ),
         );
       }
     }
@@ -445,7 +452,10 @@ function GovernanceChannelsPage() {
       delete withoutWindow.cadence_end;
       let channelId = synced.id;
       if (synced.id) {
-        let { error } = await supabase.from("governance_channels").update(payload).eq("id", synced.id);
+        let { error } = await supabase
+          .from("governance_channels")
+          .update(payload)
+          .eq("id", synced.id);
         if (error && isMissingCadenceWindowColumn(error)) {
           ({ error } = await supabase
             .from("governance_channels")
@@ -807,21 +817,30 @@ function GovernanceChannelsPage() {
                   <tbody>
                     {isLoading && (
                       <tr>
-                        <td colSpan={columns.length + 1} className="text-center text-muted-foreground p-4">
+                        <td
+                          colSpan={columns.length + 1}
+                          className="text-center text-muted-foreground p-4"
+                        >
                           Loading…
                         </td>
                       </tr>
                     )}
                     {!isLoading && table.total === 0 && (
                       <tr>
-                        <td colSpan={columns.length + 1} className="text-center text-muted-foreground p-4">
+                        <td
+                          colSpan={columns.length + 1}
+                          className="text-center text-muted-foreground p-4"
+                        >
                           No forums match the current filters.
                         </td>
                       </tr>
                     )}
                     {!isLoading && table.total > 0 && table.rows.length === 0 && (
                       <tr>
-                        <td colSpan={columns.length + 1} className="text-center text-muted-foreground p-4">
+                        <td
+                          colSpan={columns.length + 1}
+                          className="text-center text-muted-foreground p-4"
+                        >
                           No forums match search.
                         </td>
                       </tr>
@@ -1212,10 +1231,7 @@ function ChannelForm({
         </div>
         <div>
           <Label>Cadence</Label>
-          <Select
-            value={value.cadence || ""}
-            onValueChange={(v) => applyWindow({ cadence: v })}
-          >
+          <Select value={value.cadence || ""} onValueChange={(v) => applyWindow({ cadence: v })}>
             <SelectTrigger>
               <SelectValue placeholder="Select" />
             </SelectTrigger>
@@ -1301,9 +1317,7 @@ function ChannelForm({
           <button
             type="button"
             className="text-xs font-medium text-primary hover:underline"
-            onClick={() =>
-              onChange(withCadenceWindowDates(value, { resetMeetings: true }))
-            }
+            onClick={() => onChange(withCadenceWindowDates(value, { resetMeetings: true }))}
           >
             Reset previous & next to cadence
           </button>
