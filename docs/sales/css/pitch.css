@@ -1,0 +1,188 @@
+:root {
+  --navy: #0f1b3d;
+  --navy-2: #1a2d58;
+  --ink: #12233f;
+  --accent: #3b6fa0;
+  --sky: #7eb3d9;
+  --paper: #f4f7fb;
+  --white: #ffffff;
+  --muted: #5b6b80;
+  --line: #d7e0eb;
+  --green: #15803d;
+  --amber: #c47b0a;
+  --red: #c81e1e;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: Inter, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  color: var(--ink);
+  background: #111;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+  word-spacing: 0.04em;
+}
+
+@page { size: 13.333in 7.5in; margin: 0; }
+
+.slide {
+  width: 13.333in;
+  height: 7.5in;
+  position: relative;
+  overflow: hidden;
+  page-break-after: always;
+  background: var(--paper);
+}
+.slide:last-child { page-break-after: auto; }
+
+.pad { padding: 0.55in 0.7in 0.5in; }
+.dark { background: linear-gradient(145deg, #0c1734 0%, #1a3260 68%, #2a4d78 100%); color: #fff; }
+.dark .muted { color: #c5d3e4; }
+
+.brandbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  letter-spacing: -0.02em;
+  text-transform: none;
+  font-weight: 800;
+}
+.dark .brand { color: #fff; }
+.light .brand { color: var(--navy); }
+.mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #0b1733;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mark img { height: 28px; width: 28px; object-fit: contain; mix-blend-mode: screen; }
+.dark .brandbar { color: #9ec0df; }
+.light .brandbar { color: var(--accent); }
+
+.eyebrow {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 10px;
+}
+.dark .eyebrow { color: #9ec0df; }
+
+h1 {
+  margin: 0 0 16px;
+  font-size: 48px;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  font-weight: 800;
+}
+h1 em { font-style: normal; color: #7eb3d9; }
+.light h1 { color: var(--navy); }
+
+h2 {
+  margin: 0 0 12px;
+  font-size: 32px;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  font-weight: 800;
+  color: var(--navy);
+}
+.dark h2 { color: #fff; }
+
+.lede {
+  max-width: 9.4in;
+  font-size: 18px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.dark .lede { color: #d5deea; }
+
+.foot {
+  position: absolute;
+  left: 0.7in;
+  right: 0.7in;
+  bottom: 0.28in;
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8a97a8;
+}
+.dark .foot { color: #8aa0b8; }
+
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+.grid4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; }
+
+.card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px 18px;
+}
+.card h3 { margin: 0 0 6px; font-size: 16px; color: var(--navy); }
+.card p { margin: 0; font-size: 13.5px; line-height: 1.4; color: var(--muted); }
+.card small { display: block; font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin-bottom: 6px; }
+
+.fail { border-left: 4px solid var(--red); }
+.win { border-left: 4px solid var(--green); }
+
+.stat {
+  background: #ffffff14;
+  border: 1px solid #ffffff22;
+  border-radius: 12px;
+  padding: 16px 14px;
+}
+.stat b { display: block; font-size: 28px; font-weight: 800; }
+.stat span { font-size: 12px; color: #c5d0de; }
+
+.pill {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #e8eef6;
+  color: var(--navy);
+  margin: 0 6px 6px 0;
+}
+
+.rag {
+  display: grid;
+  grid-template-columns: 1.15fr 0.95fr 1fr;
+  border-radius: 12px;
+  overflow: hidden;
+  min-height: 92px;
+  color: #fff;
+  font-weight: 800;
+}
+.rag > div { padding: 16px 14px; }
+.rag .g { background: var(--green); }
+.rag .a { background: var(--amber); }
+.rag .r { background: var(--red); }
+.rag b { display: block; font-size: 22px; }
+.rag span { display: block; font-size: 12px; font-weight: 600; opacity: 0.92; }
+
+.quote {
+  font-size: 26px;
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  max-width: 10.5in;
+}
