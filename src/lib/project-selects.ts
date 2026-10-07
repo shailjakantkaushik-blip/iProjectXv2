@@ -47,26 +47,13 @@ export const PROJECT_PORTFOLIO_SELECT = [
 export const PROJECT_OPS_EXTRAS = ["functional_area", "payback_months", "manual_rank"].join(",");
 
 /**
- * Home dashboard KPIs. Must include Project Access dimensions
- * (`portfolio`, `program`, `functional_area`, `pm_user_id`) so the same
- * grants used on every other page can keep the snapshot in scope.
- * Dedicated query key — do not share with portfolio.
+ * Home snapshot uses the same catalog as Projects / Executive.
+ * Do not add optional ops columns here (`functional_area` lives on
+ * PROJECT_OPS_EXTRAS) — a missing column empties the KPI strip.
  */
-export const PROJECT_HOME_SELECT = [
-  "id",
-  "name",
-  "status",
-  "rag",
-  "rag_override",
-  "budget",
-  "capex_incurred",
-  "benefits_realised",
-  "portfolio",
-  "program",
-  "functional_area",
-  "pm_user_id",
-].join(",");
+export const PROJECT_HOME_SELECT = PROJECT_PORTFOLIO_SELECT;
 
+/** Shared React Query key with the projects register — same rows, same grants. */
 export function projectHomeQueryKey(orgId: string | null | undefined) {
-  return ["projects", orgId, "home"] as const;
+  return ["projects", orgId] as const;
 }
