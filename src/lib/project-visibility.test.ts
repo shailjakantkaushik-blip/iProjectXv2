@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { PROJECT_HOME_SELECT, PROJECT_PORTFOLIO_SELECT } from "./project-selects.ts";
 import {
   callerHasLimitedVisibility,
   filterProjectsByVisibility,
+  homeSnapshotProjects,
   mergeProjectVisibility,
   visibilityConfigFromOrg,
 } from "./project-visibility.ts";
@@ -93,6 +95,21 @@ describe("project visibility scope", () => {
     );
   });
 
+  it("unlocks a stream-granted project only when stream rows are passed in", () => {
+    const cfg = mergeProjectVisibility({
+      rules: [{ role: "executive", mode: "scoped", stream_ids: ["s-core"] }],
+    });
+    const rows = [{ id: "p1", portfolio: "Digital", program: "Core" }];
+    assert.deepEqual(filterProjectsByVisibility(rows, "u1", ["executive"], cfg), []);
+    const visible = filterProjectsByVisibility(rows, "u1", ["executive"], cfg, [
+      { id: "s-core", project_id: "p1" },
+    ]);
+    assert.deepEqual(
+      visible.map((p) => p.id),
+      ["p1"],
+    );
+  });
+
   it("reads grants from organizations.ui_config", () => {
     const cfg = visibilityConfigFromOrg({
       ui_config: {
@@ -106,5 +123,38 @@ describe("project visibility scope", () => {
       visible.map((p) => p.id),
       ["p3"],
     );
+  });
+
+  it("keeps RLS home rows when the catalog has no grant dimensions", () => {
+    const cfg = mergeProjectVisibility({
+      rules: [{ role: "executive", mode: "scoped", programs: ["Core"] }],
+    });
+    const slim = [
+      { id: "p1", status: "In Progress", budget: 100 },
+      { id: "p2", status: "Completed", budget: 50 },
+    ];
+    assert.deepEqual(filterProjectsByVisibility(slim, "u1", ["executive"], cfg), []);
+    assert.deepEqual(
+      homeSnapshotProjects(slim, "u1", ["executive"], cfg).map((p) => p.id),
+      ["p1", "p2"],
+    );
+  });
+
+  it("still honours grants on home when rows have visibility fields", () => {
+    const cfg = mergeProjectVisibility({
+      rules: [{ role: "executive", mode: "scoped", programs: ["Core"] }],
+    });
+    assert.deepEqual(
+      homeSnapshotProjects(projects, "u1", ["executive"], cfg).map((p) => p.id),
+      ["p1"],
+    );
+  });
+
+  it("keeps the home snapshot on the same catalog columns as Projects", () => {
+    assert.equal(PROJECT_HOME_SELECT, PROJECT_PORTFOLIO_SELECT);
+    assert.equal(PROJECT_HOME_SELECT.includes("functional_area"), false);
+    assert.ok(PROJECT_HOME_SELECT.includes("portfolio"));
+    assert.ok(PROJECT_HOME_SELECT.includes("program"));
+    assert.ok(PROJECT_HOME_SELECT.includes("pm_user_id"));
   });
 });

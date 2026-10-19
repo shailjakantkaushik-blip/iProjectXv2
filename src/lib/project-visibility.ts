@@ -595,6 +595,8 @@ export function filterProjectsByVisibility<T extends VisibilityProject>(
   cfg: ProjectVisibilityConfig,
   streams?: VisibilityStream[],
 ): T[] {
+  if (!Array.isArray(projects)) return [];
+
   if (isPlatformOperatorOnly(userRoles)) {
     return [];
   }
@@ -625,4 +627,47 @@ export function filterProjectsByVisibility<T extends VisibilityProject>(
       (userId && String(p.pm_user_id || "") === userId) ||
       applicable.some((rule) => projectMatchesScope(p, rule, streams)),
   );
+}
+
+function rowHasGrantDimensions(project: VisibilityProject): boolean {
+  return (
+    project.portfolio != null ||
+    project.program != null ||
+    project.functional_area != null ||
+    project.pm_user_id != null
+  );
+}
+
+function scopeUsesStreamGrants(
+  cfg: ProjectVisibilityConfig,
+  userId: string | null | undefined,
+  userRoles: string[],
+): boolean {
+  const scope = effectiveVisibilityScope(cfg, userId, userRoles);
+  return Boolean(scope && isLimitedVisibilityMode(scope.mode) && scope.stream_ids.length);
+}
+
+/**
+ * Home KPI strip. Apply Project Access when the catalog can be evaluated;
+ * otherwise keep the RLS rows. The dedicated home select used to omit grant
+ * fields / streams, so the client filter painted every card as 0 while
+ * Projects (full catalog) still had data.
+ */
+export function homeSnapshotProjects<T extends VisibilityProject>(
+  rows: T[],
+  userId: string | null | undefined,
+  userRoles: string[],
+  cfg: ProjectVisibilityConfig,
+  streams?: VisibilityStream[],
+): T[] {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  const scoped = filterProjectsByVisibility(rows, userId, userRoles, cfg, streams);
+  if (scoped.length > 0) return scoped;
+  const canEvaluate =
+    rows.some(rowHasGrantDimensions) || (Array.isArray(streams) && streams.length > 0);
+  if (!canEvaluate) return rows;
+  if (scopeUsesStreamGrants(cfg, userId, userRoles) && !(streams && streams.length)) {
+    return rows;
+  }
+  return scoped;
 }

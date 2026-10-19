@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
 import {
   LayoutDashboard,
   FolderKanban,
@@ -26,7 +27,8 @@ import { useAuth, type AppRole } from "@/lib/auth-context";
 import { useProjectVisibility } from "@/hooks/use-project-visibility";
 import { canActOnDecision } from "@/lib/decision-approval";
 import { useAllowedPages } from "@/lib/permissions";
-import { PROJECT_HOME_SELECT, projectHomeQueryKey } from "@/lib/project-selects";
+import { PROJECT_PORTFOLIO_SELECT, projectHomeQueryKey } from "@/lib/query-selects";
+import { fetchOrgStreams } from "@/lib/project-streams";
 import { useShownRag } from "@/components/engine-rag-provider";
 import { sortProjectsByCodeName } from "@/lib/project-sort";
 
@@ -190,30 +192,74 @@ function roleHomeLabel(roles: AppRole[]) {
 }
 
 function Home() {
-  const { organization, profile, session, roles } = useAuth();
-  const { filterProjects } = useProjectVisibility();
+  const { organization, profile, session, roles, loading: authLoading } = useAuth();
+  const { snapshotProjects } = useProjectVisibility();
   const shownRagOf = useShownRag();
   const { canView } = useAllowedPages();
   const firstName = profile?.full_name?.split(" ")[0];
   const userId = session?.user?.id;
+  const orgId = organization?.id;
   const shortcuts = useMemo(
     () => shortcutsForRoles(roles).filter((s) => canView(s.to)),
     [roles, canView],
   );
 
-  const { data: projectsRaw = [], isLoading } = useQuery({
-    queryKey: projectHomeQueryKey(organization?.id),
+  const {
+    data: projectsRaw = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: projectHomeQueryKey(orgId),
     queryFn: async () => {
-      const { data, error } = await supabase.from("projects").select(PROJECT_HOME_SELECT);
-      if (error) throw error;
+      const { data, error: qErr } = await supabase
+        .from("projects")
+        .select(PROJECT_PORTFOLIO_SELECT as "*");
+      if (qErr) throw qErr;
       return sortProjectsByCodeName((data ?? []) as any[]);
     },
-    enabled: !!organization,
+    enabled: !!orgId,
+    staleTime: 15_000,
   });
+
+  const { data: faRows = [], isLoading: faLoading } = useQuery({
+    queryKey: ["projects", orgId, "functional_area"],
+    queryFn: async () => {
+      const { data, error: faErr } = await supabase.from("projects").select("id,functional_area");
+      if (faErr) return [];
+      return (data ?? []) as { id: string; functional_area?: string | null }[];
+    },
+    enabled: !!orgId,
+    staleTime: 15_000,
+  });
+
+  const { data: streams = [], isLoading: streamsLoading } = useQuery({
+    queryKey: ["project_streams", orgId],
+    queryFn: async () => {
+      try {
+        return await fetchOrgStreams(orgId!);
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!orgId,
+    staleTime: 15_000,
+  });
+
+  const catalog = useMemo(() => {
+    const fa = new Map(faRows.map((r) => [r.id, r.functional_area]));
+    if (!fa.size) return projectsRaw as { id: string }[];
+    return (projectsRaw as { id: string; functional_area?: string | null }[]).map((p) =>
+      fa.has(p.id) ? { ...p, functional_area: fa.get(p.id) } : p,
+    );
+  }, [projectsRaw, faRows]);
+
   const projects = useMemo(
-    () => filterProjects(projectsRaw as { id: string }[]),
-    [projectsRaw, filterProjects],
+    () => snapshotProjects(catalog, streams),
+    [catalog, streams, snapshotProjects],
   );
+  const snapshotLoading = authLoading || !orgId || isLoading || faLoading || streamsLoading;
 
   const { data: decisions = [] } = useQuery({
     queryKey: ["decisions", organization?.id],
@@ -254,7 +300,16 @@ function Home() {
 
       <SectionFrame>
         <SectionTitle>Portfolio snapshot</SectionTitle>
-        {isLoading ? (
+        {isError ? (
+          <div>
+            <p className="text-sm text-destructive">
+              {(error as Error)?.message || "Could not load your projects."}
+            </p>
+            <Button type="button" className="mt-3" variant="outline" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          </div>
+        ) : snapshotLoading ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="h-[72px] animate-pulse rounded-md bg-muted/70" />

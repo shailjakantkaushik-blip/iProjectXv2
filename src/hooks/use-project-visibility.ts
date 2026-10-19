@@ -6,6 +6,7 @@ import {
   callerHasLimitedVisibility,
   filterProjectsByVisibility,
   filterStreamsByVisibility,
+  homeSnapshotProjects,
   visibilityConfigFromOrg,
   type VisibilityProject,
   type VisibilityStream,
@@ -33,7 +34,13 @@ export function useProjectVisibility() {
     [userId, roles, cfg],
   );
 
-  return { cfg, limited, filterProjects, filterStreams, userId };
+  const snapshotProjects = useCallback(
+    <T extends VisibilityProject>(projects: T[], streams?: VisibilityStream[]) =>
+      homeSnapshotProjects(projects, userId, roles, cfg, streams),
+    [userId, roles, cfg],
+  );
+
+  return { cfg, limited, filterProjects, filterStreams, snapshotProjects, userId };
 }
 
 /** Project picker lists — same grants as Project Access. */
