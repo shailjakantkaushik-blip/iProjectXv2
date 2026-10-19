@@ -595,6 +595,8 @@ export function filterProjectsByVisibility<T extends VisibilityProject>(
   cfg: ProjectVisibilityConfig,
   streams?: VisibilityStream[],
 ): T[] {
+  if (!Array.isArray(projects)) return [];
+
   if (isPlatformOperatorOnly(userRoles)) {
     return [];
   }
