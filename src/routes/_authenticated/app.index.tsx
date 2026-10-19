@@ -192,8 +192,8 @@ function roleHomeLabel(roles: AppRole[]) {
 }
 
 function Home() {
-  const { organization, profile, session, roles } = useAuth();
-  const { filterProjects } = useProjectVisibility();
+  const { organization, profile, session, roles, loading: authLoading } = useAuth();
+  const { snapshotProjects } = useProjectVisibility();
   const shownRagOf = useShownRag();
   const { canView } = useAllowedPages();
   const firstName = profile?.full_name?.split(" ")[0];
@@ -256,10 +256,10 @@ function Home() {
   }, [projectsRaw, faRows]);
 
   const projects = useMemo(
-    () => filterProjects(catalog, streams),
-    [catalog, streams, filterProjects],
+    () => snapshotProjects(catalog, streams),
+    [catalog, streams, snapshotProjects],
   );
-  const snapshotLoading = isLoading || faLoading || streamsLoading;
+  const snapshotLoading = authLoading || !orgId || isLoading || faLoading || streamsLoading;
 
   const { data: decisions = [] } = useQuery({
     queryKey: ["decisions", organization?.id],

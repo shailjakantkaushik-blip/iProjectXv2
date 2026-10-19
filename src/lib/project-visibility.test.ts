@@ -4,6 +4,7 @@ import { PROJECT_HOME_SELECT, PROJECT_PORTFOLIO_SELECT } from "./project-selects
 import {
   callerHasLimitedVisibility,
   filterProjectsByVisibility,
+  homeSnapshotProjects,
   mergeProjectVisibility,
   visibilityConfigFromOrg,
 } from "./project-visibility.ts";
@@ -121,6 +122,31 @@ describe("project visibility scope", () => {
     assert.deepEqual(
       visible.map((p) => p.id),
       ["p3"],
+    );
+  });
+
+  it("keeps RLS home rows when the catalog has no grant dimensions", () => {
+    const cfg = mergeProjectVisibility({
+      rules: [{ role: "executive", mode: "scoped", programs: ["Core"] }],
+    });
+    const slim = [
+      { id: "p1", status: "In Progress", budget: 100 },
+      { id: "p2", status: "Completed", budget: 50 },
+    ];
+    assert.deepEqual(filterProjectsByVisibility(slim, "u1", ["executive"], cfg), []);
+    assert.deepEqual(
+      homeSnapshotProjects(slim, "u1", ["executive"], cfg).map((p) => p.id),
+      ["p1", "p2"],
+    );
+  });
+
+  it("still honours grants on home when rows have visibility fields", () => {
+    const cfg = mergeProjectVisibility({
+      rules: [{ role: "executive", mode: "scoped", programs: ["Core"] }],
+    });
+    assert.deepEqual(
+      homeSnapshotProjects(projects, "u1", ["executive"], cfg).map((p) => p.id),
+      ["p1"],
     );
   });
 
