@@ -1,5 +1,7 @@
 # Keep heavy / non-runtime files out of the Vercel deployment upload.
 # (Does not change app features — these are never imported by the web app.)
+# Stale bun.lock must not be scanned by the TanStack Start XSS deploy gate.
+bun.lock
 *.zip
 *.sql
 docs/
