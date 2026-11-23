@@ -11,6 +11,7 @@ import {
   HOLIDAY_ORG_WIDE,
   LEAVE_TYPES,
   canEditResourceLeave,
+  holidayAppliesToLocation,
   normalizeLocation,
   type ResourceLeave,
 } from "@/lib/resource-calendar";
@@ -193,14 +194,10 @@ export function ApplyLeavePanel({
     return leaves.filter((row) => allowed.has(row.resource_id));
   }, [scope, admin, leaves, editable]);
 
-  const locationHolidays = useMemo(() => {
-    const loc = selected?.location || "";
-    return holidays.filter((h) => {
-      const key = normalizeLocation(h.location);
-      if (key === HOLIDAY_ORG_WIDE) return true;
-      return loc && normalizeLocation(loc) === key;
-    });
-  }, [holidays, selected]);
+  const locationHolidays = useMemo(
+    () => holidays.filter((h) => holidayAppliesToLocation(h.location, selected?.location)),
+    [holidays, selected],
+  );
 
   const addLeave = useMutation({
     mutationFn: async () => {
