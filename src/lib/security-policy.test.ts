@@ -3,6 +3,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
+describe("Dependabot", () => {
+  it("watches the npm lockfile weekly", () => {
+    const text = readFileSync(join(process.cwd(), ".github/dependabot.yml"), "utf8");
+    assert.match(text, /package-ecosystem:\s*npm/);
+    assert.match(text, /interval:\s*weekly/);
+  });
+});
+
 describe("SECURITY.md", () => {
   const text = readFileSync(join(process.cwd(), "SECURITY.md"), "utf8");
 
