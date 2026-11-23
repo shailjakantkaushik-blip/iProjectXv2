@@ -1,7 +1,7 @@
 /**
  * Serve the BYOD tenant schema pack for platform-admin download.
- * Prefers the build-time artifact under public/byod; falls back to
- * concatenating supabase/migrations at runtime when that file is present.
+ * Always concatenates current supabase/migrations (minus control-plane
+ * files) so Download schema matches the app, not a stale public/byod file.
  */
 
 import { readFile, readdir } from "node:fs/promises";
@@ -30,38 +30,6 @@ export type ByodSchemaPack = {
   excluded: string[];
   generatedAt: string;
 };
-
-async function tryReadBuiltArtifact(root: string): Promise<ByodSchemaPack | null> {
-  const sqlPath = path.join(root, "public", "byod", "iprojectx-byod-schema.sql");
-  const metaPath = path.join(root, "public", "byod", "iprojectx-byod-schema.json");
-  try {
-    const sql = await readFile(sqlPath, "utf8");
-    let included: string[] = [];
-    let excluded: string[] = [...BYOD_SCHEMA_EXCLUDE];
-    let generatedAt = new Date().toISOString();
-    try {
-      const meta = JSON.parse(await readFile(metaPath, "utf8")) as {
-        generatedAt?: string;
-        included?: string[];
-        excluded?: string[];
-      };
-      if (meta.generatedAt) generatedAt = meta.generatedAt;
-      if (Array.isArray(meta.included)) included = meta.included;
-      if (Array.isArray(meta.excluded)) excluded = meta.excluded;
-    } catch {
-      /* meta optional */
-    }
-    return {
-      filename: "iprojectx-byod-schema.sql",
-      sql,
-      included,
-      excluded,
-      generatedAt,
-    };
-  } catch {
-    return null;
-  }
-}
 
 async function buildFromMigrations(root: string): Promise<ByodSchemaPack> {
   const migrationsDir = path.join(root, "supabase", "migrations");
@@ -118,8 +86,5 @@ async function buildFromMigrations(root: string): Promise<ByodSchemaPack> {
 }
 
 export async function buildByodSchemaPack(): Promise<ByodSchemaPack> {
-  const root = process.cwd();
-  const built = await tryReadBuiltArtifact(root);
-  if (built) return built;
-  return buildFromMigrations(root);
+  return buildFromMigrations(process.cwd());
 }
