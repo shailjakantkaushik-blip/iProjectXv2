@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { roleGrantsOrgAdmin } from "@/lib/org-admin-scope";
 
 const AssignableRole = z
   .string()
@@ -53,11 +54,7 @@ async function assertOrgAdminForOrg(supabase: any, userId: string, orgId: string
   if (error) throw new Error(error.message);
   if (profile?.org_id !== orgId) throw new Error("Forbidden: not a member of this organisation");
 
-  const ok = roles.some(
-    (r) =>
-      (r.role === "admin" || r.role === "org_admin") &&
-      (r.org_id === orgId || r.org_id == null),
-  );
+  const ok = roleGrantsOrgAdmin(roles, orgId);
   if (!ok) throw new Error("Forbidden: org admin only");
   return { platform: false as const };
 }
@@ -107,11 +104,7 @@ async function assertCanManageUser(
     throw new Error("Forbidden: user is not in your organisation");
   }
 
-  const ok = roles.some(
-    (r) =>
-      (r.role === "admin" || r.role === "org_admin") &&
-      (r.org_id === actorProfile.org_id || r.org_id == null),
-  );
+  const ok = roleGrantsOrgAdmin(roles, actorProfile.org_id);
   if (!ok) throw new Error("Forbidden: org admin only");
 
   return { target, targetRoleList, platform: false as const };

@@ -1,13 +1,17 @@
 /**
- * Tenant RAID / document CRUD via resolveOrgDataClient (platform or BYOD).
- * Prefer these on BYOD-active orgs so residency claims hold for browser CRUD.
+ * Tenant RAID CRUD. Platform uses the caller JWT so RLS applies.
+ * BYOD cannot reuse the platform JWT on the customer DB, so those
+ * writes still use the customer service role after membership check,
+ * with allowlisted columns only.
  */
 import { createServerFn } from "@tanstack/react-start";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { resolveOrgDataClient } from "@/lib/byod.server";
+import { pickRaidPatch, type RaidKind } from "@/lib/tenant-raid-patch";
 
-async function assertOrgMember(userClient: any, userId: string, orgId: string) {
+async function assertOrgMember(userClient: SupabaseClient, userId: string, orgId: string) {
   const { data: profile } = await userClient
     .from("profiles")
     .select("org_id")
@@ -18,14 +22,35 @@ async function assertOrgMember(userClient: any, userId: string, orgId: string) {
   }
 }
 
+async function tenantRaidClient(
+  userClient: SupabaseClient,
+  orgId: string,
+): Promise<{ client: SupabaseClient; mode: "platform" | "byod" }> {
+  const resolved = await resolveOrgDataClient(orgId);
+  if (resolved.mode === "byod") {
+    return { client: resolved.client, mode: "byod" };
+  }
+  return { client: userClient, mode: "platform" };
+}
+
 const orgSchema = z.object({ orgId: z.string().uuid() });
+const patchSchema = z.object({
+  orgId: z.string().uuid(),
+  id: z.string().uuid().optional().nullable(),
+  patch: z.record(z.string(), z.unknown()),
+});
+const idSchema = z.object({ orgId: z.string().uuid(), id: z.string().uuid() });
+
+function raidPatch(kind: RaidKind, patch: Record<string, unknown>, orgId: string) {
+  return pickRaidPatch(kind, patch, orgId) as never;
+}
 
 export const listOrgRisks = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => orgSchema.parse(d))
   .handler(async ({ data, context }) => {
     await assertOrgMember(context.supabase, context.userId, data.orgId);
-    const { client, mode } = await resolveOrgDataClient(data.orgId);
+    const { client, mode } = await tenantRaidClient(context.supabase, data.orgId);
     const { data: rows, error } = await client
       .from("risks")
       .select("*")
@@ -37,23 +62,15 @@ export const listOrgRisks = createServerFn({ method: "POST" })
 
 export const upsertOrgRisk = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z
-      .object({
-        orgId: z.string().uuid(),
-        id: z.string().uuid().optional().nullable(),
-        patch: z.record(z.string(), z.unknown()),
-      })
-      .parse(d),
-  )
+  .inputValidator((d) => patchSchema.parse(d))
   .handler(async ({ data, context }) => {
     await assertOrgMember(context.supabase, context.userId, data.orgId);
-    const { client, mode } = await resolveOrgDataClient(data.orgId);
-    const patch = { ...data.patch, org_id: data.orgId };
+    const { client, mode } = await tenantRaidClient(context.supabase, data.orgId);
+    const patch = raidPatch("risks", data.patch, data.orgId);
     if (data.id) {
       const { data: row, error } = await client
         .from("risks")
-        .update(patch as never)
+        .update(patch)
         .eq("id", data.id)
         .eq("org_id", data.orgId)
         .select("*")
@@ -61,23 +78,17 @@ export const upsertOrgRisk = createServerFn({ method: "POST" })
       if (error) throw new Error(error.message);
       return { row, mode };
     }
-    const { data: row, error } = await client
-      .from("risks")
-      .insert(patch as never)
-      .select("*")
-      .maybeSingle();
+    const { data: row, error } = await client.from("risks").insert(patch).select("*").maybeSingle();
     if (error) throw new Error(error.message);
     return { row, mode };
   });
 
 export const deleteOrgRisk = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z.object({ orgId: z.string().uuid(), id: z.string().uuid() }).parse(d),
-  )
+  .inputValidator((d) => idSchema.parse(d))
   .handler(async ({ data, context }) => {
     await assertOrgMember(context.supabase, context.userId, data.orgId);
-    const { client, mode } = await resolveOrgDataClient(data.orgId);
+    const { client, mode } = await tenantRaidClient(context.supabase, data.orgId);
     const { error } = await client
       .from("risks")
       .delete()
@@ -92,7 +103,7 @@ export const listOrgIssues = createServerFn({ method: "POST" })
   .inputValidator((d) => orgSchema.parse(d))
   .handler(async ({ data, context }) => {
     await assertOrgMember(context.supabase, context.userId, data.orgId);
-    const { client, mode } = await resolveOrgDataClient(data.orgId);
+    const { client, mode } = await tenantRaidClient(context.supabase, data.orgId);
     const { data: rows, error } = await client
       .from("issues")
       .select("*")
@@ -104,23 +115,15 @@ export const listOrgIssues = createServerFn({ method: "POST" })
 
 export const upsertOrgIssue = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z
-      .object({
-        orgId: z.string().uuid(),
-        id: z.string().uuid().optional().nullable(),
-        patch: z.record(z.string(), z.unknown()),
-      })
-      .parse(d),
-  )
+  .inputValidator((d) => patchSchema.parse(d))
   .handler(async ({ data, context }) => {
     await assertOrgMember(context.supabase, context.userId, data.orgId);
-    const { client, mode } = await resolveOrgDataClient(data.orgId);
-    const patch = { ...data.patch, org_id: data.orgId };
+    const { client, mode } = await tenantRaidClient(context.supabase, data.orgId);
+    const patch = raidPatch("issues", data.patch, data.orgId);
     if (data.id) {
       const { data: row, error } = await client
         .from("issues")
-        .update(patch as never)
+        .update(patch)
         .eq("id", data.id)
         .eq("org_id", data.orgId)
         .select("*")
@@ -130,7 +133,7 @@ export const upsertOrgIssue = createServerFn({ method: "POST" })
     }
     const { data: row, error } = await client
       .from("issues")
-      .insert(patch as never)
+      .insert(patch)
       .select("*")
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -139,12 +142,10 @@ export const upsertOrgIssue = createServerFn({ method: "POST" })
 
 export const deleteOrgIssue = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z.object({ orgId: z.string().uuid(), id: z.string().uuid() }).parse(d),
-  )
+  .inputValidator((d) => idSchema.parse(d))
   .handler(async ({ data, context }) => {
     await assertOrgMember(context.supabase, context.userId, data.orgId);
-    const { client, mode } = await resolveOrgDataClient(data.orgId);
+    const { client, mode } = await tenantRaidClient(context.supabase, data.orgId);
     const { error } = await client
       .from("issues")
       .delete()
@@ -159,7 +160,7 @@ export const listOrgActions = createServerFn({ method: "POST" })
   .inputValidator((d) => orgSchema.parse(d))
   .handler(async ({ data, context }) => {
     await assertOrgMember(context.supabase, context.userId, data.orgId);
-    const { client, mode } = await resolveOrgDataClient(data.orgId);
+    const { client, mode } = await tenantRaidClient(context.supabase, data.orgId);
     const { data: rows, error } = await client
       .from("actions")
       .select("*")
@@ -171,23 +172,15 @@ export const listOrgActions = createServerFn({ method: "POST" })
 
 export const upsertOrgAction = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z
-      .object({
-        orgId: z.string().uuid(),
-        id: z.string().uuid().optional().nullable(),
-        patch: z.record(z.string(), z.unknown()),
-      })
-      .parse(d),
-  )
+  .inputValidator((d) => patchSchema.parse(d))
   .handler(async ({ data, context }) => {
     await assertOrgMember(context.supabase, context.userId, data.orgId);
-    const { client, mode } = await resolveOrgDataClient(data.orgId);
-    const patch = { ...data.patch, org_id: data.orgId };
+    const { client, mode } = await tenantRaidClient(context.supabase, data.orgId);
+    const patch = raidPatch("actions", data.patch, data.orgId);
     if (data.id) {
       const { data: row, error } = await client
         .from("actions")
-        .update(patch as never)
+        .update(patch)
         .eq("id", data.id)
         .eq("org_id", data.orgId)
         .select("*")
@@ -197,7 +190,7 @@ export const upsertOrgAction = createServerFn({ method: "POST" })
     }
     const { data: row, error } = await client
       .from("actions")
-      .insert(patch as never)
+      .insert(patch)
       .select("*")
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -206,12 +199,10 @@ export const upsertOrgAction = createServerFn({ method: "POST" })
 
 export const deleteOrgAction = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z.object({ orgId: z.string().uuid(), id: z.string().uuid() }).parse(d),
-  )
+  .inputValidator((d) => idSchema.parse(d))
   .handler(async ({ data, context }) => {
     await assertOrgMember(context.supabase, context.userId, data.orgId);
-    const { client, mode } = await resolveOrgDataClient(data.orgId);
+    const { client, mode } = await tenantRaidClient(context.supabase, data.orgId);
     const { error } = await client
       .from("actions")
       .delete()

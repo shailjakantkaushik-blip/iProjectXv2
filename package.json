@@ -20,6 +20,7 @@
     "test:live": "node scripts/live-public-smoke.mjs",
     "test:live-platform": "node scripts/live-platform-rls.mjs",
     "test:live-signed-in": "node scripts/live-platform-signed-in.mjs",
+    "test:live-two-org": "node scripts/live-two-org-isolation.mjs",
     "lint": "eslint .",
     "format": "prettier --write .",
     "build:replication": "node scripts/build-complete-supabase-replication.mjs"
