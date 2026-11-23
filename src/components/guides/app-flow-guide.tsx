@@ -115,6 +115,7 @@ export function AppFlowGuide({ tab, onTab }: { tab: AboutTab; onTab: (t: AboutTa
           <div className="flex flex-wrap gap-2">
             <a
               href="/docs/iProjectX-User-Manual.pdf"
+              download="iProjectX-User-Manual.pdf"
               className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
             >
               <FileDown className="h-4 w-4" />
@@ -122,6 +123,7 @@ export function AppFlowGuide({ tab, onTab }: { tab: AboutTab; onTab: (t: AboutTa
             </a>
             <a
               href="/docs/iProjectX-Sales-Brochure.pdf"
+              download="iProjectX-Sales-Brochure.pdf"
               className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
             >
               <FileDown className="h-4 w-4" />
@@ -172,9 +174,9 @@ export function AppFlowGuide({ tab, onTab }: { tab: AboutTab; onTab: (t: AboutTa
               approved envelope is the stream Budget in Data Editor — the project is the roll-up.
             </Step>
             <Step n="3" title="Freeze a Plan">
-              Estimation Planning puts people and further costs on each stream and phase. Tag further
-              costs CapEx or OpEx. Apply writes planned dates, CapEx/OpEx plan, and Planned FTE.
-              Plan does not write actuals.
+              Estimation Planning puts people and further costs on each stream and phase. Tag
+              further costs CapEx or OpEx. Apply writes planned dates, CapEx/OpEx plan, and Planned
+              FTE. Plan does not write actuals.
             </Step>
             <Step n="4" title="Keep a Forecast">
               FY Allocation forecast $ is the in-flight outlook by year. It starts equal to Plan. A

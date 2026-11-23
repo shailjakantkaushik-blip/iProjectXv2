@@ -3,7 +3,7 @@
  * Requires Google Chrome / Chromium on PATH (or CHROME_PATH).
  */
 import { spawnSync } from "node:child_process";
-import { mkdirSync, existsSync, mkdtempSync, copyFileSync } from "node:fs";
+import { mkdirSync, existsSync, mkdtempSync, copyFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -71,7 +71,16 @@ mkdirSync(join(root, "docs", "user-manual", "pdf"), { recursive: true });
 mkdirSync(publicDocs, { recursive: true });
 const profile = mkdtempSync(join(tmpdir(), "ipx-docs-chrome-"));
 
+function unlinkIfExists(path) {
+  try {
+    unlinkSync(path);
+  } catch (err) {
+    if (err && err.code !== "ENOENT") throw err;
+  }
+}
+
 for (const job of jobs) {
+  unlinkIfExists(job.pdf);
   const url = pathToFileURL(job.html).href;
   const args = [
     "--headless",
@@ -87,10 +96,20 @@ for (const job of jobs) {
     `--print-to-pdf=${job.pdf}`,
     url,
   ];
-  const run = spawnSync("timeout", [job.timeout, chrome, ...args], { encoding: "utf8" });
-  if (!existsSync(job.pdf)) {
-    console.error(run.stderr || run.stdout || `Failed ${job.html}`);
-    process.exit(run.status || 1);
+  const run = spawnSync(chrome, args, {
+    encoding: "utf8",
+    timeout: Number(job.timeout) * 1000,
+    killSignal: "SIGKILL",
+  });
+  const timedOut = run.error?.code === "ETIMEDOUT";
+  if (run.error || run.status !== 0 || !existsSync(job.pdf)) {
+    console.error(
+      run.error?.message ||
+        run.stderr ||
+        run.stdout ||
+        `${timedOut ? "Timed out" : "Failed"} ${job.html}`,
+    );
+    process.exit(timedOut ? 124 : run.status || 1);
   }
   const name = job.pdf.split("/").pop();
   const publicFacing = name !== "iProjectX-Seller-Playbook.pdf";

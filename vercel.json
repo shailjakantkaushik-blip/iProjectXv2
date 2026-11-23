@@ -41,6 +41,15 @@
       ]
     },
     {
+      "source": "/docs/(.*).pdf",
+      "headers": [
+        {
+          "key": "Content-Disposition",
+          "value": "attachment"
+        }
+      ]
+    },
+    {
       "source": "/turnstile-frame.html",
       "headers": [
         { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
