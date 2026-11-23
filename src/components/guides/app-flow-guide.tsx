@@ -122,6 +122,14 @@ export function AppFlowGuide({ tab, onTab }: { tab: AboutTab; onTab: (t: AboutTa
               User manual (PDF)
             </a>
             <a
+              href="/docs/iProjectX-Platform-Pitch.pdf"
+              download="iProjectX-Platform-Pitch.pdf"
+              className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
+            >
+              <FileDown className="h-4 w-4" />
+              Platform sales pitch (PDF)
+            </a>
+            <a
               href="/docs/iProjectX-Sales-Brochure.pdf"
               download="iProjectX-Sales-Brochure.pdf"
               className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
