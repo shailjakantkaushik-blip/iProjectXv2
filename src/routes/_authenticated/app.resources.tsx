@@ -1,10 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { RESOURCES_SELECT, RESOURCE_ALLOCATIONS_SELECT } from "@/lib/query-selects";
-import { useAuth } from "@/lib/auth-context";
-import { ResourceCalendarPanel } from "@/components/resource-calendar-panel";
+import { isAdmin, useAuth } from "@/lib/auth-context";
 import { useOrgResourceCalendar } from "@/hooks/use-resource-calendar";
 import { monthCapacityHours, monthStartEnd, rangeCapacityHours } from "@/lib/resource-calendar";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
@@ -54,14 +53,14 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useScopedProjects } from "@/hooks/use-project-visibility";
 
-type ResTab = "utilisation" | "pva" | "calendars";
-type ResSearch = { tab?: ResTab };
+type ResTab = "utilisation" | "pva";
+type ResSearch = { tab?: ResTab | "calendars" };
 
 export const Route = createFileRoute("/_authenticated/app/resources")({
   validateSearch: (s: Record<string, unknown>): ResSearch => ({
     tab:
       s.tab === "calendars" || s.tab === "utilisation" || s.tab === "pva"
-        ? (s.tab as ResTab)
+        ? (s.tab as ResSearch["tab"])
         : undefined,
   }),
   component: ResourcesPage,
@@ -167,11 +166,12 @@ function heatColor(pct: number): string {
 }
 
 function ResourcesPage() {
-  const { organization } = useAuth();
+  const { organization, roles } = useAuth();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
-  const [tab, setTab] = useState<ResTab>(search.tab || "pva");
+  const [tab, setTab] = useState<ResTab>(search.tab === "utilisation" ? "utilisation" : "pva");
   useEffect(() => {
+    if (search.tab === "calendars") return;
     setTab(search.tab || "pva");
   }, [search.tab]);
   const setResTab = (id: ResTab) => {
@@ -830,6 +830,10 @@ function ResourcesPage() {
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [allocations, filteredActuals, streams, gates, projectsById, streamProjectById, resById]);
 
+  if (search.tab === "calendars") {
+    return <Navigate to={isAdmin(roles) ? "/app/org-holidays" : "/app/apply-leave"} replace />;
+  }
+
   return (
     <PageExport name="Resource_Capacity" title="Resource Capacity & Skill Intelligence">
       <PageHeading icon="👥">Resource Capacity & Skill Intelligence</PageHeading>
@@ -838,9 +842,13 @@ function ResourcesPage() {
         phase. <strong>Demand</strong> comes from work-item resource effort. <strong>Actual</strong>{" "}
         comes from approved timesheets. Daily hours/day (Timesheets → Resource setup) set weekly FTE
         capacity (hours/day × working days). Public holidays for the person&apos;s location and
-        dated leave (Holidays & leave tab) reduce monthly FTE capacity. Allocation % is only load vs
-        that capacity — it is not Plan. Use Hours / Days / Weeks to change how effort quantities are
-        shown (8h day, 5-day week). Percent and $ are unchanged.
+        dated leave (
+        <Link to="/app/apply-leave" className="font-medium text-primary hover:underline">
+          Apply leave
+        </Link>
+        ) reduce monthly FTE capacity. Allocation % is only load vs that capacity — it is not Plan.
+        Use Hours / Days / Weeks to change how effort quantities are shown (8h day, 5-day week).
+        Percent and $ are unchanged.
       </p>
       <div className="mb-3">
         <EffortUnitCheckboxes value={effortUnit} onChange={setEffortUnit} />
@@ -850,7 +858,6 @@ function ResourcesPage() {
           [
             ["pva", "Alloc vs demand vs actual"],
             ["utilisation", "Utilisation (alloc + actual)"],
-            ["calendars", "Holidays & leave"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -878,8 +885,6 @@ function ResourcesPage() {
           effortUnit={effortUnit}
         />
       ) : null}
-
-      {tab === "calendars" ? <ResourceCalendarPanel resources={resourcesAll} /> : null}
 
       {tab === "utilisation" ? (
         <>

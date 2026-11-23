@@ -74,11 +74,7 @@ const REALTIME_OPTIONAL = new Set([
 ]);
 
 /** Minimal always-on set — cheap invalidation for shell + KPI freshness. */
-export const LIVE_SYNC_CORE_TABLES = [
-  "projects",
-  "project_streams",
-  "org_kpi_summaries",
-] as const;
+export const LIVE_SYNC_CORE_TABLES = ["projects", "project_streams", "org_kpi_summaries"] as const;
 
 /** Route presets — subscribe only to what the open surface needs. */
 export const LIVE_SYNC_ROUTE_TABLES: Record<string, readonly string[]> = {
@@ -161,11 +157,7 @@ export const LIVE_SYNC_ROUTE_TABLES: Record<string, readonly string[]> = {
     "fy_allocations",
     "opex_other_costs",
   ],
-  "/app/budget-vs-plan": [
-    ...LIVE_SYNC_CORE_TABLES,
-    "financials_monthly",
-    "fy_allocations",
-  ],
+  "/app/budget-vs-plan": [...LIVE_SYNC_CORE_TABLES, "financials_monthly", "fy_allocations"],
   "/app/work-items": [
     ...LIVE_SYNC_CORE_TABLES,
     "work_items",
@@ -192,6 +184,18 @@ export const LIVE_SYNC_ROUTE_TABLES: Record<string, readonly string[]> = {
     ...LIVE_SYNC_CORE_TABLES,
     "resources",
     "resource_allocations",
+    "org_public_holidays",
+    "resource_leaves",
+  ],
+  "/app/apply-leave": [
+    ...LIVE_SYNC_CORE_TABLES,
+    "resources",
+    "org_public_holidays",
+    "resource_leaves",
+  ],
+  "/app/org-holidays": [
+    ...LIVE_SYNC_CORE_TABLES,
+    "resources",
     "org_public_holidays",
     "resource_leaves",
   ],

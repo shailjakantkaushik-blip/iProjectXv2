@@ -1701,7 +1701,7 @@ const TIMESHEET_SETUP_GLOSSARY: ColumnGlossaryItem[] = [
   {
     name: "Hours / day",
     description:
-      "Max hours this person can work in a day (1–24). Timesheets, work-item demand, and estimation planning flag Over (> cap), Optimal (≥ 60% of cap), or Under. Saving also sets weekly capacity to hours/day × 5. Public holidays and leave on Resources → Holidays & leave reduce working days used for load.",
+      "Max hours this person can work in a day (1–24). Timesheets, work-item demand, and estimation planning flag Over (> cap), Optimal (≥ 60% of cap), or Under. Saving also sets weekly capacity to hours/day × 5. Public holidays and leave on Apply leave (org admins: Org holidays & leave) reduce working days used for load.",
   },
   {
     name: "Hourly cost",

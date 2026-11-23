@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   HOLIDAY_ORG_WIDE,
+  canEditResourceLeave,
   buildResourceCalendarIndex,
   countWorkingDaysInclusive,
   holidayAppliesToLocation,
@@ -143,5 +144,14 @@ describe("resource calendar (holidays + leave)", () => {
     const feb = split.get("2026-02-01") || 0;
     assert.equal(Math.round((jan + feb) * 10) / 10, 100);
     assert.ok(feb > jan, `February should take more of 100h (got jan=${jan} feb=${feb})`);
+  });
+
+  it("lets the linked person, their manager, or an admin apply leave", () => {
+    const ada = { user_id: "ada", manager_user_id: "mgr" };
+    assert.equal(canEditResourceLeave({ admin: true, userId: "other", resource: ada }), true);
+    assert.equal(canEditResourceLeave({ userId: "ada", resource: ada }), true);
+    assert.equal(canEditResourceLeave({ userId: "mgr", resource: ada }), true);
+    assert.equal(canEditResourceLeave({ userId: "other", resource: ada }), false);
+    assert.equal(canEditResourceLeave({ userId: "ada" }), false);
   });
 });

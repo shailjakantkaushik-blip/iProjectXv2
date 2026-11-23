@@ -28,6 +28,7 @@ import { Route as AuthenticatedAppActionsRouteImport } from './routes/_authentic
 import { Route as AuthenticatedAppAgileRouteImport } from './routes/_authenticated/app.agile'
 import { Route as AuthenticatedAppAiAssistRouteImport } from './routes/_authenticated/app.ai-assist'
 import { Route as AuthenticatedAppAlertEmailsRouteImport } from './routes/_authenticated/app.alert-emails'
+import { Route as AuthenticatedAppApplyLeaveRouteImport } from './routes/_authenticated/app.apply-leave'
 import { Route as AuthenticatedAppAuditLogRouteImport } from './routes/_authenticated/app.audit-log'
 import { Route as AuthenticatedAppBenefitsRouteImport } from './routes/_authenticated/app.benefits'
 import { Route as AuthenticatedAppBillingRouteImport } from './routes/_authenticated/app.billing'
@@ -58,6 +59,7 @@ import { Route as AuthenticatedAppLessonsRouteImport } from './routes/_authentic
 import { Route as AuthenticatedAppLicensesRouteImport } from './routes/_authenticated/app.licenses'
 import { Route as AuthenticatedAppMyWorkRouteImport } from './routes/_authenticated/app.my-work'
 import { Route as AuthenticatedAppNavigationRouteImport } from './routes/_authenticated/app.navigation'
+import { Route as AuthenticatedAppOrgHolidaysRouteImport } from './routes/_authenticated/app.org-holidays'
 import { Route as AuthenticatedAppPageDownloadsRouteImport } from './routes/_authenticated/app.page-downloads'
 import { Route as AuthenticatedAppPermissionsRouteImport } from './routes/_authenticated/app.permissions'
 import { Route as AuthenticatedAppPhaseFinancialsRouteImport } from './routes/_authenticated/app.phase-financials'
@@ -217,6 +219,12 @@ const AuthenticatedAppAlertEmailsRoute =
   AuthenticatedAppAlertEmailsRouteImport.update({
     id: '/alert-emails',
     path: '/alert-emails',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
+const AuthenticatedAppApplyLeaveRoute =
+  AuthenticatedAppApplyLeaveRouteImport.update({
+    id: '/apply-leave',
+    path: '/apply-leave',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
 const AuthenticatedAppAuditLogRoute =
@@ -391,6 +399,12 @@ const AuthenticatedAppNavigationRoute =
   AuthenticatedAppNavigationRouteImport.update({
     id: '/navigation',
     path: '/navigation',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
+const AuthenticatedAppOrgHolidaysRoute =
+  AuthenticatedAppOrgHolidaysRouteImport.update({
+    id: '/org-holidays',
+    path: '/org-holidays',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
 const AuthenticatedAppPageDownloadsRoute =
@@ -791,6 +805,7 @@ export interface FileRoutesByFullPath {
   '/app/agile': typeof AuthenticatedAppAgileRoute
   '/app/ai-assist': typeof AuthenticatedAppAiAssistRoute
   '/app/alert-emails': typeof AuthenticatedAppAlertEmailsRoute
+  '/app/apply-leave': typeof AuthenticatedAppApplyLeaveRoute
   '/app/audit-log': typeof AuthenticatedAppAuditLogRoute
   '/app/benefits': typeof AuthenticatedAppBenefitsRoute
   '/app/billing': typeof AuthenticatedAppBillingRoute
@@ -821,6 +836,7 @@ export interface FileRoutesByFullPath {
   '/app/licenses': typeof AuthenticatedAppLicensesRoute
   '/app/my-work': typeof AuthenticatedAppMyWorkRoute
   '/app/navigation': typeof AuthenticatedAppNavigationRoute
+  '/app/org-holidays': typeof AuthenticatedAppOrgHolidaysRoute
   '/app/page-downloads': typeof AuthenticatedAppPageDownloadsRoute
   '/app/permissions': typeof AuthenticatedAppPermissionsRoute
   '/app/phase-financials': typeof AuthenticatedAppPhaseFinancialsRoute
@@ -904,6 +920,7 @@ export interface FileRoutesByTo {
   '/app/agile': typeof AuthenticatedAppAgileRoute
   '/app/ai-assist': typeof AuthenticatedAppAiAssistRoute
   '/app/alert-emails': typeof AuthenticatedAppAlertEmailsRoute
+  '/app/apply-leave': typeof AuthenticatedAppApplyLeaveRoute
   '/app/audit-log': typeof AuthenticatedAppAuditLogRoute
   '/app/benefits': typeof AuthenticatedAppBenefitsRoute
   '/app/billing': typeof AuthenticatedAppBillingRoute
@@ -934,6 +951,7 @@ export interface FileRoutesByTo {
   '/app/licenses': typeof AuthenticatedAppLicensesRoute
   '/app/my-work': typeof AuthenticatedAppMyWorkRoute
   '/app/navigation': typeof AuthenticatedAppNavigationRoute
+  '/app/org-holidays': typeof AuthenticatedAppOrgHolidaysRoute
   '/app/page-downloads': typeof AuthenticatedAppPageDownloadsRoute
   '/app/permissions': typeof AuthenticatedAppPermissionsRoute
   '/app/phase-financials': typeof AuthenticatedAppPhaseFinancialsRoute
@@ -1019,6 +1037,7 @@ export interface FileRoutesById {
   '/_authenticated/app/agile': typeof AuthenticatedAppAgileRoute
   '/_authenticated/app/ai-assist': typeof AuthenticatedAppAiAssistRoute
   '/_authenticated/app/alert-emails': typeof AuthenticatedAppAlertEmailsRoute
+  '/_authenticated/app/apply-leave': typeof AuthenticatedAppApplyLeaveRoute
   '/_authenticated/app/audit-log': typeof AuthenticatedAppAuditLogRoute
   '/_authenticated/app/benefits': typeof AuthenticatedAppBenefitsRoute
   '/_authenticated/app/billing': typeof AuthenticatedAppBillingRoute
@@ -1049,6 +1068,7 @@ export interface FileRoutesById {
   '/_authenticated/app/licenses': typeof AuthenticatedAppLicensesRoute
   '/_authenticated/app/my-work': typeof AuthenticatedAppMyWorkRoute
   '/_authenticated/app/navigation': typeof AuthenticatedAppNavigationRoute
+  '/_authenticated/app/org-holidays': typeof AuthenticatedAppOrgHolidaysRoute
   '/_authenticated/app/page-downloads': typeof AuthenticatedAppPageDownloadsRoute
   '/_authenticated/app/permissions': typeof AuthenticatedAppPermissionsRoute
   '/_authenticated/app/phase-financials': typeof AuthenticatedAppPhaseFinancialsRoute
@@ -1135,6 +1155,7 @@ export interface FileRouteTypes {
     | '/app/agile'
     | '/app/ai-assist'
     | '/app/alert-emails'
+    | '/app/apply-leave'
     | '/app/audit-log'
     | '/app/benefits'
     | '/app/billing'
@@ -1165,6 +1186,7 @@ export interface FileRouteTypes {
     | '/app/licenses'
     | '/app/my-work'
     | '/app/navigation'
+    | '/app/org-holidays'
     | '/app/page-downloads'
     | '/app/permissions'
     | '/app/phase-financials'
@@ -1248,6 +1270,7 @@ export interface FileRouteTypes {
     | '/app/agile'
     | '/app/ai-assist'
     | '/app/alert-emails'
+    | '/app/apply-leave'
     | '/app/audit-log'
     | '/app/benefits'
     | '/app/billing'
@@ -1278,6 +1301,7 @@ export interface FileRouteTypes {
     | '/app/licenses'
     | '/app/my-work'
     | '/app/navigation'
+    | '/app/org-holidays'
     | '/app/page-downloads'
     | '/app/permissions'
     | '/app/phase-financials'
@@ -1362,6 +1386,7 @@ export interface FileRouteTypes {
     | '/_authenticated/app/agile'
     | '/_authenticated/app/ai-assist'
     | '/_authenticated/app/alert-emails'
+    | '/_authenticated/app/apply-leave'
     | '/_authenticated/app/audit-log'
     | '/_authenticated/app/benefits'
     | '/_authenticated/app/billing'
@@ -1392,6 +1417,7 @@ export interface FileRouteTypes {
     | '/_authenticated/app/licenses'
     | '/_authenticated/app/my-work'
     | '/_authenticated/app/navigation'
+    | '/_authenticated/app/org-holidays'
     | '/_authenticated/app/page-downloads'
     | '/_authenticated/app/permissions'
     | '/_authenticated/app/phase-financials'
@@ -1612,6 +1638,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppAlertEmailsRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
+    '/_authenticated/app/apply-leave': {
+      id: '/_authenticated/app/apply-leave'
+      path: '/apply-leave'
+      fullPath: '/app/apply-leave'
+      preLoaderRoute: typeof AuthenticatedAppApplyLeaveRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
     '/_authenticated/app/audit-log': {
       id: '/_authenticated/app/audit-log'
       path: '/audit-log'
@@ -1820,6 +1853,13 @@ declare module '@tanstack/react-router' {
       path: '/navigation'
       fullPath: '/app/navigation'
       preLoaderRoute: typeof AuthenticatedAppNavigationRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/app/org-holidays': {
+      id: '/_authenticated/app/org-holidays'
+      path: '/org-holidays'
+      fullPath: '/app/org-holidays'
+      preLoaderRoute: typeof AuthenticatedAppOrgHolidaysRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
     '/_authenticated/app/page-downloads': {
@@ -2297,6 +2337,7 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppAgileRoute: typeof AuthenticatedAppAgileRoute
   AuthenticatedAppAiAssistRoute: typeof AuthenticatedAppAiAssistRoute
   AuthenticatedAppAlertEmailsRoute: typeof AuthenticatedAppAlertEmailsRoute
+  AuthenticatedAppApplyLeaveRoute: typeof AuthenticatedAppApplyLeaveRoute
   AuthenticatedAppAuditLogRoute: typeof AuthenticatedAppAuditLogRoute
   AuthenticatedAppBenefitsRoute: typeof AuthenticatedAppBenefitsRoute
   AuthenticatedAppBillingRoute: typeof AuthenticatedAppBillingRoute
@@ -2327,6 +2368,7 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppLicensesRoute: typeof AuthenticatedAppLicensesRoute
   AuthenticatedAppMyWorkRoute: typeof AuthenticatedAppMyWorkRoute
   AuthenticatedAppNavigationRoute: typeof AuthenticatedAppNavigationRoute
+  AuthenticatedAppOrgHolidaysRoute: typeof AuthenticatedAppOrgHolidaysRoute
   AuthenticatedAppPageDownloadsRoute: typeof AuthenticatedAppPageDownloadsRoute
   AuthenticatedAppPermissionsRoute: typeof AuthenticatedAppPermissionsRoute
   AuthenticatedAppPhaseFinancialsRoute: typeof AuthenticatedAppPhaseFinancialsRoute
@@ -2370,6 +2412,7 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppAgileRoute: AuthenticatedAppAgileRoute,
   AuthenticatedAppAiAssistRoute: AuthenticatedAppAiAssistRoute,
   AuthenticatedAppAlertEmailsRoute: AuthenticatedAppAlertEmailsRoute,
+  AuthenticatedAppApplyLeaveRoute: AuthenticatedAppApplyLeaveRoute,
   AuthenticatedAppAuditLogRoute: AuthenticatedAppAuditLogRoute,
   AuthenticatedAppBenefitsRoute: AuthenticatedAppBenefitsRoute,
   AuthenticatedAppBillingRoute: AuthenticatedAppBillingRoute,
@@ -2403,6 +2446,7 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppLicensesRoute: AuthenticatedAppLicensesRoute,
   AuthenticatedAppMyWorkRoute: AuthenticatedAppMyWorkRoute,
   AuthenticatedAppNavigationRoute: AuthenticatedAppNavigationRoute,
+  AuthenticatedAppOrgHolidaysRoute: AuthenticatedAppOrgHolidaysRoute,
   AuthenticatedAppPageDownloadsRoute: AuthenticatedAppPageDownloadsRoute,
   AuthenticatedAppPermissionsRoute: AuthenticatedAppPermissionsRoute,
   AuthenticatedAppPhaseFinancialsRoute: AuthenticatedAppPhaseFinancialsRoute,

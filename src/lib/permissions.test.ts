@@ -3,7 +3,13 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { PAGES, capabilityKey, pageKey, resolveCanViewPage } from "./permissions-acl.ts";
+import {
+  ADMIN_ONLY_PAGES,
+  PAGES,
+  capabilityKey,
+  pageKey,
+  resolveCanViewPage,
+} from "./permissions-acl.ts";
 
 describe("page ACL", () => {
   it("admins and org admins see every non-admin-only page", () => {
@@ -17,15 +23,19 @@ describe("page ACL", () => {
 
   it("honours an explicit can_view row", () => {
     assert.equal(
-      resolveCanViewPage("/app/projects", ["viewer"], [
-        { role: "viewer", table_name: pageKey("/app/projects"), can_view: true },
-      ]),
+      resolveCanViewPage(
+        "/app/projects",
+        ["viewer"],
+        [{ role: "viewer", table_name: pageKey("/app/projects"), can_view: true }],
+      ),
       true,
     );
     assert.equal(
-      resolveCanViewPage("/app/projects", ["viewer"], [
-        { role: "viewer", table_name: pageKey("/app/projects"), can_view: false },
-      ]),
+      resolveCanViewPage(
+        "/app/projects",
+        ["viewer"],
+        [{ role: "viewer", table_name: pageKey("/app/projects"), can_view: false }],
+      ),
       false,
     );
   });
@@ -33,6 +43,10 @@ describe("page ACL", () => {
   it("keeps admin-only pages off org members who are not admin", () => {
     assert.equal(resolveCanViewPage("/app/audit-log", ["project_manager"], []), false);
     assert.equal(resolveCanViewPage("/app/audit-log", ["org_admin"], []), true);
+    assert.equal(resolveCanViewPage("/app/org-holidays", ["pm"], []), false);
+    assert.equal(resolveCanViewPage("/app/org-holidays", ["org_admin"], []), true);
+    assert.equal(ADMIN_ONLY_PAGES.has("/app/apply-leave"), false);
+    assert.equal(ADMIN_ONLY_PAGES.has("/app/org-holidays"), true);
   });
 
   it("lets platform admins open the role permissions page", () => {
@@ -82,6 +96,8 @@ describe("page ACL", () => {
       "/app/decisions",
       "/app/governance-channels",
       "/app/resources",
+      "/app/apply-leave",
+      "/app/org-holidays",
       "/app/alert-emails",
     ]) {
       assert.ok(paths.has(required), `missing page ${required}`);

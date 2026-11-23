@@ -36,13 +36,6 @@ const CARDS = [
     desc: "Structure your organisation into BUs and programs",
   },
   {
-    to: "/app/resources",
-    search: { tab: "calendars" as const },
-    icon: CalendarDays,
-    title: "Holidays & leave",
-    desc: "Public holidays by geography and dated resource leave used in estimation and capacity",
-  },
-  {
     to: "/app/stage-gate-config",
     icon: Flag,
     title: "Stage Gates",
@@ -76,6 +69,12 @@ const CARDS = [
 
 /** Org-admin only — never include platform settings / landing here. */
 const ORG_ADMIN_CARDS = [
+  {
+    to: "/app/org-holidays",
+    icon: CalendarDays,
+    title: "Org holidays & leave",
+    desc: "Public holidays by geography and the organisation leave register used in estimation and capacity",
+  },
   {
     to: "/app/integrations",
     icon: Link2,

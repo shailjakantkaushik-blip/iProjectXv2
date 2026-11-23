@@ -29,7 +29,22 @@ export type CalendarResourceLike = {
   location?: string | null;
   hours_per_day?: number | null;
   capacity_hours_week?: number | null;
+  user_id?: string | null;
+  manager_user_id?: string | null;
 };
+
+/** Org admins, the linked person, or that person's resource manager. */
+export function canEditResourceLeave(opts: {
+  admin?: boolean;
+  userId?: string | null;
+  resource?: { user_id?: string | null; manager_user_id?: string | null } | null;
+}): boolean {
+  if (opts.admin) return true;
+  const uid = opts.userId;
+  const r = opts.resource;
+  if (!uid || !r) return false;
+  return r.user_id === uid || r.manager_user_id === uid;
+}
 
 export function isoDateOnly(v?: string | null): string {
   return String(v || "").slice(0, 10);

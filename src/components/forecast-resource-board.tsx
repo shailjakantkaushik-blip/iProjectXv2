@@ -325,7 +325,7 @@ export function ForecastResourceBoard({
         Available hours are total capacity through the plan window minus hours already allocated or
         assigned here. Load is Over / Optimal / Under vs each person&apos;s hours/day cap
         (Timesheets → Resource setup; weekly = hours/day × 5). Public holidays for their location
-        and dated leave (Resources → Holidays & leave) are treated as non-working days.
+        and dated leave (Apply leave) are treated as non-working days.
       </p>
       <div className="overflow-x-auto">
         <div
