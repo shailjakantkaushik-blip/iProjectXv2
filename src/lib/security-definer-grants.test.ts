@@ -65,3 +65,18 @@ describe("refresh_org_kpi_summary caller check", () => {
     assert.doesNotMatch(last, /TO anon/i);
   });
 });
+
+describe("sync_org_resources_from_profiles caller check", () => {
+  const sql = migrationSql();
+  const body = lastFunctionBody(sql, "sync_org_resources_from_profiles");
+
+  it("requires org-admin of the home org when _org_id is set", () => {
+    assert.match(body, /public\.has_any_admin\(auth\.uid\(\)\)/);
+    assert.match(body, /home IS DISTINCT FROM _org_id/);
+  });
+
+  it("does not let a signed-in admin sync every organisation", () => {
+    assert.match(body, /orgs := ARRAY\[home\]/);
+    assert.match(body, /auth\.uid\(\) IS NOT NULL/);
+  });
+});
