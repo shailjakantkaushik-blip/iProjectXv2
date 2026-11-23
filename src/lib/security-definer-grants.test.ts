@@ -96,3 +96,18 @@ describe("seed_default_page_permissions is not client-callable", () => {
     assert.doesNotMatch(last, /TO authenticated/i);
   });
 });
+
+describe("ensure_org_delivery_methods caller check", () => {
+  const sql = migrationSql();
+  const body = lastFunctionBody(sql, "ensure_org_delivery_methods");
+
+  it("allows the home org or a platform admin, not a guessed foreign org", () => {
+    assert.match(body, /public\.get_user_org\(auth\.uid\(\)\) IS DISTINCT FROM p_org_id/);
+    assert.match(body, /public\.is_platform_admin\(auth\.uid\(\)\)/);
+  });
+
+  it("keeps EXECUTE for authenticated so the delivery-methods UI still seeds", () => {
+    const last = lastGrantBlock(sql, "ensure_org_delivery_methods");
+    assert.match(last, /GRANT EXECUTE ON FUNCTION public\.ensure_org_delivery_methods\(uuid\) TO authenticated,\s*service_role/i);
+  });
+});
