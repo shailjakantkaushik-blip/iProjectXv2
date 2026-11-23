@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-08-16T14:34:54.818Z",
+  "generatedAt": "2026-11-23T03:54:44.713Z",
   "filename": "iprojectx-byod-schema.sql",
-  "includedCount": 66,
+  "includedCount": 95,
   "excludedCount": 12,
   "included": [
     "20260720095542_fe684dfb-a86c-4dee-8677-269ef34d6e6d.sql",
@@ -69,7 +69,36 @@
     "20260814180000_security_hardening_rls_rate_acl.sql",
     "20260816090000_ops_enhancements.sql",
     "20260816120000_forecast_phases.sql",
-    "20260816150000_raid_codes_and_sponsor_sync.sql"
+    "20260816150000_raid_codes_and_sponsor_sync.sql",
+    "20260816160000_governance_scoped_forums.sql",
+    "20260816170000_resource_alloc_drop_stream_month_uidx.sql",
+    "20260816180000_governance_weekday_meeting_dates.sql",
+    "20260816190000_kpi_rag_override.sql",
+    "20260817120000_resource_hours_per_day.sql",
+    "20260817140000_convert_demand_to_project.sql",
+    "20260817150000_fix_convert_demand_id_ambiguous.sql",
+    "20260817160000_governance_cadence_window.sql",
+    "20260817170000_governance_cadence_align_next.sql",
+    "20260817180000_governance_cadence_align_next_update.sql",
+    "20260817190000_project_access_hierarchy.sql",
+    "20260817191000_project_access_admin_user_overrides.sql",
+    "20260817192000_platform_admin_no_tenant_pmo.sql",
+    "20260820120000_raid_audit_and_perm_other.sql",
+    "20260820140000_hide_automatic_meeting_notes.sql",
+    "20260820160000_strategic_alignment_page_acl.sql",
+    "20260820180000_raid_optional_stream.sql",
+    "20260820190000_investment_committee.sql",
+    "20260820200000_forecast_other_cost_type.sql",
+    "20260821080000_hierarchy_envelopes.sql",
+    "20260821090000_hierarchy_envelopes_parent.sql",
+    "20260917120000_sync_stage_gate_siblings_from_decision.sql",
+    "20261123120000_revoke_ensure_project_core_stream.sql",
+    "20261123120100_gate_refresh_org_kpi_summary.sql",
+    "20261123120200_gate_sync_org_resources_from_profiles.sql",
+    "20261123120300_revoke_seed_default_page_permissions.sql",
+    "20261123120400_gate_ensure_org_delivery_methods.sql",
+    "20261123120500_force_row_level_security.sql",
+    "20261123120600_revoke_audit_events_client_insert.sql"
   ],
   "excluded": [
     "20260721003000_invoice_template_config.sql",
@@ -85,5 +114,5 @@
     "20260731120000_org_integrations.sql",
     "20260801140000_org_ip_restriction.sql"
   ],
-  "bytes": 383648
+  "bytes": 517816
 }

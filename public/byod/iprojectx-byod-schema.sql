@@ -1,5 +1,5 @@
 -- iProjectX BYOD tenant schema pack
--- Generated: 2026-08-16T14:34:54.818Z
+-- Generated: 2026-11-23T03:54:44.713Z
 -- Apply this file to the customer Postgres database (psql / migration runner)
 -- BEFORE activating BYOD for the organisation.
 --
@@ -10272,6 +10272,3994 @@ WHERE nullif(btrim(COALESCE(sponsor, '')), '') IS NOT NULL;
 
 
 -- =============================================================================
--- End of iProjectX BYOD schema pack (66 migrations)
+-- 20260816160000_governance_scoped_forums.sql
+-- =============================================================================
+
+-- Scoped governance forums: project / program / Strategic Alignment.
+-- Project forums auto-create from templates; program and SA forums are shared.
+-- Members (resources) attach to project forums. PM can configure project forums;
+-- org admin configures templates and program/SA forums.
+-- Idempotent. Does not rename existing columns.
+
+-- =============================================================================
+-- 1) Channel scope columns
+-- =============================================================================
+ALTER TABLE public.governance_channels
+  ADD COLUMN IF NOT EXISTS scope_level text NOT NULL DEFAULT 'strategic_alignment',
+  ADD COLUMN IF NOT EXISTS project_id uuid REFERENCES public.projects(id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS program text,
+  ADD COLUMN IF NOT EXISTS portfolio text;
+
+UPDATE public.governance_channels
+SET scope_level = 'strategic_alignment'
+WHERE scope_level IS NULL OR btrim(scope_level) = '';
+
+ALTER TABLE public.governance_channels
+  DROP CONSTRAINT IF EXISTS governance_channels_scope_chk;
+
+ALTER TABLE public.governance_channels
+  ADD CONSTRAINT governance_channels_scope_chk CHECK (
+    scope_level IN ('project', 'program', 'strategic_alignment')
+    AND (
+      (scope_level = 'project' AND project_id IS NOT NULL)
+      OR (scope_level = 'program' AND project_id IS NULL AND coalesce(btrim(program), '') <> '')
+      OR (scope_level = 'strategic_alignment' AND project_id IS NULL)
+    )
+  );
+
+-- Avoid unique-index failure if an org already has duplicate org-wide names.
+DO $$
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN
+    SELECT id,
+           row_number() OVER (
+             PARTITION BY org_id, lower(name), lower(coalesce(portfolio, ''))
+             ORDER BY created_at, id
+           ) AS n
+    FROM public.governance_channels
+    WHERE scope_level = 'strategic_alignment'
+  LOOP
+    IF r.n > 1 THEN
+      UPDATE public.governance_channels
+      SET name = name || ' (' || r.n || ')'
+      WHERE id = r.id;
+    END IF;
+  END LOOP;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gov_ch_project_name
+  ON public.governance_channels (project_id, lower(name))
+  WHERE scope_level = 'project';
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gov_ch_program_name
+  ON public.governance_channels (org_id, lower(program), lower(name))
+  WHERE scope_level = 'program';
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gov_ch_sa_name
+  ON public.governance_channels (org_id, lower(coalesce(portfolio, '')), lower(name))
+  WHERE scope_level = 'strategic_alignment';
+
+CREATE INDEX IF NOT EXISTS idx_gov_ch_org_scope
+  ON public.governance_channels (org_id, scope_level);
+CREATE INDEX IF NOT EXISTS idx_gov_ch_project
+  ON public.governance_channels (project_id)
+  WHERE project_id IS NOT NULL;
+
+COMMENT ON COLUMN public.governance_channels.scope_level IS
+  'project | program | strategic_alignment. UI label for strategic_alignment is Strategic Alignment.';
+COMMENT ON COLUMN public.governance_channels.portfolio IS
+  'Matches projects.portfolio when scope_level = strategic_alignment. Null = org-wide SA forum.';
+
+-- =============================================================================
+-- 2) Templates (org admin)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS public.governance_forum_templates (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  cadence text,
+  scope_level text NOT NULL DEFAULT 'project'
+    CHECK (scope_level IN ('project', 'program', 'strategic_alignment')),
+  purpose text,
+  audience text,
+  default_chair text,
+  sort_order integer NOT NULL DEFAULT 0,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (org_id, scope_level, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_gov_forum_templates_org
+  ON public.governance_forum_templates (org_id, scope_level, sort_order);
+
+DROP TRIGGER IF EXISTS trg_gov_forum_templates_updated_at ON public.governance_forum_templates;
+CREATE TRIGGER trg_gov_forum_templates_updated_at
+  BEFORE UPDATE ON public.governance_forum_templates
+  FOR EACH ROW EXECUTE FUNCTION public.tg_set_updated_at();
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.governance_forum_templates TO authenticated;
+GRANT ALL ON public.governance_forum_templates TO service_role;
+
+ALTER TABLE public.governance_forum_templates ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Org members can view forum templates" ON public.governance_forum_templates;
+CREATE POLICY "Org members can view forum templates" ON public.governance_forum_templates
+  FOR SELECT TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()));
+
+DROP POLICY IF EXISTS "admins write forum templates" ON public.governance_forum_templates;
+CREATE POLICY "admins write forum templates" ON public.governance_forum_templates
+  FOR ALL TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()) AND public.has_any_admin(auth.uid()))
+  WITH CHECK (org_id = public.get_user_org(auth.uid()) AND public.has_any_admin(auth.uid()));
+
+INSERT INTO public.governance_forum_templates (
+  org_id, name, cadence, scope_level, purpose, audience, sort_order
+)
+SELECT o.id, x.name, x.cadence, x.scope_level, x.purpose, x.audience, x.sort_order
+FROM public.organizations o
+CROSS JOIN (VALUES
+  ('Delivery Stand-up', 'Daily', 'project',
+   'Daily blockers, commitments, and late work items.', 'Delivery squads', 10),
+  ('RAID review', 'Weekly', 'project',
+   'Risks, issues, actions, and decisions for this project.', 'Project team', 20),
+  ('Project steering', 'Monthly', 'project',
+   'Sponsor steering, decisions, and next-period plan.', 'Sponsor and PM', 30),
+  ('Program Board', 'Fortnightly', 'program',
+   'Program RAG, dependencies, and escalations from project forums.', 'Program & BU Leads', 10),
+  ('Strategic Alignment Review', 'Monthly', 'strategic_alignment',
+   'Investment health and escalations for this Strategic Alignment.', 'Executives & Sponsors', 10)
+) AS x(name, cadence, scope_level, purpose, audience, sort_order)
+ON CONFLICT (org_id, scope_level, name) DO NOTHING;
+
+-- =============================================================================
+-- 3) Members (resources on a forum)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS public.governance_forum_members (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  channel_id uuid NOT NULL REFERENCES public.governance_channels(id) ON DELETE CASCADE,
+  resource_id uuid NOT NULL REFERENCES public.resources(id) ON DELETE CASCADE,
+  role text NOT NULL DEFAULT 'member' CHECK (role IN ('chair', 'member')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (channel_id, resource_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_gov_forum_members_channel
+  ON public.governance_forum_members (channel_id);
+CREATE INDEX IF NOT EXISTS idx_gov_forum_members_resource
+  ON public.governance_forum_members (resource_id);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.governance_forum_members TO authenticated;
+GRANT ALL ON public.governance_forum_members TO service_role;
+
+ALTER TABLE public.governance_forum_members ENABLE ROW LEVEL SECURITY;
+
+-- =============================================================================
+-- 4) Rights helpers + RLS
+-- =============================================================================
+CREATE OR REPLACE FUNCTION public.can_manage_governance_channel(_user_id uuid, _channel_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.governance_channels c
+    WHERE c.id = _channel_id
+      AND c.org_id = public.get_user_org(_user_id)
+      AND (
+        public.has_any_admin(_user_id)
+        OR (
+          c.scope_level = 'project'
+          AND c.project_id IS NOT NULL
+          AND public.can_edit_project(_user_id, c.project_id)
+        )
+      )
+  );
+$$;
+
+COMMENT ON FUNCTION public.can_manage_governance_channel(uuid, uuid) IS
+  'Org admin: any forum. Project PM / BU lead: project-scoped forums only.';
+
+GRANT EXECUTE ON FUNCTION public.can_manage_governance_channel(uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.can_manage_governance_channel(uuid, uuid) TO service_role;
+
+DROP POLICY IF EXISTS "pm insert project governance_channels" ON public.governance_channels;
+CREATE POLICY "pm insert project governance_channels" ON public.governance_channels
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    org_id = public.get_user_org(auth.uid())
+    AND scope_level = 'project'
+    AND project_id IS NOT NULL
+    AND public.can_edit_project(auth.uid(), project_id)
+  );
+
+DROP POLICY IF EXISTS "pm update project governance_channels" ON public.governance_channels;
+CREATE POLICY "pm update project governance_channels" ON public.governance_channels
+  FOR UPDATE TO authenticated
+  USING (public.can_manage_governance_channel(auth.uid(), id))
+  WITH CHECK (
+    org_id = public.get_user_org(auth.uid())
+    AND (
+      public.has_any_admin(auth.uid())
+      OR (
+        scope_level = 'project'
+        AND project_id IS NOT NULL
+        AND public.can_edit_project(auth.uid(), project_id)
+      )
+    )
+  );
+
+DROP POLICY IF EXISTS "pm delete project governance_channels" ON public.governance_channels;
+CREATE POLICY "pm delete project governance_channels" ON public.governance_channels
+  FOR DELETE TO authenticated
+  USING (
+    public.can_manage_governance_channel(auth.uid(), id)
+    AND scope_level = 'project'
+  );
+
+DROP POLICY IF EXISTS "Org members can view forum members" ON public.governance_forum_members;
+CREATE POLICY "Org members can view forum members" ON public.governance_forum_members
+  FOR SELECT TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()));
+
+DROP POLICY IF EXISTS "managers write forum members" ON public.governance_forum_members;
+CREATE POLICY "managers write forum members" ON public.governance_forum_members
+  FOR ALL TO authenticated
+  USING (public.can_manage_governance_channel(auth.uid(), channel_id))
+  WITH CHECK (
+    org_id = public.get_user_org(auth.uid())
+    AND public.can_manage_governance_channel(auth.uid(), channel_id)
+  );
+
+-- =============================================================================
+-- 5) Auto-create forums for a project (templates + shared program/SA)
+-- =============================================================================
+CREATE OR REPLACE FUNCTION public.ensure_project_governance_forums(p_project_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_proj public.projects%ROWTYPE;
+  t RECORD;
+  v_id uuid;
+  v_prog uuid;
+  v_sa uuid;
+  v_next date;
+  v_last date;
+  v_cadence text;
+  v_name text;
+  v_purpose text;
+  v_audience text;
+BEGIN
+  SELECT * INTO v_proj FROM public.projects WHERE id = p_project_id;
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+
+  -- Shared Strategic Alignment forum (one per portfolio value, or skip if blank).
+  IF coalesce(btrim(v_proj.portfolio), '') <> '' THEN
+    SELECT id INTO v_sa
+    FROM public.governance_channels
+    WHERE org_id = v_proj.org_id
+      AND scope_level = 'strategic_alignment'
+      AND portfolio IS NOT DISTINCT FROM v_proj.portfolio
+    ORDER BY created_at
+    LIMIT 1;
+
+    IF v_sa IS NULL THEN
+      SELECT name, cadence, purpose, audience
+        INTO v_name, v_cadence, v_purpose, v_audience
+      FROM public.governance_forum_templates
+      WHERE org_id = v_proj.org_id AND scope_level = 'strategic_alignment' AND is_active
+      ORDER BY sort_order, name
+      LIMIT 1;
+
+      v_name := coalesce(v_name, 'Strategic Alignment Review');
+      v_cadence := coalesce(v_cadence, 'Monthly');
+      v_purpose := coalesce(v_purpose, 'Investment health and escalations for this Strategic Alignment.');
+      v_audience := coalesce(v_audience, 'Executives & Sponsors');
+      v_next := CURRENT_DATE + 28;
+      v_last := CURRENT_DATE - 28;
+
+      INSERT INTO public.governance_channels (
+        org_id, name, cadence, audience, purpose, chair,
+        last_meeting, next_meeting, status,
+        scope_level, portfolio
+      ) VALUES (
+        v_proj.org_id, v_name, v_cadence, v_audience, v_purpose, v_proj.sponsor,
+        v_last, v_next, 'Active',
+        'strategic_alignment', v_proj.portfolio
+      )
+      RETURNING id INTO v_sa;
+    END IF;
+  END IF;
+
+  -- Shared program forum (one per program name).
+  IF coalesce(btrim(v_proj.program), '') <> '' THEN
+    SELECT id INTO v_prog
+    FROM public.governance_channels
+    WHERE org_id = v_proj.org_id
+      AND scope_level = 'program'
+      AND program IS NOT DISTINCT FROM v_proj.program
+    ORDER BY created_at
+    LIMIT 1;
+
+    IF v_prog IS NULL THEN
+      SELECT name, cadence, purpose, audience
+        INTO v_name, v_cadence, v_purpose, v_audience
+      FROM public.governance_forum_templates
+      WHERE org_id = v_proj.org_id AND scope_level = 'program' AND is_active
+      ORDER BY sort_order, name
+      LIMIT 1;
+
+      v_name := coalesce(v_name, 'Program Board');
+      v_cadence := coalesce(v_cadence, 'Fortnightly');
+      v_purpose := coalesce(v_purpose, 'Program RAG, dependencies, and escalations from project forums.');
+      v_audience := coalesce(v_audience, 'Program & BU Leads');
+      v_next := CURRENT_DATE + 14;
+      v_last := CURRENT_DATE - 14;
+
+      INSERT INTO public.governance_channels (
+        org_id, name, cadence, audience, purpose, chair,
+        last_meeting, next_meeting, status,
+        scope_level, program, parent_channel_id
+      ) VALUES (
+        v_proj.org_id, v_name, v_cadence, v_audience, v_purpose, v_proj.sponsor,
+        v_last, v_next, 'Active',
+        'program', v_proj.program, v_sa
+      )
+      RETURNING id INTO v_prog;
+    ELSIF v_sa IS NOT NULL THEN
+      UPDATE public.governance_channels
+      SET parent_channel_id = v_sa
+      WHERE id = v_prog AND parent_channel_id IS NULL;
+    END IF;
+  END IF;
+
+  -- Project forums from active project templates.
+  FOR t IN
+    SELECT *
+    FROM public.governance_forum_templates
+    WHERE org_id = v_proj.org_id AND scope_level = 'project' AND is_active
+    ORDER BY sort_order, name
+  LOOP
+    SELECT id INTO v_id
+    FROM public.governance_channels
+    WHERE project_id = v_proj.id
+      AND scope_level = 'project'
+      AND lower(name) = lower(t.name)
+    LIMIT 1;
+
+    IF v_id IS NULL THEN
+      v_next := CURRENT_DATE + (
+        CASE t.cadence
+          WHEN 'Daily' THEN 1
+          WHEN 'Weekly' THEN 7
+          WHEN 'Fortnightly' THEN 14
+          WHEN 'Monthly' THEN 28
+          WHEN 'Quarterly' THEN 90
+          WHEN 'Half-yearly' THEN 180
+          WHEN 'Annual' THEN 365
+          ELSE 7
+        END
+      );
+      v_last := CURRENT_DATE - (
+        CASE t.cadence
+          WHEN 'Daily' THEN 1
+          WHEN 'Weekly' THEN 7
+          WHEN 'Fortnightly' THEN 14
+          WHEN 'Monthly' THEN 28
+          ELSE 7
+        END
+      );
+
+      INSERT INTO public.governance_channels (
+        org_id, name, cadence, audience, purpose, chair,
+        last_meeting, next_meeting, status,
+        scope_level, project_id, program, portfolio, parent_channel_id
+      ) VALUES (
+        v_proj.org_id, t.name, t.cadence,
+        coalesce(t.audience, 'Project team'),
+        t.purpose,
+        coalesce(t.default_chair, v_proj.sponsor),
+        v_last, v_next, 'Active',
+        'project', v_proj.id, v_proj.program, v_proj.portfolio, v_prog
+      )
+      RETURNING id INTO v_id;
+    ELSIF v_prog IS NOT NULL THEN
+      UPDATE public.governance_channels
+      SET parent_channel_id = v_prog
+      WHERE id = v_id AND parent_channel_id IS NULL;
+    END IF;
+  END LOOP;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.ensure_project_governance_forums(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.ensure_project_governance_forums(uuid) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.tg_ensure_project_governance_forums()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF TG_OP = 'UPDATE'
+     AND NEW.program IS NOT DISTINCT FROM OLD.program
+     AND NEW.portfolio IS NOT DISTINCT FROM OLD.portfolio THEN
+    RETURN NEW;
+  END IF;
+  PERFORM public.ensure_project_governance_forums(NEW.id);
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_projects_ensure_governance_forums ON public.projects;
+CREATE TRIGGER trg_projects_ensure_governance_forums
+  AFTER INSERT OR UPDATE OF program, portfolio ON public.projects
+  FOR EACH ROW EXECUTE FUNCTION public.tg_ensure_project_governance_forums();
+
+-- Backfill existing projects (including the four e2e seed projects).
+DO $$
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN SELECT id FROM public.projects ORDER BY created_at LOOP
+    PERFORM public.ensure_project_governance_forums(r.id);
+  END LOOP;
+END $$;
+
+
+
+-- =============================================================================
+-- 20260816170000_resource_alloc_drop_stream_month_uidx.sql
+-- =============================================================================
+
+-- Allow planned allocations per stream AND phase (stage gate) in the same month.
+-- 20260724 created resource_allocations_stream_uidx on
+--   (project_id, stream_id, resource_id, period_month)
+-- and the stage-gate migration dropped differently named indexes, so the
+-- stream-month unique was left in place and collapsed estimation hours
+-- across phases.
+
+DROP INDEX IF EXISTS public.resource_allocations_stream_uidx;
+DROP INDEX IF EXISTS public.resource_allocations_null_stream_uidx;
+DROP INDEX IF EXISTS public.resource_allocations_project_stream_resource_period_uidx;
+DROP INDEX IF EXISTS public.resource_allocations_project_null_stream_resource_period_uidx;
+
+-- Recreate the null-safe uniques that include stage_gate (idempotent).
+CREATE UNIQUE INDEX IF NOT EXISTS resource_allocations_proj_stream_gate_res_period_uidx
+  ON public.resource_allocations (project_id, stream_id, stage_gate_id, resource_id, period_month)
+  WHERE stream_id IS NOT NULL AND stage_gate_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS resource_allocations_proj_stream_nullgate_res_period_uidx
+  ON public.resource_allocations (project_id, stream_id, resource_id, period_month)
+  WHERE stream_id IS NOT NULL AND stage_gate_id IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS resource_allocations_proj_nullstream_gate_res_period_uidx
+  ON public.resource_allocations (project_id, stage_gate_id, resource_id, period_month)
+  WHERE stream_id IS NULL AND stage_gate_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS resource_allocations_proj_nullstream_nullgate_res_period_uidx
+  ON public.resource_allocations (project_id, resource_id, period_month)
+  WHERE stream_id IS NULL AND stage_gate_id IS NULL;
+
+
+
+-- =============================================================================
+-- 20260816180000_governance_weekday_meeting_dates.sql
+-- =============================================================================
+
+-- Governance meeting dates: previous occurrence by default, next from cadence,
+-- counting Monday–Friday only. Ad-hoc keeps a previous weekday and leaves next empty.
+-- CREATE OR REPLACE of ensure_project_governance_forums; does not rewrite existing rows.
+
+CREATE OR REPLACE FUNCTION public.governance_snap_weekday(p_date date, p_direction text)
+RETURNS date
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+DECLARE
+  cur date := p_date;
+  i int;
+BEGIN
+  IF p_date IS NULL THEN
+    RETURN NULL;
+  END IF;
+  FOR i IN 1..7 LOOP
+    IF EXTRACT(ISODOW FROM cur)::int <= 5 THEN
+      RETURN cur;
+    END IF;
+    cur := cur + CASE WHEN lower(coalesce(p_direction, 'forward')) = 'back' THEN -1 ELSE 1 END;
+  END LOOP;
+  RETURN cur;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.governance_add_weekdays(p_date date, p_n integer)
+RETURNS date
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+DECLARE
+  cur date := p_date;
+  left_n int;
+  step int;
+BEGIN
+  IF p_date IS NULL THEN
+    RETURN NULL;
+  END IF;
+  IF coalesce(p_n, 0) = 0 THEN
+    RETURN public.governance_snap_weekday(p_date, 'forward');
+  END IF;
+  step := CASE WHEN p_n > 0 THEN 1 ELSE -1 END;
+  left_n := abs(p_n);
+  WHILE left_n > 0 LOOP
+    cur := cur + step;
+    IF EXTRACT(ISODOW FROM cur)::int <= 5 THEN
+      left_n := left_n - 1;
+    END IF;
+  END LOOP;
+  RETURN cur;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.governance_add_months_weekday(p_date date, p_months integer)
+RETURNS date
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT public.governance_snap_weekday(
+    (p_date + (p_months * INTERVAL '1 month'))::date,
+    CASE WHEN p_months >= 0 THEN 'forward' ELSE 'back' END
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.governance_suggest_next_meeting(p_last date, p_cadence text)
+RETURNS date
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+BEGIN
+  IF p_last IS NULL THEN
+    RETURN NULL;
+  END IF;
+  CASE p_cadence
+    WHEN 'Daily' THEN RETURN public.governance_add_weekdays(p_last, 1);
+    WHEN 'Weekly' THEN RETURN public.governance_add_weekdays(p_last, 5);
+    WHEN 'Fortnightly' THEN RETURN public.governance_add_weekdays(p_last, 10);
+    WHEN 'Monthly' THEN RETURN public.governance_add_months_weekday(p_last, 1);
+    WHEN 'Quarterly' THEN RETURN public.governance_add_months_weekday(p_last, 3);
+    WHEN 'Half-yearly' THEN RETURN public.governance_add_months_weekday(p_last, 6);
+    WHEN 'Annual' THEN RETURN public.governance_add_months_weekday(p_last, 12);
+    ELSE RETURN NULL;
+  END CASE;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.governance_default_last_meeting(
+  p_cadence text,
+  p_today date DEFAULT CURRENT_DATE
+)
+RETURNS date
+LANGUAGE plpgsql
+STABLE
+AS $$
+DECLARE
+  anchor date := public.governance_snap_weekday(p_today, 'back');
+BEGIN
+  CASE p_cadence
+    WHEN 'Daily' THEN RETURN public.governance_add_weekdays(anchor, -1);
+    WHEN 'Weekly' THEN RETURN public.governance_add_weekdays(anchor, -5);
+    WHEN 'Fortnightly' THEN RETURN public.governance_add_weekdays(anchor, -10);
+    WHEN 'Monthly' THEN RETURN public.governance_add_months_weekday(anchor, -1);
+    WHEN 'Quarterly' THEN RETURN public.governance_add_months_weekday(anchor, -3);
+    WHEN 'Half-yearly' THEN RETURN public.governance_add_months_weekday(anchor, -6);
+    WHEN 'Annual' THEN RETURN public.governance_add_months_weekday(anchor, -12);
+    ELSE RETURN public.governance_add_weekdays(anchor, -1);
+  END CASE;
+END;
+$$;
+
+COMMENT ON FUNCTION public.governance_suggest_next_meeting(date, text) IS
+  'Next meeting from last + cadence. Daily/Weekly/Fortnightly count weekdays; longer cadences add calendar months then snap to a weekday. Ad-hoc returns null.';
+
+CREATE OR REPLACE FUNCTION public.ensure_project_governance_forums(p_project_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_proj public.projects%ROWTYPE;
+  t RECORD;
+  v_id uuid;
+  v_prog uuid;
+  v_sa uuid;
+  v_next date;
+  v_last date;
+  v_cadence text;
+  v_name text;
+  v_purpose text;
+  v_audience text;
+BEGIN
+  SELECT * INTO v_proj FROM public.projects WHERE id = p_project_id;
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+
+  -- Shared Strategic Alignment forum (one per portfolio value, or skip if blank).
+  IF coalesce(btrim(v_proj.portfolio), '') <> '' THEN
+    SELECT id INTO v_sa
+    FROM public.governance_channels
+    WHERE org_id = v_proj.org_id
+      AND scope_level = 'strategic_alignment'
+      AND portfolio IS NOT DISTINCT FROM v_proj.portfolio
+    ORDER BY created_at
+    LIMIT 1;
+
+    IF v_sa IS NULL THEN
+      SELECT name, cadence, purpose, audience
+        INTO v_name, v_cadence, v_purpose, v_audience
+      FROM public.governance_forum_templates
+      WHERE org_id = v_proj.org_id AND scope_level = 'strategic_alignment' AND is_active
+      ORDER BY sort_order, name
+      LIMIT 1;
+
+      v_name := coalesce(v_name, 'Strategic Alignment Review');
+      v_cadence := coalesce(v_cadence, 'Monthly');
+      v_purpose := coalesce(v_purpose, 'Investment health and escalations for this Strategic Alignment.');
+      v_audience := coalesce(v_audience, 'Executives & Sponsors');
+      v_last := public.governance_default_last_meeting(v_cadence);
+      v_next := public.governance_suggest_next_meeting(v_last, v_cadence);
+
+      INSERT INTO public.governance_channels (
+        org_id, name, cadence, audience, purpose, chair,
+        last_meeting, next_meeting, status,
+        scope_level, portfolio
+      ) VALUES (
+        v_proj.org_id, v_name, v_cadence, v_audience, v_purpose, v_proj.sponsor,
+        v_last, v_next, 'Active',
+        'strategic_alignment', v_proj.portfolio
+      )
+      RETURNING id INTO v_sa;
+    END IF;
+  END IF;
+
+  -- Shared program forum (one per program name).
+  IF coalesce(btrim(v_proj.program), '') <> '' THEN
+    SELECT id INTO v_prog
+    FROM public.governance_channels
+    WHERE org_id = v_proj.org_id
+      AND scope_level = 'program'
+      AND program IS NOT DISTINCT FROM v_proj.program
+    ORDER BY created_at
+    LIMIT 1;
+
+    IF v_prog IS NULL THEN
+      SELECT name, cadence, purpose, audience
+        INTO v_name, v_cadence, v_purpose, v_audience
+      FROM public.governance_forum_templates
+      WHERE org_id = v_proj.org_id AND scope_level = 'program' AND is_active
+      ORDER BY sort_order, name
+      LIMIT 1;
+
+      v_name := coalesce(v_name, 'Program Board');
+      v_cadence := coalesce(v_cadence, 'Fortnightly');
+      v_purpose := coalesce(v_purpose, 'Program RAG, dependencies, and escalations from project forums.');
+      v_audience := coalesce(v_audience, 'Program & BU Leads');
+      v_last := public.governance_default_last_meeting(v_cadence);
+      v_next := public.governance_suggest_next_meeting(v_last, v_cadence);
+
+      INSERT INTO public.governance_channels (
+        org_id, name, cadence, audience, purpose, chair,
+        last_meeting, next_meeting, status,
+        scope_level, program, parent_channel_id
+      ) VALUES (
+        v_proj.org_id, v_name, v_cadence, v_audience, v_purpose, v_proj.sponsor,
+        v_last, v_next, 'Active',
+        'program', v_proj.program, v_sa
+      )
+      RETURNING id INTO v_prog;
+    ELSIF v_sa IS NOT NULL THEN
+      UPDATE public.governance_channels
+      SET parent_channel_id = v_sa
+      WHERE id = v_prog AND parent_channel_id IS NULL;
+    END IF;
+  END IF;
+
+  -- Project forums from active project templates.
+  FOR t IN
+    SELECT *
+    FROM public.governance_forum_templates
+    WHERE org_id = v_proj.org_id AND scope_level = 'project' AND is_active
+    ORDER BY sort_order, name
+  LOOP
+    SELECT id INTO v_id
+    FROM public.governance_channels
+    WHERE project_id = v_proj.id
+      AND scope_level = 'project'
+      AND lower(name) = lower(t.name)
+    LIMIT 1;
+
+    IF v_id IS NULL THEN
+      v_last := public.governance_default_last_meeting(t.cadence);
+      v_next := public.governance_suggest_next_meeting(v_last, t.cadence);
+
+      INSERT INTO public.governance_channels (
+        org_id, name, cadence, audience, purpose, chair,
+        last_meeting, next_meeting, status,
+        scope_level, project_id, program, portfolio, parent_channel_id
+      ) VALUES (
+        v_proj.org_id, t.name, t.cadence,
+        coalesce(t.audience, 'Project team'),
+        t.purpose,
+        coalesce(t.default_chair, v_proj.sponsor),
+        v_last, v_next, 'Active',
+        'project', v_proj.id, v_proj.program, v_proj.portfolio, v_prog
+      )
+      RETURNING id INTO v_id;
+    ELSIF v_prog IS NOT NULL THEN
+      UPDATE public.governance_channels
+      SET parent_channel_id = v_prog
+      WHERE id = v_id AND parent_channel_id IS NULL;
+    END IF;
+  END LOOP;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.ensure_project_governance_forums(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.ensure_project_governance_forums(uuid) TO service_role;
+
+
+
+-- =============================================================================
+-- 20260816190000_kpi_rag_override.sql
+-- =============================================================================
+
+-- Portfolio KPI roll-ups must use sponsor/meeting rag_override when set
+-- (Green/Amber/Red), matching displayRag() in the app.
+
+CREATE OR REPLACE FUNCTION public.refresh_org_kpi_summary(p_org_id uuid)
+RETURNS public.org_kpi_summaries
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  row public.org_kpi_summaries;
+BEGIN
+  IF p_org_id IS NULL THEN
+    RAISE EXCEPTION 'org_id required';
+  END IF;
+
+  INSERT INTO public.org_kpi_summaries AS s (
+    org_id,
+    project_count,
+    active_count,
+    rag_green,
+    rag_amber,
+    rag_red,
+    approved_funding,
+    incurred,
+    forecast_at_completion,
+    benefits_target,
+    benefits_realised,
+    open_risks,
+    open_issues,
+    open_actions,
+    work_item_total,
+    work_item_done,
+    refreshed_at,
+    meta
+  )
+  SELECT
+    p_org_id,
+    COALESCE(p.project_count, 0),
+    COALESCE(p.active_count, 0),
+    COALESCE(p.rag_green, 0),
+    COALESCE(p.rag_amber, 0),
+    COALESCE(p.rag_red, 0),
+    COALESCE(p.approved_funding, 0),
+    COALESCE(p.incurred, 0),
+    COALESCE(p.forecast_at_completion, 0),
+    COALESCE(p.benefits_target, 0),
+    COALESCE(p.benefits_realised, 0),
+    COALESCE(r.open_risks, 0),
+    COALESCE(i.open_issues, 0),
+    COALESCE(a.open_actions, 0),
+    COALESCE(w.work_item_total, 0),
+    COALESCE(w.work_item_done, 0),
+    now(),
+    jsonb_build_object('source', 'refresh_org_kpi_summary')
+  FROM (SELECT 1) seed
+  LEFT JOIN LATERAL (
+    SELECT
+      COUNT(*)::int AS project_count,
+      COUNT(*) FILTER (
+        WHERE COALESCE(status::text, '') NOT ILIKE '%closed%'
+          AND COALESCE(status::text, '') NOT ILIKE '%complete%'
+          AND COALESCE(status::text, '') NOT ILIKE '%cancelled%'
+      )::int AS active_count,
+      COUNT(*) FILTER (
+        WHERE lower(
+          CASE
+            WHEN lower(trim(COALESCE(rag_override, ''))) IN ('green', 'amber', 'red')
+              THEN trim(rag_override)
+            ELSE COALESCE(rag::text, '')
+          END
+        ) IN ('green', 'g')
+      )::int AS rag_green,
+      COUNT(*) FILTER (
+        WHERE lower(
+          CASE
+            WHEN lower(trim(COALESCE(rag_override, ''))) IN ('green', 'amber', 'red')
+              THEN trim(rag_override)
+            ELSE COALESCE(rag::text, '')
+          END
+        ) IN ('amber', 'yellow', 'a')
+      )::int AS rag_amber,
+      COUNT(*) FILTER (
+        WHERE lower(
+          CASE
+            WHEN lower(trim(COALESCE(rag_override, ''))) IN ('green', 'amber', 'red')
+              THEN trim(rag_override)
+            ELSE COALESCE(rag::text, '')
+          END
+        ) IN ('red', 'r')
+      )::int AS rag_red,
+      COALESCE(SUM(
+        CASE
+          WHEN COALESCE(budget, 0) > 0 THEN budget
+          ELSE COALESCE(capex_approved, 0) + COALESCE(opex_approved, 0)
+        END
+      ), 0) AS approved_funding,
+      COALESCE(SUM(COALESCE(capex_incurred, 0) + COALESCE(opex_incurred, 0)), 0) AS incurred,
+      COALESCE(SUM(
+        CASE
+          WHEN COALESCE(forecast_at_completion, 0) > 0 THEN forecast_at_completion
+          WHEN COALESCE(budget, 0) > 0 THEN budget
+          ELSE COALESCE(capex_approved, 0) + COALESCE(opex_approved, 0)
+        END
+      ), 0) AS forecast_at_completion,
+      COALESCE(SUM(COALESCE(benefits_target, 0)), 0) AS benefits_target,
+      COALESCE(SUM(COALESCE(benefits_realised, 0)), 0) AS benefits_realised
+    FROM public.projects
+    WHERE org_id = p_org_id
+  ) p ON true
+  LEFT JOIN LATERAL (
+    SELECT COUNT(*)::int AS open_risks
+    FROM public.risks
+    WHERE org_id = p_org_id
+      AND COALESCE(status, '') NOT ILIKE '%closed%'
+      AND COALESCE(status, '') NOT ILIKE '%mitigated%'
+  ) r ON true
+  LEFT JOIN LATERAL (
+    SELECT COUNT(*)::int AS open_issues
+    FROM public.issues
+    WHERE org_id = p_org_id
+      AND COALESCE(status, '') NOT ILIKE '%closed%'
+      AND COALESCE(status, '') NOT ILIKE '%resolved%'
+  ) i ON true
+  LEFT JOIN LATERAL (
+    SELECT COUNT(*)::int AS open_actions
+    FROM public.actions
+    WHERE org_id = p_org_id
+      AND COALESCE(status, '') NOT ILIKE '%done%'
+      AND COALESCE(status, '') NOT ILIKE '%closed%'
+      AND COALESCE(status, '') NOT ILIKE '%complete%'
+  ) a ON true
+  LEFT JOIN LATERAL (
+    SELECT
+      COUNT(*)::int AS work_item_total,
+      COUNT(*) FILTER (WHERE status = 'Done')::int AS work_item_done
+    FROM public.work_items
+    WHERE org_id = p_org_id
+      AND COALESCE(status, '') <> 'Cancelled'
+  ) w ON true
+  ON CONFLICT (org_id) DO UPDATE SET
+    project_count = EXCLUDED.project_count,
+    active_count = EXCLUDED.active_count,
+    rag_green = EXCLUDED.rag_green,
+    rag_amber = EXCLUDED.rag_amber,
+    rag_red = EXCLUDED.rag_red,
+    approved_funding = EXCLUDED.approved_funding,
+    incurred = EXCLUDED.incurred,
+    forecast_at_completion = EXCLUDED.forecast_at_completion,
+    benefits_target = EXCLUDED.benefits_target,
+    benefits_realised = EXCLUDED.benefits_realised,
+    open_risks = EXCLUDED.open_risks,
+    open_issues = EXCLUDED.open_issues,
+    open_actions = EXCLUDED.open_actions,
+    work_item_total = EXCLUDED.work_item_total,
+    work_item_done = EXCLUDED.work_item_done,
+    refreshed_at = EXCLUDED.refreshed_at,
+    meta = EXCLUDED.meta
+  RETURNING * INTO row;
+
+  RETURN row;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.portfolio_project_stats(p_org_id uuid DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org uuid := coalesce(p_org_id, public.get_user_org(auth.uid()));
+  v_by_rag jsonb;
+  v_by_status jsonb;
+  v_by_program jsonb;
+  v_by_priority jsonb;
+  v_total int;
+  v_active int;
+  v_completed int;
+  v_budget numeric;
+  v_incurred numeric;
+BEGIN
+  IF v_org IS NULL THEN
+    RETURN '{}'::jsonb;
+  END IF;
+  IF NOT (
+    public.get_user_org(auth.uid()) = v_org
+    OR public.is_platform_admin(auth.uid())
+  ) THEN
+    RAISE EXCEPTION 'not authorized';
+  END IF;
+
+  SELECT
+    count(*)::int,
+    count(*) FILTER (
+      WHERE coalesce(status::text, '') ILIKE 'In Progress'
+    )::int,
+    count(*) FILTER (
+      WHERE coalesce(status::text, '') ILIKE 'Completed'
+         OR coalesce(status::text, '') ILIKE 'Complete'
+    )::int,
+    coalesce(sum(coalesce(budget, 0)), 0),
+    coalesce(sum(coalesce(capex_incurred, 0)), 0)
+  INTO v_total, v_active, v_completed, v_budget, v_incurred
+  FROM public.projects
+  WHERE org_id = v_org;
+
+  SELECT coalesce(jsonb_object_agg(k, c), '{}'::jsonb) INTO v_by_rag
+  FROM (
+    SELECT
+      CASE
+        WHEN lower(trim(COALESCE(rag_override, ''))) IN ('green', 'amber', 'red')
+          THEN trim(rag_override)
+        ELSE coalesce(nullif(trim(rag::text), ''), 'Unknown')
+      END AS k,
+      count(*)::int AS c
+    FROM public.projects WHERE org_id = v_org GROUP BY 1
+  ) s;
+
+  SELECT coalesce(jsonb_object_agg(k, c), '{}'::jsonb) INTO v_by_status
+  FROM (
+    SELECT coalesce(nullif(trim(status::text), ''), 'Unknown') AS k, count(*)::int AS c
+    FROM public.projects WHERE org_id = v_org GROUP BY 1
+  ) s;
+
+  SELECT coalesce(jsonb_object_agg(k, c), '{}'::jsonb) INTO v_by_program
+  FROM (
+    SELECT coalesce(nullif(trim(program), ''), 'Unassigned') AS k, count(*)::int AS c
+    FROM public.projects WHERE org_id = v_org GROUP BY 1
+  ) s;
+
+  SELECT coalesce(jsonb_object_agg(k, c), '{}'::jsonb) INTO v_by_priority
+  FROM (
+    SELECT coalesce(nullif(trim(priority), ''), 'Unassigned') AS k, count(*)::int AS c
+    FROM public.projects WHERE org_id = v_org GROUP BY 1
+  ) s;
+
+  RETURN jsonb_build_object(
+    'total', v_total,
+    'active', v_active,
+    'completed', v_completed,
+    'budget_total', v_budget,
+    'capex_incurred', v_incurred,
+    'by_rag', v_by_rag,
+    'by_status', v_by_status,
+    'by_program', v_by_program,
+    'by_priority', v_by_priority
+  );
+END;
+$$;
+
+
+
+-- =============================================================================
+-- 20260817120000_resource_hours_per_day.sql
+-- =============================================================================
+
+-- Per-resource daily hour cap (configured on Timesheets → Resource setup).
+-- Weekly capacity stays in sync as hours_per_day × 5 so utilisation math still works.
+
+ALTER TABLE public.resources
+  ADD COLUMN IF NOT EXISTS hours_per_day NUMERIC(4,2) NOT NULL DEFAULT 8;
+
+UPDATE public.resources
+SET hours_per_day = LEAST(24, GREATEST(1, ROUND((capacity_hours_week / 5.0)::numeric, 2)))
+WHERE capacity_hours_week IS NOT NULL AND capacity_hours_week > 0;
+
+DO $$
+BEGIN
+  ALTER TABLE public.resources
+    ADD CONSTRAINT resources_hours_per_day_range
+    CHECK (hours_per_day >= 1 AND hours_per_day <= 24);
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+COMMENT ON COLUMN public.resources.hours_per_day IS
+  'Max hours this resource can work in a day. Used to flag Over / Optimal / Under on timesheets, work-item demand, and estimation planning.';
+
+CREATE OR REPLACE FUNCTION public.timesheet_daily_load_note(_timesheet_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  cap numeric;
+  bits text := '';
+  over_n int := 0;
+  under_n int := 0;
+  logged_n int := 0;
+  rec record;
+  headline text;
+  fmt_h text;
+  fmt_c text;
+BEGIN
+  SELECT COALESCE(NULLIF(r.hours_per_day, 0), 8)
+  INTO cap
+  FROM public.timesheets t
+  LEFT JOIN public.resources r
+    ON r.org_id = t.org_id
+   AND (r.id = t.resource_id OR r.user_id = t.user_id)
+  WHERE t.id = _timesheet_id
+  ORDER BY CASE WHEN r.id = t.resource_id THEN 0 ELSE 1 END
+  LIMIT 1;
+
+  IF cap IS NULL OR cap <= 0 THEN
+    cap := 8;
+  END IF;
+  fmt_c := trim(to_char(cap, 'FM9990.0'));
+
+  FOR rec IN
+    SELECT v.lbl, v.hrs
+    FROM (
+      SELECT 'Mon'::text AS lbl, COALESCE(SUM(e.hours_mon), 0) AS hrs
+      FROM public.timesheet_entries e WHERE e.timesheet_id = _timesheet_id
+      UNION ALL
+      SELECT 'Tue', COALESCE(SUM(e.hours_tue), 0)
+      FROM public.timesheet_entries e WHERE e.timesheet_id = _timesheet_id
+      UNION ALL
+      SELECT 'Wed', COALESCE(SUM(e.hours_wed), 0)
+      FROM public.timesheet_entries e WHERE e.timesheet_id = _timesheet_id
+      UNION ALL
+      SELECT 'Thu', COALESCE(SUM(e.hours_thu), 0)
+      FROM public.timesheet_entries e WHERE e.timesheet_id = _timesheet_id
+      UNION ALL
+      SELECT 'Fri', COALESCE(SUM(e.hours_fri), 0)
+      FROM public.timesheet_entries e WHERE e.timesheet_id = _timesheet_id
+      UNION ALL
+      SELECT 'Sat', COALESCE(SUM(e.hours_sat), 0)
+      FROM public.timesheet_entries e WHERE e.timesheet_id = _timesheet_id
+      UNION ALL
+      SELECT 'Sun', COALESCE(SUM(e.hours_sun), 0)
+      FROM public.timesheet_entries e WHERE e.timesheet_id = _timesheet_id
+    ) v
+  LOOP
+    IF rec.hrs <= 0 THEN
+      CONTINUE;
+    END IF;
+    logged_n := logged_n + 1;
+    fmt_h := trim(to_char(rec.hrs, 'FM9990.0'));
+    IF rec.hrs > cap + 0.01 THEN
+      over_n := over_n + 1;
+      bits := bits || rec.lbl || ' Over (' || fmt_h || '/' || fmt_c || 'h); ';
+    ELSIF rec.hrs < cap * 0.6 THEN
+      under_n := under_n + 1;
+      bits := bits || rec.lbl || ' Under (' || fmt_h || '/' || fmt_c || 'h); ';
+    ELSE
+      bits := bits || rec.lbl || ' Optimal (' || fmt_h || '/' || fmt_c || 'h); ';
+    END IF;
+  END LOOP;
+
+  IF logged_n = 0 THEN
+    RETURN 'No hours logged against the ' || fmt_c || 'h daily cap.';
+  END IF;
+
+  IF over_n > 0 THEN
+    headline := over_n::text || ' day(s) over the ' || fmt_c || 'h/day cap. ';
+  ELSIF under_n = logged_n THEN
+    headline := 'Hours under the ' || fmt_c || 'h/day cap. ';
+  ELSE
+    headline := 'Hours within the ' || fmt_c || 'h/day cap. ';
+  END IF;
+
+  RETURN headline || bits;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.timesheet_daily_load_note(uuid) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION public.submit_timesheet(_timesheet_id uuid)
+RETURNS public.timesheets
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  t public.timesheets;
+  mgr uuid;
+  rid uuid;
+  proj record;
+  pm uuid;
+  missing_pm text;
+  has_billable boolean;
+  load_note text;
+  over_cap boolean := false;
+  under_cap boolean := false;
+  pm_title text;
+  rm_title text;
+  pm_body text;
+  rm_body text;
+BEGIN
+  SELECT * INTO t FROM public.timesheets WHERE id = _timesheet_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Timesheet not found'; END IF;
+  IF t.user_id <> auth.uid() AND NOT public.has_any_admin(auth.uid()) THEN
+    RAISE EXCEPTION 'Only the timesheet owner can submit';
+  END IF;
+  IF t.status NOT IN ('draft', 'rejected') THEN
+    RAISE EXCEPTION 'Timesheet is not editable (status %)', t.status;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.timesheet_entries e WHERE e.timesheet_id = t.id) THEN
+    RAISE EXCEPTION 'Add at least one row before submitting';
+  END IF;
+
+  SELECT r.id, r.manager_user_id INTO rid, mgr
+  FROM public.resources r
+  WHERE r.org_id = t.org_id AND r.user_id = t.user_id
+  LIMIT 1;
+
+  IF mgr IS NULL THEN
+    RAISE EXCEPTION 'Resource Manager is not configured for your resource profile. Ask an admin to set your manager.';
+  END IF;
+
+  DELETE FROM public.timesheet_approvals WHERE timesheet_id = t.id;
+
+  load_note := public.timesheet_daily_load_note(t.id);
+  over_cap := load_note ILIKE '% over the %';
+  under_cap := (NOT over_cap) AND load_note ILIKE 'Hours under the %';
+
+  IF over_cap THEN
+    pm_title := 'Timesheet awaiting PM approval — over daily cap';
+    rm_title := 'Timesheet awaiting Resource Manager approval — over daily cap';
+  ELSIF under_cap THEN
+    pm_title := 'Timesheet awaiting PM approval — under daily cap';
+    rm_title := 'Timesheet awaiting Resource Manager approval — under daily cap';
+  ELSE
+    pm_title := 'Timesheet awaiting PM approval';
+    rm_title := 'Timesheet awaiting Resource Manager approval';
+  END IF;
+
+  pm_body := 'A timesheet for week starting ' || t.week_start::text
+    || ' needs your approval as Project Manager. ' || load_note;
+  rm_body := 'A timesheet for week starting ' || t.week_start::text
+    || ' needs your approval as Resource Manager. ' || load_note;
+
+  SELECT EXISTS (
+    SELECT 1 FROM public.timesheet_entries e
+    WHERE e.timesheet_id = t.id AND e.billable = true
+  ) INTO has_billable;
+
+  IF has_billable THEN
+    missing_pm := NULL;
+    FOR proj IN
+      SELECT DISTINCT e.project_id, p.name AS project_name, p.pm_user_id
+      FROM public.timesheet_entries e
+      JOIN public.projects p ON p.id = e.project_id
+      WHERE e.timesheet_id = t.id AND e.billable = true
+    LOOP
+      pm := proj.pm_user_id;
+      IF pm IS NULL THEN
+        missing_pm := COALESCE(missing_pm || ', ', '') || COALESCE(proj.project_name, proj.project_id::text);
+        CONTINUE;
+      END IF;
+      INSERT INTO public.timesheet_approvals (org_id, timesheet_id, step, project_id, approver_user_id, status)
+      VALUES (t.org_id, t.id, 'pm', proj.project_id, pm, 'pending');
+
+      INSERT INTO public.notifications (user_id, org_id, kind, title, body, link)
+      VALUES (
+        pm, t.org_id, 'timesheet_approval', pm_title, pm_body,
+        '/app/timesheets?tab=approvals'
+      );
+    END LOOP;
+
+    IF missing_pm IS NOT NULL THEN
+      RAISE EXCEPTION 'Project Manager is not set on: %', missing_pm;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM public.timesheet_approvals WHERE timesheet_id = t.id AND step = 'pm') THEN
+      RAISE EXCEPTION 'No project PM approvals could be created';
+    END IF;
+
+    UPDATE public.timesheets
+    SET status = 'pending_pm', manager_user_id = mgr, resource_id = rid,
+        submitted_at = now(), rejected_at = NULL, rejected_by = NULL, rejection_reason = NULL
+    WHERE id = t.id
+    RETURNING * INTO t;
+  ELSE
+    INSERT INTO public.timesheet_approvals (org_id, timesheet_id, step, project_id, approver_user_id, status)
+    VALUES (t.org_id, t.id, 'rm', NULL, mgr, 'pending');
+
+    INSERT INTO public.notifications (user_id, org_id, kind, title, body, link)
+    VALUES (
+      mgr, t.org_id, 'timesheet_approval', rm_title,
+      'A non-billable timesheet for week starting ' || t.week_start::text || ' needs your approval. ' || load_note,
+      '/app/timesheets?tab=approvals'
+    );
+
+    UPDATE public.timesheets
+    SET status = 'pending_rm', manager_user_id = mgr, resource_id = rid,
+        submitted_at = now(), rejected_at = NULL, rejected_by = NULL, rejection_reason = NULL
+    WHERE id = t.id
+    RETURNING * INTO t;
+  END IF;
+
+  RETURN t;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.submit_timesheet(uuid) TO authenticated;
+
+
+
+-- =============================================================================
+-- 20260817140000_convert_demand_to_project.sql
+-- =============================================================================
+
+-- Demand Pipeline → Create Project Link.
+-- Direct INSERT into public.projects fails RLS for many authorised users:
+--   projects_insert_admin requires has_any_admin(), and INSERT…RETURNING also
+--   has to pass projects_read_org (user_can_view_project).
+-- Promote through a SECURITY DEFINER RPC that enforces org tenancy + the same
+-- roles already allowed to write demand_pipeline (admin / org_admin / pm / bu_lead).
+-- Does not open general project INSERT to PMs.
+
+-- Align admin check with has_role(): leftover admin rows with null org_id still count
+-- for the user's home organisation (never another org).
+CREATE OR REPLACE FUNCTION public.has_any_admin(_user_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.user_roles ur
+    WHERE ur.user_id = _user_id
+      AND ur.role IN ('admin', 'org_admin')
+      AND (
+        ur.org_id IS NULL
+        OR ur.org_id = public.get_user_org(_user_id)
+      )
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.can_promote_demand(_user_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT
+    public.has_any_admin(_user_id)
+    OR public.has_role(_user_id, 'pm')
+    OR public.has_role(_user_id, 'bu_lead');
+$$;
+
+COMMENT ON FUNCTION public.can_promote_demand(uuid) IS
+  'True when the user may convert a demand idea to a project in their home org (same roles as demand_pipeline write).';
+
+CREATE OR REPLACE FUNCTION public.convert_demand_idea_to_project(_idea_id uuid)
+RETURNS TABLE (id uuid, project_code text)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  uid uuid := auth.uid();
+  home uuid;
+  idea public.demand_pipeline%ROWTYPE;
+  base text;
+  code text;
+  proj public.projects%ROWTYPE;
+  cost numeric;
+BEGIN
+  IF uid IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  home := public.get_user_org(uid);
+  IF home IS NULL THEN
+    RAISE EXCEPTION 'No organisation on your profile';
+  END IF;
+
+  IF NOT public.can_promote_demand(uid) THEN
+    RAISE EXCEPTION 'Not allowed to create a project from demand. Ask an org admin or project manager.';
+  END IF;
+
+  SELECT * INTO idea
+  FROM public.demand_pipeline
+  WHERE id = _idea_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Demand idea not found';
+  END IF;
+
+  IF idea.org_id IS DISTINCT FROM home THEN
+    RAISE EXCEPTION 'Demand idea is not in your organisation';
+  END IF;
+
+  IF idea.project_id IS NOT NULL THEN
+    SELECT p.id, p.project_code
+    INTO id, project_code
+    FROM public.projects p
+    WHERE p.id = idea.project_id;
+    IF id IS NULL THEN
+      RAISE EXCEPTION 'Demand is linked to a missing project';
+    END IF;
+    RETURN NEXT;
+    RETURN;
+  END IF;
+
+  base := upper(regexp_replace(COALESCE(idea.idea_name, 'IDEA'), '[^A-Z0-9]+', '', 'g'));
+  base := left(COALESCE(NULLIF(base, ''), 'NEW'), 8);
+  code := 'DM-' || base || '-' || upper(left(replace(idea.id::text, '-', ''), 4));
+
+  cost := COALESCE(idea.estimated_cost, 0);
+
+  INSERT INTO public.projects (
+    org_id,
+    project_code,
+    name,
+    sponsor,
+    status,
+    rag,
+    priority,
+    delivery_method,
+    budget,
+    capex_approved,
+    opex_approved,
+    benefits_target,
+    roi_percent,
+    portfolio,
+    pm_user_id
+  ) VALUES (
+    home,
+    code,
+    COALESCE(NULLIF(btrim(idea.idea_name), ''), 'Converted demand'),
+    idea.sponsor,
+    'Not Started',
+    'Green',
+    'Medium',
+    'Hybrid',
+    cost,
+    CASE WHEN cost > 0 THEN round(cost * 0.6) ELSE 0 END,
+    CASE WHEN cost > 0 THEN round(cost * 0.4) ELSE 0 END,
+    COALESCE(idea.estimated_benefit, 0),
+    idea.estimated_roi,
+    'Business Strategic',
+    uid
+  )
+  RETURNING * INTO proj;
+
+  BEGIN
+    UPDATE public.demand_pipeline
+    SET
+      project_id = proj.id,
+      status = 'Approved',
+      converted_at = now(),
+      converted_by = uid
+    WHERE id = idea.id;
+  EXCEPTION
+    WHEN undefined_column THEN
+      UPDATE public.demand_pipeline
+      SET project_id = proj.id, status = 'Approved'
+      WHERE id = idea.id;
+  END;
+
+  id := proj.id;
+  project_code := proj.project_code;
+  RETURN NEXT;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.can_promote_demand(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.can_promote_demand(uuid) TO authenticated;
+
+REVOKE ALL ON FUNCTION public.convert_demand_idea_to_project(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.convert_demand_idea_to_project(uuid) TO authenticated;
+
+-- Keep general project create admin-only (wizard / data editor). Index-friendly org predicate.
+DROP POLICY IF EXISTS "projects_insert_admin" ON public.projects;
+CREATE POLICY "projects_insert_admin"
+  ON public.projects
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    org_id = (SELECT public.get_user_org(auth.uid()))
+    AND public.has_any_admin(auth.uid())
+  );
+
+
+
+-- =============================================================================
+-- 20260817150000_fix_convert_demand_id_ambiguous.sql
+-- =============================================================================
+
+-- Fix: convert_demand_idea_to_project RETURNS TABLE (id …) made unqualified
+-- "id" ambiguous vs demand_pipeline.id / projects.id (42702).
+
+CREATE OR REPLACE FUNCTION public.convert_demand_idea_to_project(_idea_id uuid)
+RETURNS TABLE (id uuid, project_code text)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+#variable_conflict use_column
+DECLARE
+  uid uuid := auth.uid();
+  home uuid;
+  idea public.demand_pipeline%ROWTYPE;
+  base text;
+  code text;
+  proj public.projects%ROWTYPE;
+  cost numeric;
+  out_id uuid;
+  out_code text;
+BEGIN
+  IF uid IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  home := public.get_user_org(uid);
+  IF home IS NULL THEN
+    RAISE EXCEPTION 'No organisation on your profile';
+  END IF;
+
+  IF NOT public.can_promote_demand(uid) THEN
+    RAISE EXCEPTION 'Not allowed to create a project from demand. Ask an org admin or project manager.';
+  END IF;
+
+  SELECT d.* INTO idea
+  FROM public.demand_pipeline AS d
+  WHERE d.id = _idea_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Demand idea not found';
+  END IF;
+
+  IF idea.org_id IS DISTINCT FROM home THEN
+    RAISE EXCEPTION 'Demand idea is not in your organisation';
+  END IF;
+
+  IF idea.project_id IS NOT NULL THEN
+    SELECT p.id, p.project_code
+    INTO out_id, out_code
+    FROM public.projects AS p
+    WHERE p.id = idea.project_id;
+    IF out_id IS NULL THEN
+      RAISE EXCEPTION 'Demand is linked to a missing project';
+    END IF;
+    id := out_id;
+    project_code := out_code;
+    RETURN NEXT;
+    RETURN;
+  END IF;
+
+  base := upper(regexp_replace(COALESCE(idea.idea_name, 'IDEA'), '[^A-Z0-9]+', '', 'g'));
+  base := left(COALESCE(NULLIF(base, ''), 'NEW'), 8);
+  code := 'DM-' || base || '-' || upper(left(replace(idea.id::text, '-', ''), 4));
+
+  cost := COALESCE(idea.estimated_cost, 0);
+
+  INSERT INTO public.projects (
+    org_id,
+    project_code,
+    name,
+    sponsor,
+    status,
+    rag,
+    priority,
+    delivery_method,
+    budget,
+    capex_approved,
+    opex_approved,
+    benefits_target,
+    roi_percent,
+    portfolio,
+    pm_user_id
+  ) VALUES (
+    home,
+    code,
+    COALESCE(NULLIF(btrim(idea.idea_name), ''), 'Converted demand'),
+    idea.sponsor,
+    'Not Started',
+    'Green',
+    'Medium',
+    'Hybrid',
+    cost,
+    CASE WHEN cost > 0 THEN round(cost * 0.6) ELSE 0 END,
+    CASE WHEN cost > 0 THEN round(cost * 0.4) ELSE 0 END,
+    COALESCE(idea.estimated_benefit, 0),
+    idea.estimated_roi,
+    'Business Strategic',
+    uid
+  )
+  RETURNING * INTO proj;
+
+  BEGIN
+    UPDATE public.demand_pipeline AS d
+    SET
+      project_id = proj.id,
+      status = 'Approved',
+      converted_at = now(),
+      converted_by = uid
+    WHERE d.id = idea.id;
+  EXCEPTION
+    WHEN undefined_column THEN
+      UPDATE public.demand_pipeline AS d
+      SET project_id = proj.id, status = 'Approved'
+      WHERE d.id = idea.id;
+  END;
+
+  id := proj.id;
+  project_code := proj.project_code;
+  RETURN NEXT;
+END;
+$$;
+
+
+
+-- =============================================================================
+-- 20260817160000_governance_cadence_window.sql
+-- =============================================================================
+
+-- Governance Framework: cadence start + placeholder end so the calendar can
+-- expand weekday meetings from the forum cadence (Weekly, Monthly, …).
+
+ALTER TABLE public.governance_channels
+  ADD COLUMN IF NOT EXISTS cadence_start date,
+  ADD COLUMN IF NOT EXISTS cadence_end date;
+
+COMMENT ON COLUMN public.governance_channels.cadence_start IS
+  'First meeting of the cadence series (weekday). Calendar expands from this date.';
+COMMENT ON COLUMN public.governance_channels.cadence_end IS
+  'Placeholder last meeting / planning horizon. Series stops here until the date is extended.';
+
+ALTER TABLE public.governance_channels
+  DROP CONSTRAINT IF EXISTS governance_channels_cadence_window_chk;
+ALTER TABLE public.governance_channels
+  ADD CONSTRAINT governance_channels_cadence_window_chk CHECK (
+    cadence_start IS NULL OR cadence_end IS NULL OR cadence_end >= cadence_start
+  );
+
+CREATE OR REPLACE FUNCTION public.governance_default_cadence_end(p_start date)
+RETURNS date
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT public.governance_snap_weekday((p_start + INTERVAL '12 months')::date, 'forward');
+$$;
+
+COMMENT ON FUNCTION public.governance_default_cadence_end(date) IS
+  'Placeholder cadence end: 12 months after start, snapped to a weekday.';
+
+CREATE OR REPLACE FUNCTION public.governance_sync_meeting_dates(
+  p_start date,
+  p_end date,
+  p_cadence text,
+  p_today date DEFAULT CURRENT_DATE
+)
+RETURNS TABLE(last_meeting date, next_meeting date)
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+DECLARE
+  cur date;
+  nxt date;
+  stop date;
+  n int := 0;
+BEGIN
+  last_meeting := NULL;
+  next_meeting := NULL;
+  IF p_start IS NULL THEN
+    RETURN NEXT;
+    RETURN;
+  END IF;
+  cur := public.governance_snap_weekday(p_start, 'forward');
+  stop := coalesce(p_end, public.governance_default_cadence_end(cur));
+  IF stop < cur THEN
+    stop := public.governance_default_cadence_end(cur);
+  END IF;
+
+  IF p_cadence IS NULL OR p_cadence = 'Ad-hoc' THEN
+    IF cur <= stop THEN
+      IF cur <= p_today THEN last_meeting := cur; ELSE next_meeting := cur; END IF;
+    END IF;
+    RETURN NEXT;
+    RETURN;
+  END IF;
+
+  WHILE cur IS NOT NULL AND cur <= stop AND n < 400 LOOP
+    IF cur <= p_today THEN
+      last_meeting := cur;
+    ELSIF next_meeting IS NULL THEN
+      next_meeting := cur;
+      EXIT;
+    END IF;
+    nxt := public.governance_suggest_next_meeting(cur, p_cadence);
+    IF nxt IS NULL OR nxt <= cur THEN
+      EXIT;
+    END IF;
+    cur := nxt;
+    n := n + 1;
+  END LOOP;
+  RETURN NEXT;
+END;
+$$;
+
+COMMENT ON FUNCTION public.governance_sync_meeting_dates(date, date, text, date) IS
+  'Last = latest series date on or before today; next = first series date after today.';
+
+-- Backfill existing forums: start from last (or next), end = max(existing next, start+12 months).
+UPDATE public.governance_channels c
+SET
+  cadence_start = public.governance_snap_weekday(
+    coalesce(c.last_meeting, c.next_meeting, CURRENT_DATE),
+    'forward'
+  ),
+  cadence_end = GREATEST(
+    public.governance_snap_weekday(coalesce(c.next_meeting, CURRENT_DATE), 'forward'),
+    public.governance_default_cadence_end(
+      public.governance_snap_weekday(coalesce(c.last_meeting, c.next_meeting, CURRENT_DATE), 'forward')
+    )
+  )
+WHERE c.cadence_start IS NULL OR c.cadence_end IS NULL;
+
+CREATE OR REPLACE FUNCTION public.ensure_project_governance_forums(p_project_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_proj public.projects%ROWTYPE;
+  t RECORD;
+  v_id uuid;
+  v_prog uuid;
+  v_sa uuid;
+  v_next date;
+  v_last date;
+  v_start date;
+  v_end date;
+  v_cadence text;
+  v_name text;
+  v_purpose text;
+  v_audience text;
+BEGIN
+  SELECT * INTO v_proj FROM public.projects WHERE id = p_project_id;
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+
+  v_start := public.governance_snap_weekday(CURRENT_DATE, 'forward');
+
+  -- Shared Strategic Alignment forum (one per portfolio value, or skip if blank).
+  IF coalesce(btrim(v_proj.portfolio), '') <> '' THEN
+    SELECT id INTO v_sa
+    FROM public.governance_channels
+    WHERE org_id = v_proj.org_id
+      AND scope_level = 'strategic_alignment'
+      AND portfolio IS NOT DISTINCT FROM v_proj.portfolio
+    ORDER BY created_at
+    LIMIT 1;
+
+    IF v_sa IS NULL THEN
+      SELECT name, cadence, purpose, audience
+        INTO v_name, v_cadence, v_purpose, v_audience
+      FROM public.governance_forum_templates
+      WHERE org_id = v_proj.org_id AND scope_level = 'strategic_alignment' AND is_active
+      ORDER BY sort_order, name
+      LIMIT 1;
+
+      v_name := coalesce(v_name, 'Strategic Alignment Review');
+      v_cadence := coalesce(v_cadence, 'Monthly');
+      v_purpose := coalesce(v_purpose, 'Investment health and escalations for this Strategic Alignment.');
+      v_audience := coalesce(v_audience, 'Executives & Sponsors');
+      v_end := public.governance_default_cadence_end(v_start);
+      SELECT s.last_meeting, s.next_meeting INTO v_last, v_next
+        FROM public.governance_sync_meeting_dates(v_start, v_end, v_cadence) s;
+
+      INSERT INTO public.governance_channels (
+        org_id, name, cadence, audience, purpose, chair,
+        last_meeting, next_meeting, cadence_start, cadence_end, status,
+        scope_level, portfolio
+      ) VALUES (
+        v_proj.org_id, v_name, v_cadence, v_audience, v_purpose, v_proj.sponsor,
+        v_last, v_next, v_start, v_end, 'Active',
+        'strategic_alignment', v_proj.portfolio
+      )
+      RETURNING id INTO v_sa;
+    END IF;
+  END IF;
+
+  -- Shared program forum (one per program name).
+  IF coalesce(btrim(v_proj.program), '') <> '' THEN
+    SELECT id INTO v_prog
+    FROM public.governance_channels
+    WHERE org_id = v_proj.org_id
+      AND scope_level = 'program'
+      AND program IS NOT DISTINCT FROM v_proj.program
+    ORDER BY created_at
+    LIMIT 1;
+
+    IF v_prog IS NULL THEN
+      SELECT name, cadence, purpose, audience
+        INTO v_name, v_cadence, v_purpose, v_audience
+      FROM public.governance_forum_templates
+      WHERE org_id = v_proj.org_id AND scope_level = 'program' AND is_active
+      ORDER BY sort_order, name
+      LIMIT 1;
+
+      v_name := coalesce(v_name, 'Program Board');
+      v_cadence := coalesce(v_cadence, 'Fortnightly');
+      v_purpose := coalesce(v_purpose, 'Program RAG, dependencies, and escalations from project forums.');
+      v_audience := coalesce(v_audience, 'Program & BU Leads');
+      v_end := public.governance_default_cadence_end(v_start);
+      SELECT s.last_meeting, s.next_meeting INTO v_last, v_next
+        FROM public.governance_sync_meeting_dates(v_start, v_end, v_cadence) s;
+
+      INSERT INTO public.governance_channels (
+        org_id, name, cadence, audience, purpose, chair,
+        last_meeting, next_meeting, cadence_start, cadence_end, status,
+        scope_level, program, parent_channel_id
+      ) VALUES (
+        v_proj.org_id, v_name, v_cadence, v_audience, v_purpose, v_proj.sponsor,
+        v_last, v_next, v_start, v_end, 'Active',
+        'program', v_proj.program, v_sa
+      )
+      RETURNING id INTO v_prog;
+    ELSIF v_sa IS NOT NULL THEN
+      UPDATE public.governance_channels
+      SET parent_channel_id = v_sa
+      WHERE id = v_prog AND parent_channel_id IS NULL;
+    END IF;
+  END IF;
+
+  -- Project forums from active project templates.
+  FOR t IN
+    SELECT *
+    FROM public.governance_forum_templates
+    WHERE org_id = v_proj.org_id AND scope_level = 'project' AND is_active
+    ORDER BY sort_order, name
+  LOOP
+    SELECT id INTO v_id
+    FROM public.governance_channels
+    WHERE project_id = v_proj.id
+      AND scope_level = 'project'
+      AND lower(name) = lower(t.name)
+    LIMIT 1;
+
+    IF v_id IS NULL THEN
+      v_end := coalesce(
+        public.governance_snap_weekday(v_proj.planned_end_date, 'forward'),
+        public.governance_default_cadence_end(v_start)
+      );
+      IF v_end < v_start THEN
+        v_end := public.governance_default_cadence_end(v_start);
+      END IF;
+      SELECT s.last_meeting, s.next_meeting INTO v_last, v_next
+        FROM public.governance_sync_meeting_dates(v_start, v_end, t.cadence) s;
+
+      INSERT INTO public.governance_channels (
+        org_id, name, cadence, audience, purpose, chair,
+        last_meeting, next_meeting, cadence_start, cadence_end, status,
+        scope_level, project_id, program, portfolio, parent_channel_id
+      ) VALUES (
+        v_proj.org_id, t.name, t.cadence,
+        coalesce(t.audience, 'Project team'),
+        t.purpose,
+        coalesce(t.default_chair, v_proj.sponsor),
+        v_last, v_next, v_start, v_end, 'Active',
+        'project', v_proj.id, v_proj.program, v_proj.portfolio, v_prog
+      )
+      RETURNING id INTO v_id;
+    ELSIF v_prog IS NOT NULL THEN
+      UPDATE public.governance_channels
+      SET parent_channel_id = v_prog
+      WHERE id = v_id AND parent_channel_id IS NULL;
+    END IF;
+  END LOOP;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.governance_default_cadence_end(date) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.governance_default_cadence_end(date) TO service_role;
+GRANT EXECUTE ON FUNCTION public.governance_sync_meeting_dates(date, date, text, date) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.governance_sync_meeting_dates(date, date, text, date) TO service_role;
+GRANT EXECUTE ON FUNCTION public.ensure_project_governance_forums(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.ensure_project_governance_forums(uuid) TO service_role;
+
+
+
+-- =============================================================================
+-- 20260817170000_governance_cadence_align_next.sql
+-- =============================================================================
+
+-- Align previous / next meeting with cadence start, type, and placeholder end.
+-- Next = first series date on or after today; previous = the occurrence before it.
+-- Weekly / Fortnightly stay on the start weekday (+7 / +14 calendar days).
+
+ALTER TABLE public.governance_channels
+  ADD COLUMN IF NOT EXISTS cadence_start date,
+  ADD COLUMN IF NOT EXISTS cadence_end date;
+
+CREATE OR REPLACE FUNCTION public.governance_occurrence_at(
+  p_start date,
+  p_cadence text,
+  p_n integer
+)
+RETURNS date
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+DECLARE
+  origin date;
+BEGIN
+  IF p_start IS NULL THEN
+    RETURN NULL;
+  END IF;
+  origin := public.governance_snap_weekday(p_start, CASE WHEN coalesce(p_n, 0) >= 0 THEN 'forward' ELSE 'back' END);
+  CASE p_cadence
+    WHEN 'Daily' THEN
+      RETURN public.governance_add_weekdays(origin, p_n);
+    WHEN 'Weekly' THEN
+      RETURN origin + (p_n * 7);
+    WHEN 'Fortnightly' THEN
+      RETURN origin + (p_n * 14);
+    WHEN 'Monthly' THEN
+      RETURN public.governance_add_months_weekday(origin, p_n);
+    WHEN 'Quarterly' THEN
+      RETURN public.governance_add_months_weekday(origin, p_n * 3);
+    WHEN 'Half-yearly' THEN
+      RETURN public.governance_add_months_weekday(origin, p_n * 6);
+    WHEN 'Annual' THEN
+      RETURN public.governance_add_months_weekday(origin, p_n * 12);
+    ELSE
+      RETURN CASE WHEN p_n = 0 THEN origin ELSE NULL END;
+  END CASE;
+END;
+$$;
+
+COMMENT ON FUNCTION public.governance_occurrence_at(date, text, integer) IS
+  'Nth meeting from cadence start. Weekly keeps the start weekday; monthly adds months from start then snaps to a weekday.';
+
+CREATE OR REPLACE FUNCTION public.governance_suggest_next_meeting(p_last date, p_cadence text)
+RETURNS date
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+BEGIN
+  IF p_last IS NULL THEN
+    RETURN NULL;
+  END IF;
+  RETURN public.governance_occurrence_at(p_last, p_cadence, 1);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.governance_sync_meeting_dates(
+  p_start date,
+  p_end date,
+  p_cadence text,
+  p_today date DEFAULT CURRENT_DATE
+)
+RETURNS TABLE(last_meeting date, next_meeting date)
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+DECLARE
+  origin date;
+  stop date;
+  cur date;
+  prev date := NULL;
+  n int := 0;
+BEGIN
+  last_meeting := NULL;
+  next_meeting := NULL;
+  IF p_start IS NULL THEN
+    RETURN NEXT;
+    RETURN;
+  END IF;
+  origin := public.governance_snap_weekday(p_start, 'forward');
+  stop := coalesce(p_end, public.governance_default_cadence_end(origin));
+  IF stop < origin THEN
+    stop := public.governance_default_cadence_end(origin);
+  END IF;
+
+  IF p_cadence IS NULL OR p_cadence = 'Ad-hoc' THEN
+    IF origin <= stop THEN
+      IF origin >= p_today THEN
+        next_meeting := origin;
+      ELSE
+        last_meeting := origin;
+      END IF;
+    END IF;
+    RETURN NEXT;
+    RETURN;
+  END IF;
+
+  WHILE n < 400 LOOP
+    cur := public.governance_occurrence_at(origin, p_cadence, n);
+    IF cur IS NULL OR cur > stop THEN
+      EXIT;
+    END IF;
+    IF cur >= p_today THEN
+      next_meeting := cur;
+      last_meeting := prev;
+      RETURN NEXT;
+      RETURN;
+    END IF;
+    prev := cur;
+    n := n + 1;
+  END LOOP;
+
+  last_meeting := prev;
+  RETURN NEXT;
+END;
+$$;
+
+COMMENT ON FUNCTION public.governance_sync_meeting_dates(date, date, text, date) IS
+  'Next = first series date on or after today (through end). Previous = the occurrence immediately before next.';
+
+UPDATE public.governance_channels c
+SET
+  (last_meeting, next_meeting) = (
+    SELECT s.last_meeting, s.next_meeting
+    FROM public.governance_sync_meeting_dates(
+      coalesce(c.cadence_start, c.last_meeting, c.next_meeting, CURRENT_DATE),
+      coalesce(
+        c.cadence_end,
+        public.governance_default_cadence_end(
+          public.governance_snap_weekday(
+            coalesce(c.cadence_start, c.last_meeting, c.next_meeting, CURRENT_DATE),
+            'forward'
+          )
+        )
+      ),
+      c.cadence,
+      CURRENT_DATE
+    ) s
+  )
+WHERE c.status IS DISTINCT FROM 'Retired';
+
+GRANT EXECUTE ON FUNCTION public.governance_occurrence_at(date, text, integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.governance_occurrence_at(date, text, integer) TO service_role;
+GRANT EXECUTE ON FUNCTION public.governance_suggest_next_meeting(date, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.governance_suggest_next_meeting(date, text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.governance_sync_meeting_dates(date, date, text, date) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.governance_sync_meeting_dates(date, date, text, date) TO service_role;
+
+
+
+-- =============================================================================
+-- 20260817180000_governance_cadence_align_next_update.sql
+-- =============================================================================
+
+-- Finish cadence previous/next rewrite. The first align script failed on
+-- UPDATE ... FROM LATERAL (Postgres cannot reference the target table there).
+-- Functions from that run are kept; this only rewrites last_meeting / next_meeting.
+-- Safe to re-run.
+
+UPDATE public.governance_channels c
+SET
+  (last_meeting, next_meeting) = (
+    SELECT s.last_meeting, s.next_meeting
+    FROM public.governance_sync_meeting_dates(
+      coalesce(c.cadence_start, c.last_meeting, c.next_meeting, CURRENT_DATE),
+      coalesce(
+        c.cadence_end,
+        public.governance_default_cadence_end(
+          public.governance_snap_weekday(
+            coalesce(c.cadence_start, c.last_meeting, c.next_meeting, CURRENT_DATE),
+            'forward'
+          )
+        )
+      ),
+      c.cadence,
+      CURRENT_DATE
+    ) s
+  )
+WHERE c.status IS DISTINCT FROM 'Retired';
+
+
+
+-- =============================================================================
+-- 20260817190000_project_access_hierarchy.sql
+-- =============================================================================
+
+-- Hierarchical project data access: Strategic Alignment, Program, Functional Area,
+-- Project, and Stream — for role rules and per-user overrides.
+-- Safe to re-run. Paste this whole file into the Supabase SQL Editor, then
+-- Settings → API → Reload schema cache.
+
+-- Dimension grant: '(Unassigned)' matches null/blank; otherwise case-insensitive equality.
+CREATE OR REPLACE FUNCTION public.project_visibility_dim_in(p_value text, p_list jsonb)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements_text(
+      CASE WHEN jsonb_typeof(p_list) = 'array' THEN p_list ELSE '[]'::jsonb END
+    ) AS g(val)
+    WHERE (
+      lower(trim(g.val)) IN ('(unassigned)', 'unassigned')
+      AND trim(coalesce(p_value, '')) = ''
+    )
+    OR (
+      trim(coalesce(p_value, '')) <> ''
+      AND lower(trim(g.val)) = lower(trim(p_value))
+    )
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.project_visibility_rule_matches(
+  p_rule jsonb,
+  p_project_id uuid,
+  p_program text,
+  p_portfolio text,
+  p_functional_area text
+)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_mode text;
+BEGIN
+  IF p_rule IS NULL OR jsonb_typeof(p_rule) <> 'object' THEN
+    RETURN false;
+  END IF;
+
+  v_mode := lower(trim(coalesce(p_rule->>'mode', 'all')));
+  IF v_mode IN ('all', '') THEN
+    RETURN true;
+  END IF;
+
+  -- Any non-all mode (legacy programs/projects, or scoped hierarchy): OR of grants.
+  -- Parent grants include children (SA → program/FA/project/stream, etc.).
+  IF public.project_visibility_dim_in(p_portfolio, p_rule->'strategic_alignments') THEN
+    RETURN true;
+  END IF;
+
+  IF public.project_visibility_dim_in(p_program, p_rule->'programs') THEN
+    RETURN true;
+  END IF;
+
+  IF public.project_visibility_dim_in(p_functional_area, p_rule->'functional_areas') THEN
+    RETURN true;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements(
+      CASE
+        WHEN jsonb_typeof(p_rule->'program_areas') = 'array' THEN p_rule->'program_areas'
+        ELSE '[]'::jsonb
+      END
+    ) AS pa
+    WHERE public.project_visibility_dim_in(p_program, jsonb_build_array(coalesce(pa->>'program', '')))
+      AND public.project_visibility_dim_in(
+        p_functional_area,
+        jsonb_build_array(coalesce(pa->>'functional_area', ''))
+      )
+  ) THEN
+    RETURN true;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements_text(
+      CASE
+        WHEN jsonb_typeof(p_rule->'project_ids') = 'array' THEN p_rule->'project_ids'
+        ELSE '[]'::jsonb
+      END
+    ) AS pid(val)
+    WHERE pid.val = p_project_id::text
+  ) THEN
+    RETURN true;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM public.project_streams s
+    JOIN jsonb_array_elements_text(
+      CASE
+        WHEN jsonb_typeof(p_rule->'stream_ids') = 'array' THEN p_rule->'stream_ids'
+        ELSE '[]'::jsonb
+      END
+    ) AS sid(val)
+      ON s.id::text = sid.val
+    WHERE s.project_id = p_project_id
+  ) THEN
+    RETURN true;
+  END IF;
+
+  RETURN false;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.user_can_view_project(p_user_id uuid, p_project_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org_id uuid;
+  v_program text;
+  v_portfolio text;
+  v_functional_area text;
+  v_cfg jsonb;
+  v_rules jsonb;
+  v_user_rules jsonb;
+  v_user_rule jsonb;
+  v_user_roles text[];
+  v_matched boolean := false;
+  v_rule jsonb;
+BEGIN
+  IF p_user_id IS NULL OR p_project_id IS NULL THEN
+    RETURN false;
+  END IF;
+
+  SELECT p.org_id,
+         coalesce(p.program, ''),
+         coalesce(p.portfolio, ''),
+         coalesce(p.functional_area, '')
+  INTO v_org_id, v_program, v_portfolio, v_functional_area
+  FROM public.projects p
+  WHERE p.id = p_project_id;
+
+  IF v_org_id IS NULL THEN
+    RETURN false;
+  END IF;
+
+  -- Hard tenancy boundary: never cross organisations (includes platform_admin).
+  IF public.get_user_org(p_user_id) IS DISTINCT FROM v_org_id THEN
+    RETURN false;
+  END IF;
+
+  -- Within own org, platform_admin and org admins see the full portfolio.
+  IF public.is_platform_admin(p_user_id) OR public.has_any_admin(p_user_id) THEN
+    RETURN true;
+  END IF;
+
+  IF public.can_edit_project(p_user_id, p_project_id) THEN
+    RETURN true;
+  END IF;
+
+  SELECT coalesce(o.ui_config->'project_visibility', '{}'::jsonb)
+  INTO v_cfg
+  FROM public.organizations o
+  WHERE o.id = v_org_id;
+
+  v_rules := coalesce(v_cfg->'rules', '[]'::jsonb);
+  v_user_rules := coalesce(v_cfg->'user_rules', '[]'::jsonb);
+
+  SELECT r
+  INTO v_user_rule
+  FROM jsonb_array_elements(
+    CASE WHEN jsonb_typeof(v_user_rules) = 'array' THEN v_user_rules ELSE '[]'::jsonb END
+  ) AS r
+  WHERE r->>'user_id' = p_user_id::text
+  LIMIT 1;
+
+  IF v_user_rule IS NOT NULL THEN
+    RETURN public.project_visibility_rule_matches(
+      v_user_rule,
+      p_project_id,
+      v_program,
+      v_portfolio,
+      v_functional_area
+    );
+  END IF;
+
+  IF v_rules IS NULL OR jsonb_typeof(v_rules) <> 'array' OR jsonb_array_length(v_rules) = 0 THEN
+    RETURN true;
+  END IF;
+
+  SELECT coalesce(array_agg(lower(ur.role::text)), ARRAY[]::text[])
+  INTO v_user_roles
+  FROM public.user_roles ur
+  WHERE ur.user_id = p_user_id
+    AND (ur.org_id = v_org_id OR ur.org_id IS NULL);
+
+  FOR v_rule IN
+    SELECT r
+    FROM jsonb_array_elements(v_rules) AS r
+    WHERE lower(coalesce(r->>'role', '')) = ANY (v_user_roles)
+  LOOP
+    v_matched := true;
+    IF public.project_visibility_rule_matches(
+      v_rule,
+      p_project_id,
+      v_program,
+      v_portfolio,
+      v_functional_area
+    ) THEN
+      RETURN true;
+    END IF;
+  END LOOP;
+
+  IF NOT v_matched THEN
+    RETURN true;
+  END IF;
+
+  RETURN false;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.project_visibility_dim_in(text, jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.project_visibility_rule_matches(jsonb, uuid, text, text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.project_visibility_dim_in(text, jsonb) TO postgres;
+GRANT EXECUTE ON FUNCTION public.project_visibility_rule_matches(jsonb, uuid, text, text, text) TO postgres;
+
+REVOKE ALL ON FUNCTION public.user_can_view_project(uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.user_can_view_project(uuid, uuid) TO authenticated;
+
+COMMENT ON FUNCTION public.project_visibility_dim_in(text, jsonb) IS
+  'Project access: match a portfolio/program/functional-area value against a JSON string array. (Unassigned) matches blank.';
+
+COMMENT ON FUNCTION public.project_visibility_rule_matches(jsonb, uuid, text, text, text) IS
+  'Project access: OR of Strategic Alignment, program, functional area, program×area, project, and stream grants. Parent includes children.';
+
+COMMENT ON FUNCTION public.user_can_view_project(uuid, uuid) IS
+  'Org-tenant project visibility. Admins see all in their org. Role and user rules grant Strategic Alignment, program, functional area, project, and stream (stream unlocks the parent project). User overrides replace role rules.';
+
+
+
+-- =============================================================================
+-- 20260817191000_project_access_admin_user_overrides.sql
+-- =============================================================================
+
+-- User overrides apply to Admin / Org Admin / platform_admin as well.
+-- This page still lists the full org catalog via org_admin_list_access_projects
+-- so admins can always change grants. Safe to re-run.
+
+CREATE OR REPLACE FUNCTION public.user_can_view_project(p_user_id uuid, p_project_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org_id uuid;
+  v_program text;
+  v_portfolio text;
+  v_functional_area text;
+  v_cfg jsonb;
+  v_rules jsonb;
+  v_user_rules jsonb;
+  v_user_rule jsonb;
+  v_user_roles text[];
+  v_matched boolean := false;
+  v_rule jsonb;
+BEGIN
+  IF p_user_id IS NULL OR p_project_id IS NULL THEN
+    RETURN false;
+  END IF;
+
+  SELECT p.org_id,
+         coalesce(p.program, ''),
+         coalesce(p.portfolio, ''),
+         coalesce(p.functional_area, '')
+  INTO v_org_id, v_program, v_portfolio, v_functional_area
+  FROM public.projects p
+  WHERE p.id = p_project_id;
+
+  IF v_org_id IS NULL THEN
+    RETURN false;
+  END IF;
+
+  -- Hard tenancy boundary: never cross organisations (includes platform_admin).
+  IF public.get_user_org(p_user_id) IS DISTINCT FROM v_org_id THEN
+    RETURN false;
+  END IF;
+
+  SELECT coalesce(o.ui_config->'project_visibility', '{}'::jsonb)
+  INTO v_cfg
+  FROM public.organizations o
+  WHERE o.id = v_org_id;
+
+  v_rules := coalesce(v_cfg->'rules', '[]'::jsonb);
+  v_user_rules := coalesce(v_cfg->'user_rules', '[]'::jsonb);
+
+  SELECT r
+  INTO v_user_rule
+  FROM jsonb_array_elements(
+    CASE WHEN jsonb_typeof(v_user_rules) = 'array' THEN v_user_rules ELSE '[]'::jsonb END
+  ) AS r
+  WHERE r->>'user_id' = p_user_id::text
+  LIMIT 1;
+
+  -- Explicit per-user override applies to everyone, including admins.
+  IF v_user_rule IS NOT NULL THEN
+    RETURN public.project_visibility_rule_matches(
+      v_user_rule,
+      p_project_id,
+      v_program,
+      v_portfolio,
+      v_functional_area
+    );
+  END IF;
+
+  -- No user override: platform_admin and org admins see the full portfolio.
+  IF public.is_platform_admin(p_user_id) OR public.has_any_admin(p_user_id) THEN
+    RETURN true;
+  END IF;
+
+  IF public.can_edit_project(p_user_id, p_project_id) THEN
+    RETURN true;
+  END IF;
+
+  IF v_rules IS NULL OR jsonb_typeof(v_rules) <> 'array' OR jsonb_array_length(v_rules) = 0 THEN
+    RETURN true;
+  END IF;
+
+  SELECT coalesce(array_agg(lower(ur.role::text)), ARRAY[]::text[])
+  INTO v_user_roles
+  FROM public.user_roles ur
+  WHERE ur.user_id = p_user_id
+    AND (ur.org_id = v_org_id OR ur.org_id IS NULL);
+
+  FOR v_rule IN
+    SELECT r
+    FROM jsonb_array_elements(v_rules) AS r
+    WHERE lower(coalesce(r->>'role', '')) = ANY (v_user_roles)
+  LOOP
+    v_matched := true;
+    IF public.project_visibility_rule_matches(
+      v_rule,
+      p_project_id,
+      v_program,
+      v_portfolio,
+      v_functional_area
+    ) THEN
+      RETURN true;
+    END IF;
+  END LOOP;
+
+  IF NOT v_matched THEN
+    RETURN true;
+  END IF;
+
+  RETURN false;
+END;
+$$;
+
+COMMENT ON FUNCTION public.user_can_view_project(uuid, uuid) IS
+  'Org-tenant project visibility. User overrides apply even to admins. Admins with no override see all in their org. This page lists the full catalog via org_admin_list_access_projects so they can change grants.';
+
+REVOKE ALL ON FUNCTION public.user_can_view_project(uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.user_can_view_project(uuid, uuid) TO authenticated;
+
+-- Full org project list for the Project data access page (admins only).
+CREATE OR REPLACE FUNCTION public.org_admin_list_access_projects()
+RETURNS TABLE (
+  id uuid,
+  name text,
+  project_code text,
+  program text,
+  portfolio text,
+  functional_area text
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org uuid;
+BEGIN
+  v_org := public.get_user_org(auth.uid());
+  IF v_org IS NULL THEN
+    RETURN;
+  END IF;
+  IF NOT (public.has_any_admin(auth.uid()) OR public.is_platform_admin(auth.uid())) THEN
+    RAISE EXCEPTION 'not allowed' USING ERRCODE = '42501';
+  END IF;
+  RETURN QUERY
+  SELECT p.id, p.name, p.project_code, p.program, p.portfolio, p.functional_area
+  FROM public.projects p
+  WHERE p.org_id = v_org
+  ORDER BY p.name;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.org_admin_list_access_projects() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.org_admin_list_access_projects() TO authenticated;
+
+COMMENT ON FUNCTION public.org_admin_list_access_projects() IS
+  'Project data access UI: org admins list every project in their org even if they have a user visibility override.';
+
+
+
+-- =============================================================================
+-- 20260817192000_platform_admin_no_tenant_pmo.sql
+-- =============================================================================
+
+-- Platform operators must not read tenant PMO data.
+-- platform_admin is for billing, EOI, landing, org directory, licenses.
+-- Tenant data requires a tenant role on that org (org_admin, admin, pm, …).
+-- Dual-hat: if you also grant an org role, that person is a tenant user too —
+-- do not dual-hat platform operators onto customer organisations.
+-- Safe to re-run.
+
+CREATE OR REPLACE FUNCTION public.user_has_tenant_org_role(p_user_id uuid, p_org_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.user_roles ur
+    WHERE ur.user_id = p_user_id
+      AND ur.org_id = p_org_id
+      AND lower(ur.role::text) IS DISTINCT FROM 'platform_admin'
+  );
+$$;
+
+REVOKE ALL ON FUNCTION public.user_has_tenant_org_role(uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.user_has_tenant_org_role(uuid, uuid) TO postgres;
+
+COMMENT ON FUNCTION public.user_has_tenant_org_role(uuid, uuid) IS
+  'True when the user holds a tenant role (not platform_admin) on that organisation.';
+
+-- Home org for tenant RLS. Null for platform_admin with no tenant role so
+-- org_id = get_user_org(...) policies cannot leak PMO rows.
+CREATE OR REPLACE FUNCTION public.get_user_org(_user_id uuid)
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT p.org_id
+  FROM public.profiles p
+  WHERE p.id = _user_id
+    AND (
+      NOT EXISTS (
+        SELECT 1
+        FROM public.user_roles ur
+        WHERE ur.user_id = _user_id
+          AND lower(ur.role::text) = 'platform_admin'
+      )
+      OR public.user_has_tenant_org_role(_user_id, p.org_id)
+    );
+$$;
+
+COMMENT ON FUNCTION public.get_user_org(uuid) IS
+  'Tenant home org for RLS. Returns null for platform_admin operators who have no tenant org role.';
+
+CREATE OR REPLACE FUNCTION public.user_can_view_project(p_user_id uuid, p_project_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org_id uuid;
+  v_program text;
+  v_portfolio text;
+  v_functional_area text;
+  v_cfg jsonb;
+  v_rules jsonb;
+  v_user_rules jsonb;
+  v_user_rule jsonb;
+  v_user_roles text[];
+  v_matched boolean := false;
+  v_rule jsonb;
+BEGIN
+  IF p_user_id IS NULL OR p_project_id IS NULL THEN
+    RETURN false;
+  END IF;
+
+  SELECT p.org_id,
+         coalesce(p.program, ''),
+         coalesce(p.portfolio, ''),
+         coalesce(p.functional_area, '')
+  INTO v_org_id, v_program, v_portfolio, v_functional_area
+  FROM public.projects p
+  WHERE p.id = p_project_id;
+
+  IF v_org_id IS NULL THEN
+    RETURN false;
+  END IF;
+
+  -- Hard tenancy boundary (platform_admin with no tenant role has null home org).
+  IF public.get_user_org(p_user_id) IS DISTINCT FROM v_org_id THEN
+    RETURN false;
+  END IF;
+
+  -- Platform operator without a tenant role: never PMO data (ignore user_rules too).
+  IF public.is_platform_admin(p_user_id)
+     AND NOT public.user_has_tenant_org_role(p_user_id, v_org_id) THEN
+    RETURN false;
+  END IF;
+
+  SELECT coalesce(o.ui_config->'project_visibility', '{}'::jsonb)
+  INTO v_cfg
+  FROM public.organizations o
+  WHERE o.id = v_org_id;
+
+  v_rules := coalesce(v_cfg->'rules', '[]'::jsonb);
+  v_user_rules := coalesce(v_cfg->'user_rules', '[]'::jsonb);
+
+  SELECT r
+  INTO v_user_rule
+  FROM jsonb_array_elements(
+    CASE WHEN jsonb_typeof(v_user_rules) = 'array' THEN v_user_rules ELSE '[]'::jsonb END
+  ) AS r
+  WHERE r->>'user_id' = p_user_id::text
+  LIMIT 1;
+
+  IF v_user_rule IS NOT NULL THEN
+    RETURN public.project_visibility_rule_matches(
+      v_user_rule,
+      p_project_id,
+      v_program,
+      v_portfolio,
+      v_functional_area
+    );
+  END IF;
+
+  -- Org Admin / Admin only — platform_admin does not unlock the portfolio.
+  IF public.has_any_admin(p_user_id) THEN
+    RETURN true;
+  END IF;
+
+  IF public.can_edit_project(p_user_id, p_project_id) THEN
+    RETURN true;
+  END IF;
+
+  IF v_rules IS NULL OR jsonb_typeof(v_rules) <> 'array' OR jsonb_array_length(v_rules) = 0 THEN
+    RETURN true;
+  END IF;
+
+  SELECT coalesce(array_agg(lower(ur.role::text)), ARRAY[]::text[])
+  INTO v_user_roles
+  FROM public.user_roles ur
+  WHERE ur.user_id = p_user_id
+    AND (ur.org_id = v_org_id OR ur.org_id IS NULL)
+    AND lower(ur.role::text) IS DISTINCT FROM 'platform_admin';
+
+  FOR v_rule IN
+    SELECT r
+    FROM jsonb_array_elements(v_rules) AS r
+    WHERE lower(coalesce(r->>'role', '')) = ANY (v_user_roles)
+  LOOP
+    v_matched := true;
+    IF public.project_visibility_rule_matches(
+      v_rule,
+      p_project_id,
+      v_program,
+      v_portfolio,
+      v_functional_area
+    ) THEN
+      RETURN true;
+    END IF;
+  END LOOP;
+
+  IF NOT v_matched THEN
+    RETURN true;
+  END IF;
+
+  RETURN false;
+END;
+$$;
+
+COMMENT ON FUNCTION public.user_can_view_project(uuid, uuid) IS
+  'Tenant PMO visibility. platform_admin never grants project access. Org admins with no user override see all in their org. User overrides apply to tenant users including org admins.';
+
+REVOKE ALL ON FUNCTION public.user_can_view_project(uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.user_can_view_project(uuid, uuid) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.org_admin_list_access_projects()
+RETURNS TABLE (
+  id uuid,
+  name text,
+  project_code text,
+  program text,
+  portfolio text,
+  functional_area text
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org uuid;
+BEGIN
+  v_org := public.get_user_org(auth.uid());
+  IF v_org IS NULL THEN
+    RETURN;
+  END IF;
+  IF NOT public.has_any_admin(auth.uid()) THEN
+    RAISE EXCEPTION 'not allowed' USING ERRCODE = '42501';
+  END IF;
+  RETURN QUERY
+  SELECT p.id, p.name, p.project_code, p.program, p.portfolio, p.functional_area
+  FROM public.projects p
+  WHERE p.org_id = v_org
+  ORDER BY p.name;
+END;
+$$;
+
+COMMENT ON FUNCTION public.org_admin_list_access_projects() IS
+  'Project data access UI catalog. Org admins only — not platform_admin.';
+
+-- Tenant role catalog is org-admin, not platform ops.
+DROP POLICY IF EXISTS "org read org_roles" ON public.org_roles;
+CREATE POLICY "org read org_roles" ON public.org_roles
+  FOR SELECT TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()));
+
+DROP POLICY IF EXISTS "admins write org_roles" ON public.org_roles;
+CREATE POLICY "admins write org_roles" ON public.org_roles
+  FOR ALL TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()) AND public.has_any_admin(auth.uid()))
+  WITH CHECK (org_id = public.get_user_org(auth.uid()) AND public.has_any_admin(auth.uid()));
+
+DROP POLICY IF EXISTS export_jobs_read_org ON public.export_jobs;
+CREATE POLICY export_jobs_read_org
+  ON public.export_jobs FOR SELECT TO authenticated
+  USING (
+    org_id = (SELECT public.get_user_org(auth.uid()))
+    AND (
+      requested_by = auth.uid()
+      OR public.has_any_admin(auth.uid())
+    )
+  );
+
+CREATE OR REPLACE FUNCTION public.portfolio_project_stats(p_org_id uuid DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org uuid := coalesce(p_org_id, public.get_user_org(auth.uid()));
+  v_by_rag jsonb;
+  v_by_status jsonb;
+  v_by_program jsonb;
+  v_by_priority jsonb;
+  v_total int;
+  v_active int;
+  v_completed int;
+  v_budget numeric;
+  v_incurred numeric;
+BEGIN
+  IF v_org IS NULL THEN
+    RETURN '{}'::jsonb;
+  END IF;
+  IF public.get_user_org(auth.uid()) IS DISTINCT FROM v_org THEN
+    RAISE EXCEPTION 'not authorized';
+  END IF;
+
+  SELECT
+    count(*)::int,
+    count(*) FILTER (
+      WHERE coalesce(status::text, '') ILIKE 'In Progress'
+    )::int,
+    count(*) FILTER (
+      WHERE coalesce(status::text, '') ILIKE 'Completed'
+         OR coalesce(status::text, '') ILIKE 'Complete'
+    )::int,
+    coalesce(sum(coalesce(budget, 0)), 0),
+    coalesce(sum(coalesce(capex_incurred, 0)), 0)
+  INTO v_total, v_active, v_completed, v_budget, v_incurred
+  FROM public.projects
+  WHERE org_id = v_org;
+
+  SELECT coalesce(jsonb_object_agg(k, c), '{}'::jsonb) INTO v_by_rag
+  FROM (
+    SELECT
+      CASE
+        WHEN lower(trim(COALESCE(rag_override, ''))) IN ('green', 'amber', 'red')
+          THEN trim(rag_override)
+        ELSE coalesce(nullif(trim(rag::text), ''), 'Unknown')
+      END AS k,
+      count(*)::int AS c
+    FROM public.projects WHERE org_id = v_org GROUP BY 1
+  ) s;
+
+  SELECT coalesce(jsonb_object_agg(k, c), '{}'::jsonb) INTO v_by_status
+  FROM (
+    SELECT coalesce(nullif(trim(status::text), ''), 'Unknown') AS k, count(*)::int AS c
+    FROM public.projects WHERE org_id = v_org GROUP BY 1
+  ) s;
+
+  SELECT coalesce(jsonb_object_agg(k, c), '{}'::jsonb) INTO v_by_program
+  FROM (
+    SELECT coalesce(nullif(trim(program), ''), 'Unassigned') AS k, count(*)::int AS c
+    FROM public.projects WHERE org_id = v_org GROUP BY 1
+  ) s;
+
+  SELECT coalesce(jsonb_object_agg(k, c), '{}'::jsonb) INTO v_by_priority
+  FROM (
+    SELECT coalesce(nullif(trim(priority), ''), 'Unassigned') AS k, count(*)::int AS c
+    FROM public.projects WHERE org_id = v_org GROUP BY 1
+  ) s;
+
+  RETURN jsonb_build_object(
+    'total', v_total,
+    'active', v_active,
+    'completed', v_completed,
+    'budget_total', v_budget,
+    'capex_incurred', v_incurred,
+    'by_rag', v_by_rag,
+    'by_status', v_by_status,
+    'by_program', v_by_program,
+    'by_priority', v_by_priority
+  );
+END;
+$$;
+
+
+
+-- =============================================================================
+-- 20260820120000_raid_audit_and_perm_other.sql
+-- =============================================================================
+
+-- 1) Role permission matrix: View / Edit / Other
+-- 2) RAID register writes (risk, action, issue, decision) land in audit_events
+
+ALTER TABLE public.role_table_permissions
+  ADD COLUMN IF NOT EXISTS can_other boolean NOT NULL DEFAULT false;
+
+COMMENT ON COLUMN public.role_table_permissions.can_other IS
+  'Extra actions beyond view/edit: add/delete rows, upload, approve-adjacent, project delete.';
+
+-- Capabilities previously used can_edit as a single "allowed" bit (incl. add/delete, uploads).
+UPDATE public.role_table_permissions
+SET can_other = true
+WHERE table_name LIKE 'capability::%'
+  AND can_edit = true
+  AND can_other = false;
+
+-- Timesheet cost view is a view-style capability; keep can_view in step with can_edit.
+UPDATE public.role_table_permissions
+SET can_view = true
+WHERE table_name = 'capability::timesheet_cost_view'
+  AND can_edit = true
+  AND can_view = false;
+
+CREATE OR REPLACE FUNCTION public.user_has_capability(_user_id uuid, _cap text)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  has_row boolean;
+  allowed boolean;
+BEGIN
+  IF _user_id IS NULL THEN
+    RETURN false;
+  END IF;
+
+  IF public.has_any_admin(_user_id) THEN
+    RETURN true;
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.user_roles ur
+    JOIN public.role_table_permissions p
+      ON p.org_id = ur.org_id AND p.role = ur.role
+    WHERE ur.user_id = _user_id
+      AND p.table_name = _cap
+  ) INTO has_row;
+
+  IF has_row THEN
+    SELECT EXISTS (
+      SELECT 1
+      FROM public.user_roles ur
+      JOIN public.role_table_permissions p
+        ON p.org_id = ur.org_id AND p.role = ur.role
+      WHERE ur.user_id = _user_id
+        AND p.table_name = _cap
+        AND (
+          COALESCE(p.can_edit, false)
+          OR COALESCE(p.can_other, false)
+          OR (_cap = 'capability::timesheet_cost_view' AND COALESCE(p.can_view, false))
+        )
+    ) INTO allowed;
+    RETURN allowed;
+  END IF;
+
+  IF _cap = 'capability::timesheet_cost_view' THEN
+    RETURN EXISTS (
+      SELECT 1 FROM public.user_roles ur
+      WHERE ur.user_id = _user_id
+        AND ur.role IN ('pm', 'admin', 'org_admin')
+    );
+  END IF;
+
+  RETURN false;
+END;
+$$;
+
+COMMENT ON FUNCTION public.user_has_capability(uuid, text) IS
+  'True when user is admin or has view/edit/other on the capability row; timesheet_cost_view defaults to org admin + PM when unconfigured.';
+
+-- ========== RAID register audit ==========
+-- Logs insert / update / delete for Risks, Actions, Issues, Decisions.
+-- Replaces the decisions outcome-only trigger so every RAID change is visible.
+
+CREATE OR REPLACE FUNCTION public.tg_raid_register_audit()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  rec jsonb;
+  oldj jsonb;
+  newj jsonb;
+  etype text;
+  act text;
+  title_txt text;
+  summ text;
+  meta jsonb;
+  changed text[] := ARRAY[]::text[];
+  k text;
+  rec_id uuid;
+  rec_org uuid;
+BEGIN
+  etype := CASE TG_TABLE_NAME
+    WHEN 'risks' THEN 'risk'
+    WHEN 'issues' THEN 'issue'
+    WHEN 'actions' THEN 'action'
+    WHEN 'decisions' THEN 'decision'
+    ELSE TG_TABLE_NAME
+  END;
+
+  IF TG_OP = 'DELETE' THEN
+    rec := to_jsonb(OLD);
+    act := 'deleted';
+  ELSIF TG_OP = 'INSERT' THEN
+    rec := to_jsonb(NEW);
+    act := 'created';
+  ELSE
+    rec := to_jsonb(NEW);
+    act := 'updated';
+    oldj := to_jsonb(OLD);
+    newj := to_jsonb(NEW);
+    FOR k IN SELECT jsonb_object_keys(newj)
+    LOOP
+      IF k IN ('updated_at', 'created_at') THEN
+        CONTINUE;
+      END IF;
+      IF oldj -> k IS DISTINCT FROM newj -> k THEN
+        changed := array_append(changed, k);
+      END IF;
+    END LOOP;
+    IF coalesce(array_length(changed, 1), 0) = 0 THEN
+      RETURN NEW;
+    END IF;
+    IF etype = 'decision' AND changed = ARRAY['outcome']::text[] THEN
+      act := 'outcome_changed';
+    END IF;
+  END IF;
+
+  rec_id := (rec ->> 'id')::uuid;
+  rec_org := (rec ->> 'org_id')::uuid;
+  title_txt := coalesce(rec ->> 'title', 'Untitled');
+
+  IF TG_OP = 'UPDATE' THEN
+    summ := initcap(etype) || ' "' || title_txt || '" updated (' || array_to_string(changed, ', ') || ')';
+    IF act = 'outcome_changed' THEN
+      summ := 'Decision "' || title_txt || '" → ' || coalesce(NEW.outcome, '—');
+    END IF;
+    meta := jsonb_build_object(
+      'project_id', rec -> 'project_id',
+      'raid_code', rec -> 'raid_code',
+      'changed', to_jsonb(changed)
+    );
+    IF act = 'outcome_changed' THEN
+      meta := meta || jsonb_build_object('from', OLD.outcome, 'to', NEW.outcome);
+    END IF;
+  ELSIF TG_OP = 'INSERT' THEN
+    summ := initcap(etype) || ' "' || title_txt || '" created';
+    meta := jsonb_build_object(
+      'project_id', rec -> 'project_id',
+      'raid_code', rec -> 'raid_code'
+    );
+  ELSE
+    summ := initcap(etype) || ' "' || title_txt || '" deleted';
+    meta := jsonb_build_object(
+      'project_id', rec -> 'project_id',
+      'raid_code', rec -> 'raid_code'
+    );
+  END IF;
+
+  INSERT INTO public.audit_events (org_id, actor_user_id, entity_type, entity_id, action, summary, meta)
+  VALUES (rec_org, auth.uid(), etype, rec_id, act, summ, meta);
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_decision_audit ON public.decisions;
+DROP TRIGGER IF EXISTS trg_raid_audit_risks ON public.risks;
+DROP TRIGGER IF EXISTS trg_raid_audit_issues ON public.issues;
+DROP TRIGGER IF EXISTS trg_raid_audit_actions ON public.actions;
+DROP TRIGGER IF EXISTS trg_raid_audit_decisions ON public.decisions;
+
+CREATE TRIGGER trg_raid_audit_risks
+  AFTER INSERT OR UPDATE OR DELETE ON public.risks
+  FOR EACH ROW EXECUTE FUNCTION public.tg_raid_register_audit();
+
+CREATE TRIGGER trg_raid_audit_issues
+  AFTER INSERT OR UPDATE OR DELETE ON public.issues
+  FOR EACH ROW EXECUTE FUNCTION public.tg_raid_register_audit();
+
+CREATE TRIGGER trg_raid_audit_actions
+  AFTER INSERT OR UPDATE OR DELETE ON public.actions
+  FOR EACH ROW EXECUTE FUNCTION public.tg_raid_register_audit();
+
+CREATE TRIGGER trg_raid_audit_decisions
+  AFTER INSERT OR UPDATE OR DELETE ON public.decisions
+  FOR EACH ROW EXECUTE FUNCTION public.tg_raid_register_audit();
+
+
+
+-- =============================================================================
+-- 20260820140000_hide_automatic_meeting_notes.sql
+-- =============================================================================
+
+-- Project Summary: hide system-generated notes on the card and Executive Cockpit.
+
+ALTER TABLE public.project_meeting_summaries
+  ADD COLUMN IF NOT EXISTS hide_automatic_notes boolean NOT NULL DEFAULT false;
+
+COMMENT ON COLUMN public.project_meeting_summaries.hide_automatic_notes IS
+  'When true, automatic action/milestone notes are hidden on Project Summary and Executive Cockpit.';
+
+
+
+-- =============================================================================
+-- 20260820160000_strategic_alignment_page_acl.sql
+-- =============================================================================
+
+-- Grant the Strategic Alignment command-center page the same view/edit
+-- as Programs (or Cockpit / Projects if Programs is not in the matrix).
+
+INSERT INTO public.role_table_permissions (org_id, role, table_name, can_view, can_edit)
+SELECT DISTINCT ON (src.org_id, src.role)
+  src.org_id,
+  src.role,
+  'page::/app/strategic-alignment',
+  src.can_view,
+  src.can_edit
+FROM public.role_table_permissions src
+WHERE src.table_name IN (
+  'page::/app/programs',
+  'page::/app/executive-cockpit',
+  'page::/app/projects'
+)
+  AND NOT EXISTS (
+    SELECT 1
+    FROM public.role_table_permissions x
+    WHERE x.org_id = src.org_id
+      AND x.role = src.role
+      AND x.table_name = 'page::/app/strategic-alignment'
+  )
+ORDER BY
+  src.org_id,
+  src.role,
+  CASE src.table_name
+    WHEN 'page::/app/programs' THEN 0
+    WHEN 'page::/app/executive-cockpit' THEN 1
+    ELSE 2
+  END;
+
+CREATE OR REPLACE FUNCTION public.seed_default_page_permissions(_org_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  paths text[] := ARRAY[
+    '/app','/app/projects','/app/portfolio-pulse','/app/executive-cockpit',
+    '/app/strategic-alignment',
+    '/app/risks','/app/issues','/app/actions','/app/decisions',
+    '/app/timeline','/app/work-items','/app/work-board','/app/my-work',
+    '/app/resources','/app/stakeholders','/app/status-updates','/app/lessons',
+    '/app/benefits','/app/dependencies','/app/change-requests','/app/stage-gates',
+    '/app/settings','/app/support'
+  ];
+  role_key text;
+  p text;
+BEGIN
+  FOREACH role_key IN ARRAY ARRAY['pm','bu_lead','executive'] LOOP
+    FOREACH p IN ARRAY paths LOOP
+      INSERT INTO public.role_table_permissions (org_id, role, table_name, can_view, can_edit)
+      SELECT _org_id, role_key, 'page::' || p, true, role_key IN ('pm','bu_lead')
+      WHERE NOT EXISTS (
+        SELECT 1 FROM public.role_table_permissions x
+        WHERE x.org_id = _org_id AND x.role = role_key AND x.table_name = 'page::' || p
+      );
+    END LOOP;
+  END LOOP;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.seed_default_page_permissions(uuid) TO authenticated, service_role;
+
+
+
+-- =============================================================================
+-- 20260820180000_raid_optional_stream.sql
+-- =============================================================================
+
+-- Optional stream on RAID (risks, actions, issues, decisions).
+-- Blank stream_id = project-level item. Decisions already have stage_gate_id;
+-- choosing a stream filters which gate rows appear when recording an approval.
+-- Idempotent. Does not re-point existing RAID rows onto Core.
+
+ALTER TABLE public.risks
+  ADD COLUMN IF NOT EXISTS stream_id uuid REFERENCES public.project_streams(id) ON DELETE SET NULL;
+ALTER TABLE public.actions
+  ADD COLUMN IF NOT EXISTS stream_id uuid REFERENCES public.project_streams(id) ON DELETE SET NULL;
+ALTER TABLE public.issues
+  ADD COLUMN IF NOT EXISTS stream_id uuid REFERENCES public.project_streams(id) ON DELETE SET NULL;
+ALTER TABLE public.decisions
+  ADD COLUMN IF NOT EXISTS stream_id uuid REFERENCES public.project_streams(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS risks_stream_idx ON public.risks (stream_id);
+CREATE INDEX IF NOT EXISTS actions_stream_idx ON public.actions (stream_id);
+CREATE INDEX IF NOT EXISTS issues_stream_idx ON public.issues (stream_id);
+CREATE INDEX IF NOT EXISTS decisions_stream_idx ON public.decisions (stream_id);
+
+CREATE INDEX IF NOT EXISTS risks_project_stream_idx ON public.risks (project_id, stream_id);
+CREATE INDEX IF NOT EXISTS actions_project_stream_idx ON public.actions (project_id, stream_id);
+CREATE INDEX IF NOT EXISTS issues_project_stream_idx ON public.issues (project_id, stream_id);
+CREATE INDEX IF NOT EXISTS decisions_project_stream_idx ON public.decisions (project_id, stream_id);
+
+COMMENT ON COLUMN public.risks.stream_id IS
+  'Optional delivery stream. Null means the risk is recorded at project level.';
+COMMENT ON COLUMN public.actions.stream_id IS
+  'Optional delivery stream. Null means the action is recorded at project level.';
+COMMENT ON COLUMN public.issues.stream_id IS
+  'Optional delivery stream. Null means the issue is recorded at project level.';
+COMMENT ON COLUMN public.decisions.stream_id IS
+  'Optional delivery stream. Null means the decision is recorded at project level. Stage-gate approval still uses stage_gate_id.';
+
+
+
+-- =============================================================================
+-- 20260820190000_investment_committee.sql
+-- =============================================================================
+
+-- Investment Committee pack: org-wide forum template + page ACL.
+-- The page itself is a live read of demand / gates / finance / decisions.
+
+INSERT INTO public.governance_forum_templates (
+  org_id, name, cadence, scope_level, purpose, audience, sort_order
+)
+SELECT
+  o.id,
+  'Investment Committee',
+  'Quarterly',
+  'strategic_alignment',
+  'Approve capital asks, seed / full funding gates, and investment ranking.',
+  'Sponsors & CFO',
+  20
+FROM public.organizations o
+ON CONFLICT (org_id, scope_level, name) DO NOTHING;
+
+INSERT INTO public.role_table_permissions (org_id, role, table_name, can_view, can_edit)
+SELECT DISTINCT ON (src.org_id, src.role)
+  src.org_id,
+  src.role,
+  'page::/app/investment-committee',
+  src.can_view,
+  src.can_edit
+FROM public.role_table_permissions src
+WHERE src.table_name IN (
+  'page::/app/governance-channels',
+  'page::/app/executive-cockpit',
+  'page::/app/decisions',
+  'page::/app/projects'
+)
+  AND NOT EXISTS (
+    SELECT 1
+    FROM public.role_table_permissions x
+    WHERE x.org_id = src.org_id
+      AND x.role = src.role
+      AND x.table_name = 'page::/app/investment-committee'
+  )
+ORDER BY
+  src.org_id,
+  src.role,
+  CASE src.table_name
+    WHEN 'page::/app/governance-channels' THEN 0
+    WHEN 'page::/app/executive-cockpit' THEN 1
+    WHEN 'page::/app/decisions' THEN 2
+    ELSE 3
+  END;
+
+CREATE OR REPLACE FUNCTION public.seed_default_page_permissions(_org_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  paths text[] := ARRAY[
+    '/app','/app/projects','/app/portfolio-pulse','/app/executive-cockpit',
+    '/app/strategic-alignment',
+    '/app/risks','/app/issues','/app/actions','/app/decisions',
+    '/app/timeline','/app/work-items','/app/work-board','/app/my-work',
+    '/app/resources','/app/stakeholders','/app/status-updates','/app/lessons',
+    '/app/benefits','/app/dependencies','/app/change-requests','/app/stage-gates',
+    '/app/governance-channels','/app/investment-committee',
+    '/app/settings','/app/support'
+  ];
+  role_key text;
+  p text;
+BEGIN
+  FOREACH role_key IN ARRAY ARRAY['pm','bu_lead','executive'] LOOP
+    FOREACH p IN ARRAY paths LOOP
+      INSERT INTO public.role_table_permissions (org_id, role, table_name, can_view, can_edit)
+      SELECT _org_id, role_key, 'page::' || p, true, role_key IN ('pm','bu_lead')
+      WHERE NOT EXISTS (
+        SELECT 1 FROM public.role_table_permissions x
+        WHERE x.org_id = _org_id AND x.role = role_key AND x.table_name = 'page::' || p
+      );
+    END LOOP;
+  END LOOP;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.seed_default_page_permissions(uuid) TO authenticated, service_role;
+
+
+
+-- =============================================================================
+-- 20260820200000_forecast_other_cost_type.sql
+-- =============================================================================
+
+-- Estimation "further cost" lines can be CapEx or OpEx so Apply writes
+-- capex_planned vs opex_planned accordingly.
+
+ALTER TABLE public.project_forecast_other_costs
+  ADD COLUMN IF NOT EXISTS cost_type text NOT NULL DEFAULT 'opex';
+
+UPDATE public.project_forecast_other_costs
+   SET cost_type = 'opex'
+ WHERE cost_type IS NULL OR btrim(cost_type) = '';
+
+ALTER TABLE public.project_forecast_other_costs
+  DROP CONSTRAINT IF EXISTS project_forecast_other_costs_cost_type_check;
+
+ALTER TABLE public.project_forecast_other_costs
+  ADD CONSTRAINT project_forecast_other_costs_cost_type_check
+  CHECK (cost_type IN ('capex', 'opex'));
+
+
+
+-- =============================================================================
+-- 20260821080000_hierarchy_envelopes.sql
+-- =============================================================================
+
+-- Optional top-down budget pots at Strategic Alignment and Program.
+-- Project approved funding stays the project envelope; FY Allocation stays a
+-- year slice of that project envelope. Child project sums vs this pot flag health.
+
+CREATE TABLE IF NOT EXISTS public.hierarchy_envelopes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  layer text NOT NULL CHECK (layer IN ('alignment', 'program')),
+  name text NOT NULL,
+  envelope numeric(14,2),
+  notes text,
+  updated_by uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (org_id, layer, name)
+);
+
+COMMENT ON TABLE public.hierarchy_envelopes IS
+  'Optional top-down budget envelope for a Strategic Alignment (projects.portfolio) or Program (projects.program). NULL envelope means unconstrained. Project budget is still the project envelope.';
+
+COMMENT ON COLUMN public.hierarchy_envelopes.layer IS
+  'alignment = Strategic Alignment (projects.portfolio); program = Program (projects.program).';
+
+COMMENT ON COLUMN public.hierarchy_envelopes.envelope IS
+  'Approved parent pot. NULL = not set (rollup only). Child project approved funding should stay inside this amount.';
+
+CREATE INDEX IF NOT EXISTS hierarchy_envelopes_org_layer_idx
+  ON public.hierarchy_envelopes (org_id, layer);
+
+ALTER TABLE public.hierarchy_envelopes ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.hierarchy_envelopes TO authenticated;
+GRANT ALL ON public.hierarchy_envelopes TO service_role;
+
+DROP POLICY IF EXISTS "Members view hierarchy envelopes" ON public.hierarchy_envelopes;
+CREATE POLICY "Members view hierarchy envelopes"
+  ON public.hierarchy_envelopes FOR SELECT TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()));
+
+DROP POLICY IF EXISTS "Members write hierarchy envelopes" ON public.hierarchy_envelopes;
+CREATE POLICY "Members write hierarchy envelopes"
+  ON public.hierarchy_envelopes FOR ALL TO authenticated
+  USING (org_id = public.get_user_org(auth.uid()))
+  WITH CHECK (org_id = public.get_user_org(auth.uid()));
+
+DROP TRIGGER IF EXISTS trg_hierarchy_envelopes_updated_at ON public.hierarchy_envelopes;
+CREATE TRIGGER trg_hierarchy_envelopes_updated_at
+  BEFORE UPDATE ON public.hierarchy_envelopes
+  FOR EACH ROW EXECUTE FUNCTION public.tg_set_updated_at();
+
+
+
+-- =============================================================================
+-- 20260821090000_hierarchy_envelopes_parent.sql
+-- =============================================================================
+
+-- Program envelopes are children of a Strategic Alignment (not a global program name).
+-- parent_name is empty for alignment rows; for program rows it is projects.portfolio.
+
+ALTER TABLE public.hierarchy_envelopes
+  ADD COLUMN IF NOT EXISTS parent_name text NOT NULL DEFAULT '';
+
+COMMENT ON COLUMN public.hierarchy_envelopes.parent_name IS
+  'Strategic Alignment name for program rows (projects.portfolio). Empty string for alignment rows.';
+
+-- Attach existing program pots to the most common SA that uses that program label.
+UPDATE public.hierarchy_envelopes he
+SET parent_name = COALESCE((
+  SELECT mode() WITHIN GROUP (
+    ORDER BY COALESCE(NULLIF(btrim(p.portfolio), ''), 'Unassigned')
+  )
+  FROM public.projects p
+  WHERE p.org_id = he.org_id
+    AND COALESCE(NULLIF(btrim(p.program), ''), 'Unassigned') = he.name
+), 'Unassigned')
+WHERE he.layer = 'program'
+  AND he.parent_name = '';
+
+ALTER TABLE public.hierarchy_envelopes
+  DROP CONSTRAINT IF EXISTS hierarchy_envelopes_org_id_layer_name_key;
+
+ALTER TABLE public.hierarchy_envelopes
+  DROP CONSTRAINT IF EXISTS hierarchy_envelopes_org_layer_parent_name_key;
+
+ALTER TABLE public.hierarchy_envelopes
+  ADD CONSTRAINT hierarchy_envelopes_org_layer_parent_name_key
+  UNIQUE (org_id, layer, parent_name, name);
+
+DROP INDEX IF EXISTS public.hierarchy_envelopes_org_layer_idx;
+CREATE INDEX IF NOT EXISTS hierarchy_envelopes_org_layer_parent_idx
+  ON public.hierarchy_envelopes (org_id, layer, parent_name);
+
+
+
+-- =============================================================================
+-- 20260917120000_sync_stage_gate_siblings_from_decision.sql
+-- =============================================================================
+
+-- Decision outcomes drive stage-gate approval everywhere the same gate name
+-- appears on a project (project-level + each stream), not only the linked row.
+
+CREATE OR REPLACE FUNCTION public.sync_stage_gate_from_decision()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  new_status TEXT;
+  src_project UUID;
+  src_name TEXT;
+  src_org UUID;
+BEGIN
+  IF NEW.stage_gate_id IS NULL OR NEW.outcome IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  new_status := CASE NEW.outcome
+    WHEN 'Approved'  THEN 'Approved'
+    WHEN 'Rejected'  THEN 'Rejected'
+    WHEN 'On Hold'   THEN 'On Hold'
+    WHEN 'In Review' THEN 'In Review'
+    ELSE 'Pending'
+  END;
+
+  SELECT project_id, gate_name, org_id
+    INTO src_project, src_name, src_org
+    FROM public.stage_gates
+   WHERE id = NEW.stage_gate_id;
+
+  IF src_project IS NULL OR coalesce(trim(src_name), '') = '' THEN
+    UPDATE public.stage_gates
+       SET status = new_status,
+           actual_date = COALESCE(actual_date, NEW.decision_date, CURRENT_DATE),
+           approver = COALESCE(NEW.approvers, approver),
+           updated_at = now()
+     WHERE id = NEW.stage_gate_id;
+    RETURN NEW;
+  END IF;
+
+  UPDATE public.stage_gates
+     SET status = new_status,
+         actual_date = CASE
+           WHEN new_status = 'Approved' THEN COALESCE(actual_date, NEW.decision_date, CURRENT_DATE)
+           ELSE actual_date
+         END,
+         approver = COALESCE(NEW.approvers, approver),
+         updated_at = now()
+   WHERE project_id = src_project
+     AND gate_name = src_name;
+
+  IF NOT EXISTS (
+    SELECT 1
+      FROM public.stage_gates
+     WHERE project_id = src_project
+       AND gate_name = src_name
+       AND stream_id IS NULL
+  ) AND src_org IS NOT NULL THEN
+    INSERT INTO public.stage_gates (
+      org_id, project_id, stream_id, gate_name, status, actual_date, approver
+    ) VALUES (
+      src_org,
+      src_project,
+      NULL,
+      src_name,
+      new_status,
+      CASE WHEN new_status = 'Approved' THEN COALESCE(NEW.decision_date, CURRENT_DATE) ELSE NULL END,
+      NEW.approvers
+    );
+  END IF;
+
+  RETURN NEW;
+END $$;
+
+
+
+-- =============================================================================
+-- 20261123120000_revoke_ensure_project_core_stream.sql
+-- =============================================================================
+
+-- T3: ensure_project_core_stream is SECURITY DEFINER and was granted to
+-- authenticated with no caller check. Guessing a project UUID could rewrite
+-- another tenant's streams, gates, milestones, and monthly financials.
+-- Public callers must use enable_project_streams (org-checked). Triggers and
+-- other DEFINER functions keep working as the owner.
+
+REVOKE ALL ON FUNCTION public.ensure_project_core_stream(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.ensure_project_core_stream(uuid) FROM anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.ensure_project_core_stream(uuid) TO service_role;
+
+-- Same class of bug: default PUBLIC EXECUTE on an unguarded DEFINER rollup.
+REVOKE ALL ON FUNCTION public.rollup_project_from_streams(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.rollup_project_from_streams(uuid) FROM anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rollup_project_from_streams(uuid) TO service_role;
+
+
+
+-- =============================================================================
+-- 20261123120100_gate_refresh_org_kpi_summary.sql
+-- =============================================================================
+
+-- T1: refresh_org_kpi_summary is SECURITY DEFINER and was executable by any
+-- authenticated user for any org_id. A caller could upsert another tenant's
+-- KPI snapshot. Keep GRANT to authenticated (portfolio.server uses the user
+-- JWT on platform). Signed-in callers must match get_user_org(); platform
+-- admins with no home org cannot refresh someone else's org. auth.uid() IS
+-- NULL still allows service_role / triggers.
+
+CREATE OR REPLACE FUNCTION public.refresh_org_kpi_summary(p_org_id uuid)
+RETURNS public.org_kpi_summaries
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  row public.org_kpi_summaries;
+BEGIN
+  IF p_org_id IS NULL THEN
+    RAISE EXCEPTION 'org_id required';
+  END IF;
+
+  IF auth.uid() IS NOT NULL
+     AND public.get_user_org(auth.uid()) IS DISTINCT FROM p_org_id THEN
+    RAISE EXCEPTION 'not authorized';
+  END IF;
+
+  INSERT INTO public.org_kpi_summaries AS s (
+    org_id,
+    project_count,
+    active_count,
+    rag_green,
+    rag_amber,
+    rag_red,
+    approved_funding,
+    incurred,
+    forecast_at_completion,
+    benefits_target,
+    benefits_realised,
+    open_risks,
+    open_issues,
+    open_actions,
+    work_item_total,
+    work_item_done,
+    refreshed_at,
+    meta
+  )
+  SELECT
+    p_org_id,
+    COALESCE(p.project_count, 0),
+    COALESCE(p.active_count, 0),
+    COALESCE(p.rag_green, 0),
+    COALESCE(p.rag_amber, 0),
+    COALESCE(p.rag_red, 0),
+    COALESCE(p.approved_funding, 0),
+    COALESCE(p.incurred, 0),
+    COALESCE(p.forecast_at_completion, 0),
+    COALESCE(p.benefits_target, 0),
+    COALESCE(p.benefits_realised, 0),
+    COALESCE(r.open_risks, 0),
+    COALESCE(i.open_issues, 0),
+    COALESCE(a.open_actions, 0),
+    COALESCE(w.work_item_total, 0),
+    COALESCE(w.work_item_done, 0),
+    now(),
+    jsonb_build_object('source', 'refresh_org_kpi_summary')
+  FROM (SELECT 1) seed
+  LEFT JOIN LATERAL (
+    SELECT
+      COUNT(*)::int AS project_count,
+      COUNT(*) FILTER (
+        WHERE COALESCE(status::text, '') NOT ILIKE '%closed%'
+          AND COALESCE(status::text, '') NOT ILIKE '%complete%'
+          AND COALESCE(status::text, '') NOT ILIKE '%cancelled%'
+      )::int AS active_count,
+      COUNT(*) FILTER (
+        WHERE lower(
+          CASE
+            WHEN lower(trim(COALESCE(rag_override, ''))) IN ('green', 'amber', 'red')
+              THEN trim(rag_override)
+            ELSE COALESCE(rag::text, '')
+          END
+        ) IN ('green', 'g')
+      )::int AS rag_green,
+      COUNT(*) FILTER (
+        WHERE lower(
+          CASE
+            WHEN lower(trim(COALESCE(rag_override, ''))) IN ('green', 'amber', 'red')
+              THEN trim(rag_override)
+            ELSE COALESCE(rag::text, '')
+          END
+        ) IN ('amber', 'yellow', 'a')
+      )::int AS rag_amber,
+      COUNT(*) FILTER (
+        WHERE lower(
+          CASE
+            WHEN lower(trim(COALESCE(rag_override, ''))) IN ('green', 'amber', 'red')
+              THEN trim(rag_override)
+            ELSE COALESCE(rag::text, '')
+          END
+        ) IN ('red', 'r')
+      )::int AS rag_red,
+      COALESCE(SUM(
+        CASE
+          WHEN COALESCE(budget, 0) > 0 THEN budget
+          ELSE COALESCE(capex_approved, 0) + COALESCE(opex_approved, 0)
+        END
+      ), 0) AS approved_funding,
+      COALESCE(SUM(COALESCE(capex_incurred, 0) + COALESCE(opex_incurred, 0)), 0) AS incurred,
+      COALESCE(SUM(
+        CASE
+          WHEN COALESCE(forecast_at_completion, 0) > 0 THEN forecast_at_completion
+          WHEN COALESCE(budget, 0) > 0 THEN budget
+          ELSE COALESCE(capex_approved, 0) + COALESCE(opex_approved, 0)
+        END
+      ), 0) AS forecast_at_completion,
+      COALESCE(SUM(COALESCE(benefits_target, 0)), 0) AS benefits_target,
+      COALESCE(SUM(COALESCE(benefits_realised, 0)), 0) AS benefits_realised
+    FROM public.projects
+    WHERE org_id = p_org_id
+  ) p ON true
+  LEFT JOIN LATERAL (
+    SELECT COUNT(*)::int AS open_risks
+    FROM public.risks
+    WHERE org_id = p_org_id
+      AND COALESCE(status, '') NOT ILIKE '%closed%'
+      AND COALESCE(status, '') NOT ILIKE '%mitigated%'
+  ) r ON true
+  LEFT JOIN LATERAL (
+    SELECT COUNT(*)::int AS open_issues
+    FROM public.issues
+    WHERE org_id = p_org_id
+      AND COALESCE(status, '') NOT ILIKE '%closed%'
+      AND COALESCE(status, '') NOT ILIKE '%resolved%'
+  ) i ON true
+  LEFT JOIN LATERAL (
+    SELECT COUNT(*)::int AS open_actions
+    FROM public.actions
+    WHERE org_id = p_org_id
+      AND COALESCE(status, '') NOT ILIKE '%done%'
+      AND COALESCE(status, '') NOT ILIKE '%closed%'
+      AND COALESCE(status, '') NOT ILIKE '%complete%'
+  ) a ON true
+  LEFT JOIN LATERAL (
+    SELECT
+      COUNT(*)::int AS work_item_total,
+      COUNT(*) FILTER (WHERE status = 'Done')::int AS work_item_done
+    FROM public.work_items
+    WHERE org_id = p_org_id
+      AND COALESCE(status, '') <> 'Cancelled'
+  ) w ON true
+  ON CONFLICT (org_id) DO UPDATE SET
+    project_count = EXCLUDED.project_count,
+    active_count = EXCLUDED.active_count,
+    rag_green = EXCLUDED.rag_green,
+    rag_amber = EXCLUDED.rag_amber,
+    rag_red = EXCLUDED.rag_red,
+    approved_funding = EXCLUDED.approved_funding,
+    incurred = EXCLUDED.incurred,
+    forecast_at_completion = EXCLUDED.forecast_at_completion,
+    benefits_target = EXCLUDED.benefits_target,
+    benefits_realised = EXCLUDED.benefits_realised,
+    open_risks = EXCLUDED.open_risks,
+    open_issues = EXCLUDED.open_issues,
+    open_actions = EXCLUDED.open_actions,
+    work_item_total = EXCLUDED.work_item_total,
+    work_item_done = EXCLUDED.work_item_done,
+    refreshed_at = EXCLUDED.refreshed_at,
+    meta = EXCLUDED.meta
+  RETURNING * INTO row;
+
+  RETURN row;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.refresh_org_kpi_summary(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.refresh_org_kpi_summary(uuid) FROM anon;
+GRANT EXECUTE ON FUNCTION public.refresh_org_kpi_summary(uuid) TO authenticated, service_role;
+
+
+
+-- =============================================================================
+-- 20261123120200_gate_sync_org_resources_from_profiles.sql
+-- =============================================================================
+
+-- T2: sync_org_resources_from_profiles skipped the admin check when _org_id
+-- was set, and the NULL path synced every organisation for any admin.
+-- Signed-in callers must be an org admin of their home org only.
+-- auth.uid() IS NULL (triggers / service_role) may still target one org or all.
+
+CREATE OR REPLACE FUNCTION public.sync_org_resources_from_profiles(_org_id uuid DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  oid uuid;
+  mgr uuid;
+  p record;
+  created int := 0;
+  updated int := 0;
+  rid uuid;
+  orgs uuid[];
+  o uuid;
+  home uuid;
+BEGIN
+  IF auth.uid() IS NOT NULL THEN
+    home := public.get_user_org(auth.uid());
+    IF NOT public.has_any_admin(auth.uid()) THEN
+      RAISE EXCEPTION 'Only organisation admins can sync resources';
+    END IF;
+    IF _org_id IS NOT NULL THEN
+      IF home IS DISTINCT FROM _org_id THEN
+        RAISE EXCEPTION 'not authorized';
+      END IF;
+      orgs := ARRAY[_org_id];
+    ELSE
+      IF home IS NULL THEN
+        RAISE EXCEPTION 'not authorized';
+      END IF;
+      orgs := ARRAY[home];
+    END IF;
+  ELSIF _org_id IS NOT NULL THEN
+    orgs := ARRAY[_org_id];
+  ELSE
+    SELECT array_agg(id) INTO orgs FROM public.organizations;
+  END IF;
+
+  IF orgs IS NULL THEN
+    RETURN jsonb_build_object('created', 0, 'updated', 0);
+  END IF;
+
+  FOREACH o IN ARRAY orgs LOOP
+    oid := o;
+
+    SELECT ur.user_id INTO mgr
+    FROM public.user_roles ur
+    WHERE ur.org_id = oid AND ur.role IN ('admin', 'org_admin')
+    ORDER BY ur.role
+    LIMIT 1;
+
+    FOR p IN
+      SELECT pr.id, pr.full_name, pr.email
+      FROM public.profiles pr
+      WHERE pr.org_id = oid
+    LOOP
+      SELECT r.id INTO rid
+      FROM public.resources r
+      WHERE r.org_id = oid AND r.user_id = p.id
+      LIMIT 1;
+
+      IF rid IS NULL THEN
+        INSERT INTO public.resources (
+          org_id, name, email, user_id, manager_user_id,
+          capacity_hours_week, cost_rate, status, role
+        ) VALUES (
+          oid,
+          COALESCE(NULLIF(trim(p.full_name), ''), NULLIF(trim(p.email), ''), 'Member'),
+          p.email,
+          p.id,
+          mgr,
+          40,
+          0,
+          'Active',
+          'Team member'
+        )
+        RETURNING id INTO rid;
+        created := created + 1;
+      ELSE
+        UPDATE public.resources
+        SET
+          name = COALESCE(NULLIF(trim(p.full_name), ''), NULLIF(trim(p.email), ''), name),
+          email = COALESCE(p.email, email),
+          manager_user_id = COALESCE(manager_user_id, mgr),
+          status = COALESCE(NULLIF(status, ''), 'Active')
+        WHERE id = rid;
+        updated := updated + 1;
+      END IF;
+    END LOOP;
+  END LOOP;
+
+  RETURN jsonb_build_object('created', created, 'updated', updated);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.sync_org_resources_from_profiles(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.sync_org_resources_from_profiles(uuid) FROM anon;
+GRANT EXECUTE ON FUNCTION public.sync_org_resources_from_profiles(uuid) TO authenticated, service_role;
+
+
+
+-- =============================================================================
+-- 20261123120300_revoke_seed_default_page_permissions.sql
+-- =============================================================================
+
+-- T4: seed_default_page_permissions is SECURITY DEFINER, granted to
+-- authenticated, and has no caller check. It is not called from the app;
+-- revoke client EXECUTE. Keep a home-org + admin check so a later GRANT
+-- cannot seed another tenant's page ACL.
+
+CREATE OR REPLACE FUNCTION public.seed_default_page_permissions(_org_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  paths text[] := ARRAY[
+    '/app','/app/projects','/app/portfolio-pulse','/app/executive-cockpit',
+    '/app/strategic-alignment',
+    '/app/risks','/app/issues','/app/actions','/app/decisions',
+    '/app/timeline','/app/work-items','/app/work-board','/app/my-work',
+    '/app/resources','/app/stakeholders','/app/status-updates','/app/lessons',
+    '/app/benefits','/app/dependencies','/app/change-requests','/app/stage-gates',
+    '/app/governance-channels','/app/investment-committee',
+    '/app/settings','/app/support'
+  ];
+  role_key text;
+  p text;
+BEGIN
+  IF _org_id IS NULL THEN
+    RAISE EXCEPTION 'org_id required';
+  END IF;
+
+  IF auth.uid() IS NOT NULL
+     AND (
+       public.get_user_org(auth.uid()) IS DISTINCT FROM _org_id
+       OR NOT public.has_any_admin(auth.uid())
+     ) THEN
+    RAISE EXCEPTION 'not authorized';
+  END IF;
+
+  FOREACH role_key IN ARRAY ARRAY['pm','bu_lead','executive'] LOOP
+    FOREACH p IN ARRAY paths LOOP
+      INSERT INTO public.role_table_permissions (org_id, role, table_name, can_view, can_edit)
+      SELECT _org_id, role_key, 'page::' || p, true, role_key IN ('pm','bu_lead')
+      WHERE NOT EXISTS (
+        SELECT 1 FROM public.role_table_permissions x
+        WHERE x.org_id = _org_id AND x.role = role_key AND x.table_name = 'page::' || p
+      );
+    END LOOP;
+  END LOOP;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.seed_default_page_permissions(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.seed_default_page_permissions(uuid) FROM anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.seed_default_page_permissions(uuid) TO service_role;
+
+
+
+-- =============================================================================
+-- 20261123120400_gate_ensure_org_delivery_methods.sql
+-- =============================================================================
+
+-- T5: ensure_org_delivery_methods is SECURITY DEFINER and granted to
+-- authenticated with no caller check. The browser still calls it, so keep
+-- GRANT authenticated. Signed-in callers must match get_user_org() or be
+-- platform_admin (org-create). auth.uid() IS NULL allows the org trigger.
+
+CREATE OR REPLACE FUNCTION public.ensure_org_delivery_methods(p_org_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF p_org_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  IF auth.uid() IS NOT NULL
+     AND public.get_user_org(auth.uid()) IS DISTINCT FROM p_org_id
+     AND NOT public.is_platform_admin(auth.uid()) THEN
+    RAISE EXCEPTION 'not authorized';
+  END IF;
+
+  INSERT INTO public.delivery_methods (
+    org_id, code, name, description, uses_stage_gates, uses_sprints, is_system, sort_order
+  )
+  VALUES
+    (p_org_id, 'waterfall', 'Waterfall', 'Sequential stage-gate delivery', true,  false, true, 1),
+    (p_org_id, 'agile',     'Agile',     'Iterative delivery with sprints', false, true,  true, 2),
+    (p_org_id, 'hybrid',    'Hybrid',    'Stage gates plus sprints',        true,  true,  true, 3)
+  ON CONFLICT (org_id, code) DO NOTHING;
+
+  -- Waterfall gates
+  INSERT INTO public.stage_gate_definitions (org_id, delivery_method_id, gate_name, sort_order)
+  SELECT p_org_id, m.id, g.name, g.ord
+  FROM public.delivery_methods m
+  CROSS JOIN (VALUES
+    ('Discovery', 1),
+    ('Business Case / Seed Funding', 2),
+    ('Design', 3),
+    ('Business Case / Full Funding', 4),
+    ('Build', 5),
+    ('Testing', 6),
+    ('Deployment', 7),
+    ('Handover', 8),
+    ('Benefit Realisation', 9)
+  ) AS g(name, ord)
+  WHERE m.org_id = p_org_id AND m.code = 'waterfall'
+    AND NOT EXISTS (SELECT 1 FROM public.stage_gate_definitions d WHERE d.delivery_method_id = m.id);
+
+  -- Agile gates
+  INSERT INTO public.stage_gate_definitions (org_id, delivery_method_id, gate_name, sort_order)
+  SELECT p_org_id, m.id, g.name, g.ord
+  FROM public.delivery_methods m
+  CROSS JOIN (VALUES
+    ('Discovery', 1),
+    ('MVP Definition', 2),
+    ('Build / Iterate', 3),
+    ('Release Readiness', 4),
+    ('Launch', 5),
+    ('Hypercare', 6)
+  ) AS g(name, ord)
+  WHERE m.org_id = p_org_id AND m.code = 'agile'
+    AND NOT EXISTS (SELECT 1 FROM public.stage_gate_definitions d WHERE d.delivery_method_id = m.id);
+
+  -- Hybrid gates
+  INSERT INTO public.stage_gate_definitions (org_id, delivery_method_id, gate_name, sort_order)
+  SELECT p_org_id, m.id, g.name, g.ord
+  FROM public.delivery_methods m
+  CROSS JOIN (VALUES
+    ('Discovery', 1),
+    ('Business Case / Seed Funding', 2),
+    ('Design', 3),
+    ('Business Case / Full Funding', 4),
+    ('Build', 5),
+    ('Testing', 6),
+    ('Deployment', 7),
+    ('Handover', 8),
+    ('Benefit Realisation', 9)
+  ) AS g(name, ord)
+  WHERE m.org_id = p_org_id AND m.code = 'hybrid'
+    AND NOT EXISTS (SELECT 1 FROM public.stage_gate_definitions d WHERE d.delivery_method_id = m.id);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.ensure_org_delivery_methods(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.ensure_org_delivery_methods(uuid) FROM anon;
+GRANT EXECUTE ON FUNCTION public.ensure_org_delivery_methods(uuid) TO authenticated, service_role;
+
+
+
+-- =============================================================================
+-- 20261123120500_force_row_level_security.sql
+-- =============================================================================
+
+-- T7: ENABLE ROW LEVEL SECURITY does not apply to the table owner.
+-- FORCE makes owner queries honour policies too. Roles with BYPASSRLS
+-- (Supabase service_role) still skip RLS, so DEFINER RPCs and admin
+-- jobs keep working.
+
+ALTER TABLE public.actions FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.alert_digest_sends FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_events FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_log FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.benefits FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.billing_plans FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.business_units FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.change_requests FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.custom_reports FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.decisions FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.delivery_methods FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.demand_pipeline FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.dependencies FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.documents FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.entity_comments FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.eoi_requests FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.export_jobs FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.financials_monthly FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.fy_allocations FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.governance_channels FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.governance_forum_members FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.governance_forum_templates FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.governance_links FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.governance_tasks FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.hierarchy_envelopes FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.integration_external_links FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.invoice_payments FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.invoice_template_config FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.invoices FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.issues FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.landing_config FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.legal_policies FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.lessons_learned FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.milestones FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.notifications FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.opex_other_costs FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.org_byod_connections FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.org_integrations FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.org_kpi_summaries FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.org_license_certificates FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.org_roles FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.org_support_settings FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.organizations FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.platform_expenses FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.portfolio_scenarios FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.profiles FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.project_forecast_other_costs FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.project_forecast_phase_resources FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.project_forecast_phases FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.project_forecasts FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.project_meeting_summaries FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.project_purge_notices FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.project_streams FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.projects FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.rate_limit_buckets FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.resource_allocations FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.resources FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.risks FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.role_table_permissions FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.scale_partition_plan FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.scenario_projects FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.security_events FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.sprints FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.stage_gate_checklist_items FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.stage_gate_checklist_responses FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.stage_gate_definitions FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.stage_gates FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.stakeholders FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.status_updates FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.subscriptions FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.support_ticket_comments FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.support_tickets FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.timesheet_approvals FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.timesheet_entries FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.timesheets FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.user_roles FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.work_item_assignees FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.work_item_links FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.work_items FORCE ROW LEVEL SECURITY;
+
+
+
+-- =============================================================================
+-- 20261123120600_revoke_audit_events_client_insert.sql
+-- =============================================================================
+
+-- L1: org admins could INSERT arbitrary audit_events (and audit_log) rows.
+-- Tenant-visible audit must come from SECURITY DEFINER triggers or
+-- service_role. SELECT stays for org-admin readers.
+
+DROP POLICY IF EXISTS "org insert audit_events" ON public.audit_events;
+REVOKE INSERT ON public.audit_events FROM PUBLIC;
+REVOKE INSERT ON public.audit_events FROM anon, authenticated;
+GRANT SELECT ON public.audit_events TO authenticated;
+GRANT ALL ON public.audit_events TO service_role;
+
+DROP POLICY IF EXISTS "authenticated insert audit_log" ON public.audit_log;
+REVOKE INSERT ON public.audit_log FROM PUBLIC;
+REVOKE INSERT ON public.audit_log FROM anon, authenticated;
+GRANT SELECT ON public.audit_log TO authenticated;
+GRANT ALL ON public.audit_log TO service_role;
+
+
+
+-- =============================================================================
+-- End of iProjectX BYOD schema pack (95 migrations)
 -- Skipped control-plane: 20260721003000_invoice_template_config.sql, 20260721004500_fix_landing_invoice_grants.sql, 20260724180000_eoi_and_licenses_policies.sql, 20260724193000_grant_eoi_licenses_policies.sql, 20260724194500_publish_legal_policies.sql, 20260724200000_iprojectx_legal_policy_bodies.sql, 20260724210000_support_tickets.sql, 20260725190000_org_inhouse_ai_model_enabled.sql, 20260725193000_org_sso_config.sql, 20260729120000_org_byod_connections.sql, 20260731120000_org_integrations.sql, 20260801140000_org_ip_restriction.sql
 -- =============================================================================
