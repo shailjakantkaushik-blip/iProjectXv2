@@ -16,9 +16,7 @@ function migrationSql(): string {
 function enabledTables(sql: string): string[] {
   return [
     ...new Set(
-      [...sql.matchAll(/ALTER TABLE public\.(\w+)\s+ENABLE ROW LEVEL SECURITY/gi)].map(
-        (m) => m[1],
-      ),
+      [...sql.matchAll(/ALTER TABLE public\.(\w+)\s+ENABLE ROW LEVEL SECURITY/gi)].map((m) => m[1]),
     ),
   ].sort();
 }

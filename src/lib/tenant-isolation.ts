@@ -15,10 +15,7 @@ export function canRefreshOrgKpi(caller: IsolationCaller, targetOrgId: string): 
   return caller.homeOrgId === targetOrgId;
 }
 
-export function canSyncOrgResources(
-  caller: IsolationCaller,
-  targetOrgId: string | null,
-): boolean {
+export function canSyncOrgResources(caller: IsolationCaller, targetOrgId: string | null): boolean {
   if (caller.uid == null) return true;
   if (!caller.isOrgAdmin || !caller.homeOrgId) return false;
   if (targetOrgId == null) return true;

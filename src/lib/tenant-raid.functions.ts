@@ -11,7 +11,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { resolveOrgDataClient } from "@/lib/byod.server";
 import { pickRaidPatch, type RaidKind } from "@/lib/tenant-raid-patch";
 
-async function assertOrgMember(userClient: any, userId: string, orgId: string) {
+async function assertOrgMember(userClient: SupabaseClient, userId: string, orgId: string) {
   const { data: profile } = await userClient
     .from("profiles")
     .select("org_id")
@@ -131,7 +131,11 @@ export const upsertOrgIssue = createServerFn({ method: "POST" })
       if (error) throw new Error(error.message);
       return { row, mode };
     }
-    const { data: row, error } = await client.from("issues").insert(patch).select("*").maybeSingle();
+    const { data: row, error } = await client
+      .from("issues")
+      .insert(patch)
+      .select("*")
+      .maybeSingle();
     if (error) throw new Error(error.message);
     return { row, mode };
   });
@@ -184,7 +188,11 @@ export const upsertOrgAction = createServerFn({ method: "POST" })
       if (error) throw new Error(error.message);
       return { row, mode };
     }
-    const { data: row, error } = await client.from("actions").insert(patch).select("*").maybeSingle();
+    const { data: row, error } = await client
+      .from("actions")
+      .insert(patch)
+      .select("*")
+      .maybeSingle();
     if (error) throw new Error(error.message);
     return { row, mode };
   });

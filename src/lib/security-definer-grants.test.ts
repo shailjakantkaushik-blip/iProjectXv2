@@ -24,10 +24,7 @@ function lastGrantBlock(sql: string, fn: string): string {
 }
 
 function lastFunctionBody(sql: string, fn: string): string {
-  const re = new RegExp(
-    String.raw`CREATE OR REPLACE FUNCTION public\.${fn}\([\s\S]*?\$\$;`,
-    "gi",
-  );
+  const re = new RegExp(String.raw`CREATE OR REPLACE FUNCTION public\.${fn}\([\s\S]*?\$\$;`, "gi");
   const hits = [...sql.matchAll(re)].map((m) => m[0]);
   assert.ok(hits.length, `expected CREATE OR REPLACE FUNCTION for ${fn}`);
   return hits[hits.length - 1];
@@ -38,13 +35,19 @@ describe("unguarded stream DEFINER RPCs", () => {
 
   it("revokes ensure_project_core_stream from PUBLIC, anon, and authenticated", () => {
     const last = lastGrantBlock(sql, "ensure_project_core_stream");
-    assert.match(last, /GRANT EXECUTE ON FUNCTION public\.ensure_project_core_stream\(uuid\) TO service_role/i);
+    assert.match(
+      last,
+      /GRANT EXECUTE ON FUNCTION public\.ensure_project_core_stream\(uuid\) TO service_role/i,
+    );
     assert.doesNotMatch(last, /TO authenticated/i);
   });
 
   it("revokes rollup_project_from_streams from clients", () => {
     const last = lastGrantBlock(sql, "rollup_project_from_streams");
-    assert.match(last, /GRANT EXECUTE ON FUNCTION public\.rollup_project_from_streams\(uuid\) TO service_role/i);
+    assert.match(
+      last,
+      /GRANT EXECUTE ON FUNCTION public\.rollup_project_from_streams\(uuid\) TO service_role/i,
+    );
     assert.doesNotMatch(last, /TO authenticated/i);
   });
 });
@@ -61,7 +64,10 @@ describe("refresh_org_kpi_summary caller check", () => {
 
   it("keeps EXECUTE for authenticated (user JWT) after REVOKE PUBLIC/anon", () => {
     const last = lastGrantBlock(sql, "refresh_org_kpi_summary");
-    assert.match(last, /GRANT EXECUTE ON FUNCTION public\.refresh_org_kpi_summary\(uuid\) TO authenticated,\s*service_role/i);
+    assert.match(
+      last,
+      /GRANT EXECUTE ON FUNCTION public\.refresh_org_kpi_summary\(uuid\) TO authenticated,\s*service_role/i,
+    );
     assert.doesNotMatch(last, /TO anon/i);
   });
 });
@@ -92,7 +98,10 @@ describe("seed_default_page_permissions is not client-callable", () => {
 
   it("revokes EXECUTE from authenticated", () => {
     const last = lastGrantBlock(sql, "seed_default_page_permissions");
-    assert.match(last, /GRANT EXECUTE ON FUNCTION public\.seed_default_page_permissions\(uuid\) TO service_role/i);
+    assert.match(
+      last,
+      /GRANT EXECUTE ON FUNCTION public\.seed_default_page_permissions\(uuid\) TO service_role/i,
+    );
     assert.doesNotMatch(last, /TO authenticated/i);
   });
 });
@@ -108,6 +117,9 @@ describe("ensure_org_delivery_methods caller check", () => {
 
   it("keeps EXECUTE for authenticated so the delivery-methods UI still seeds", () => {
     const last = lastGrantBlock(sql, "ensure_org_delivery_methods");
-    assert.match(last, /GRANT EXECUTE ON FUNCTION public\.ensure_org_delivery_methods\(uuid\) TO authenticated,\s*service_role/i);
+    assert.match(
+      last,
+      /GRANT EXECUTE ON FUNCTION public\.ensure_org_delivery_methods\(uuid\) TO authenticated,\s*service_role/i,
+    );
   });
 });

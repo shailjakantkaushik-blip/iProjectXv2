@@ -35,7 +35,10 @@ describe("RAID patch allowlist", () => {
 
 describe("platform RAID CRUD uses the caller JWT", () => {
   it("routes platform writes through tenantRaidClient(context.supabase)", () => {
-    const src = readFileSync(fileURLToPath(new URL("./tenant-raid.functions.ts", import.meta.url)), "utf8");
+    const src = readFileSync(
+      fileURLToPath(new URL("./tenant-raid.functions.ts", import.meta.url)),
+      "utf8",
+    );
     assert.match(src, /tenantRaidClient\(context\.supabase/);
     assert.match(src, /if \(resolved\.mode === "byod"\)/);
     assert.match(src, /return \{ client: userClient, mode: "platform" \}/);
