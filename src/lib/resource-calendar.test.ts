@@ -7,7 +7,9 @@ import {
   holidayAppliesToLocation,
   monthCapacityHours,
   normalizeLocation,
+  overAllocationMessage,
   splitHoursByWorkingDays,
+  windowCapacityHours,
   workingDaysInMonth,
 } from "./resource-calendar.ts";
 
@@ -57,6 +59,31 @@ describe("resource calendar (holidays + leave)", () => {
     // Jan 2026 has 22 weekdays; Australia Day removes Monday 26th → 21 × 8 = 168
     assert.equal(workingDaysInMonth("2026-01-01"), 22);
     assert.equal(monthCapacityHours("2026-01-01", 8, ["2026-01-26"]), 168);
+    assert.equal(windowCapacityHours("2026-01-26", "2026-01-30", 8, ["2026-01-26"]), 32);
+  });
+
+  it("warns when assigned hours exceed leave-adjusted availability", () => {
+    const msg = overAllocationMessage({
+      name: "Ada",
+      assignedHours: 40,
+      availableHours: 16,
+      workingDays: 2,
+      offWeekdays: 3,
+      dailyHours: 20,
+      dayCap: 8,
+    });
+    assert.ok(msg && /Ada would be Over/.test(msg));
+    assert.ok(
+      overAllocationMessage({
+        name: "Ada",
+        assignedHours: 16,
+        availableHours: 16,
+        workingDays: 2,
+        offWeekdays: 3,
+        dailyHours: 8,
+        dayCap: 8,
+      }) == null,
+    );
   });
 
   it("weights estimate hours toward months with more working days", () => {

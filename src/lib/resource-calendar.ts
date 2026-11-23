@@ -191,6 +191,58 @@ export function workingDaysInMonth(
   return countWorkingDaysInclusive(span.start, span.end, unavailable);
 }
 
+export function countUnavailableWeekdays(
+  start?: string | null,
+  end?: string | null,
+  unavailable?: Iterable<string> | null,
+): number {
+  const skip = unavailable instanceof Set ? unavailable : new Set(unavailable || []);
+  let n = 0;
+  for (const d of eachIsoDateInclusive(start, end)) {
+    if (isWeekdayIso(d) && skip.has(d)) n += 1;
+  }
+  return n;
+}
+
+export function windowCapacityHours(
+  start?: string | null,
+  end?: string | null,
+  hoursPerDay?: number,
+  unavailable?: Iterable<string> | null,
+): number {
+  const day = Number(hoursPerDay) || 0;
+  if (!(day > 0)) return 0;
+  const days = countWorkingDaysInclusive(start, end, unavailable);
+  return Math.round(days * day * 100) / 100;
+}
+
+export function overAllocationMessage(opts: {
+  name: string;
+  assignedHours: number;
+  availableHours: number;
+  workingDays: number;
+  offWeekdays: number;
+  dailyHours: number;
+  dayCap: number;
+}): string | null {
+  const assigned = Number(opts.assignedHours) || 0;
+  const available = Number(opts.availableHours) || 0;
+  const workingDays = Number(opts.workingDays) || 0;
+  const off = Number(opts.offWeekdays) || 0;
+  const daily = Number(opts.dailyHours) || 0;
+  const cap = Number(opts.dayCap) || 0;
+  const fullyOff = workingDays <= 0 && assigned > 0;
+  const overDaily = workingDays > 0 && cap > 0 && daily > cap + 0.01;
+  const overWindow = assigned > available + 0.01;
+  if (!fullyOff && !overDaily && !overWindow) return null;
+  const who = opts.name || "This resource";
+  const offBit = off > 0 ? ` after ${off} weekday${off === 1 ? "" : "s"} off (leave/holidays)` : "";
+  if (fullyOff) {
+    return `${who} has no working days in this window${off ? offBit : " (leave/holidays)"}. ${assigned}h cannot be paced without exceeding available hours.`;
+  }
+  return `${who} would be Over: ${assigned}h vs ${Math.max(0, Math.round(available * 10) / 10)}h available (${workingDays} working days${offBit}). Daily load ${daily.toFixed(1)}h vs ${cap}h/day cap.`;
+}
+
 export function monthCapacityHours(
   month: string | null | undefined,
   hoursPerDay: number,

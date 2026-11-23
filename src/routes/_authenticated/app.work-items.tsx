@@ -44,6 +44,7 @@ import { DEFAULT_PAGE_SIZE } from "@/lib/portfolio-paging";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useProjectOptions } from "@/hooks/use-project-visibility";
+import { notifyResourceOverAllocation } from "@/lib/resource-over-allocation";
 
 type WorkItemsSearch = {
   mine?: boolean;
@@ -1098,7 +1099,33 @@ function WorkItemsPage() {
             type="button"
             className="st-btn-primary md:col-span-2"
             disabled={create.isPending}
-            onClick={() => create.mutate()}
+            onClick={() => {
+              const over = formAssigneeLoad.filter((r) => r.status === "Over");
+              if (over.length) {
+                const msg = over
+                  .map(
+                    (r) =>
+                      `${r.name} would be Over: ${r.totalDay.toFixed(1)}h/day vs ${r.cap}h/day cap (working days already exclude leave/holidays).`,
+                  )
+                  .join("\n");
+                if (!window.confirm(`${msg}\n\nSave anyway?`)) return;
+              }
+              create.mutate(undefined, {
+                onSuccess: () => {
+                  for (const r of over) {
+                    void notifyResourceOverAllocation({
+                      resourceId: r.id,
+                      title: "Over allocated (leave / holidays)",
+                      body: `${r.name} would be Over: ${r.totalDay.toFixed(1)}h/day vs ${r.cap}h/day cap on a new work item.`,
+                      link: "/app/work-items",
+                    });
+                    toast.warning(
+                      `${r.name} is Over ${r.totalDay.toFixed(1)}/${r.cap}h/day after leave/holidays.`,
+                    );
+                  }
+                },
+              });
+            }}
           >
             {create.isPending ? "Saving…" : "Create work item"}
           </button>

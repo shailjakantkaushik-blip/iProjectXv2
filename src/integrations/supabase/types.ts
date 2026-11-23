@@ -2925,6 +2925,15 @@ export type Database = {
           functional_area: string | null
         }[]
       }
+      notify_resource_over_allocation: {
+        Args: {
+          _resource_id: string
+          _title: string
+          _body: string
+          _link: string
+        }
+        Returns: number
+      }
       convert_demand_idea_to_project: {
         Args: { _idea_id: string }
         Returns: {
