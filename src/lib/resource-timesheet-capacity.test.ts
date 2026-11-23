@@ -44,6 +44,17 @@ describe("resources + timesheets (platform seed rates)", () => {
     });
     assert.equal(load.perDay, 0);
     assert.equal(load.status, "Over");
+    // Weekend-only windows have no weekdays, so they are not leave-blocked Over.
+    assert.equal(hoursLoadStatusForWindow(8, 8, "2026-01-24", "2026-01-25", leave), "Optimal");
+    const weekend = workItemAssigneeLoadStatus({
+      estimateHours: 8,
+      plannedStart: "2026-01-24",
+      plannedEnd: "2026-01-25",
+      assigneeCount: 1,
+      unavailable: leave,
+      cap: 8,
+    });
+    assert.equal(weekend.status, "Under");
   });
 
   it("spreads a 40-hour timesheet across weekdays only", () => {

@@ -8,6 +8,7 @@ import {
   monthCapacityHours,
   normalizeLocation,
   isFullyUnavailableWindow,
+  MAX_ISO_DATE_SPAN_DAYS,
   overAllocationMessage,
   splitHoursByWorkingDays,
   windowCapacityHours,
@@ -47,6 +48,10 @@ describe("resource calendar (holidays + leave)", () => {
     const jan27 = index.unavailableFor("ada", "Sydney", "2026-01-01", "2026-01-31");
     assert.equal(jan27.has("2026-01-15"), true);
     assert.equal(workingDaysInMonth("2026-01-01", jan27), 0);
+    const fourYear = index.unavailableFor("ada", "Sydney", "2025-01-01", "2028-12-31");
+    assert.equal(fourYear.has("2025-01-15"), true);
+    assert.equal(fourYear.has("2028-06-15"), true);
+    assert.ok(MAX_ISO_DATE_SPAN_DAYS >= 4000);
   });
 
   it("unions leave ranges with holidays for that person only", () => {
@@ -84,6 +89,9 @@ describe("resource calendar (holidays + leave)", () => {
     const leave = ["2026-01-26", "2026-01-27", "2026-01-28", "2026-01-29", "2026-01-30"];
     assert.equal(isFullyUnavailableWindow("2026-01-26", "2026-01-30", leave), true);
     assert.equal(isFullyUnavailableWindow("2026-01-26", "2026-01-30"), false);
+    // Sat 24 / Sun 25 Jan 2026 — weekend-only, not leave-blocked weekdays.
+    assert.equal(isFullyUnavailableWindow("2026-01-24", "2026-01-25", leave), false);
+    assert.equal(isFullyUnavailableWindow("2026-01-24", "2026-01-25"), false);
     assert.equal(windowCapacityHours("2026-01-26", "2026-01-30", 8, leave), 0);
     const msg = overAllocationMessage({
       name: "Ada",

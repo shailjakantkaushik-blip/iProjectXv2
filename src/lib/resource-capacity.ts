@@ -99,7 +99,7 @@ export function hoursLoadStatus(hours: number, cap: number): HoursLoadStatus {
   return "Under";
 }
 
-/** Over when hours sit on a window with no remaining working days (all leave/holidays). */
+/** Over when hours sit on a window whose weekdays are all leave/holidays (not weekend-only). */
 export function hoursLoadStatusForWindow(
   hours: number,
   cap: number,
@@ -108,9 +108,11 @@ export function hoursLoadStatusForWindow(
   unavailable?: Iterable<string> | null,
 ): HoursLoadStatus {
   const hasWindow = Boolean((start || "").slice(0, 10) || (end || "").slice(0, 10));
+  const weekdays = countWeekdaysInclusive(start, end);
   if (
     (Number(hours) || 0) > 0.01 &&
     hasWindow &&
+    weekdays > 0 &&
     countWeekdaysInclusive(start, end, unavailable) === 0
   ) {
     return "Over";
@@ -209,8 +211,11 @@ export function workItemAssigneeLoadStatus(opts: {
   const hours = Number(opts.estimateHours) || 0;
   const perDay = workItemDailyHoursPerAssignee(opts);
   const totalDay = Math.round(((Number(opts.existingDaily) || 0) + perDay) * 100) / 100;
+  const weekdays = countWeekdaysInclusive(opts.plannedStart, opts.plannedEnd);
   const fullyOff =
-    hours > 0 && windowWorkingDays(opts.plannedStart, opts.plannedEnd, opts.unavailable) === 0;
+    hours > 0 &&
+    weekdays > 0 &&
+    windowWorkingDays(opts.plannedStart, opts.plannedEnd, opts.unavailable) === 0;
   return {
     perDay,
     totalDay,

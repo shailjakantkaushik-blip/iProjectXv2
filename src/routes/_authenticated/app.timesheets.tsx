@@ -297,15 +297,16 @@ function TimesheetsPage() {
     () => resources.find((r) => r.user_id === userId) || null,
     [resources, userId],
   );
+  const monthWeeks = useMemo(() => {
+    const [y, mo] = weekStart.split("-").map(Number);
+    return mondaysOverlappingMonth(y, mo - 1);
+  }, [weekStart]);
   const myUnavailable = useMemo(() => {
     if (!myResource) return new Set<string>();
-    return calendar.unavailableFor(
-      myResource.id,
-      myResource.location,
-      addDays(weekStart, -14),
-      addDays(weekStart, 45),
-    );
-  }, [calendar, myResource, weekStart]);
+    const from = monthWeeks[0] || weekStart;
+    const last = monthWeeks[monthWeeks.length - 1] || weekStart;
+    return calendar.unavailableFor(myResource.id, myResource.location, from, addDays(last, 6));
+  }, [calendar, myResource, monthWeeks, weekStart]);
 
   const { data: assignees = [] } = useQuery({
     queryKey: ["work_item_assignees", orgId, myResource?.id],
@@ -373,11 +374,6 @@ function TimesheetsPage() {
     },
     enabled: !!sheet?.id,
   });
-
-  const monthWeeks = useMemo(() => {
-    const [y, mo] = weekStart.split("-").map(Number);
-    return mondaysOverlappingMonth(y, mo - 1);
-  }, [weekStart]);
 
   const { data: monthSheets = [] } = useQuery({
     queryKey: ["timesheets", orgId, userId, "month", monthWeeks.join(",")],

@@ -68,6 +68,9 @@ export function isWeekdayIso(iso: string): boolean {
   return dow >= 1 && dow <= 5;
 }
 
+/** Inclusive YYYY-MM-DD dates from start to end. Caps at ~11 years so year-1..year+2 work-item calendars keep later leave. */
+export const MAX_ISO_DATE_SPAN_DAYS = 4000;
+
 export function eachIsoDateInclusive(start?: string | null, end?: string | null): string[] {
   let from = isoDateOnly(start);
   let to = isoDateOnly(end);
@@ -78,7 +81,7 @@ export function eachIsoDateInclusive(start?: string | null, end?: string | null)
   const out: string[] = [];
   for (let d = from; d <= to; d = addIsoDays(d, 1)) {
     out.push(d);
-    if (out.length > 800) break;
+    if (out.length >= MAX_ISO_DATE_SPAN_DAYS) break;
   }
   return out;
 }
@@ -202,7 +205,7 @@ export function workingDaysInMonth(
   return countWorkingDaysInclusive(span.start, span.end, unavailable);
 }
 
-/** True when the dated window exists but every weekday is a holiday or leave day. */
+/** True when the dated window has weekdays and every one of them is a holiday or leave day. */
 export function isFullyUnavailableWindow(
   start?: string | null,
   end?: string | null,
@@ -210,6 +213,8 @@ export function isFullyUnavailableWindow(
 ): boolean {
   const hasWindow = Boolean(isoDateOnly(start) || isoDateOnly(end));
   if (!hasWindow) return false;
+  const weekdays = countWorkingDaysInclusive(start, end);
+  if (weekdays === 0) return false;
   return countWorkingDaysInclusive(start, end, unavailable) === 0;
 }
 
