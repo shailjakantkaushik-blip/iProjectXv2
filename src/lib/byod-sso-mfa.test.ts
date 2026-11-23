@@ -16,6 +16,12 @@ describe("SSO, MFA, and BYOD platform policy", () => {
     assert.equal(getPostSignOutAuthPath(), "/auth");
   });
 
+  it("validates server-fn JWTs with getUser, not local getClaims", () => {
+    const src = readFileSync(new URL("../integrations/supabase/auth-middleware.ts", import.meta.url), "utf8");
+    assert.match(src, /supabase\.auth\.getUser\(token\)/);
+    assert.doesNotMatch(src, /getClaims\(/);
+  });
+
   it("rejects non-https customer database URLs and never echoes the service-role secret", () => {
     assert.throws(() => normalizeSupabaseUrl("http://db.customer.example.com"), /https/);
     assert.equal(normalizeSupabaseUrl("https://db.customer.example.com/"), "https://db.customer.example.com");
