@@ -259,12 +259,7 @@ export function ForecastResourceBoard({
     }
     if (warning) {
       toast.warning(warning);
-      void notifyResourceOverAllocation({
-        resourceId: pending.resourceId,
-        title: "Over allocated (leave / holidays)",
-        body: warning,
-        link: "/app/project-forecast",
-      });
+      void notifyResourceOverAllocation(pending.resourceId);
     }
     setPending(null);
   };
@@ -285,7 +280,12 @@ export function ForecastResourceBoard({
       ? effortDaysToHours(pendingDays) / pendingPhaseDays
       : effortDaysToHours(pendingDays);
   const pendingDayCap = resourceHoursPerDay(pendingResource);
-  const pendingPace = hoursLoadStatus(pendingDaily, pendingDayCap);
+  const pendingPace =
+    pendingPhaseDays > 0
+      ? hoursLoadStatus(pendingDaily, pendingDayCap)
+      : effortDaysToHours(pendingDays) > 0.01
+        ? "Over"
+        : "Under";
   const pendingUnavailable =
     pending && pendingResource && calendar
       ? calendar.unavailableFor(
@@ -366,7 +366,8 @@ export function ForecastResourceBoard({
                   planStart && windowEnd
                     ? windowCapacityHours(planStart, windowEnd, dayCap, unavailable)
                     : 0;
-                const total = windowCap > 0 ? windowCap : Math.round(weekly * weeks);
+                const datedWindow = Boolean(planStart && windowEnd);
+                const total = datedWindow ? windowCap : Math.round(weekly * weeks);
                 const used =
                   (allocatedHoursByResource.get(r.id) || 0) +
                   (forecastHoursByResource.get(r.id) || 0);

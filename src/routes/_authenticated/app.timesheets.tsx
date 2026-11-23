@@ -297,11 +297,15 @@ function TimesheetsPage() {
     () => resources.find((r) => r.user_id === userId) || null,
     [resources, userId],
   );
-  const myUnavailable = useMemo(
-    () =>
-      myResource ? calendar.unavailableFor(myResource.id, myResource.location) : new Set<string>(),
-    [calendar, myResource],
-  );
+  const myUnavailable = useMemo(() => {
+    if (!myResource) return new Set<string>();
+    return calendar.unavailableFor(
+      myResource.id,
+      myResource.location,
+      addDays(weekStart, -14),
+      addDays(weekStart, 45),
+    );
+  }, [calendar, myResource, weekStart]);
 
   const { data: assignees = [] } = useQuery({
     queryKey: ["work_item_assignees", orgId, myResource?.id],

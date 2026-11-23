@@ -20,6 +20,7 @@ import {
 import {
   buildResourceCalendarIndex,
   monthCapacityHours,
+  monthStartEnd,
   splitHoursByWorkingDays,
   type CalendarResourceLike,
   type OrgPublicHoliday,
@@ -466,7 +467,13 @@ export async function applyForecastPlannedMoneyAndFte(opts: {
     }
     if (opts.onlyFillEmpty && prev && num(prev.allocated_hours) > 0) continue;
     const person = resourceById.get(s.resourceId);
-    const unavailable = calendar.unavailableFor(s.resourceId, person?.location);
+    const span = monthStartEnd(s.periodMonth);
+    const unavailable = calendar.unavailableFor(
+      s.resourceId,
+      person?.location,
+      span?.start,
+      span?.end,
+    );
     const monthCap = monthCapacityHours(s.periodMonth, resourceHoursPerDay(person), unavailable);
     const pct = monthCap > 0 ? Math.round((s.hours / monthCap) * 1000) / 10 : 0;
     const row = {

@@ -107,7 +107,18 @@ export function expandLeaveDates(
   from?: string | null,
   to?: string | null,
 ): string[] {
-  return eachIsoDateInclusive(start, end).filter((d) => inRange(d, from, to));
+  let a = isoDateOnly(start);
+  let b = isoDateOnly(end);
+  if (!a && !b) return [];
+  if (!a) a = b;
+  if (!b) b = a;
+  if (a > b) [a, b] = [b, a];
+  const lo = isoDateOnly(from);
+  const hi = isoDateOnly(to);
+  if (lo && a < lo) a = lo;
+  if (hi && b > hi) b = hi;
+  if (a > b) return [];
+  return eachIsoDateInclusive(a, b);
 }
 
 export function unavailableIsoDatesForResource(opts: {
@@ -189,6 +200,17 @@ export function workingDaysInMonth(
   const span = monthStartEnd(month);
   if (!span) return 0;
   return countWorkingDaysInclusive(span.start, span.end, unavailable);
+}
+
+/** True when the dated window exists but every weekday is a holiday or leave day. */
+export function isFullyUnavailableWindow(
+  start?: string | null,
+  end?: string | null,
+  unavailable?: Iterable<string> | null,
+): boolean {
+  const hasWindow = Boolean(isoDateOnly(start) || isoDateOnly(end));
+  if (!hasWindow) return false;
+  return countWorkingDaysInclusive(start, end, unavailable) === 0;
 }
 
 export function countUnavailableWeekdays(

@@ -7,6 +7,7 @@ import {
   holidayAppliesToLocation,
   monthCapacityHours,
   normalizeLocation,
+  isFullyUnavailableWindow,
   overAllocationMessage,
   splitHoursByWorkingDays,
   windowCapacityHours,
@@ -29,6 +30,23 @@ describe("resource calendar (holidays + leave)", () => {
     // Fri 23, Mon 26 (holiday), Tue 27 → 2 working days
     assert.equal(days, 2);
     assert.equal(countWorkingDaysInclusive("2026-01-23", "2026-01-27"), 3);
+  });
+
+  it("clips long leave to the requested window so later months still count as off", () => {
+    const index = buildResourceCalendarIndex(
+      [],
+      [
+        {
+          resource_id: "ada",
+          start_date: "2023-01-01",
+          end_date: "2028-12-31",
+          leave_type: "Annual",
+        },
+      ],
+    );
+    const jan27 = index.unavailableFor("ada", "Sydney", "2026-01-01", "2026-01-31");
+    assert.equal(jan27.has("2026-01-15"), true);
+    assert.equal(workingDaysInMonth("2026-01-01", jan27), 0);
   });
 
   it("unions leave ranges with holidays for that person only", () => {
@@ -60,6 +78,23 @@ describe("resource calendar (holidays + leave)", () => {
     assert.equal(workingDaysInMonth("2026-01-01"), 22);
     assert.equal(monthCapacityHours("2026-01-01", 8, ["2026-01-26"]), 168);
     assert.equal(windowCapacityHours("2026-01-26", "2026-01-30", 8, ["2026-01-26"]), 32);
+  });
+
+  it("treats a fully blocked dated window as unavailable", () => {
+    const leave = ["2026-01-26", "2026-01-27", "2026-01-28", "2026-01-29", "2026-01-30"];
+    assert.equal(isFullyUnavailableWindow("2026-01-26", "2026-01-30", leave), true);
+    assert.equal(isFullyUnavailableWindow("2026-01-26", "2026-01-30"), false);
+    assert.equal(windowCapacityHours("2026-01-26", "2026-01-30", 8, leave), 0);
+    const msg = overAllocationMessage({
+      name: "Ada",
+      assignedHours: 8,
+      availableHours: 0,
+      workingDays: 0,
+      offWeekdays: 5,
+      dailyHours: 8,
+      dayCap: 8,
+    });
+    assert.ok(msg && /no working days/.test(msg));
   });
 
   it("warns when assigned hours exceed leave-adjusted availability", () => {

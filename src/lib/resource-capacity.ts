@@ -99,6 +99,25 @@ export function hoursLoadStatus(hours: number, cap: number): HoursLoadStatus {
   return "Under";
 }
 
+/** Over when hours sit on a window with no remaining working days (all leave/holidays). */
+export function hoursLoadStatusForWindow(
+  hours: number,
+  cap: number,
+  start?: string | null,
+  end?: string | null,
+  unavailable?: Iterable<string> | null,
+): HoursLoadStatus {
+  const hasWindow = Boolean((start || "").slice(0, 10) || (end || "").slice(0, 10));
+  if (
+    (Number(hours) || 0) > 0.01 &&
+    hasWindow &&
+    countWeekdaysInclusive(start, end, unavailable) === 0
+  ) {
+    return "Over";
+  }
+  return hoursLoadStatus(hours, cap);
+}
+
 export function hoursLoadChipClass(status: HoursLoadStatus): string {
   if (status === "Over") return "bg-red-100 text-red-800";
   if (status === "Under") return "bg-amber-100 text-amber-900";
@@ -176,6 +195,27 @@ export function workItemDailyHoursPerAssignee(opts: {
   const days = windowWorkingDays(opts.plannedStart, opts.plannedEnd, opts.unavailable);
   if (!(days > 0)) return 0;
   return Math.round((hours / people / days) * 100) / 100;
+}
+
+export function workItemAssigneeLoadStatus(opts: {
+  estimateHours: number;
+  plannedStart?: string | null;
+  plannedEnd?: string | null;
+  assigneeCount: number;
+  unavailable?: Iterable<string> | null;
+  existingDaily?: number;
+  cap: number;
+}): { perDay: number; totalDay: number; status: HoursLoadStatus } {
+  const hours = Number(opts.estimateHours) || 0;
+  const perDay = workItemDailyHoursPerAssignee(opts);
+  const totalDay = Math.round(((Number(opts.existingDaily) || 0) + perDay) * 100) / 100;
+  const fullyOff =
+    hours > 0 && windowWorkingDays(opts.plannedStart, opts.plannedEnd, opts.unavailable) === 0;
+  return {
+    perDay,
+    totalDay,
+    status: fullyOff ? "Over" : hoursLoadStatus(totalDay, opts.cap),
+  };
 }
 
 export function accumulateDailyDemandByResource<

@@ -2926,12 +2926,7 @@ export type Database = {
         }[]
       }
       notify_resource_over_allocation: {
-        Args: {
-          _resource_id: string
-          _title: string
-          _body: string
-          _link: string
-        }
+        Args: { _resource_id: string }
         Returns: number
       }
       convert_demand_idea_to_project: {

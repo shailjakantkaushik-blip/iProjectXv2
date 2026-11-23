@@ -1,12 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { RESOURCES_SELECT, RESOURCE_ALLOCATIONS_SELECT } from "@/lib/query-selects";
 import { useAuth } from "@/lib/auth-context";
 import { ResourceCalendarPanel } from "@/components/resource-calendar-panel";
 import { useOrgResourceCalendar } from "@/hooks/use-resource-calendar";
-import { monthCapacityHours, rangeCapacityHours } from "@/lib/resource-calendar";
+import { monthCapacityHours, monthStartEnd, rangeCapacityHours } from "@/lib/resource-calendar";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import { Input } from "@/components/ui/input";
@@ -169,7 +169,15 @@ function heatColor(pct: number): string {
 function ResourcesPage() {
   const { organization } = useAuth();
   const search = Route.useSearch();
+  const navigate = Route.useNavigate();
   const [tab, setTab] = useState<ResTab>(search.tab || "pva");
+  useEffect(() => {
+    setTab(search.tab || "pva");
+  }, [search.tab]);
+  const setResTab = (id: ResTab) => {
+    setTab(id);
+    void navigate({ search: id === "pva" ? {} : { tab: id } });
+  };
   const { index: calendar } = useOrgResourceCalendar(organization?.id);
   const [effortUnit, setEffortUnit] = useState<EffortUnit>("hours");
   const unitSuffix = effortUnitSuffix(effortUnit);
@@ -295,12 +303,14 @@ function ResourcesPage() {
     return m;
   }, [streams]);
   const resByIdAll = useMemo(() => new Map(resourcesAll.map((r) => [r.id, r])), [resourcesAll]);
-  const monthCapFor = (r: Resource | undefined, month: string) =>
-    monthCapacityHours(
+  const monthCapFor = (r: Resource | undefined, month: string) => {
+    const span = monthStartEnd(month);
+    return monthCapacityHours(
       month,
       resourceHoursPerDay(r),
-      r ? calendar.unavailableFor(r.id, r.location) : undefined,
+      r ? calendar.unavailableFor(r.id, r.location, span?.start, span?.end) : undefined,
     );
+  };
   const allocHours = (a: Allocation, r?: Resource) =>
     hoursFromAllocation(a, resourceHoursPerWeek(r), monthCapFor(r, a.period_month));
 
@@ -370,9 +380,10 @@ function ResourcesPage() {
           (a) => a.resource_id === r.id && monthsInRange.includes(normMonth(a.period_month)),
         );
         const planHours = rows.reduce((s, a) => s + allocHours(a, r), 0);
-        const denom = rangeCapacityHours(monthsInRange, resourceHoursPerDay(r), (m) =>
-          calendar.unavailableFor(r.id, r.location),
-        );
+        const denom = rangeCapacityHours(monthsInRange, resourceHoursPerDay(r), (m) => {
+          const span = monthStartEnd(m);
+          return calendar.unavailableFor(r.id, r.location, span?.start, span?.end);
+        });
         const avg = denom > 0 ? (planHours / denom) * 100 : 0;
         const actualHours = timesheetActuals
           .filter((a) => {
@@ -517,9 +528,10 @@ function ResourcesPage() {
           if (a.billable === false || !a.project_id) nonBillableHours += hrs;
           else billableHours += hrs;
         }
-        const denom = rangeCapacityHours(months, resourceHoursPerDay(r), (m) =>
-          calendar.unavailableFor(r.id, r.location),
-        );
+        const denom = rangeCapacityHours(months, resourceHoursPerDay(r), (m) => {
+          const span = monthStartEnd(m);
+          return calendar.unavailableFor(r.id, r.location, span?.start, span?.end);
+        });
         const planPctAvg = denom > 0 ? Math.round((planHours / denom) * 100) : 0;
         const actualPctAvg = denom > 0 ? Math.round((actualHours / denom) * 100) : 0;
         const utilVsPlan = planHours > 0 ? Math.round((actualHours / planHours) * 1000) / 10 : null;
@@ -720,9 +732,10 @@ function ResourcesPage() {
     }
     const rows = resources.map((r) => {
       const monthCount = Math.max(1, months.length);
-      const capAcross = rangeCapacityHours(months, resourceHoursPerDay(r), () =>
-        calendar.unavailableFor(r.id, r.location),
-      );
+      const capAcross = rangeCapacityHours(months, resourceHoursPerDay(r), (m) => {
+        const span = monthStartEnd(m);
+        return calendar.unavailableFor(r.id, r.location, span?.start, span?.end);
+      });
       const avgMonthCap = capAcross / monthCount;
       return {
         name: r.name,
@@ -843,7 +856,7 @@ function ResourcesPage() {
           <button
             key={id}
             type="button"
-            onClick={() => setTab(id)}
+            onClick={() => setResTab(id)}
             className={cn(
               "rounded-md border px-3 py-1.5 text-xs font-medium",
               tab === id

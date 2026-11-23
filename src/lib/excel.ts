@@ -285,7 +285,13 @@ async function importTableRows(orgId: string, t: TableDef, rows: Dict[]): Promis
     if (b.name) buByCode.set(String(b.name).trim(), b.id);
   });
   const resByName = new Map<string, string>();
-  (resources ?? []).forEach((r) => { if (r.name) resByName.set(String(r.name).trim(), r.id); });
+  const resourceNameById = new Map<string, string>();
+  (resources ?? []).forEach((r) => {
+    if (r.name) {
+      resByName.set(String(r.name).trim(), r.id);
+      resourceNameById.set(r.id, String(r.name).trim());
+    }
+  });
   // stream lookup: "CODE", "NAME", and "PROJECTCODE||CODE" for disambiguation
   const streamByCode = new Map<string, string>();
   (streams ?? []).forEach((s: any) => {
@@ -335,7 +341,7 @@ async function importTableRows(orgId: string, t: TableDef, rows: Dict[]): Promis
   if (t.matchOn && t.matchOn.length) {
     const { data: existing } = await (supabase as any).from(t.key).select("*").eq("org_id", orgId);
     (existing ?? []).forEach((row: any) => {
-      const key = buildMatchKey(t, row, projectByCode, streamCodeById);
+      const key = buildMatchKey(t, row, projectByCode, streamCodeById, resourceNameById);
       if (key) existingByKey.set(key, row.id);
     });
   }
@@ -474,6 +480,7 @@ function buildMatchKey(
   row: any,
   projectByCode: Map<string, string>,
   streamCodeById: Map<string, string>,
+  resourceNameById?: Map<string, string>,
 ): string | null {
   if (!t.matchOn) return null;
   const parts: string[] = [];
@@ -487,7 +494,7 @@ function buildMatchKey(
     } else if (key === "stream_code") {
       parts.push(row.stream_id ? String(streamCodeById.get(String(row.stream_id)) ?? "") : "");
     } else if (key === "resource_name") {
-      parts.push(String(row.resource_id ?? ""));
+      parts.push(String(resourceNameById?.get(String(row.resource_id ?? "")) ?? "").trim());
     } else {
       parts.push(String(row[key] ?? "").trim());
     }
