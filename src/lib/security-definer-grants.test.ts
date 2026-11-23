@@ -23,6 +23,16 @@ function lastGrantBlock(sql: string, fn: string): string {
   return hits[hits.length - 1];
 }
 
+function lastFunctionBody(sql: string, fn: string): string {
+  const re = new RegExp(
+    String.raw`CREATE OR REPLACE FUNCTION public\.${fn}\([\s\S]*?\$\$;`,
+    "gi",
+  );
+  const hits = [...sql.matchAll(re)].map((m) => m[0]);
+  assert.ok(hits.length, `expected CREATE OR REPLACE FUNCTION for ${fn}`);
+  return hits[hits.length - 1];
+}
+
 describe("unguarded stream DEFINER RPCs", () => {
   const sql = migrationSql();
 
@@ -36,5 +46,22 @@ describe("unguarded stream DEFINER RPCs", () => {
     const last = lastGrantBlock(sql, "rollup_project_from_streams");
     assert.match(last, /GRANT EXECUTE ON FUNCTION public\.rollup_project_from_streams\(uuid\) TO service_role/i);
     assert.doesNotMatch(last, /TO authenticated/i);
+  });
+});
+
+describe("refresh_org_kpi_summary caller check", () => {
+  const sql = migrationSql();
+  const body = lastFunctionBody(sql, "refresh_org_kpi_summary");
+
+  it("requires the signed-in caller's home org and ignores platform_admin bypass", () => {
+    assert.match(body, /auth\.uid\(\) IS NOT NULL/);
+    assert.match(body, /public\.get_user_org\(auth\.uid\(\)\) IS DISTINCT FROM p_org_id/);
+    assert.doesNotMatch(body, /is_platform_admin/);
+  });
+
+  it("keeps EXECUTE for authenticated (user JWT) after REVOKE PUBLIC/anon", () => {
+    const last = lastGrantBlock(sql, "refresh_org_kpi_summary");
+    assert.match(last, /GRANT EXECUTE ON FUNCTION public\.refresh_org_kpi_summary\(uuid\) TO authenticated,\s*service_role/i);
+    assert.doesNotMatch(last, /TO anon/i);
   });
 });
