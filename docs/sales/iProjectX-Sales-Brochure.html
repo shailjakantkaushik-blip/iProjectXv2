@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>iProjectX — Sales brochure</title>
+  <link rel="stylesheet" href="./css/a4.css" />
+  <style>
+    .cover-hero { min-height: 118mm; padding: 14mm 14mm 12mm; }
+    .cover-hero h1 { font-size: 32px; line-height: 1.08; max-width: 170mm; }
+    .cover-hero .lede { font-size: 13px; max-width: 165mm; }
+    .verbs { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 3mm; margin-top: 8mm; }
+    .verbs div { background: #ffffff16; border: 1px solid #ffffff28; border-radius: 8px; padding: 4mm 3.5mm; }
+    .verbs b { display: block; font-size: 13px; margin-bottom: 1.5mm; }
+    .verbs span { font-size: 9px; color: #d5deea; line-height: 1.35; }
+    .band { display: grid; grid-template-columns: 1fr 1fr 1fr; }
+    .band > div { padding: 5mm 12mm; color: #fff; }
+    .band h3 { color: #fff; margin: 0 0 2mm; font-size: 12px; }
+    .band p { color: #eef2f7; margin: 0; font-size: 9.5px; }
+    .who-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; }
+    .who-grid .card p { margin: 0; }
+  </style>
+</head>
+<body>
+  <section class="page">
+    <div class="hero cover-hero">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <p class="eyebrow">Enterprise brochure · Portfolio intelligence platform</p>
+      <h1>Stop flying blind.<br /><em>Give the board one truth.</em></h1>
+      <p class="lede">
+        iProjectX is the decision layer over delivery. It calculates project health, explains money
+        and RAG, governs stage gates, and isolates every tenant — Agile and Waterfall on the same spine.
+      </p>
+      <div class="verbs">
+        <div><b>See</b><span>Pulse and cockpit. What moved this week, not last quarter’s story.</span></div>
+        <div><b>Explain</b><span>Eight-dimension health. Money that can defend itself in the room.</span></div>
+        <div><b>Govern</b><span>Gates with evidence. RAID, decisions, and work on one truth.</span></div>
+        <div><b>Trust</b><span>MFA for every user. RLS. Optional SSO, BYOD, white-label. In-house AI.</span></div>
+      </div>
+    </div>
+    <div class="band">
+      <div style="background:#15803d"><h3>Green ≥ 80</h3><p>On the rails. Still watch the drivers.</p></div>
+      <div style="background:#c47b0a"><h3>Amber 65–79</h3><p>Pressure is visible. Act this week.</p></div>
+      <div style="background:#c81e1e"><h3>Red &lt; 65</h3><p>The room needs a decision, not a colour.</p></div>
+    </div>
+    <div class="body" style="padding-top:7mm;">
+      <h2>A register records the past. Intelligence surfaces the next decision.</h2>
+      <div class="g2">
+        <div class="card fail white">
+          <h3>Without iProjectX</h3>
+          <p>RAG is typed by hand. The board pack is last month’s weather. Gates live in email. The same person is booked five times. Overruns appear at year-end.</p>
+        </div>
+        <div class="card win white">
+          <h3>With iProjectX</h3>
+          <p>Health is calculated. Pulse shows what deteriorated this week. A gate leaves a checklist. Capacity is a number. Plan, Forecast, Demand, and Actuals stay apart.</p>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>Confidential brochure</span><span>01 / 02 · Not a status register</span></div>
+  </section>
+
+  <section class="page">
+    <div class="hero" style="padding:9mm 12mm 8mm;">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <p class="eyebrow">Who it is for · What you get</p>
+      <h1 style="font-size:24px;">One command center for the whole change portfolio.</h1>
+    </div>
+    <div class="body">
+      <div class="who-grid">
+        <div class="card white"><h3>PMO / Head of delivery</h3><p>“I will not rebuild the pack on Sunday.” Pulse, cockpit, health, gates, RAID, and resources on one truth. Excel import if they still live in workbooks.</p></div>
+        <div class="card white"><h3>Executive / sponsor</h3><p>“Show me what needs a decision this week.” Attention cards, delay cascades, investment ranking — scoped to the programs they own.</p></div>
+        <div class="card white"><h3>CFO / finance partner</h3><p>“Defend the number.” Plan / Actual / Forecast, FY allocation capped to the envelope, CapEx / OpEx, benefits realisation scored into health.</p></div>
+        <div class="card white"><h3>CISO / risk</h3><p>“Do not leak the portfolio.” MFA, row-level tenancy, optional SSO / BYOD, in-house AI, audit evidence. Project-level visibility, not a shared login.</p></div>
+      </div>
+
+      <div class="section">
+        <h2>On the same spine</h2>
+        <div class="g4">
+          <div class="card white"><h3>Health Engine</h3><p>Schedule 20 · Financial 20 · Delivery 15 · Scope 10 · Resource 10 · Risk 10 · Dependencies 10 · Benefits 5.</p></div>
+          <div class="card white"><h3>Portfolio Pulse</h3><p>Six areas: financial, delivery, resources, risk, benefits, dependencies — with week-over-week movement.</p></div>
+          <div class="card white"><h3>Money layers</h3><p>Budget, Plan, Forecast, Demand, Actuals never overwrite each other. Estimation Planning writes Plan. Timesheets write Actuals.</p></div>
+          <div class="card white"><h3>Delivery methods</h3><p>Waterfall and Hybrid gates. Agile sprints. Hybrid can use both. RAID and decisions stay with the project.</p></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Trust you can take to a review</h2>
+        <p>Authenticator MFA is required. Every organisation is isolated at the row. Project Access scopes pages, KPIs, and Home. In-house AI stays in the org session unless the organisation requests an approved Open AI model. Optional BYOD keeps tenant registers on your database. We design for SOC 2 and ISO 27001 readiness — we do not claim a certificate we have not earned.</p>
+      </div>
+
+      <div class="section dark-cta">
+        <div>
+          <h2>Expression of Interest</h2>
+          <p>Walk their live pain on the cockpit. Leave this brochure. Capture EOI the same day.</p>
+        </div>
+        <div style="text-align:right;">
+          <b>www.iprojectx.com</b><br />
+          <b>www.iprojectx.com.au</b>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>www.iprojectx.com · www.iprojectx.com.au</span><span>02 / 02 · Confidential</span></div>
+  </section>
+</body>
+</html>

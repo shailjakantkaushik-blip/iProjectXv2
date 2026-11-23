@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
+import { FileDown } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SectionFrame, SectionTitle } from "@/components/streamlit";
 import { CartoonGuide } from "@/components/cartoon-mascots";
@@ -105,6 +106,29 @@ export function AppFlowGuide({ tab, onTab }: { tab: AboutTab; onTab: (t: AboutTa
           </div>
         </div>
         <BuildingBlocksArt />
+        <SectionFrame>
+          <SectionTitle>Download the manuals</SectionTitle>
+          <p className="mb-3 text-sm text-muted-foreground">
+            Printable PDFs for onboarding and for a sales conversation. The in-app tabs below are
+            the same story, shorter.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href="/docs/iProjectX-User-Manual.pdf"
+              className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
+            >
+              <FileDown className="h-4 w-4" />
+              User manual (PDF)
+            </a>
+            <a
+              href="/docs/iProjectX-Sales-Brochure.pdf"
+              className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
+            >
+              <FileDown className="h-4 w-4" />
+              Sales brochure (PDF)
+            </a>
+          </div>
+        </SectionFrame>
         <SectionFrame>
           <SectionTitle>A typical week</SectionTitle>
           <div className="space-y-3">
@@ -402,7 +426,7 @@ export function AppFlowGuide({ tab, onTab }: { tab: AboutTab; onTab: (t: AboutTa
               <Link to="/app/how-money-works" className="font-medium text-primary hover:underline">
                 How money works
               </Link>
-              .
+              . Full PDF manuals are on the Big picture tab.
             </p>
           </SectionFrame>
         </div>

@@ -23,7 +23,8 @@
     "test:live-two-org": "node scripts/live-two-org-isolation.mjs",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "build:replication": "node scripts/build-complete-supabase-replication.mjs"
+    "build:replication": "node scripts/build-complete-supabase-replication.mjs",
+    "build:docs-pdfs": "node scripts/generate-sales-pdf-pack.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
