@@ -80,3 +80,19 @@ describe("sync_org_resources_from_profiles caller check", () => {
     assert.match(body, /auth\.uid\(\) IS NOT NULL/);
   });
 });
+
+describe("seed_default_page_permissions is not client-callable", () => {
+  const sql = migrationSql();
+  const body = lastFunctionBody(sql, "seed_default_page_permissions");
+
+  it("checks home org and admin when a user JWT is present", () => {
+    assert.match(body, /public\.get_user_org\(auth\.uid\(\)\) IS DISTINCT FROM _org_id/);
+    assert.match(body, /public\.has_any_admin\(auth\.uid\(\)\)/);
+  });
+
+  it("revokes EXECUTE from authenticated", () => {
+    const last = lastGrantBlock(sql, "seed_default_page_permissions");
+    assert.match(last, /GRANT EXECUTE ON FUNCTION public\.seed_default_page_permissions\(uuid\) TO service_role/i);
+    assert.doesNotMatch(last, /TO authenticated/i);
+  });
+});
