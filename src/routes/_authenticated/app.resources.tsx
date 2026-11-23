@@ -167,13 +167,13 @@ function heatColor(pct: number): string {
 
 function ResourcesPage() {
   const { organization, roles } = useAuth();
-  const search = Route.useSearch();
+  const routeSearch = Route.useSearch();
   const navigate = Route.useNavigate();
-  const [tab, setTab] = useState<ResTab>(search.tab === "utilisation" ? "utilisation" : "pva");
+  const [tab, setTab] = useState<ResTab>(routeSearch.tab === "utilisation" ? "utilisation" : "pva");
   useEffect(() => {
-    if (search.tab === "calendars") return;
-    setTab(search.tab || "pva");
-  }, [search.tab]);
+    if (routeSearch.tab === "calendars") return;
+    setTab(routeSearch.tab || "pva");
+  }, [routeSearch.tab]);
   const setResTab = (id: ResTab) => {
     setTab(id);
     void navigate({ search: id === "pva" ? {} : { tab: id } });
@@ -830,7 +830,7 @@ function ResourcesPage() {
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [allocations, filteredActuals, streams, gates, projectsById, streamProjectById, resById]);
 
-  if (search.tab === "calendars") {
+  if (routeSearch.tab === "calendars") {
     return <Navigate to={isAdmin(roles) ? "/app/org-holidays" : "/app/apply-leave"} replace />;
   }
 
