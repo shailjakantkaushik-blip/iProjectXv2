@@ -15,6 +15,7 @@ import {
   FileDown,
   Link2,
   Mail,
+  CalendarDays,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/app/configuration")({
@@ -33,6 +34,12 @@ const CARDS = [
     icon: Building2,
     title: "Business Units",
     desc: "Structure your organisation into BUs and programs",
+  },
+  {
+    to: "/app/resources",
+    icon: CalendarDays,
+    title: "Holidays & leave",
+    desc: "Public holidays by geography and dated resource leave used in estimation and capacity",
   },
   {
     to: "/app/stage-gate-config",

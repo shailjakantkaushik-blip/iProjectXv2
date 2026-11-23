@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { resolvePhaseStageGateId } from "./apply-forecast-planned.ts";
+import {
+  plannedAllocationHoursFromEstimate,
+  resolvePhaseStageGateId,
+} from "./apply-forecast-planned.ts";
 import { PLATFORM_SEED_PROJECTS, PLATFORM_WATERFALL_GATES } from "./platform-seed.ts";
 import {
   defaultGatesForMethodCode,
@@ -41,14 +44,43 @@ describe("estimation planning / forecast", () => {
   });
 
   it("matches an estimate phase to the live stage gate, preferring the stream copy", () => {
-    const id = resolvePhaseStageGateId(
-      { stream_id: "st", gate_name: "Build" },
-      [
-        { id: "proj", stream_id: null, gate_name: "Build" },
-        { id: "stream", stream_id: "st", gate_name: "Build" },
-      ],
-    );
+    const id = resolvePhaseStageGateId({ stream_id: "st", gate_name: "Build" }, [
+      { id: "proj", stream_id: null, gate_name: "Build" },
+      { id: "stream", stream_id: "st", gate_name: "Build" },
+    ]);
     assert.equal(id, "stream");
+  });
+
+  it("weights applied FTE hours away from holiday months", () => {
+    const base = {
+      phases: [
+        {
+          gate_name: "Build",
+          sort_order: 1,
+          duration_days: 59,
+          start_date: "2026-01-01",
+          end_date: "2026-02-28",
+          stream_id: "st",
+        },
+      ],
+      phaseRes: [
+        {
+          resource_id: "ada",
+          phase_name: "Build",
+          stream_id: "st",
+          effort_days: 10,
+        },
+      ],
+      resources: [{ id: "ada", location: "Sydney", hours_per_day: 8 }],
+    };
+    const without = plannedAllocationHoursFromEstimate(base);
+    const withHoliday = plannedAllocationHoursFromEstimate({
+      ...base,
+      holidays: [{ location: "Sydney", holiday_date: "2026-01-26", name: "Australia Day" }],
+    });
+    const jan = (rows: typeof without) =>
+      rows.find((s) => s.periodMonth.startsWith("2026-01"))?.hours || 0;
+    assert.ok(jan(withHoliday) < jan(without));
   });
 });
 

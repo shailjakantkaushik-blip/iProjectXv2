@@ -630,7 +630,17 @@ function sampleRowForTemplate(t: TableDef, headers: string[]): Dict {
     row.skills = "Analysis,Agile";
     row.bu_code = "DIG";
     row.capacity_hours_week = 40;
+    row.location = "Sydney";
     row.status = "Active";
+  } else if (t.key === "org_public_holidays") {
+    row.location = "Sydney";
+    row.holiday_date = "2026-01-26";
+    row.name = "Australia Day";
+  } else if (t.key === "resource_leaves") {
+    row.resource_name = "Alex Morgan";
+    row.leave_type = "Annual";
+    row.start_date = "2026-01-27";
+    row.end_date = "2026-01-28";
   } else if (t.key === "resource_allocations") {
     row.project_code = "PRJ-001";
     row.stream_code = "CORE";

@@ -632,6 +632,34 @@ export const TABLES: TableDef[] = [
     ],
   },
   {
+    key: "org_public_holidays",
+    label: "Public holidays",
+    matchOn: ["location", "holiday_date"],
+    orderBy: "holiday_date",
+    description:
+      "Geography public holidays. location matches Resources.location (case-insensitive). Use * for every location. These weekdays are unavailable in estimation, utilisation, demand, and timesheet week-plan.",
+    fields: [
+      { key: "location", label: "Location", type: "text", required: true },
+      { key: "holiday_date", label: "Date", type: "date", required: true },
+      { key: "name", label: "Name", type: "text", required: true },
+    ],
+  },
+  {
+    key: "resource_leaves",
+    label: "Resource leave",
+    matchOn: ["resource_name", "start_date", "leave_type"],
+    orderBy: "start_date",
+    description:
+      "Dated leave for a resource (Annual, Sick, General). Inclusive weekdays reduce that person’s working-day capacity.",
+    fields: [
+      { key: "resource_id", label: "Resource", type: "text", required: true },
+      { key: "leave_type", label: "Type", type: "select", options: ["Annual", "Sick", "General"] },
+      { key: "start_date", label: "From", type: "date", required: true },
+      { key: "end_date", label: "To", type: "date", required: true },
+      { key: "notes", label: "Notes", type: "text" },
+    ],
+  },
+  {
     key: "resource_allocations",
     label: "Resource Allocations",
     matchOn: ["project_code", "stream_code", "resource_name", "period_month"],

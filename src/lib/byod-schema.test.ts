@@ -20,6 +20,7 @@ describe("BYOD tenant schema pack", () => {
     assert.ok(pack.included.includes("20261123120000_revoke_ensure_project_core_stream.sql"));
     assert.ok(pack.included.includes("20261123120100_gate_refresh_org_kpi_summary.sql"));
     assert.ok(pack.included.includes("20261123120500_force_row_level_security.sql"));
+    assert.ok(pack.included.includes("20261123140000_resource_holidays_and_leaves.sql"));
     assert.ok(pack.excluded.includes("20260729120000_org_byod_connections.sql"));
     assert.deepEqual([...pack.excluded].sort(), [...BYOD_SCHEMA_EXCLUDE].sort());
   });

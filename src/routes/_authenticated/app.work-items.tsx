@@ -33,6 +33,7 @@ import {
   sumLaneDemandHours,
   sumLanePlannedFteCost,
 } from "@/lib/work-item-fte-plan";
+import { useOrgResourceCalendar } from "@/hooks/use-resource-calendar";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
@@ -92,11 +93,13 @@ type ResourceRow = {
   cost_rate?: number | null;
   hours_per_day?: number | null;
   capacity_hours_week?: number | null;
+  location?: string | null;
 };
 
 function WorkItemsPage() {
   const { organization, session, profile } = useAuth();
   const orgId = organization?.id;
+  const { index: calendar } = useOrgResourceCalendar(orgId);
   const userId = session?.user?.id;
   const qc = useQueryClient();
   const listWorkItems = useServerFn(listPortfolioWorkItems);
@@ -183,9 +186,7 @@ function WorkItemsPage() {
       const prev = best.get(n);
       if (prev == null || ord < prev) best.set(n, ord);
     }
-    return [...best.entries()]
-      .sort((a, b) => a[1] - b[1])
-      .map(([n]) => n);
+    return [...best.entries()].sort((a, b) => a[1] - b[1]).map(([n]) => n);
   }, [gateDefs]);
 
   const gatesForWorkItem = useCallback(
@@ -220,7 +221,9 @@ function WorkItemsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("resources")
-        .select("id,name,email,role,user_id,status,cost_rate,hours_per_day,capacity_hours_week")
+        .select(
+          "id,name,email,role,user_id,status,cost_rate,hours_per_day,capacity_hours_week,location",
+        )
         .order("name");
       if (error) throw error;
       return (data ?? []) as unknown as ResourceRow[];
@@ -328,9 +331,7 @@ function WorkItemsPage() {
         .from("work_item_links" as any)
         .select("id,predecessor_id,successor_id,link_type,lag_days")
         .eq("org_id", orgId!)
-        .or(
-          `successor_id.in.(${itemIds.join(",")}),predecessor_id.in.(${itemIds.join(",")})`,
-        );
+        .or(`successor_id.in.(${itemIds.join(",")}),predecessor_id.in.(${itemIds.join(",")})`);
       if (error) throw error;
       return (data ?? []) as unknown as {
         id: string;
@@ -355,6 +356,13 @@ function WorkItemsPage() {
   }, [links]);
 
   const resourceById = useMemo(() => new Map(resources.map((r) => [r.id, r])), [resources]);
+  const unavailableByResource = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    for (const r of resources) {
+      m.set(r.id, calendar.unavailableFor(r.id, r.location));
+    }
+    return m;
+  }, [resources, calendar]);
 
   const projectById = useMemo(() => new Map(projects.map((p: any) => [p.id, p])), [projects]);
 
@@ -440,30 +448,32 @@ function WorkItemsPage() {
   }, [form.project_id, form.stream_id, form.stage_gate_id, allocations, demandSlices]);
 
   const demandDailyByResource = useMemo(
-    () => accumulateDailyDemandByResource(items, assigneesByWorkItem),
-    [items, assigneesByWorkItem],
+    () => accumulateDailyDemandByResource(items, assigneesByWorkItem, unavailableByResource),
+    [items, assigneesByWorkItem, unavailableByResource],
   );
 
   const formAssigneeLoad = useMemo(() => {
     const team = [...new Set(form.assignee_ids.filter(Boolean))];
     const hours = Number(form.estimate_hours) || 0;
-    if (!team.length || !(hours > 0)) return [] as Array<{
-      id: string;
-      name: string;
-      perDay: number;
-      totalDay: number;
-      cap: number;
-      status: HoursLoadStatus;
-    }>;
-    const thisItem = workItemDailyHoursPerAssignee({
-      estimateHours: hours,
-      plannedStart: form.planned_start,
-      plannedEnd: form.planned_end,
-      assigneeCount: team.length,
-    });
+    if (!team.length || !(hours > 0))
+      return [] as Array<{
+        id: string;
+        name: string;
+        perDay: number;
+        totalDay: number;
+        cap: number;
+        status: HoursLoadStatus;
+      }>;
     return team.map((id) => {
       const r = resourceById.get(id);
       const cap = resourceHoursPerDay(r);
+      const thisItem = workItemDailyHoursPerAssignee({
+        estimateHours: hours,
+        plannedStart: form.planned_start,
+        plannedEnd: form.planned_end,
+        assigneeCount: team.length,
+        unavailable: unavailableByResource.get(id),
+      });
       const existing = demandDailyByResource.get(id) || 0;
       const totalDay = Math.round((existing + thisItem) * 100) / 100;
       return {
@@ -482,6 +492,7 @@ function WorkItemsPage() {
     form.planned_end,
     resourceById,
     demandDailyByResource,
+    unavailableByResource,
   ]);
 
   const programs = useMemo(
@@ -548,7 +559,18 @@ function WorkItemsPage() {
       if (fSprint === "__none__" && i.sprint_id) return false;
       return true;
     });
-  }, [items, mineOnly, userId, myResource, assigneesByWorkItem, projectById, fProgram, fAlignment, fLate, fSprint]);
+  }, [
+    items,
+    mineOnly,
+    userId,
+    myResource,
+    assigneesByWorkItem,
+    projectById,
+    fProgram,
+    fAlignment,
+    fLate,
+    fSprint,
+  ]);
 
   const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
@@ -1131,11 +1153,10 @@ function WorkItemsPage() {
           </div>
         ) : null}
         <p className="mt-2 text-[11px] text-muted-foreground">
-          Reverse planning flow: set work-item demand hours against the lane&apos;s
-          resource allocation (pending = allocated − demand). Demand FTE $ is hours ×
-          assignee cost rates. Assigned people are flagged Over / Optimal / Under against
-          their hours/day cap (Timesheets → Resource setup). Actual hours come from approved
-          timesheets. Assign resources so
+          Reverse planning flow: set work-item demand hours against the lane&apos;s resource
+          allocation (pending = allocated − demand). Demand FTE $ is hours × assignee cost rates.
+          Assigned people are flagged Over / Optimal / Under against their hours/day cap (Timesheets
+          → Resource setup). Actual hours come from approved timesheets. Assign resources so
           timesheet placeholders appear for their linked logins; stream defaults to Core. Use{" "}
           <span className="font-medium text-foreground">Stage gate</span> for Waterfall/Hybrid phase
           attribution, and <span className="font-medium text-foreground">Sprint</span> for
@@ -1303,9 +1324,10 @@ function WorkItemsPage() {
           </label>
         </div>
         <p className="mt-2 text-[11px] text-muted-foreground">
-          Showing <span className="font-semibold text-foreground">{visibleBase.length}</span> on this
-          page · <span className="font-semibold text-foreground">{itemsTotal.toLocaleString()}</span>{" "}
-          match server filters
+          Showing <span className="font-semibold text-foreground">{visibleBase.length}</span> on
+          this page ·{" "}
+          <span className="font-semibold text-foreground">{itemsTotal.toLocaleString()}</span> match
+          server filters
           {mineOnly ? " · assigned to me (page filter)" : ""}.
         </p>
       </SectionFrame>
@@ -1489,7 +1511,13 @@ function WorkItemsPage() {
                   return (
                     <tr
                       key={i.id}
-                      className={taskRag === "Red" ? "bg-red-50" : taskRag === "Amber" ? "bg-amber-50/70" : undefined}
+                      className={
+                        taskRag === "Red"
+                          ? "bg-red-50"
+                          : taskRag === "Amber"
+                            ? "bg-amber-50/70"
+                            : undefined
+                      }
                     >
                       {columns.map((col) => {
                         switch (col.key) {
@@ -1870,7 +1898,7 @@ function WorkItemsPage() {
           {
             name: "Load",
             description:
-              "Load uses demand on this register page. Over / Optimal / Under for assigned people vs their hours/day cap (Timesheets → Resource setup). Demand hours are paced across weekdays in the planned date window (or a 5-day week). Optimal is ≥ 60% of the cap; Over is above the cap. Hover for each person.",
+              "Load uses demand on this register page. Over / Optimal / Under for assigned people vs their hours/day cap (Timesheets → Resource setup). Demand hours are paced across working days in the planned date window (weekdays minus that person’s location holidays and leave). Optimal is ≥ 60% of the cap; Over is above the cap. Hover for each person.",
           },
           {
             name: "Actual h",

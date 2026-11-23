@@ -34,6 +34,8 @@ export const EDITABLE_TABLES: { name: string; label: string }[] = [
   { name: "sprints", label: "Sprints" },
   { name: "resource_allocations", label: "Resource Allocations" },
   { name: "resources", label: "Resources" },
+  { name: "org_public_holidays", label: "Public holidays" },
+  { name: "resource_leaves", label: "Resource leave" },
   { name: "change_requests", label: "Release Register" },
   { name: "demand_pipeline", label: "Demand Pipeline" },
   { name: "stage_gate_checklist_items", label: "Gate Checklist Templates" },

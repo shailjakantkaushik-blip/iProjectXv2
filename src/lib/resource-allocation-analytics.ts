@@ -170,11 +170,16 @@ export function allocationStatus(
 }
 
 /** Planned hours from an allocation row (estimation hours; else % of monthly FTE). */
-export function hoursFromAllocation(a: AllocationPlanRow, capacityHoursWeek = 40): number {
+export function hoursFromAllocation(
+  a: AllocationPlanRow,
+  capacityHoursWeek = 40,
+  monthCapHours?: number | null,
+): number {
   const explicit = num(a.allocated_hours);
   if (explicit > 0) return explicit;
-  // ~4.33 weeks/month × weekly capacity × allocation %
-  return Math.round(((capacityHoursWeek * 4.33 * num(a.allocation_percent)) / 100) * 100) / 100;
+  const monthCap =
+    monthCapHours != null && monthCapHours > 0 ? monthCapHours : capacityHoursWeek * 4.33;
+  return Math.round(((monthCap * num(a.allocation_percent)) / 100) * 100) / 100;
 }
 
 /**

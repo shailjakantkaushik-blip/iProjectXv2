@@ -17,6 +17,15 @@ import {
   findMonthlyRowForLane,
   monthlyLaneKey,
 } from "@/lib/finance-lifecycle";
+import {
+  buildResourceCalendarIndex,
+  monthCapacityHours,
+  splitHoursByWorkingDays,
+  type CalendarResourceLike,
+  type OrgPublicHoliday,
+  type ResourceLeave,
+} from "@/lib/resource-calendar";
+import { resourceHoursPerDay } from "@/lib/resource-capacity";
 
 function effortDaysToHours(days: number) {
   return Math.round((Number(days) || 0) * HOURS_PER_DAY * 10) / 10;
@@ -42,10 +51,7 @@ export type ForecastOtherCostLike = {
   cost_type?: string | null;
 };
 
-export type ForecastResourceLike = {
-  id: string;
-  capacity_hours_week?: number | null;
-};
+export type ForecastResourceLike = CalendarResourceLike;
 
 export type StageGateLike = {
   id: string;
@@ -96,15 +102,21 @@ function ungatedComboKey(
 
 /**
  * Spread estimation effort-days into planned allocation hours per stream, phase
- * (stage gate), resource, and month. This is the Plan FTE hours baseline —
- * not work-item demand and not timesheet actuals.
+ * (stage gate), resource, and month. Months are weighted by that person's
+ * working days (weekdays minus geography holidays and leave). This is the
+ * Plan FTE hours baseline — not work-item demand and not timesheet actuals.
  */
 export function plannedAllocationHoursFromEstimate(opts: {
   phases: ForecastPhaseRow[];
   phaseRes: ForecastPhaseResLike[];
   gates?: StageGateLike[];
+  resources?: CalendarResourceLike[];
+  holidays?: OrgPublicHoliday[];
+  leaves?: ResourceLeave[];
 }): PlannedAllocSlice[] {
   const gates = opts.gates ?? [];
+  const calendar = buildResourceCalendarIndex(opts.holidays, opts.leaves);
+  const resById = new Map((opts.resources || []).map((r) => [r.id, r]));
   const hoursMap = new Map<string, PlannedAllocSlice>();
   for (const ph of opts.phases) {
     const stageGateId = resolvePhaseStageGateId(ph, gates);
@@ -118,8 +130,23 @@ export function plannedAllocationHoursFromEstimate(opts: {
       if (!r.resource_id) continue;
       const hours = effortDaysToHours(num(r.effort_days));
       if (hours <= 0) continue;
-      const each = hours / months.length;
+      const person = resById.get(r.resource_id);
+      const unavailable = calendar.unavailableFor(
+        r.resource_id,
+        person?.location,
+        ph.start_date,
+        ph.end_date,
+      );
+      const byMonth = splitHoursByWorkingDays({
+        hours,
+        start: ph.start_date,
+        end: ph.end_date,
+        months,
+        unavailable,
+      });
       for (const m of months) {
+        const each = byMonth.get(m) || 0;
+        if (!(each > 0)) continue;
         const slice: PlannedAllocSlice = {
           streamId: ph.stream_id || null,
           stageGateId,
@@ -265,7 +292,9 @@ export async function applyForecastPlannedMoneyAndFte(opts: {
   const unphased = otherCosts.filter((c) => !c.forecast_phase_id);
   if (unphased.length) {
     const allMonths = [
-      ...new Set(opts.phases.flatMap((ph) => monthKeysInclusive(ph.start_date, ph.end_date, false))),
+      ...new Set(
+        opts.phases.flatMap((ph) => monthKeysInclusive(ph.start_date, ph.end_date, false)),
+      ),
     ].sort();
     if (allMonths.length) {
       for (const c of unphased) {
@@ -287,10 +316,7 @@ export async function applyForecastPlannedMoneyAndFte(opts: {
     .eq("project_id", opts.projectId);
 
   const monthRow = new Map(
-    ((existingMonths ?? []) as any[]).map((r) => [
-      monthlyLaneKey(r.stream_id, r.period_month),
-      r,
-    ]),
+    ((existingMonths ?? []) as any[]).map((r) => [monthlyLaneKey(r.stream_id, r.period_month), r]),
   );
 
   let monthsUpdated = 0;
@@ -322,7 +348,9 @@ export async function applyForecastPlannedMoneyAndFte(opts: {
       capex_actual: num(prev?.capex_actual),
       opex_actual: num(prev?.opex_actual),
       capex_forecast:
-        writesCapex && !(num(prev?.capex_forecast) > 0) ? nextCapex : (prev?.capex_forecast ?? null),
+        writesCapex && !(num(prev?.capex_forecast) > 0)
+          ? nextCapex
+          : (prev?.capex_forecast ?? null),
       opex_forecast: num(prev?.opex_forecast) > 0 ? num(prev.opex_forecast) : opexPlanned,
       capex_planned: nextCapex,
       benefits_planned: num(prev?.benefits_planned),
@@ -366,13 +394,23 @@ export async function applyForecastPlannedMoneyAndFte(opts: {
 
   const { data: resourceRows } = opts.resources
     ? { data: opts.resources }
-    : await supabase.from("resources").select("id,capacity_hours_week").eq("org_id", opts.orgId);
-  const capacityById = new Map(
-    ((resourceRows ?? []) as ForecastResourceLike[]).map((r) => [
-      r.id,
-      num(r.capacity_hours_week) || 40,
-    ]),
-  );
+    : await supabase
+        .from("resources")
+        .select("id,capacity_hours_week,hours_per_day,location")
+        .eq("org_id", opts.orgId);
+  const resources = ((resourceRows ?? []) as ForecastResourceLike[]) || [];
+  const resourceById = new Map(resources.map((r) => [r.id, r]));
+
+  const [{ data: holidayRows }, { data: leaveRows }] = await Promise.all([
+    supabase.from("org_public_holidays").select("location,holiday_date").eq("org_id", opts.orgId),
+    supabase
+      .from("resource_leaves")
+      .select("resource_id,start_date,end_date")
+      .eq("org_id", opts.orgId),
+  ]);
+  const holidays = ((holidayRows ?? []) as OrgPublicHoliday[]) || [];
+  const leaves = ((leaveRows ?? []) as ResourceLeave[]) || [];
+  const calendar = buildResourceCalendarIndex(holidays, leaves);
 
   const { data: gateRows } = await supabase
     .from("stage_gates")
@@ -382,6 +420,9 @@ export async function applyForecastPlannedMoneyAndFte(opts: {
     phases: opts.phases,
     phaseRes,
     gates: ((gateRows ?? []) as StageGateLike[]) || [],
+    resources,
+    holidays,
+    leaves,
   });
 
   const { data: existingAlloc } = await supabase
@@ -424,8 +465,9 @@ export async function applyForecastPlannedMoneyAndFte(opts: {
       prev = ungatedRow.get(combo);
     }
     if (opts.onlyFillEmpty && prev && num(prev.allocated_hours) > 0) continue;
-    const weekCap = capacityById.get(s.resourceId) || 40;
-    const monthCap = weekCap * 4.33;
+    const person = resourceById.get(s.resourceId);
+    const unavailable = calendar.unavailableFor(s.resourceId, person?.location);
+    const monthCap = monthCapacityHours(s.periodMonth, resourceHoursPerDay(person), unavailable);
     const pct = monthCap > 0 ? Math.round((s.hours / monthCap) * 1000) / 10 : 0;
     const row = {
       org_id: opts.orgId,

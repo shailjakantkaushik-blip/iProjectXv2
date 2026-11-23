@@ -7,6 +7,7 @@ import {
   entryWeekTotal,
   spreadHoursAcrossWeekdays,
   weekStartMonday,
+  workItemWeekdayPlan,
 } from "./timesheet.ts";
 
 describe("timesheets", () => {
@@ -19,6 +20,19 @@ describe("timesheets", () => {
     assert.equal(entryWeekTotal(spread), 10);
     assert.equal(spread.hours_sat, 0);
     assert.equal(spread.hours_sun, 0);
+  });
+
+  it("skips public holidays when applying a week plan", () => {
+    const plan = workItemWeekdayPlan({
+      estimateHours: 32,
+      plannedStart: "2026-01-26",
+      plannedEnd: "2026-01-30",
+      weekStart: "2026-01-26",
+      unavailable: ["2026-01-26"],
+    });
+    assert.equal(plan.perDay.hours_mon, 0);
+    assert.equal(entryWeekTotal(plan.perDay), 32);
+    assert.equal(plan.perDay.hours_sat, 0);
   });
 
   it("locks editing after the sheet leaves draft", () => {
