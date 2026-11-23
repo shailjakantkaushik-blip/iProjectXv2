@@ -15,6 +15,7 @@ import {
   FileDown,
   Link2,
   Mail,
+  CalendarDays,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/app/configuration")({
@@ -68,6 +69,12 @@ const CARDS = [
 
 /** Org-admin only — never include platform settings / landing here. */
 const ORG_ADMIN_CARDS = [
+  {
+    to: "/app/org-holidays",
+    icon: CalendarDays,
+    title: "Org holidays & leave",
+    desc: "Public holidays by geography and the organisation leave register used in estimation and capacity",
+  },
   {
     to: "/app/integrations",
     icon: Link2,
@@ -142,7 +149,12 @@ function ConfigurationPage() {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {CARDS.map((c) => (
-          <Link key={c.to} to={c.to} className="group block">
+          <Link
+            key={c.to}
+            to={c.to}
+            search={"search" in c ? c.search : undefined}
+            className="group block"
+          >
             <SectionFrame className="h-full cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
               <div className="flex items-start gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary transition group-hover:bg-primary group-hover:text-primary-foreground">

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { dailyRateFromHourly } from "@/lib/ops-enhancements";
 import {
   countWeekdaysInclusive,
@@ -8,6 +9,13 @@ import {
   resourceHoursPerDay,
   resourceHoursPerWeek,
 } from "@/lib/resource-capacity";
+import type { ResourceCalendarIndex } from "@/lib/resource-calendar";
+import {
+  countUnavailableWeekdays,
+  overAllocationMessage,
+  windowCapacityHours,
+} from "@/lib/resource-calendar";
+import { notifyResourceOverAllocation } from "@/lib/resource-over-allocation";
 import {
   daysToEffortAmount,
   effortAmountToDays,
@@ -43,6 +51,7 @@ type ResourceLike = {
   cost_rate?: number | null;
   capacity_hours_week?: number | null;
   hours_per_day?: number | null;
+  location?: string | null;
 };
 
 type AllocationLike = {
@@ -77,6 +86,21 @@ function weeksInWindow(start?: string | null, end?: string | null) {
   return Math.max(1, Math.round((days / 7) * 10) / 10);
 }
 
+function phaseWorkingDays(
+  phase: Pick<ForecastPhaseRow, "start_date" | "end_date">,
+  resource: ResourceLike | undefined,
+  calendar?: ResourceCalendarIndex | null,
+): number {
+  const hasWindow = Boolean(phase.start_date || phase.end_date);
+  const unavailable =
+    resource && calendar
+      ? calendar.unavailableFor(resource.id, resource.location, phase.start_date, phase.end_date)
+      : undefined;
+  const days = countWeekdaysInclusive(phase.start_date, phase.end_date, unavailable);
+  if (days > 0) return days;
+  return hasWindow ? 0 : 5;
+}
+
 export function ForecastResourceBoard({
   resources,
   allocations,
@@ -85,6 +109,7 @@ export function ForecastResourceBoard({
   phaseRes,
   canEdit,
   planStart,
+  calendar,
   onAssign,
   onPatchEffort,
   onRemove,
@@ -96,6 +121,7 @@ export function ForecastResourceBoard({
   phaseRes: PhaseResLike[];
   canEdit: boolean;
   planStart?: string | null;
+  calendar?: ResourceCalendarIndex | null;
   onAssign: (opts: { phase: ForecastPhaseRow; resourceId: string; days: number }) => void;
   onPatchEffort: (opts: { id: string; days: number; rate: number }) => void;
   onRemove: (id: string) => void;
@@ -116,7 +142,10 @@ export function ForecastResourceBoard({
     const m = new Map<string, number>();
     for (const r of phaseRes) {
       if (!r.resource_id) continue;
-      m.set(r.resource_id, (m.get(r.resource_id) || 0) + effortDaysToHours(Number(r.effort_days || 0)));
+      m.set(
+        r.resource_id,
+        (m.get(r.resource_id) || 0) + effortDaysToHours(Number(r.effort_days || 0)),
+      );
     }
     return m;
   }, [phaseRes]);
@@ -184,8 +213,42 @@ export function ForecastResourceBoard({
     if (!pending) return;
     const days = effortAmountToDays(Number(amount) || 0, unit);
     if (!(days > 0)) return;
+    const res = resources.find((r) => r.id === pending.resourceId);
+    const assignedH = effortDaysToHours(days);
+    const unavailable =
+      res && calendar
+        ? calendar.unavailableFor(
+            res.id,
+            res.location,
+            pending.phase.start_date,
+            pending.phase.end_date,
+          )
+        : undefined;
+    const workingDays = phaseWorkingDays(pending.phase, res, calendar);
+    const dayCap = resourceHoursPerDay(res);
+    const availableH = windowCapacityHours(
+      pending.phase.start_date,
+      pending.phase.end_date,
+      dayCap,
+      unavailable,
+    );
+    const offWeekdays = countUnavailableWeekdays(
+      pending.phase.start_date,
+      pending.phase.end_date,
+      unavailable,
+    );
+    const daily = workingDays > 0 ? assignedH / workingDays : assignedH;
+    const warning = overAllocationMessage({
+      name: res?.name || "This resource",
+      assignedHours: assignedH,
+      availableHours: availableH,
+      workingDays,
+      offWeekdays,
+      dailyHours: daily,
+      dayCap,
+    });
+    if (warning && !window.confirm(`${warning}\n\nSave anyway?`)) return;
     if (pending.existingId) {
-      const res = resources.find((r) => r.id === pending.resourceId);
       onPatchEffort({
         id: pending.existingId,
         days,
@@ -193,6 +256,10 @@ export function ForecastResourceBoard({
       });
     } else {
       onAssign({ phase: pending.phase, resourceId: pending.resourceId, days });
+    }
+    if (warning) {
+      toast.warning(warning);
+      void notifyResourceOverAllocation(pending.resourceId);
     }
     setPending(null);
   };
@@ -207,20 +274,58 @@ export function ForecastResourceBoard({
   const pendingResource = resources.find((r) => r.id === pending?.resourceId);
   const pendingDays = effortAmountToDays(Number(amount) || 0, unit);
   const pendingCost = Math.round(dailyRateFromHourly(pendingResource?.cost_rate) * pendingDays);
-  const pendingPhaseDays =
-    countWeekdaysInclusive(pending?.phase.start_date, pending?.phase.end_date) || 5;
+  const pendingPhaseDays = pending ? phaseWorkingDays(pending.phase, pendingResource, calendar) : 5;
   const pendingDaily =
-    pendingPhaseDays > 0 ? effortDaysToHours(pendingDays) / pendingPhaseDays : effortDaysToHours(pendingDays);
+    pendingPhaseDays > 0
+      ? effortDaysToHours(pendingDays) / pendingPhaseDays
+      : effortDaysToHours(pendingDays);
   const pendingDayCap = resourceHoursPerDay(pendingResource);
-  const pendingPace = hoursLoadStatus(pendingDaily, pendingDayCap);
+  const pendingPace =
+    pendingPhaseDays > 0
+      ? hoursLoadStatus(pendingDaily, pendingDayCap)
+      : effortDaysToHours(pendingDays) > 0.01
+        ? "Over"
+        : "Under";
+  const pendingUnavailable =
+    pending && pendingResource && calendar
+      ? calendar.unavailableFor(
+          pendingResource.id,
+          pendingResource.location,
+          pending.phase.start_date,
+          pending.phase.end_date,
+        )
+      : undefined;
+  const pendingOffDays = pending
+    ? countUnavailableWeekdays(pending.phase.start_date, pending.phase.end_date, pendingUnavailable)
+    : 0;
+  const pendingAvailableH = pending
+    ? windowCapacityHours(
+        pending.phase.start_date,
+        pending.phase.end_date,
+        pendingDayCap,
+        pendingUnavailable,
+      )
+    : 0;
+  const pendingOffNote = pending
+    ? overAllocationMessage({
+        name: pendingResource?.name || "This resource",
+        assignedHours: effortDaysToHours(pendingDays),
+        availableHours: pendingAvailableH,
+        workingDays: pendingPhaseDays,
+        offWeekdays: pendingOffDays,
+        dailyHours: pendingDaily,
+        dayCap: pendingDayCap,
+      })
+    : null;
 
   return (
     <div>
       <p className="mb-3 text-xs text-muted-foreground">
-        Select a role, then drag a person onto a stream phase — or click the person, then the
-        phase. Available hours are total capacity through the plan window minus hours already
-        allocated or assigned here. Load is Over / Optimal / Under vs each person&apos;s
-        hours/day cap (Timesheets → Resource setup; weekly = hours/day × 5).
+        Select a role, then drag a person onto a stream phase — or click the person, then the phase.
+        Available hours are total capacity through the plan window minus hours already allocated or
+        assigned here. Load is Over / Optimal / Under vs each person&apos;s hours/day cap
+        (Timesheets → Resource setup; weekly = hours/day × 5). Public holidays for their location
+        and dated leave (Apply leave) are treated as non-working days.
       </p>
       <div className="overflow-x-auto">
         <div
@@ -253,7 +358,16 @@ export function ForecastResourceBoard({
               {shownResources.map((r) => {
                 const weekly = resourceHoursPerWeek(r);
                 const dayCap = resourceHoursPerDay(r);
-                const total = Math.round(weekly * weeks);
+                const unavailable =
+                  calendar && planStart
+                    ? calendar.unavailableFor(r.id, r.location, planStart, windowEnd)
+                    : undefined;
+                const windowCap =
+                  planStart && windowEnd
+                    ? windowCapacityHours(planStart, windowEnd, dayCap, unavailable)
+                    : 0;
+                const datedWindow = Boolean(planStart && windowEnd);
+                const total = datedWindow ? windowCap : Math.round(weekly * weeks);
                 const used =
                   (allocatedHoursByResource.get(r.id) || 0) +
                   (forecastHoursByResource.get(r.id) || 0);
@@ -281,7 +395,8 @@ export function ForecastResourceBoard({
                   >
                     <div className="font-semibold text-foreground">{r.name || "Resource"}</div>
                     <div className="text-muted-foreground">
-                      {r.role || "—"} · {money(dailyRateFromHourly(r.cost_rate))}/day · {dayCap}h/day
+                      {r.role || "—"} · {money(dailyRateFromHourly(r.cost_rate))}/day · {dayCap}
+                      h/day
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-1">
                       <span
@@ -310,7 +425,10 @@ export function ForecastResourceBoard({
           {lanes.map((stream) => {
             const streamPhases = phasesByStream.get(stream.id || "") || [];
             return (
-              <div key={stream.id || "proj"} className="rounded-md border border-border bg-muted/10 p-2">
+              <div
+                key={stream.id || "proj"}
+                className="rounded-md border border-border bg-muted/10 p-2"
+              >
                 <div className="mb-2 px-1 text-sm font-semibold">{stream.name || "Stream"}</div>
                 <div className="space-y-2">
                   {streamPhases.map((ph) => {
@@ -339,12 +457,16 @@ export function ForecastResourceBoard({
                         <div className="space-y-1">
                           {rows.map((row) => {
                             const res = resources.find((x) => x.id === row.resource_id);
-                            const phaseDays =
-                              countWeekdaysInclusive(ph.start_date, ph.end_date) || 5;
+                            const phaseDays = phaseWorkingDays(ph, res, calendar);
                             const assignedH = effortDaysToHours(Number(row.effort_days || 0));
                             const daily = phaseDays > 0 ? assignedH / phaseDays : assignedH;
                             const cap = resourceHoursPerDay(res);
-                            const pace = hoursLoadStatus(daily, cap);
+                            const pace =
+                              phaseDays > 0
+                                ? hoursLoadStatus(daily, cap)
+                                : assignedH > 0
+                                  ? "Over"
+                                  : "Under";
                             return (
                               <div
                                 key={row.id}
@@ -357,7 +479,7 @@ export function ForecastResourceBoard({
                                   </div>
                                   <span
                                     className={`mt-0.5 inline-block rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${hoursLoadChipClass(pace)}`}
-                                    title={`${daily.toFixed(1)}h/day over ${phaseDays} weekdays vs ${cap}h/day cap`}
+                                    title={`${daily.toFixed(1)}h/day over ${phaseDays} working days vs ${cap}h/day cap`}
                                   >
                                     {pace} {daily.toFixed(1)}/{cap}h/day
                                   </span>
@@ -456,12 +578,20 @@ export function ForecastResourceBoard({
               {effortDaysToHours(pendingDays)} hours · {pendingDays} days · {money(pendingCost)}{" "}
               labor
             </p>
-            <p
-              className={`text-xs font-medium ${hoursLoadTextClass(pendingPace)}`}
-            >
+            <p className={`text-xs font-medium ${hoursLoadTextClass(pendingPace)}`}>
               {pendingPace} vs {pendingDayCap}h/day ({pendingDaily.toFixed(1)}h/day over{" "}
-              {pendingPhaseDays} weekdays in this phase).
+              {pendingPhaseDays} working days in this phase).
             </p>
+            {pendingOffNote ? (
+              <p className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-950">
+                {pendingOffNote}
+              </p>
+            ) : pendingOffDays > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                {pendingOffDays} weekday{pendingOffDays === 1 ? "" : "s"} off in this phase
+                (leave/holidays). Available {pendingAvailableH}h.
+              </p>
+            ) : null}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setPending(null)}>

@@ -23,16 +23,18 @@ import {
   hoursLoadChipClass,
   hoursLoadStatus,
   resourceHoursPerDay,
-  workItemDailyHoursPerAssignee,
+  workItemAssigneeLoadStatus,
   worstHoursLoadStatus,
   type HoursLoadStatus,
 } from "@/lib/resource-capacity";
+import { isoDateOnly, isFullyUnavailableWindow } from "@/lib/resource-calendar";
 import { sumLaneAllocatedHours, type AllocationPlanRow } from "@/lib/resource-allocation-analytics";
 import {
   buildWorkItemDemandSlices,
   sumLaneDemandHours,
   sumLanePlannedFteCost,
 } from "@/lib/work-item-fte-plan";
+import { useOrgResourceCalendar } from "@/hooks/use-resource-calendar";
 import { useColumnarTable, type ColumnarColumn } from "@/hooks/use-columnar-table";
 import { ColumnarTh } from "@/components/columnar-table-header";
 import { ColumnarToolbar } from "@/components/columnar-toolbar";
@@ -43,6 +45,7 @@ import { DEFAULT_PAGE_SIZE } from "@/lib/portfolio-paging";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useProjectOptions } from "@/hooks/use-project-visibility";
+import { notifyResourceOverAllocation } from "@/lib/resource-over-allocation";
 
 type WorkItemsSearch = {
   mine?: boolean;
@@ -74,6 +77,23 @@ const formatSprintLabel = (s: Pick<SprintRow, "sprint_number" | "name">) => {
   return name ? `${num} · ${name}` : num;
 };
 
+function assigneeDemandStatus(
+  item: {
+    estimate_hours?: number | null;
+    planned_start?: string | null;
+    planned_end?: string | null;
+  },
+  cap: number,
+  unavailable: Iterable<string> | undefined,
+  daily: number,
+): HoursLoadStatus {
+  const hours = Number(item.estimate_hours) || 0;
+  if (hours > 0 && isFullyUnavailableWindow(item.planned_start, item.planned_end, unavailable)) {
+    return "Over";
+  }
+  return hoursLoadStatus(daily, cap);
+}
+
 const numH = (v: unknown) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -92,11 +112,13 @@ type ResourceRow = {
   cost_rate?: number | null;
   hours_per_day?: number | null;
   capacity_hours_week?: number | null;
+  location?: string | null;
 };
 
 function WorkItemsPage() {
   const { organization, session, profile } = useAuth();
   const orgId = organization?.id;
+  const { index: calendar } = useOrgResourceCalendar(orgId);
   const userId = session?.user?.id;
   const qc = useQueryClient();
   const listWorkItems = useServerFn(listPortfolioWorkItems);
@@ -183,9 +205,7 @@ function WorkItemsPage() {
       const prev = best.get(n);
       if (prev == null || ord < prev) best.set(n, ord);
     }
-    return [...best.entries()]
-      .sort((a, b) => a[1] - b[1])
-      .map(([n]) => n);
+    return [...best.entries()].sort((a, b) => a[1] - b[1]).map(([n]) => n);
   }, [gateDefs]);
 
   const gatesForWorkItem = useCallback(
@@ -220,7 +240,9 @@ function WorkItemsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("resources")
-        .select("id,name,email,role,user_id,status,cost_rate,hours_per_day,capacity_hours_week")
+        .select(
+          "id,name,email,role,user_id,status,cost_rate,hours_per_day,capacity_hours_week,location",
+        )
         .order("name");
       if (error) throw error;
       return (data ?? []) as unknown as ResourceRow[];
@@ -328,9 +350,7 @@ function WorkItemsPage() {
         .from("work_item_links" as any)
         .select("id,predecessor_id,successor_id,link_type,lag_days")
         .eq("org_id", orgId!)
-        .or(
-          `successor_id.in.(${itemIds.join(",")}),predecessor_id.in.(${itemIds.join(",")})`,
-        );
+        .or(`successor_id.in.(${itemIds.join(",")}),predecessor_id.in.(${itemIds.join(",")})`);
       if (error) throw error;
       return (data ?? []) as unknown as {
         id: string;
@@ -394,6 +414,28 @@ function WorkItemsPage() {
     estimate_hours: "",
   });
 
+  const unavailableByResource = useMemo(() => {
+    let from = isoDateOnly(form.planned_start);
+    let to = isoDateOnly(form.planned_end);
+    for (const i of items) {
+      const a = isoDateOnly(i.planned_start);
+      const b = isoDateOnly(i.planned_end);
+      if (a && (!from || a < from)) from = a;
+      if (b && (!to || b > to)) to = b;
+    }
+    if (!from && !to) {
+      const y = new Date().getUTCFullYear();
+      from = `${y - 1}-01-01`;
+      to = `${y + 2}-12-31`;
+    } else if (!from) from = to;
+    else if (!to) to = from;
+    const m = new Map<string, Set<string>>();
+    for (const r of resources) {
+      m.set(r.id, calendar.unavailableFor(r.id, r.location, from, to));
+    }
+    return m;
+  }, [resources, calendar, items, form.planned_start, form.planned_end]);
+
   const formStreams = streamsByProject.get(form.project_id) || [];
   const formProject = form.project_id ? (projectById.get(form.project_id) as any) : null;
   const formShowGates = projectUsesStageGates(formProject?.delivery_method);
@@ -440,39 +482,41 @@ function WorkItemsPage() {
   }, [form.project_id, form.stream_id, form.stage_gate_id, allocations, demandSlices]);
 
   const demandDailyByResource = useMemo(
-    () => accumulateDailyDemandByResource(items, assigneesByWorkItem),
-    [items, assigneesByWorkItem],
+    () => accumulateDailyDemandByResource(items, assigneesByWorkItem, unavailableByResource),
+    [items, assigneesByWorkItem, unavailableByResource],
   );
 
   const formAssigneeLoad = useMemo(() => {
     const team = [...new Set(form.assignee_ids.filter(Boolean))];
     const hours = Number(form.estimate_hours) || 0;
-    if (!team.length || !(hours > 0)) return [] as Array<{
-      id: string;
-      name: string;
-      perDay: number;
-      totalDay: number;
-      cap: number;
-      status: HoursLoadStatus;
-    }>;
-    const thisItem = workItemDailyHoursPerAssignee({
-      estimateHours: hours,
-      plannedStart: form.planned_start,
-      plannedEnd: form.planned_end,
-      assigneeCount: team.length,
-    });
+    if (!team.length || !(hours > 0))
+      return [] as Array<{
+        id: string;
+        name: string;
+        perDay: number;
+        totalDay: number;
+        cap: number;
+        status: HoursLoadStatus;
+      }>;
     return team.map((id) => {
       const r = resourceById.get(id);
       const cap = resourceHoursPerDay(r);
-      const existing = demandDailyByResource.get(id) || 0;
-      const totalDay = Math.round((existing + thisItem) * 100) / 100;
+      const load = workItemAssigneeLoadStatus({
+        estimateHours: hours,
+        plannedStart: form.planned_start,
+        plannedEnd: form.planned_end,
+        assigneeCount: team.length,
+        unavailable: unavailableByResource.get(id),
+        existingDaily: demandDailyByResource.get(id) || 0,
+        cap,
+      });
       return {
         id,
         name: r?.name || "Resource",
-        perDay: thisItem,
-        totalDay,
+        perDay: load.perDay,
+        totalDay: load.totalDay,
         cap,
-        status: hoursLoadStatus(totalDay, cap),
+        status: load.status,
       };
     });
   }, [
@@ -482,6 +526,7 @@ function WorkItemsPage() {
     form.planned_end,
     resourceById,
     demandDailyByResource,
+    unavailableByResource,
   ]);
 
   const programs = useMemo(
@@ -548,7 +593,18 @@ function WorkItemsPage() {
       if (fSprint === "__none__" && i.sprint_id) return false;
       return true;
     });
-  }, [items, mineOnly, userId, myResource, assigneesByWorkItem, projectById, fProgram, fAlignment, fLate, fSprint]);
+  }, [
+    items,
+    mineOnly,
+    userId,
+    myResource,
+    assigneesByWorkItem,
+    projectById,
+    fProgram,
+    fAlignment,
+    fLate,
+    fSprint,
+  ]);
 
   const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
@@ -633,10 +689,14 @@ function WorkItemsPage() {
         label: "Load",
         getValue: (i) => {
           const ids = assigneesByWorkItem.get(i.id) || [];
-          const statuses = ids.map((rid) => {
-            const cap = resourceHoursPerDay(resourceById.get(rid));
-            return hoursLoadStatus(demandDailyByResource.get(rid) || 0, cap);
-          });
+          const statuses = ids.map((rid) =>
+            assigneeDemandStatus(
+              i,
+              resourceHoursPerDay(resourceById.get(rid)),
+              unavailableByResource.get(rid),
+              demandDailyByResource.get(rid) || 0,
+            ),
+          );
           return worstHoursLoadStatus(statuses) || "";
         },
       },
@@ -674,6 +734,7 @@ function WorkItemsPage() {
       predecessorsByItem,
       itemById,
       demandDailyByResource,
+      unavailableByResource,
     ],
   );
 
@@ -1076,7 +1137,28 @@ function WorkItemsPage() {
             type="button"
             className="st-btn-primary md:col-span-2"
             disabled={create.isPending}
-            onClick={() => create.mutate()}
+            onClick={() => {
+              const over = formAssigneeLoad.filter((r) => r.status === "Over");
+              if (over.length) {
+                const msg = over
+                  .map(
+                    (r) =>
+                      `${r.name} would be Over: ${r.totalDay.toFixed(1)}h/day vs ${r.cap}h/day cap (working days already exclude leave/holidays).`,
+                  )
+                  .join("\n");
+                if (!window.confirm(`${msg}\n\nSave anyway?`)) return;
+              }
+              create.mutate(undefined, {
+                onSuccess: () => {
+                  for (const r of over) {
+                    void notifyResourceOverAllocation(r.id);
+                    toast.warning(
+                      `${r.name} is Over ${r.totalDay.toFixed(1)}/${r.cap}h/day after leave/holidays.`,
+                    );
+                  }
+                },
+              });
+            }}
           >
             {create.isPending ? "Saving…" : "Create work item"}
           </button>
@@ -1131,11 +1213,10 @@ function WorkItemsPage() {
           </div>
         ) : null}
         <p className="mt-2 text-[11px] text-muted-foreground">
-          Reverse planning flow: set work-item demand hours against the lane&apos;s
-          resource allocation (pending = allocated − demand). Demand FTE $ is hours ×
-          assignee cost rates. Assigned people are flagged Over / Optimal / Under against
-          their hours/day cap (Timesheets → Resource setup). Actual hours come from approved
-          timesheets. Assign resources so
+          Reverse planning flow: set work-item demand hours against the lane&apos;s resource
+          allocation (pending = allocated − demand). Demand FTE $ is hours × assignee cost rates.
+          Assigned people are flagged Over / Optimal / Under against their hours/day cap (Timesheets
+          → Resource setup). Actual hours come from approved timesheets. Assign resources so
           timesheet placeholders appear for their linked logins; stream defaults to Core. Use{" "}
           <span className="font-medium text-foreground">Stage gate</span> for Waterfall/Hybrid phase
           attribution, and <span className="font-medium text-foreground">Sprint</span> for
@@ -1303,9 +1384,10 @@ function WorkItemsPage() {
           </label>
         </div>
         <p className="mt-2 text-[11px] text-muted-foreground">
-          Showing <span className="font-semibold text-foreground">{visibleBase.length}</span> on this
-          page · <span className="font-semibold text-foreground">{itemsTotal.toLocaleString()}</span>{" "}
-          match server filters
+          Showing <span className="font-semibold text-foreground">{visibleBase.length}</span> on
+          this page ·{" "}
+          <span className="font-semibold text-foreground">{itemsTotal.toLocaleString()}</span> match
+          server filters
           {mineOnly ? " · assigned to me (page filter)" : ""}.
         </p>
       </SectionFrame>
@@ -1489,7 +1571,13 @@ function WorkItemsPage() {
                   return (
                     <tr
                       key={i.id}
-                      className={taskRag === "Red" ? "bg-red-50" : taskRag === "Amber" ? "bg-amber-50/70" : undefined}
+                      className={
+                        taskRag === "Red"
+                          ? "bg-red-50"
+                          : taskRag === "Amber"
+                            ? "bg-amber-50/70"
+                            : undefined
+                      }
                     >
                       {columns.map((col) => {
                         switch (col.key) {
@@ -1672,7 +1760,12 @@ function WorkItemsPage() {
                                 name: r?.name || "Resource",
                                 cap,
                                 totalDay,
-                                status: hoursLoadStatus(totalDay, cap),
+                                status: assigneeDemandStatus(
+                                  i,
+                                  cap,
+                                  unavailableByResource.get(rid),
+                                  totalDay,
+                                ),
                               };
                             });
                             const worst = worstHoursLoadStatus(rows.map((r) => r.status));
@@ -1870,7 +1963,7 @@ function WorkItemsPage() {
           {
             name: "Load",
             description:
-              "Load uses demand on this register page. Over / Optimal / Under for assigned people vs their hours/day cap (Timesheets → Resource setup). Demand hours are paced across weekdays in the planned date window (or a 5-day week). Optimal is ≥ 60% of the cap; Over is above the cap. Hover for each person.",
+              "Load uses demand on this register page. Over / Optimal / Under for assigned people vs their hours/day cap (Timesheets → Resource setup). Demand hours are paced across working days in the planned date window (weekdays minus that person’s location holidays and leave). Optimal is ≥ 60% of the cap; Over is above the cap. Hover for each person.",
           },
           {
             name: "Actual h",

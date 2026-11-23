@@ -1569,6 +1569,44 @@ export type Database = {
           },
         ]
       }
+      org_public_holidays: {
+        Row: {
+          created_at: string
+          holiday_date: string
+          id: string
+          location: string
+          name: string
+          org_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          holiday_date: string
+          id?: string
+          location: string
+          name: string
+          org_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          holiday_date?: string
+          id?: string
+          location?: string
+          name?: string
+          org_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_public_holidays_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizations: {
         Row: {
           accent_color: string | null
@@ -2039,6 +2077,57 @@ export type Database = {
             columns: ["sponsor_stakeholder_id"]
             isOneToOne: false
             referencedRelation: "stakeholders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      resource_leaves: {
+        Row: {
+          created_at: string
+          end_date: string
+          id: string
+          leave_type: string
+          notes: string | null
+          org_id: string
+          resource_id: string
+          start_date: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          end_date: string
+          id?: string
+          leave_type?: string
+          notes?: string | null
+          org_id: string
+          resource_id: string
+          start_date: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          end_date?: string
+          id?: string
+          leave_type?: string
+          notes?: string | null
+          org_id?: string
+          resource_id?: string
+          start_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "resource_leaves_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "resource_leaves_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "resources"
             referencedColumns: ["id"]
           },
         ]
@@ -2835,6 +2924,10 @@ export type Database = {
           portfolio: string | null
           functional_area: string | null
         }[]
+      }
+      notify_resource_over_allocation: {
+        Args: { _resource_id: string }
+        Returns: number
       }
       convert_demand_idea_to_project: {
         Args: { _idea_id: string }

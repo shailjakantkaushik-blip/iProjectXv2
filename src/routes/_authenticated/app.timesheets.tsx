@@ -47,6 +47,7 @@ import {
   weekLoadStatus,
 } from "@/lib/resource-capacity";
 import { useProjectOptions, useScopedProjects } from "@/hooks/use-project-visibility";
+import { useOrgResourceCalendar } from "@/hooks/use-resource-calendar";
 
 type TimesheetTab = "mine" | "approvals" | "cost" | "reports" | "setup";
 type TimesheetsSearch = { tab?: TimesheetTab };
@@ -136,6 +137,7 @@ type ResourceRow = {
   status: string | null;
   hours_per_day?: number | null;
   capacity_hours_week?: number | null;
+  location?: string | null;
 };
 
 function emptyHours(): Record<DayKey, number> {
@@ -179,6 +181,7 @@ function TimesheetsPage() {
   const { organization, session, roles } = useAuth();
   const orgId = organization?.id;
   const userId = session?.user?.id;
+  const { index: calendar } = useOrgResourceCalendar(orgId);
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const qc = useQueryClient();
@@ -247,7 +250,9 @@ function TimesheetsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("resources")
-        .select("id,name,email,user_id,manager_user_id,cost_rate,status,hours_per_day,capacity_hours_week")
+        .select(
+          "id,name,email,user_id,manager_user_id,cost_rate,status,hours_per_day,capacity_hours_week,location",
+        )
         .order("name");
       if (error) throw error;
       return (data ?? []) as unknown as ResourceRow[];
@@ -292,6 +297,16 @@ function TimesheetsPage() {
     () => resources.find((r) => r.user_id === userId) || null,
     [resources, userId],
   );
+  const monthWeeks = useMemo(() => {
+    const [y, mo] = weekStart.split("-").map(Number);
+    return mondaysOverlappingMonth(y, mo - 1);
+  }, [weekStart]);
+  const myUnavailable = useMemo(() => {
+    if (!myResource) return new Set<string>();
+    const from = monthWeeks[0] || weekStart;
+    const last = monthWeeks[monthWeeks.length - 1] || weekStart;
+    return calendar.unavailableFor(myResource.id, myResource.location, from, addDays(last, 6));
+  }, [calendar, myResource, monthWeeks, weekStart]);
 
   const { data: assignees = [] } = useQuery({
     queryKey: ["work_item_assignees", orgId, myResource?.id],
@@ -359,11 +374,6 @@ function TimesheetsPage() {
     },
     enabled: !!sheet?.id,
   });
-
-  const monthWeeks = useMemo(() => {
-    const [y, mo] = weekStart.split("-").map(Number);
-    return mondaysOverlappingMonth(y, mo - 1);
-  }, [weekStart]);
 
   const { data: monthSheets = [] } = useQuery({
     queryKey: ["timesheets", orgId, userId, "month", monthWeeks.join(",")],
@@ -871,6 +881,7 @@ function TimesheetsPage() {
           plannedStart: wi.planned_start,
           plannedEnd: wi.planned_end,
           weekStart,
+          unavailable: myUnavailable,
         });
         if (!(weekHours > 0)) continue;
         next[key] = { ...row, ...perDay };
@@ -1014,10 +1025,7 @@ function TimesheetsPage() {
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
               <KpiCard label="Assigned work items" value={assignedWorkItems.length} />
               <KpiCard label="Hours this week" value={Math.round(weekTotal * 10) / 10} />
-              <KpiCard
-                label={`vs ${myHoursPerDay}h/day`}
-                value={weekStatus}
-              />
+              <KpiCard label={`vs ${myHoursPerDay}h/day`} value={weekStatus} />
               <KpiCard
                 label="Manager"
                 value={
@@ -1139,6 +1147,7 @@ function TimesheetsPage() {
                   setHoursView("grid");
                 }}
                 onSaveMonth={(hours) => saveMonth.mutate(hours)}
+                unavailable={myUnavailable}
               />
             ) : hoursView === "calendar" ? (
               <TimesheetWeekCalendar
@@ -1200,6 +1209,7 @@ function TimesheetsPage() {
                             plannedStart: wi?.planned_start,
                             plannedEnd: wi?.planned_end,
                             weekStart,
+                            unavailable: myUnavailable,
                           })
                         : { weekHours: 0, perDay: emptyHours() };
                       return (
@@ -1489,17 +1499,17 @@ function TimesheetsPage() {
             {canEditAllResources ? (
               <>
                 Each org member is the same person as their resource (auto-synced). Set hours per
-                day, hourly cost, and Resource Manager here. Daily hours flag Over / Optimal /
-                Under on timesheets, work-item demand, and estimation planning (weekly capacity is
+                day, hourly cost, and Resource Manager here. Daily hours flag Over / Optimal / Under
+                on timesheets, work-item demand, and estimation planning (weekly capacity is
                 hours/day × 5). Billable timesheet hours × rate add to{" "}
                 <strong>OPEX Labor / FTE</strong> and total OpEx actual for the work item&apos;s
                 project / stream (other OpEx can still be entered separately).
               </>
             ) : (
               <>
-                Project Managers can set hours per day, hourly cost, and Resource Manager for
-                people allocated to projects they manage. Org-wide sync and user linking stay with
-                Org Admins. Cost figures respect project visibility / permissions.
+                Project Managers can set hours per day, hourly cost, and Resource Manager for people
+                allocated to projects they manage. Org-wide sync and user linking stay with Org
+                Admins. Cost figures respect project visibility / permissions.
               </>
             )}
           </p>
@@ -1593,7 +1603,7 @@ const TIMESHEET_HOURS_GLOSSARY: ColumnGlossaryItem[] = [
   {
     name: "Apply week plan",
     description:
-      "Fills billable rows from each work item’s suggested Mon–Fri hours for this week (from planned hours/dates).",
+      "Fills billable rows from each work item’s suggested hours for this week (working days only — location public holidays and your leave are skipped).",
   },
   {
     name: "Day strip",
@@ -1691,7 +1701,7 @@ const TIMESHEET_SETUP_GLOSSARY: ColumnGlossaryItem[] = [
   {
     name: "Hours / day",
     description:
-      "Max hours this person can work in a day (1–24). Timesheets, work-item demand, and estimation planning flag Over (> cap), Optimal (≥ 60% of cap), or Under. Saving also sets weekly capacity to hours/day × 5.",
+      "Max hours this person can work in a day (1–24). Timesheets, work-item demand, and estimation planning flag Over (> cap), Optimal (≥ 60% of cap), or Under. Saving also sets weekly capacity to hours/day × 5. Public holidays and leave on Apply leave (org admins: Org holidays & leave) reduce working days used for load.",
   },
   {
     name: "Hourly cost",
@@ -1768,10 +1778,18 @@ function ResourceSetupRow({
     setManagerId(resource.manager_user_id || "");
     setCostRate(resource.cost_rate != null ? String(resource.cost_rate) : "");
     setHoursPerDay(String(resourceHoursPerDay(resource)));
-  }, [resource.user_id, resource.manager_user_id, resource.cost_rate, resource.hours_per_day, resource.capacity_hours_week]);
+  }, [
+    resource.user_id,
+    resource.manager_user_id,
+    resource.cost_rate,
+    resource.hours_per_day,
+    resource.capacity_hours_week,
+  ]);
 
   const nextRate = costRate === "" ? null : Number(costRate);
-  const nextDay = clampHoursPerDay(hoursPerDay === "" ? DEFAULT_HOURS_PER_DAY : Number(hoursPerDay));
+  const nextDay = clampHoursPerDay(
+    hoursPerDay === "" ? DEFAULT_HOURS_PER_DAY : Number(hoursPerDay),
+  );
   const dirty =
     (allowLinkUser && (userId || null) !== (resource.user_id || null)) ||
     (managerId || null) !== (resource.manager_user_id || null) ||
@@ -1879,6 +1897,7 @@ function TimesheetMonthPanel({
   saving,
   onOpenWeek,
   onSaveMonth,
+  unavailable,
 }: {
   weekStart: string;
   setWeekStart: (w: string) => void;
@@ -1888,6 +1907,7 @@ function TimesheetMonthPanel({
   saving: boolean;
   onOpenWeek: (weekStart: string) => void;
   onSaveMonth: (hours: Record<string, Record<string, number>>) => void;
+  unavailable?: Iterable<string> | null;
 }) {
   const [y, m] = weekStart.split("-").map(Number);
   const monthIndex = m - 1;
@@ -1928,6 +1948,7 @@ function TimesheetMonthPanel({
           plannedEnd: wi.planned_end,
           year: y,
           monthIndex,
+          unavailable,
         });
         const row = { ...(next[wi.id] || {}) };
         for (const w of weeks) {
@@ -2008,6 +2029,7 @@ function TimesheetMonthPanel({
                 plannedEnd: wi.planned_end,
                 year: y,
                 monthIndex,
+                unavailable,
               });
               const entered = weeks.reduce((s, w) => s + (Number(hours[wi.id]?.[w]) || 0), 0);
               return (

@@ -6,9 +6,17 @@ import { Plus, Lock, Unlock, ChevronDown, ChevronRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, isAdmin } from "@/lib/auth-context";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
-import { RESOURCES_SELECT, STAGE_GATE_DEFINITIONS_SELECT, STAGE_GATES_SELECT } from "@/lib/query-selects";
+import {
+  RESOURCES_SELECT,
+  STAGE_GATE_DEFINITIONS_SELECT,
+  STAGE_GATES_SELECT,
+} from "@/lib/query-selects";
 import { dailyRateFromHourly, isProjectKickedOff } from "@/lib/ops-enhancements";
-import { deliveryMethodsQueryKey, fetchDeliveryMethods, findDeliveryMethod } from "@/lib/delivery-methods";
+import {
+  deliveryMethodsQueryKey,
+  fetchDeliveryMethods,
+  findDeliveryMethod,
+} from "@/lib/delivery-methods";
 import { fetchOrgStreams, formatStreamLabel } from "@/lib/project-streams";
 import {
   applyForecastToProjectPlan,
@@ -35,6 +43,7 @@ import { ForecastPhaseGantt } from "@/components/forecast-phase-gantt";
 import { ForecastResourceBoard } from "@/components/forecast-resource-board";
 import { Button } from "@/components/ui/button";
 import { useProjectOptions } from "@/hooks/use-project-visibility";
+import { useOrgResourceCalendar } from "@/hooks/use-resource-calendar";
 
 export const Route = createFileRoute("/_authenticated/app/project-forecast")({
   component: ProjectForecastPage,
@@ -54,6 +63,7 @@ function ProjectForecastPage() {
   const [phaseDraft, setPhaseDraft] = useState<ForecastPhaseRow[]>([]);
   const [otherCatsOpen, setOtherCatsOpen] = useState(false);
 
+  const { index: calendar } = useOrgResourceCalendar(orgId);
   const { data: allProjects = [] } = useProjectOptions(orgId);
   const projects = useMemo(
     () => (allProjects as any[]).filter((p) => isForecastableProjectStatus(p.status)),
@@ -63,7 +73,11 @@ function ProjectForecastPage() {
   const { data: project } = useQuery({
     queryKey: ["project", projectId, "forecast-head"],
     queryFn: async () => {
-      const { data } = await supabase.from("projects").select("*").eq("id", projectId).maybeSingle();
+      const { data } = await supabase
+        .from("projects")
+        .select("*")
+        .eq("id", projectId)
+        .maybeSingle();
       return data as any;
     },
     enabled: !!projectId,
@@ -113,16 +127,23 @@ function ProjectForecastPage() {
   const { data: resources = [] } = useQuery({
     queryKey: ["resources", orgId],
     queryFn: async () =>
-      (await supabase.from("resources").select(RESOURCES_SELECT as "*").eq("status", "Active")).data ??
-      [],
+      (
+        await supabase
+          .from("resources")
+          .select(RESOURCES_SELECT as "*")
+          .eq("status", "Active")
+      ).data ?? [],
     enabled: !!orgId,
   });
 
   const { data: allocations = [] } = useQuery({
     queryKey: ["resource_allocations", orgId, "capacity"],
     queryFn: async () =>
-      (await supabase.from("resource_allocations").select("resource_id,allocated_hours,allocation_percent"))
-        .data ?? [],
+      (
+        await supabase
+          .from("resource_allocations")
+          .select("resource_id,allocated_hours,allocation_percent")
+      ).data ?? [],
     enabled: !!orgId,
   });
 
@@ -182,10 +203,7 @@ function ProjectForecastPage() {
   );
 
   const templateNames = useMemo(
-    () =>
-      project
-        ? phasesForDeliveryMethod(deliveryMethods, gateDefs as any[], project)
-        : [],
+    () => (project ? phasesForDeliveryMethod(deliveryMethods, gateDefs as any[], project) : []),
     [deliveryMethods, gateDefs, project],
   );
 
@@ -209,8 +227,8 @@ function ProjectForecastPage() {
   const kickedOff = project ? isProjectKickedOff(project) : false;
   const sponsorMatch = Boolean(
     project?.sponsor &&
-      (String(profile?.full_name || "").toLowerCase() === String(project.sponsor).toLowerCase() ||
-        String(session?.user?.email || "").toLowerCase() === String(project.sponsor).toLowerCase()),
+    (String(profile?.full_name || "").toLowerCase() === String(project.sponsor).toLowerCase() ||
+      String(session?.user?.email || "").toLowerCase() === String(project.sponsor).toLowerCase()),
   );
   const canUnlock = admin || sponsorMatch;
   const canEdit = !locked;
@@ -229,12 +247,19 @@ function ProjectForecastPage() {
   useEffect(() => {
     const fromProject = (project?.planned_start_date || project?.start_date || "").slice(0, 10);
     const fromForecast = (forecast?.plan_start_date || "").slice(0, 10);
-    const fromGates = plannedGates
-      .map((g) => (g.planned_date || "").slice(0, 10))
-      .filter(Boolean)
-      .sort()[0] || "";
+    const fromGates =
+      plannedGates
+        .map((g) => (g.planned_date || "").slice(0, 10))
+        .filter(Boolean)
+        .sort()[0] || "";
     setPlanStart(fromProject || fromForecast || fromGates || "");
-  }, [projectId, project?.planned_start_date, project?.start_date, forecast?.plan_start_date, plannedGates]);
+  }, [
+    projectId,
+    project?.planned_start_date,
+    project?.start_date,
+    forecast?.plan_start_date,
+    plannedGates,
+  ]);
 
   useEffect(() => {
     const stored =
@@ -482,7 +507,9 @@ function ProjectForecastPage() {
         delete payload.category;
         delete payload.forecast_phase_id;
         delete payload.cost_type;
-        const { error } = await supabase.from("project_forecast_other_costs" as any).insert(payload);
+        const { error } = await supabase
+          .from("project_forecast_other_costs" as any)
+          .insert(payload);
         if (error) throw error;
       }
     },
@@ -697,7 +724,10 @@ function ProjectForecastPage() {
           </label>
           {project && (
             <div className="text-xs text-muted-foreground">
-              Delivery method: <span className="font-semibold text-foreground">{method?.name || project.delivery_method || "—"}</span>
+              Delivery method:{" "}
+              <span className="font-semibold text-foreground">
+                {method?.name || project.delivery_method || "—"}
+              </span>
             </div>
           )}
           <label className="text-xs">
@@ -792,7 +822,8 @@ function ProjectForecastPage() {
                   (g) =>
                     g.gate_name === p.gate_name &&
                     (g.stream_id === p.stream_id ||
-                      (!g.stream_id && projectStreams.find((s) => s.id === p.stream_id)?.is_default)),
+                      (!g.stream_id &&
+                        projectStreams.find((s) => s.id === p.stream_id)?.is_default)),
                 );
                 const stream = projectStreams.find((s) => s.id === p.stream_id);
                 const prev = [...arr]
@@ -832,6 +863,7 @@ function ProjectForecastPage() {
               phaseRes={phaseRes as any[]}
               canEdit={canEdit}
               planStart={planStart || null}
+              calendar={calendar}
               onAssign={(opts) => addResourceToPhase.mutate(opts)}
               onPatchEffort={(opts) => patchEffort.mutate(opts)}
               onRemove={(id) => removePhaseRes.mutate(id)}
@@ -843,9 +875,8 @@ function ProjectForecastPage() {
             <p className="mb-3 text-xs text-muted-foreground">
               Each stream from the project setup is grouped with its{" "}
               {method?.name || "delivery method"} stage-gate phases. Planned gate dates from
-              new-project setup fill the timeline automatically (per stream). Duration is
-              calendar days (months ≈ 30 days) and lays out sequentially per stream from the
-              planned start.
+              new-project setup fill the timeline automatically (per stream). Duration is calendar
+              days (months ≈ 30 days) and lays out sequentially per stream from the planned start.
             </p>
             <div className="overflow-x-auto">
               <table className="st-table text-xs">
@@ -989,9 +1020,7 @@ function ProjectForecastPage() {
               </button>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs tabular-nums text-muted-foreground">
-                  {otherCosts.length
-                    ? `${otherCosts.length} · ${money(otherTotal)}`
-                    : "None yet"}
+                  {otherCosts.length ? `${otherCosts.length} · ${money(otherTotal)}` : "None yet"}
                 </span>
                 {canEdit && (
                   <Button
@@ -1011,76 +1040,76 @@ function ProjectForecastPage() {
             {otherCatsOpen && (
               <>
                 {otherCosts.map((c) => (
-              <div key={c.id} className="mb-2 flex flex-wrap items-center gap-2">
-                <input
-                  className="st-input min-w-[10rem]"
-                  defaultValue={c.heading}
-                  disabled={!canEdit}
-                  onBlur={(e) => patchOther.mutate({ id: c.id, heading: e.target.value })}
-                />
-                <select
-                  className="st-input !w-44"
-                  defaultValue={c.category || "Other"}
-                  disabled={!canEdit}
-                  onChange={(e) => patchOther.mutate({ id: c.id, category: e.target.value })}
-                >
-                  {FORECAST_COST_CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="st-input !w-32"
-                  defaultValue={forecastCostType(c.cost_type)}
-                  disabled={!canEdit}
-                  onChange={(e) => patchOther.mutate({ id: c.id, cost_type: e.target.value })}
-                  title="CapEx writes capex_planned; OpEx writes opex_planned"
-                >
-                  {FORECAST_COST_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t === "capex" ? "CapEx" : "OpEx"}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="st-input !w-48"
-                  defaultValue={c.forecast_phase_id || ""}
-                  disabled={!canEdit}
-                  onChange={(e) =>
-                    patchOther.mutate({
-                      id: c.id,
-                      forecast_phase_id: e.target.value || null,
-                    })
-                  }
-                >
-                  <option value="">Whole project</option>
-                  {phases.map((p) => (
-                    <option key={forecastPhaseKey(p)} value={p.id || ""}>
-                      {formatForecastStreamPhase(p.stream_name, p.gate_name)}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="number"
-                  className="st-input !w-32"
-                  defaultValue={c.amount}
-                  disabled={!canEdit}
-                  onBlur={(e) =>
-                    patchOther.mutate({ id: c.id, amount: Number(e.target.value) || 0 })
-                  }
-                />
-                {canEdit && (
-                  <button
-                    type="button"
-                    className="text-xs text-red-600"
-                    onClick={() => removeOther.mutate(c.id)}
-                  >
-                    Remove
-                  </button>
-                )}
-              </div>
-            ))}
+                  <div key={c.id} className="mb-2 flex flex-wrap items-center gap-2">
+                    <input
+                      className="st-input min-w-[10rem]"
+                      defaultValue={c.heading}
+                      disabled={!canEdit}
+                      onBlur={(e) => patchOther.mutate({ id: c.id, heading: e.target.value })}
+                    />
+                    <select
+                      className="st-input !w-44"
+                      defaultValue={c.category || "Other"}
+                      disabled={!canEdit}
+                      onChange={(e) => patchOther.mutate({ id: c.id, category: e.target.value })}
+                    >
+                      {FORECAST_COST_CATEGORIES.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      className="st-input !w-32"
+                      defaultValue={forecastCostType(c.cost_type)}
+                      disabled={!canEdit}
+                      onChange={(e) => patchOther.mutate({ id: c.id, cost_type: e.target.value })}
+                      title="CapEx writes capex_planned; OpEx writes opex_planned"
+                    >
+                      {FORECAST_COST_TYPES.map((t) => (
+                        <option key={t} value={t}>
+                          {t === "capex" ? "CapEx" : "OpEx"}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      className="st-input !w-48"
+                      defaultValue={c.forecast_phase_id || ""}
+                      disabled={!canEdit}
+                      onChange={(e) =>
+                        patchOther.mutate({
+                          id: c.id,
+                          forecast_phase_id: e.target.value || null,
+                        })
+                      }
+                    >
+                      <option value="">Whole project</option>
+                      {phases.map((p) => (
+                        <option key={forecastPhaseKey(p)} value={p.id || ""}>
+                          {formatForecastStreamPhase(p.stream_name, p.gate_name)}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      className="st-input !w-32"
+                      defaultValue={c.amount}
+                      disabled={!canEdit}
+                      onBlur={(e) =>
+                        patchOther.mutate({ id: c.id, amount: Number(e.target.value) || 0 })
+                      }
+                    />
+                    {canEdit && (
+                      <button
+                        type="button"
+                        className="text-xs text-red-600"
+                        onClick={() => removeOther.mutate(c.id)}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                ))}
                 {otherCosts.length === 0 && (
                   <p className="text-sm text-muted-foreground">
                     No further cost lines yet. Add travel, vendors, hardware, or other non-labor
@@ -1104,8 +1133,7 @@ function ProjectForecastPage() {
                   (streams as any[]).reduce(
                     (s, x) => s + Number(x.capex_incurred || 0) + Number(x.opex_incurred || 0),
                     0,
-                  ) ||
-                    Number(project?.capex_incurred || 0) + Number(project?.opex_incurred || 0),
+                  ) || Number(project?.capex_incurred || 0) + Number(project?.opex_incurred || 0),
                 )}
                 accent="#059669"
               />
@@ -1125,8 +1153,8 @@ function ProjectForecastPage() {
             </Button>
             {kickedOff && (
               <p className="mt-2 text-xs text-muted-foreground">
-                Actual incurred is live from stream / project actuals. The plan does not
-                change unless the sponsor ({project?.sponsor || "unset"}) or an admin unlocks it.{" "}
+                Actual incurred is live from stream / project actuals. The plan does not change
+                unless the sponsor ({project?.sponsor || "unset"}) or an admin unlocks it.{" "}
                 <Link to="/app/timeline" className="font-medium text-primary hover:underline">
                   Open timeline (plan vs actual)
                 </Link>

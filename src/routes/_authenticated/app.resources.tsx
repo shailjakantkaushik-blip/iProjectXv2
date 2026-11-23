@@ -1,9 +1,11 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { RESOURCES_SELECT, RESOURCE_ALLOCATIONS_SELECT } from "@/lib/query-selects";
-import { useAuth } from "@/lib/auth-context";
+import { isAdmin, useAuth } from "@/lib/auth-context";
+import { useOrgResourceCalendar } from "@/hooks/use-resource-calendar";
+import { monthCapacityHours, monthStartEnd, rangeCapacityHours } from "@/lib/resource-calendar";
 import { PageHeading, SectionFrame, SectionTitle, KpiCard } from "@/components/streamlit";
 import { PageExport } from "@/components/page-export";
 import { Input } from "@/components/ui/input";
@@ -36,6 +38,7 @@ import {
   formatEffort,
   formatEffortNumber,
   hoursToEffortUnit,
+  resourceHoursPerDay,
   resourceHoursPerWeek,
   type EffortUnit,
 } from "@/lib/resource-capacity";
@@ -50,7 +53,16 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useScopedProjects } from "@/hooks/use-project-visibility";
 
+type ResTab = "utilisation" | "pva";
+type ResSearch = { tab?: ResTab | "calendars" };
+
 export const Route = createFileRoute("/_authenticated/app/resources")({
+  validateSearch: (s: Record<string, unknown>): ResSearch => ({
+    tab:
+      s.tab === "calendars" || s.tab === "utilisation" || s.tab === "pva"
+        ? (s.tab as ResSearch["tab"])
+        : undefined,
+  }),
   component: ResourcesPage,
 });
 
@@ -63,6 +75,7 @@ type Resource = {
   hours_per_day?: number | null;
   cost_rate?: number | null;
   user_id?: string | null;
+  location?: string | null;
 };
 type Allocation = {
   id: string;
@@ -83,8 +96,6 @@ type Project = {
   portfolio?: string | null;
 };
 
-type ResTab = "utilisation" | "pva";
-
 const STATUS_COLOR = {
   Over: "#dc2626",
   Optimal: "#16a34a",
@@ -96,11 +107,10 @@ type Status = keyof typeof STATUS_COLOR;
 const PLAN_BAR = "#2563eb";
 const ACTUAL_BAR = "#0d9488";
 
-/** Convert hours in a month to % of monthly FTE capacity (colour / load only). */
-function hoursToMonthPct(hours: number, capacityHoursWeek = 40): number {
-  const monthCap = (Number(capacityHoursWeek) || 40) * 4.33;
-  if (monthCap <= 0 || !Number.isFinite(hours)) return 0;
-  return Math.round((hours / monthCap) * 100);
+/** Convert hours in a month to % of that month's working-day capacity. */
+function hoursToMonthPct(hours: number, monthCapHours: number): number {
+  if (monthCapHours <= 0 || !Number.isFinite(hours)) return 0;
+  return Math.round((hours / monthCapHours) * 100);
 }
 
 function fmtHours(n: number): string {
@@ -156,8 +166,19 @@ function heatColor(pct: number): string {
 }
 
 function ResourcesPage() {
-  const { organization } = useAuth();
-  const [tab, setTab] = useState<ResTab>("pva");
+  const { organization, roles } = useAuth();
+  const routeSearch = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const [tab, setTab] = useState<ResTab>(routeSearch.tab === "utilisation" ? "utilisation" : "pva");
+  useEffect(() => {
+    if (routeSearch.tab === "calendars") return;
+    setTab(routeSearch.tab || "pva");
+  }, [routeSearch.tab]);
+  const setResTab = (id: ResTab) => {
+    setTab(id);
+    void navigate({ search: id === "pva" ? {} : { tab: id } });
+  };
+  const { index: calendar } = useOrgResourceCalendar(organization?.id);
   const [effortUnit, setEffortUnit] = useState<EffortUnit>("hours");
   const unitSuffix = effortUnitSuffix(effortUnit);
   const unitNoun = effortUnitNoun(effortUnit);
@@ -282,6 +303,16 @@ function ResourcesPage() {
     return m;
   }, [streams]);
   const resByIdAll = useMemo(() => new Map(resourcesAll.map((r) => [r.id, r])), [resourcesAll]);
+  const monthCapFor = (r: Resource | undefined, month: string) => {
+    const span = monthStartEnd(month);
+    return monthCapacityHours(
+      month,
+      resourceHoursPerDay(r),
+      r ? calendar.unavailableFor(r.id, r.location, span?.start, span?.end) : undefined,
+    );
+  };
+  const allocHours = (a: Allocation, r?: Resource) =>
+    hoursFromAllocation(a, resourceHoursPerWeek(r), monthCapFor(r, a.period_month));
 
   const roleOptions = useMemo(
     () =>
@@ -348,13 +379,12 @@ function ResourcesPage() {
         const rows = allocationsAll.filter(
           (a) => a.resource_id === r.id && monthsInRange.includes(normMonth(a.period_month)),
         );
-        const cap = resourceHoursPerWeek(r);
-        const planHours = rows.reduce((s, a) => s + hoursFromAllocation(a, cap), 0);
-        const monthCap = cap * 4.33;
-        const avg =
-          monthsInRange.length && monthCap > 0
-            ? (planHours / (monthsInRange.length * monthCap)) * 100
-            : 0;
+        const planHours = rows.reduce((s, a) => s + allocHours(a, r), 0);
+        const denom = rangeCapacityHours(monthsInRange, resourceHoursPerDay(r), (m) => {
+          const span = monthStartEnd(m);
+          return calendar.unavailableFor(r.id, r.location, span?.start, span?.end);
+        });
+        const avg = denom > 0 ? (planHours / denom) * 100 : 0;
         const actualHours = timesheetActuals
           .filter((a) => {
             if (a.resource_id !== r.id) return false;
@@ -381,6 +411,7 @@ function ResourcesPage() {
     monthsInRange,
     projectsById,
     streamProjectById,
+    calendar,
   ]);
 
   const resIdSet = useMemo(() => new Set(resources.map((r) => r.id)), [resources]);
@@ -486,8 +517,7 @@ function ResourcesPage() {
     return resources
       .map((r) => {
         const rows = allocations.filter((a) => a.resource_id === r.id);
-        const cap = resourceHoursPerWeek(r);
-        const planHours = rows.reduce((s, a) => s + hoursFromAllocation(a, cap), 0);
+        const planHours = rows.reduce((s, a) => s + allocHours(a, r), 0);
         let actualHours = 0;
         let billableHours = 0;
         let nonBillableHours = 0;
@@ -498,8 +528,10 @@ function ResourcesPage() {
           if (a.billable === false || !a.project_id) nonBillableHours += hrs;
           else billableHours += hrs;
         }
-        const monthCap = cap * 4.33;
-        const denom = months.length * monthCap;
+        const denom = rangeCapacityHours(months, resourceHoursPerDay(r), (m) => {
+          const span = monthStartEnd(m);
+          return calendar.unavailableFor(r.id, r.location, span?.start, span?.end);
+        });
         const planPctAvg = denom > 0 ? Math.round((planHours / denom) * 100) : 0;
         const actualPctAvg = denom > 0 ? Math.round((actualHours / denom) * 100) : 0;
         const utilVsPlan = planHours > 0 ? Math.round((actualHours / planHours) * 1000) / 10 : null;
@@ -526,10 +558,9 @@ function ResourcesPage() {
     const planByResource = new Map<string, { percent: number; hours: number }>();
     for (const a of allocations) {
       const r = resById.get(a.resource_id);
-      const cap = resourceHoursPerWeek(r);
       const cur = planByResource.get(a.resource_id) ?? { percent: 0, hours: 0 };
       cur.percent += Number(a.allocation_percent) || 0;
-      cur.hours += hoursFromAllocation(a, cap);
+      cur.hours += allocHours(a, r);
       planByResource.set(a.resource_id, cur);
     }
     const actualByResource = new Map<
@@ -566,7 +597,6 @@ function ResourcesPage() {
   // Resource × Month heatmap — plan hours (estimation) vs timesheet actual hours
   const heatGrid = useMemo(() => {
     return resources.map((r) => {
-      const cap = resourceHoursPerWeek(r);
       const row: {
         name: string;
         cells: { month: string; planHours: number; actualHours: number; peakPct: number }[];
@@ -574,7 +604,7 @@ function ResourcesPage() {
       months.forEach((m) => {
         const planHours = allocations
           .filter((a) => a.resource_id === r.id && a.period_month === m)
-          .reduce((s, a) => s + hoursFromAllocation(a, cap), 0);
+          .reduce((s, a) => s + allocHours(a, r), 0);
         const actualHours = filteredActuals
           .filter((a) => a.resource_id === r.id && normMonth(a.period_month || a.week_start) === m)
           .reduce((s, a) => s + (Number(a.hours) || 0), 0);
@@ -582,7 +612,7 @@ function ResourcesPage() {
           month: m,
           planHours: Math.round(planHours * 10) / 10,
           actualHours: Math.round(actualHours * 10) / 10,
-          peakPct: hoursToMonthPct(Math.max(planHours, actualHours), cap),
+          peakPct: hoursToMonthPct(Math.max(planHours, actualHours), monthCapFor(r, m)),
         });
       });
       return row;
@@ -597,7 +627,7 @@ function ResourcesPage() {
       for (const a of allocations) {
         if (a.period_month !== m) continue;
         const r = resById.get(a.resource_id);
-        planHours += hoursFromAllocation(a, resourceHoursPerWeek(r));
+        planHours += allocHours(a, r);
       }
       for (const a of filteredActuals) {
         if (normMonth(a.period_month || a.week_start) !== m) continue;
@@ -621,7 +651,7 @@ function ResourcesPage() {
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-      const hours = hoursFromAllocation(a, resourceHoursPerWeek(r));
+      const hours = allocHours(a, r);
       const share = hours / (skills.length || 1);
       skills.forEach((s) => planMap.set(s, (planMap.get(s) || 0) + share));
     });
@@ -652,7 +682,7 @@ function ResourcesPage() {
     const actualBy = new Map<string, Map<string, number>>();
     allocations.forEach((a) => {
       const r = resById.get(a.resource_id);
-      const hours = hoursFromAllocation(a, resourceHoursPerWeek(r));
+      const hours = allocHours(a, r);
       const pid =
         resolveLinkedProjectId({
           projectId: a.project_id,
@@ -701,8 +731,12 @@ function ResourcesPage() {
       });
     }
     const rows = resources.map((r) => {
-      const cap = resourceHoursPerWeek(r);
       const monthCount = Math.max(1, months.length);
+      const capAcross = rangeCapacityHours(months, resourceHoursPerDay(r), (m) => {
+        const span = monthStartEnd(m);
+        return calendar.unavailableFor(r.id, r.location, span?.start, span?.end);
+      });
+      const avgMonthCap = capAcross / monthCount;
       return {
         name: r.name,
         cells: cols.map((c) => {
@@ -713,7 +747,7 @@ function ResourcesPage() {
             project: c.title,
             planHours,
             actualHours,
-            peakPct: hoursToMonthPct(Math.max(planHours, actualHours) / monthCount, cap),
+            peakPct: hoursToMonthPct(Math.max(planHours, actualHours) / monthCount, avgMonthCap),
           };
         }),
       };
@@ -776,7 +810,7 @@ function ResourcesPage() {
     };
     for (const a of allocations) {
       const r = resById.get(a.resource_id);
-      const hours = hoursFromAllocation(a, resourceHoursPerWeek(r));
+      const hours = allocHours(a, r);
       const ids = idsFor(a);
       touch(ids.projectId, ids.streamId, ids.stageGateId).planHours += hours;
     }
@@ -796,6 +830,10 @@ function ResourcesPage() {
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [allocations, filteredActuals, streams, gates, projectsById, streamProjectById, resById]);
 
+  if (routeSearch.tab === "calendars") {
+    return <Navigate to={isAdmin(roles) ? "/app/org-holidays" : "/app/apply-leave"} replace />;
+  }
+
   return (
     <PageExport name="Resource_Capacity" title="Resource Capacity & Skill Intelligence">
       <PageHeading icon="👥">Resource Capacity & Skill Intelligence</PageHeading>
@@ -803,9 +841,14 @@ function ResourcesPage() {
         <strong>Alloc</strong> (Plan) comes from Project Estimation Planning, applied per stream and
         phase. <strong>Demand</strong> comes from work-item resource effort. <strong>Actual</strong>{" "}
         comes from approved timesheets. Daily hours/day (Timesheets → Resource setup) set weekly FTE
-        capacity (hours/day × 5). Allocation % is only load vs monthly FTE capacity — it is not
-        Plan. Use Hours / Days / Weeks to change how effort quantities are shown (8h day, 5-day
-        week). Percent and $ are unchanged.
+        capacity (hours/day × working days). Public holidays for the person&apos;s location and
+        dated leave (
+        <Link to="/app/apply-leave" className="font-medium text-primary hover:underline">
+          Apply leave
+        </Link>
+        ) reduce monthly FTE capacity. Allocation % is only load vs that capacity — it is not Plan.
+        Use Hours / Days / Weeks to change how effort quantities are shown (8h day, 5-day week).
+        Percent and $ are unchanged.
       </p>
       <div className="mb-3">
         <EffortUnitCheckboxes value={effortUnit} onChange={setEffortUnit} />
@@ -820,7 +863,7 @@ function ResourcesPage() {
           <button
             key={id}
             type="button"
-            onClick={() => setTab(id)}
+            onClick={() => setResTab(id)}
             className={cn(
               "rounded-md border px-3 py-1.5 text-xs font-medium",
               tab === id

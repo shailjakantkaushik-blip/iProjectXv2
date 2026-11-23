@@ -74,6 +74,7 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
       { to: "/app/dependencies", label: "Dependencies", icon: "GitBranch" },
       { to: "/app/schedule-cpm", label: "Schedule CPM", icon: "GitBranch" },
       { to: "/app/resources", label: "Resources", icon: "Users" },
+      { to: "/app/apply-leave", label: "Apply leave", icon: "CalendarDays" },
       { to: "/app/timesheets", label: "Timesheets", icon: "Clock" },
       { to: "/app/risk-roadmap", label: "Risk Roadmap", icon: "Route" },
     ],
@@ -111,6 +112,12 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
     heading: "Org Admin",
     items: [
       { to: "/app/configuration", label: "Configuration", icon: "Settings", adminOnly: true },
+      {
+        to: "/app/org-holidays",
+        label: "Org holidays & leave",
+        icon: "CalendarDays",
+        adminOnly: true,
+      },
       { to: "/app/integrations", label: "Integrations", icon: "Link2", adminOnly: true },
       { to: "/app/navigation", label: "Navigation sequence", icon: "Menu", adminOnly: true },
       { to: "/app/page-downloads", label: "Page downloads", icon: "FileDown", adminOnly: true },

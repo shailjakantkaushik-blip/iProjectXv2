@@ -99,6 +99,27 @@ export function hoursLoadStatus(hours: number, cap: number): HoursLoadStatus {
   return "Under";
 }
 
+/** Over when hours sit on a window whose weekdays are all leave/holidays (not weekend-only). */
+export function hoursLoadStatusForWindow(
+  hours: number,
+  cap: number,
+  start?: string | null,
+  end?: string | null,
+  unavailable?: Iterable<string> | null,
+): HoursLoadStatus {
+  const hasWindow = Boolean((start || "").slice(0, 10) || (end || "").slice(0, 10));
+  const weekdays = countWeekdaysInclusive(start, end);
+  if (
+    (Number(hours) || 0) > 0.01 &&
+    hasWindow &&
+    weekdays > 0 &&
+    countWeekdaysInclusive(start, end, unavailable) === 0
+  ) {
+    return "Over";
+  }
+  return hoursLoadStatus(hours, cap);
+}
+
 export function hoursLoadChipClass(status: HoursLoadStatus): string {
   if (status === "Over") return "bg-red-100 text-red-800";
   if (status === "Under") return "bg-amber-100 text-amber-900";
@@ -127,7 +148,12 @@ export function worstHoursLoadStatus(
 }
 
 /** Inclusive Mon–Fri count between two ISO dates. Missing dates → 0 (caller supplies fallback). */
-export function countWeekdaysInclusive(start?: string | null, end?: string | null): number {
+export function countWeekdaysInclusive(
+  start?: string | null,
+  end?: string | null,
+  unavailable?: Iterable<string> | null,
+): number {
+  const skip = unavailable instanceof Set ? unavailable : new Set(unavailable || []);
   let from = (start || "").slice(0, 10);
   let to = (end || "").slice(0, 10);
   if (!from && !to) return 0;
@@ -138,7 +164,7 @@ export function countWeekdaysInclusive(start?: string | null, end?: string | nul
   for (let d = from; d <= to;) {
     const [y, m, day] = d.split("-").map(Number);
     const dow = new Date(Date.UTC(y, m - 1, day)).getUTCDay();
-    if (dow >= 1 && dow <= 5) n += 1;
+    if (dow >= 1 && dow <= 5 && !skip.has(d)) n += 1;
     if (n > 520) break;
     const next = new Date(Date.UTC(y, m - 1, day + 1));
     d = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}`;
@@ -146,19 +172,55 @@ export function countWeekdaysInclusive(start?: string | null, end?: string | nul
   return n;
 }
 
-/** Demand hours for one assignee on one work item, paced across weekdays in the date window. */
+function windowWorkingDays(
+  start?: string | null,
+  end?: string | null,
+  unavailable?: Iterable<string> | null,
+): number {
+  const hasWindow = Boolean((start || "").slice(0, 10) || (end || "").slice(0, 10));
+  const days = countWeekdaysInclusive(start, end, unavailable);
+  if (days > 0) return days;
+  return hasWindow ? 0 : DEFAULT_WORKDAYS_PER_WEEK;
+}
+
+/** Demand hours for one assignee on one work item, paced across working days in the date window. */
 export function workItemDailyHoursPerAssignee(opts: {
   estimateHours: number;
   plannedStart?: string | null;
   plannedEnd?: string | null;
   assigneeCount: number;
+  unavailable?: Iterable<string> | null;
 }): number {
   const hours = Number(opts.estimateHours) || 0;
   if (!(hours > 0)) return 0;
   const people = Math.max(1, Number(opts.assigneeCount) || 1);
-  const days =
-    countWeekdaysInclusive(opts.plannedStart, opts.plannedEnd) || DEFAULT_WORKDAYS_PER_WEEK;
+  const days = windowWorkingDays(opts.plannedStart, opts.plannedEnd, opts.unavailable);
+  if (!(days > 0)) return 0;
   return Math.round((hours / people / days) * 100) / 100;
+}
+
+export function workItemAssigneeLoadStatus(opts: {
+  estimateHours: number;
+  plannedStart?: string | null;
+  plannedEnd?: string | null;
+  assigneeCount: number;
+  unavailable?: Iterable<string> | null;
+  existingDaily?: number;
+  cap: number;
+}): { perDay: number; totalDay: number; status: HoursLoadStatus } {
+  const hours = Number(opts.estimateHours) || 0;
+  const perDay = workItemDailyHoursPerAssignee(opts);
+  const totalDay = Math.round(((Number(opts.existingDaily) || 0) + perDay) * 100) / 100;
+  const weekdays = countWeekdaysInclusive(opts.plannedStart, opts.plannedEnd);
+  const fullyOff =
+    hours > 0 &&
+    weekdays > 0 &&
+    windowWorkingDays(opts.plannedStart, opts.plannedEnd, opts.unavailable) === 0;
+  return {
+    perDay,
+    totalDay,
+    status: fullyOff ? "Over" : hoursLoadStatus(totalDay, opts.cap),
+  };
 }
 
 export function accumulateDailyDemandByResource<
@@ -169,21 +231,28 @@ export function accumulateDailyDemandByResource<
     planned_end?: string | null;
     status?: string | null;
   },
->(items: T[], assigneesByWorkItem: Map<string, string[]>): Map<string, number> {
+>(
+  items: T[],
+  assigneesByWorkItem: Map<string, string[]>,
+  unavailableByResource?: Map<string, Iterable<string>>,
+): Map<string, number> {
   const out = new Map<string, number>();
   for (const item of items) {
     const status = String(item.status || "");
     if (status === "Cancelled" || status === "Done") continue;
     const ids = (assigneesByWorkItem.get(item.id) || []).filter(Boolean);
     if (!ids.length) continue;
-    const per = workItemDailyHoursPerAssignee({
-      estimateHours: Number(item.estimate_hours) || 0,
-      plannedStart: item.planned_start,
-      plannedEnd: item.planned_end,
-      assigneeCount: ids.length,
-    });
-    if (!(per > 0)) continue;
+    const hours = Number(item.estimate_hours) || 0;
+    if (!(hours > 0)) continue;
     for (const id of ids) {
+      const per = workItemDailyHoursPerAssignee({
+        estimateHours: hours,
+        plannedStart: item.planned_start,
+        plannedEnd: item.planned_end,
+        assigneeCount: ids.length,
+        unavailable: unavailableByResource?.get(id),
+      });
+      if (!(per > 0)) continue;
       out.set(id, Math.round(((out.get(id) || 0) + per) * 100) / 100);
     }
   }

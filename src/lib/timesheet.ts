@@ -78,6 +78,7 @@ export function workItemMonthPlan(opts: {
   plannedEnd?: string | null;
   year: number;
   monthIndex: number;
+  unavailable?: Iterable<string> | null;
 }): { monthHours: number; byWeek: Record<string, number> } {
   const weeks = mondaysOverlappingMonth(opts.year, opts.monthIndex);
   const byWeek: Record<string, number> = {};
@@ -89,6 +90,7 @@ export function workItemMonthPlan(opts: {
       plannedStart: opts.plannedStart,
       plannedEnd: opts.plannedEnd,
       weekStart,
+      unavailable: opts.unavailable,
     });
     byWeek[weekStart] = weekHours;
     monthHours += weekHours;
@@ -146,6 +148,27 @@ function distributeAcrossWeekdays(hours: number): {
   return { weekHours: Math.round(hours * 100) / 100, perDay };
 }
 
+function distributeAcrossWorkingWeekdays(
+  hours: number,
+  weekDates: string[],
+  skip: Set<string>,
+): { weekHours: number; perDay: Record<DayKey, number> } {
+  const slots = weekDates
+    .map((date, i) => ({ date, i }))
+    .filter(({ date, i }) => i < 5 && !skip.has(date));
+  if (!slots.length) return { weekHours: 0, perDay: emptyDayHours() };
+  if (slots.length === 5) return distributeAcrossWeekdays(hours);
+  const perDay = emptyDayHours();
+  const base = Math.floor((hours / slots.length) * 100) / 100;
+  let allocated = 0;
+  slots.forEach((slot, idx) => {
+    const h = idx === slots.length - 1 ? Math.round((hours - allocated) * 100) / 100 : base;
+    perDay[DAY_KEYS[slot.i]] = h;
+    allocated += h;
+  });
+  return { weekHours: Math.round(hours * 100) / 100, perDay };
+}
+
 /**
  * Spread work-item planned hours evenly across weekdays in the item’s date
  * window, then return this timesheet week’s total and per-day plan.
@@ -161,11 +184,13 @@ export function workItemWeekdayPlan(opts: {
   plannedStart?: string | null;
   plannedEnd?: string | null;
   weekStart: string;
+  unavailable?: Iterable<string> | null;
 }): { weekHours: number; perDay: Record<DayKey, number> } {
   const empty = { weekHours: 0, perDay: emptyDayHours() };
   const hours = Number(opts.estimateHours) || 0;
   if (!(hours > 0) || !opts.weekStart) return empty;
 
+  const skip = opts.unavailable instanceof Set ? opts.unavailable : new Set(opts.unavailable || []);
   const actual = Math.max(0, Number(opts.actualHours) || 0);
   const remaining = Math.max(0, hours - actual);
   const weekDates = DAY_KEYS.map((_, i) => addDays(opts.weekStart, i));
@@ -173,7 +198,7 @@ export function workItemWeekdayPlan(opts: {
   let rangeEnd = (opts.plannedEnd || "").slice(0, 10);
 
   if (!rangeStart && !rangeEnd) {
-    return distributeAcrossWeekdays(remaining > 0 ? remaining : hours);
+    return distributeAcrossWorkingWeekdays(remaining > 0 ? remaining : hours, weekDates, skip);
   }
 
   if (!rangeStart) rangeStart = rangeEnd;
@@ -184,16 +209,27 @@ export function workItemWeekdayPlan(opts: {
   for (let d = rangeStart; d <= rangeEnd; d = addDays(d, 1)) {
     const [y, m, day] = d.split("-").map(Number);
     const dow = new Date(Date.UTC(y, m - 1, day)).getUTCDay();
-    if (dow >= 1 && dow <= 5) weekdaysInRange.push(d);
+    if (dow >= 1 && dow <= 5 && !skip.has(d)) weekdaysInRange.push(d);
     if (weekdaysInRange.length > 520) break;
   }
   /** When the calendar window misses this week, pace remaining work across a normal 5×8 week. */
   const outsideWindowFallback = () => {
     const left = remaining > 0 ? remaining : hours;
-    return distributeAcrossWeekdays(Math.min(left, 40));
+    return distributeAcrossWorkingWeekdays(Math.min(left, 40), weekDates, skip);
   };
 
   if (weekdaysInRange.length === 0) {
+    const anyWeekdayInWindow = (() => {
+      for (let d = rangeStart; d <= rangeEnd; d = addDays(d, 1)) {
+        const [y, m, day] = d.split("-").map(Number);
+        const dow = new Date(Date.UTC(y, m - 1, day)).getUTCDay();
+        if (dow >= 1 && dow <= 5) return true;
+        if (d > rangeEnd) break;
+      }
+      return false;
+    })();
+    // Whole window is holidays/leave — do not dump hours onto an off week.
+    if (anyWeekdayInWindow) return empty;
     return outsideWindowFallback();
   }
 

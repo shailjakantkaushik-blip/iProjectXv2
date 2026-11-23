@@ -25,6 +25,8 @@ export const TABLE_QUERY_KEYS: Record<string, string[]> = {
   benefits: ["benefits"],
   resources: ["resources"],
   resource_allocations: ["resource_allocations"],
+  org_public_holidays: ["org_public_holidays", "resources", "resource_allocations"],
+  resource_leaves: ["resource_leaves", "resources", "resource_allocations"],
   timesheets: ["timesheets"],
   timesheet_entries: ["timesheet_entries", "timesheets"],
   timesheet_approvals: ["timesheet_approvals", "timesheets"],
@@ -72,11 +74,7 @@ const REALTIME_OPTIONAL = new Set([
 ]);
 
 /** Minimal always-on set — cheap invalidation for shell + KPI freshness. */
-export const LIVE_SYNC_CORE_TABLES = [
-  "projects",
-  "project_streams",
-  "org_kpi_summaries",
-] as const;
+export const LIVE_SYNC_CORE_TABLES = ["projects", "project_streams", "org_kpi_summaries"] as const;
 
 /** Route presets — subscribe only to what the open surface needs. */
 export const LIVE_SYNC_ROUTE_TABLES: Record<string, readonly string[]> = {
@@ -159,11 +157,7 @@ export const LIVE_SYNC_ROUTE_TABLES: Record<string, readonly string[]> = {
     "fy_allocations",
     "opex_other_costs",
   ],
-  "/app/budget-vs-plan": [
-    ...LIVE_SYNC_CORE_TABLES,
-    "financials_monthly",
-    "fy_allocations",
-  ],
+  "/app/budget-vs-plan": [...LIVE_SYNC_CORE_TABLES, "financials_monthly", "fy_allocations"],
   "/app/work-items": [
     ...LIVE_SYNC_CORE_TABLES,
     "work_items",
@@ -172,6 +166,8 @@ export const LIVE_SYNC_ROUTE_TABLES: Record<string, readonly string[]> = {
     "sprints",
     "stage_gates",
     "resource_allocations",
+    "org_public_holidays",
+    "resource_leaves",
   ],
   "/app/work-board": [...LIVE_SYNC_CORE_TABLES, "work_items", "sprints"],
   "/app/timesheets": [
@@ -181,8 +177,28 @@ export const LIVE_SYNC_ROUTE_TABLES: Record<string, readonly string[]> = {
     "timesheet_entries",
     "timesheet_approvals",
     "resources",
+    "org_public_holidays",
+    "resource_leaves",
   ],
-  "/app/resources": [...LIVE_SYNC_CORE_TABLES, "resources", "resource_allocations"],
+  "/app/resources": [
+    ...LIVE_SYNC_CORE_TABLES,
+    "resources",
+    "resource_allocations",
+    "org_public_holidays",
+    "resource_leaves",
+  ],
+  "/app/apply-leave": [
+    ...LIVE_SYNC_CORE_TABLES,
+    "resources",
+    "org_public_holidays",
+    "resource_leaves",
+  ],
+  "/app/org-holidays": [
+    ...LIVE_SYNC_CORE_TABLES,
+    "resources",
+    "org_public_holidays",
+    "resource_leaves",
+  ],
   "/app/stage-gates": [
     ...LIVE_SYNC_CORE_TABLES,
     "stage_gates",
