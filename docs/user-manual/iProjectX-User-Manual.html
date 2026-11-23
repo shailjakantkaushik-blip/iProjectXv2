@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>iProjectX — End-to-end user manual</title>
+  <link rel="stylesheet" href="./css/manual.css" />
+</head>
+<body>
+  <!-- 01 COVER -->
+  <section class="page">
+    <div class="hero" style="min-height: 148mm; padding-top: 22mm;">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <p class="eyebrow">User manual · End to end</p>
+      <h1>How to run the whole<br />change portfolio<br /><em>in one workspace.</em></h1>
+      <p class="lede" style="margin-top:8mm; max-width:165mm;">
+        This manual walks a real week: sign in, set up the organisation, create a project,
+        freeze a Plan, hand out Demand, book Actuals, pass a gate, and steer from Pulse and the Cockpit.
+        It matches the product — not a marketing rewrite.
+      </p>
+    </div>
+    <div class="body">
+      <div class="g3">
+        <div class="card white"><h3>Who it is for</h3><p>Org admins, PMs, BU leads, executives, and everyone who books time. Roles change what you can edit; the building blocks stay the same.</p></div>
+        <div class="card white"><h3>How to use it</h3><p>Read pages 2–7 for the operating loop. Use the screen atlas on page 8 when you need “where is that page?”. Money glossary is page 10.</p></div>
+        <div class="card white"><h3>Companion in the app</h3><p>Signed in: <strong>About → How this app works</strong> and <strong>How money works</strong>. Download this PDF from About.</p></div>
+      </div>
+    </div>
+    <div class="foot"><span>Confidential · Internal &amp; customer onboarding</span><span>01 / 10</span></div>
+  </section>
+
+  <!-- 02 START -->
+  <section class="page">
+    <div class="topbar">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <span class="kicker">Start here</span>
+    </div>
+    <h1 class="play">Sign in, land on Home, know your role</h1>
+    <div class="body">
+      <h2>Sign in</h2>
+      <ol>
+        <li>Open the organisation URL (or www.iprojectx.com / www.iprojectx.com.au) and choose <strong>Sign in</strong>.</li>
+        <li>Complete <strong>MFA</strong> (authenticator TOTP). MFA is required for every user.</li>
+        <li>If your organisation uses SSO, you may be sent through SAML first. If the org uses an IP allowlist, you must be on an allowed network.</li>
+        <li>First login may ask you to change a temporary password.</li>
+      </ol>
+      <h2>Home</h2>
+      <p>After sign-in you land on <strong>Home</strong> in Command Center. Shortcuts follow your role. Executives see Pulse and Cockpit first. Admins see Team, Configuration, and Project data access. PMs see My Work, Projects, and Work Items. You only see projects your <strong>Project Access</strong> grant allows — including Home KPIs.</p>
+      <div class="g2 section">
+        <div class="card white">
+          <h3>Roles</h3>
+          <ul>
+            <li><strong>Org admin / Admin</strong> — users, roles, navigation, branding, delivery methods, resources, Data Editor, holidays.</li>
+            <li><strong>BU lead / PM</strong> — plan projects, Estimation Planning, work items, RAID, gates, timesheet approval.</li>
+            <li><strong>Executive</strong> — Pulse, Cockpit, dashboards, Financials. They steer; they do not rewrite Plan.</li>
+            <li><strong>Platform admin</strong> — control plane across tenants (not a tenant PMO role).</li>
+          </ul>
+        </div>
+        <div class="card white">
+          <h3>My Work and the bell</h3>
+          <p>My Work is your personal queue: assigned work items, timesheet approvals, decisions waiting on you, unread alerts.</p>
+          <p>The bell in the header is the same notifications. Over-allocation alerts (leave/holidays) land here for the person and their resource manager.</p>
+        </div>
+      </div>
+      <div class="section callout">
+        If a page is missing from the sidebar, it is either hidden in <strong>Navigation sequence</strong> or outside your role / Project Access. Ask an org admin — do not assume the feature is gone.
+      </div>
+    </div>
+    <div class="foot"><span>iProjectX user manual</span><span>02 / 10</span></div>
+  </section>
+
+  <!-- 03 BUILDING BLOCKS -->
+  <section class="page">
+    <div class="topbar">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <span class="kicker">Building blocks</span>
+    </div>
+    <h1 class="play">Everything hangs off the same stack</h1>
+    <div class="body">
+      <p>Money, people, and gates attach to a <strong>stream</strong>, then roll up to the project. Edit Budget on the stream. Plan people on the stream. Pass gates on the stream.</p>
+      <table class="table">
+        <thead><tr><th>Block</th><th>What it is</th><th>Where you set it</th></tr></thead>
+        <tbody>
+          <tr><td>Strategic Alignment</td><td>Why we spend: Business Strategic, IT Strategic, CAPEX, Unfunded.</td><td>New Project / project register. Dashboards group here.</td></tr>
+          <tr><td>Program</td><td>A named family of related projects (e.g. Customer experience).</td><td>Programs. The full project register also lives here.</td></tr>
+          <tr><td>Project</td><td>One change, with a code, owner, delivery method, dates.</td><td>New Project. Workspace: Projects menu (dropdown to switch).</td></tr>
+          <tr><td>Functional area</td><td>Which part of the business owns the outcome (IT, HR, Finance…).</td><td>Project record. Pulse and executive filters use it.</td></tr>
+          <tr><td>Stream</td><td>A delivery lane. <strong>Core</strong> is created for you. Extra lanes get their own dates, budget, people, gates.</td><td>Project → Streams. Budget in Data Editor → Project Streams.</td></tr>
+          <tr><td>Work item</td><td>A task with hours. Those hours are <strong>Demand</strong>, not Plan.</td><td>Work Items / Work Board.</td></tr>
+        </tbody>
+      </table>
+      <div class="section">
+        <h2>Delivery method</h2>
+        <div class="g3">
+          <div class="card white"><h3>Waterfall</h3><p>Stage gates (Discovery, Design, Build…). Each stream has its own gate dates.</p></div>
+          <div class="card white"><h3>Agile</h3><p>Sprints under Agile / Sprints. Work items can be tied to a sprint.</p></div>
+          <div class="card white"><h3>Hybrid</h3><p>Gates and sprints on the same project. Use Stage gate for phase money; Sprint for iteration capture.</p></div>
+        </div>
+      </div>
+      <p class="section">Configure gate names on <strong>Delivery Methods &amp; Gates</strong>. Do not invent a gate in a spreadsheet that the method does not list.</p>
+    </div>
+    <div class="foot"><span>iProjectX user manual</span><span>03 / 10</span></div>
+  </section>
+
+  <!-- 04 FIRST WEEK -->
+  <section class="page">
+    <div class="topbar">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <span class="kicker">First week · org admin then PM</span>
+    </div>
+    <h1 class="play">Stand the organisation up, then create the first project</h1>
+    <div class="body">
+      <h2>Org admin — before anyone plans</h2>
+      <div class="step"><div class="n">1</div><div><h3>Team &amp; Roles</h3><p>Invite users. Assign org admin, PM, executive, BU lead. Activate accounts. Link a resource record to each person who will timesheet.</p></div></div>
+      <div class="step"><div class="n">2</div><div><h3>Business Units</h3><p>Structure BUs and programs so filters and access grants have somewhere to hang.</p></div></div>
+      <div class="step"><div class="n">3</div><div><h3>Resources</h3><p>Name, role, location, hours/day, cost rate, resource manager. Location drives public holidays. Hours/day is the Over / Optimal / Under cap.</p></div></div>
+      <div class="step"><div class="n">4</div><div><h3>Holidays &amp; leave</h3><p>Resources → Holidays &amp; leave. Geography holidays (location, or * for all). Dated leave (Annual / Sick / General). These weekdays drop out of capacity.</p></div></div>
+      <div class="step"><div class="n">5</div><div><h3>Delivery methods, navigation, access</h3><p>Gate names. Sidebar order. Project data access so executives do not see a neighbour’s RAID.</p></div></div>
+      <h2>PM — create and shape a project</h2>
+      <ol>
+        <li>Programs → New Project (or the create wizard). Set Strategic Alignment, program, functional area, delivery method, owner, planned dates.</li>
+        <li>Core stream is created. Add extra streams if the work has real lanes (data, security, change).</li>
+        <li>Set <strong>Budget</strong> on the stream in Data Editor — that is the approved envelope. The project is the roll-up.</li>
+        <li>Open the project workspace from <strong>Projects</strong>. Use the dropdown to switch projects.</li>
+      </ol>
+      <div class="callout">Demand Pipeline is for ideas that are not projects yet. Convert when the organisation is ready — do not plan FTE on an idea.</div>
+    </div>
+    <div class="foot"><span>iProjectX user manual</span><span>04 / 10</span></div>
+  </section>
+
+  <!-- 05 PLAN -->
+  <section class="page">
+    <div class="topbar">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <span class="kicker">Operating loop · Plan</span>
+    </div>
+    <h1 class="play">Freeze a Plan — then keep Forecast honest</h1>
+    <div class="body">
+      <h2>Project Estimation Planning</h2>
+      <p>This is the estimate board. Select a role, drag a named person onto a stream phase (or click person then phase). Effort is hours / days / weeks. Working days already exclude weekends, location holidays, and that person’s leave.</p>
+      <p>If assigned hours exceed remaining capacity you get <strong>Save anyway?</strong> Confirming still saves, toast-warns you, and notifies the person’s linked login and resource manager.</p>
+      <p><strong>Apply planned baseline</strong> writes Plan only: planned dates, CapEx/OpEx plan, Planned FTE. It does not write actuals. Forecast columns start equal to Plan when still empty.</p>
+      <div class="g2 section">
+        <div class="card white">
+          <h3>FY Allocation</h3>
+          <p>Split Budget and Forecast $ by financial year. Year totals must not exceed the stream envelope. Forecast can move if a phase slips; Budget and Plan stay put until someone formally changes them.</p>
+        </div>
+        <div class="card white">
+          <h3>Write-path rules (do not mix)</h3>
+          <p><strong>Budget</strong> — Data Editor → Project Streams.<br /><strong>Plan</strong> — Estimation Planning → Apply.<br /><strong>Forecast</strong> — FY Allocation forecast $ (late gates can lift phase forecast).<br /><strong>Demand</strong> — work-item hours.<br /><strong>Actual</strong> — approved timesheets + posted other OpEx.</p>
+        </div>
+      </div>
+      <p class="section">Financials, Budget vs Plan, Phase Financials, EVM, and Cost vs Benefit all <em>read</em> those layers. They are not a second place to type Budget.</p>
+      <p>Open <strong>How money works</strong> in the app for the household-renovation version of the same five words.</p>
+    </div>
+    <div class="foot"><span>iProjectX user manual</span><span>05 / 10</span></div>
+  </section>
+
+  <!-- 06 DEMAND + TIME -->
+  <section class="page">
+    <div class="topbar">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <span class="kicker">Operating loop · Demand and Actuals</span>
+    </div>
+    <h1 class="play">Hand out work, then book the hours that happened</h1>
+    <div class="body">
+      <h2>Work items (Demand)</h2>
+      <ol>
+        <li>Work Items → choose project and stream (Core is the default lane).</li>
+        <li>Title, estimate hours, planned dates, assignees (search resources). Stage gate for Waterfall/Hybrid; Sprint for Agile/Hybrid.</li>
+        <li>Load chips are Over / Optimal / Under vs each person’s hours/day. Optimal is ≥ 60% of the cap. Over is above the cap. A window that is fully leave/holidays is Over even if daily math looks quiet.</li>
+        <li>Lane pending = allocated (Plan) − work-item demand. Use allocated as the ceiling when you set demand hours.</li>
+      </ol>
+      <p>Work Board is the same items as a board. Timeline and Roadmap × Governance show dates against gates.</p>
+      <h2>Timesheets (Actuals)</h2>
+      <ol>
+        <li>Timesheets → pick the week. Rows appear for assigned work items (linked login on the resource).</li>
+        <li>Enter hours Mon–Sun. Daily totals flag Over / Optimal / Under against hours/day.</li>
+        <li>Submit. PM then Resource Manager approve. Only <strong>approved</strong> hours become Actual FTE $ (hours × rate).</li>
+        <li>Resource setup (hours/day, rate, manager) is on Timesheets → Resource setup for people you may edit.</li>
+      </ol>
+      <h2>Resources utilisation</h2>
+      <p>Resources shows allocation vs demand vs actual. Monthly capacity is <strong>working days × hours/day</strong> after holidays and leave — not a flat week × 4.33. Holidays &amp; leave tab is where you maintain the calendar.</p>
+    </div>
+    <div class="foot"><span>iProjectX user manual</span><span>06 / 10</span></div>
+  </section>
+
+  <!-- 07 GOVERN -->
+  <section class="page">
+    <div class="topbar">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <span class="kicker">Operating loop · Steer</span>
+    </div>
+    <h1 class="play">Gates, RAID, and decisions — with evidence</h1>
+    <div class="body">
+      <div class="g2">
+        <div class="card white">
+          <h3>Stage gates</h3>
+          <p>Open Stage Gates (or the project’s Streams / gates). Pass, hold, or reject with a checklist. The decision is stored — it does not live in email. A late gate can raise phase <strong>Forecast</strong>; it does not silently rewrite Budget or Plan.</p>
+        </div>
+        <div class="card white">
+          <h3>Investment Committee</h3>
+          <p>Portfolio-level go / hold / stop with financials on the same page. Use it when the ask is bigger than a stream gate.</p>
+        </div>
+        <div class="card white">
+          <h3>RAID</h3>
+          <p>Risks, Actions, Issues, Decisions — plus stakeholders and lessons. Filter by project, stream, forum, sponsor, gate. Critical and overdue items escalate. Record outcomes on Decisions; My Work shows items waiting on you.</p>
+        </div>
+        <div class="card white">
+          <h3>Dependencies &amp; CPM</h3>
+          <p>Project-to-project (and work-item) links. Schedule CPM is the critical path. A delay what-if belongs in Executive Intelligence, not a side spreadsheet.</p>
+        </div>
+      </div>
+      <div class="section">
+        <h2>Health Engine — RAG is earned</h2>
+        <p>Weighted score: Schedule 20%, Financial 20%, Delivery 15%, Scope 10%, Resource 10%, Risk 10%, Dependencies 10%, Benefits 5%. Bands: <strong>Green ≥ 80</strong>, <strong>Amber 65–79</strong>, <strong>Red &lt; 65</strong>. A named override is allowed and marked <strong>M</strong> so nobody pretends the engine agreed. Dashboards that show overall RAG use the same engine unless overridden.</p>
+      </div>
+      <div class="section">
+        <h2>Executive pack (read, then decide)</h2>
+        <p><strong>Portfolio Pulse</strong> — six areas (financial, delivery, resources, risk, benefits, dependencies) and what changed this week. <strong>Executive Cockpit</strong> — attention cards, scoreboard, project summaries. <strong>Executive Dashboard</strong> — charts and register. <strong>Executive Intelligence</strong> — delay cascades and what-ifs. <strong>Executive Reports / Report Builder</strong> — packs you can take to the meeting.</p>
+      </div>
+    </div>
+    <div class="foot"><span>iProjectX user manual</span><span>07 / 10</span></div>
+  </section>
+
+  <!-- 08 ATLAS -->
+  <section class="page">
+    <div class="topbar">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <span class="kicker">Screen atlas</span>
+    </div>
+    <h1 class="play">Where to click, in the order the sidebar uses</h1>
+    <div class="body" style="padding-top:4mm;">
+      <table class="table">
+        <thead><tr><th>Group</th><th>Pages</th></tr></thead>
+        <tbody>
+          <tr><td>Command Center</td><td>Home · Strategic Alignment · My Work · Portfolio Pulse · Executive Cockpit · Executive Dashboard · Executive Intelligence · In-house AI · Latest Updates · Support · About</td></tr>
+          <tr><td>Project Arena</td><td>Projects (workspace) · Estimation Planning · Programs (register) · Infographic · Segmentation · Prioritisation · Movements · Demand Pipeline · Alignment Scenarios</td></tr>
+          <tr><td>Delivery</td><td>Work Items · Work Board · Timeline · Roadmap × Governance · Roadmap Analytics · Stage Gates · Delivery Methods &amp; Gates · Agile / Sprints · Governance Channel · Investment Committee · Dependencies · Schedule CPM · Resources · Timesheets · Risk Roadmap</td></tr>
+          <tr><td>Financials</td><td>Financials · How money works · FY Allocation · Budget vs Plan · Phase Financials · EVM · Cost vs Benefit · Benefits</td></tr>
+          <tr><td>Governance</td><td>Risks · Issues · Decisions · Actions · Stakeholders · Lessons · Release Register · Executive Reports · Report Builder · Audit Log · Data Editor</td></tr>
+          <tr><td>Org Admin</td><td>Configuration · Integrations · Navigation · Page downloads · Project data access · Closed project purge · Billing · Licenses · Users · Permissions</td></tr>
+        </tbody>
+      </table>
+      <p class="section">In-house AI answers from live PMO data in the organisation session. An approved Open AI model is off unless the organisation turns it on. Do not paste a neighbour’s RAID into a public chatbot.</p>
+      <p>Excel on-ramp: Data Editor → download template / upload. Match on codes and names (project_code, resource_name), never raw UUIDs. Public holidays and resource leave have their own sheets.</p>
+    </div>
+    <div class="foot"><span>iProjectX user manual</span><span>08 / 10</span></div>
+  </section>
+
+  <!-- 09 ADMIN + TRUST -->
+  <section class="page">
+    <div class="topbar">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <span class="kicker">Admin, data, trust</span>
+    </div>
+    <h1 class="play">Keep the workspace true without becoming the bottleneck</h1>
+    <div class="body">
+      <div class="g2">
+        <div class="card white">
+          <h3>Configuration</h3>
+          <p>Team, BUs, holidays, stage gates, chart theme, billing, org settings, Data Editor. Org admins also get integrations (Jira into Demand), navigation sequence, page-download policy, project access, alert emails, closed-project purge.</p>
+        </div>
+        <div class="card white">
+          <h3>Project data access</h3>
+          <p>Limit a role or a user by Strategic Alignment, program, functional area, project, and stream. Grants apply to pages, KPIs, dropdowns, and Home — not only the project list.</p>
+        </div>
+        <div class="card white">
+          <h3>Data Editor</h3>
+          <p>Direct table edit plus Excel import/export. Use it for Budget on streams, holidays, leave, reference data. It is not a bypass for timesheet actuals.</p>
+        </div>
+        <div class="card white">
+          <h3>Integrations</h3>
+          <p>Jira can land demand in the pipeline. Webhooks follow the same tenancy rules. Azure DevOps and ServiceNow are not claimed as shipped connectors.</p>
+        </div>
+      </div>
+      <div class="section">
+        <h2>Trust controls you will be asked about</h2>
+        <ul>
+          <li><strong>MFA</strong> — authenticator TOTP for every user.</li>
+          <li><strong>Isolation</strong> — row-level security per organisation.</li>
+          <li><strong>Optional SSO</strong> — SAML per organisation. Optional IP / CIDR allowlists.</li>
+          <li><strong>Optional BYOD</strong> — tenant registers on your PostgREST-compatible database; auth stays on iProjectX.</li>
+          <li><strong>In-house AI</strong> — default. External model only on request.</li>
+          <li><strong>White-label</strong> — logo, colours, auth experience. Branding does not weaken tenancy.</li>
+          <li><strong>Evidence</strong> — audit log, Excel evidence packs. Readiness for SOC 2 / ISO 27001 — not a certificate claim.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="foot"><span>iProjectX user manual</span><span>09 / 10</span></div>
+  </section>
+
+  <!-- 10 GLOSSARY -->
+  <section class="page">
+    <div class="topbar">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <span class="kicker">Glossary · do not mix these words</span>
+    </div>
+    <h1 class="play">The five money words, plus load and RAG</h1>
+    <div class="body">
+      <table class="table">
+        <thead><tr><th>Word</th><th>Plain meaning</th><th>Where it is written</th></tr></thead>
+        <tbody>
+          <tr><td>Budget</td><td>Approved envelope for the stream.</td><td>Data Editor → Project Streams. FY Allocation is the year slice.</td></tr>
+          <tr><td>Plan</td><td>The frozen baseline: how we intend to spend, by month and person.</td><td>Estimation Planning → Apply. Labor is OpEx; further costs tagged CapEx/OpEx.</td></tr>
+          <tr><td>Forecast</td><td>What we think the bill will be now. Starts equal to Plan.</td><td>FY Allocation forecast $. A late gate can lift phase forecast.</td></tr>
+          <tr><td>Demand</td><td>Work handed to people (work-item hours).</td><td>Work Items. Does not rewrite Plan.</td></tr>
+          <tr><td>Actual</td><td>Hours and money that already happened.</td><td>Approved timesheets + posted other OpEx.</td></tr>
+          <tr><td>Over / Optimal / Under</td><td>Load vs hours/day (or remaining window hours).</td><td>Optimal ≥ 60% of cap. Over is above cap. Fully-off leave windows are Over.</td></tr>
+          <tr><td>RAG</td><td>Health Engine band, unless a named override (M) is set.</td><td>Green ≥ 80 · Amber 65–79 · Red &lt; 65.</td></tr>
+        </tbody>
+      </table>
+      <div class="section callout">
+        Mixing Budget with Forecast, or Demand with Plan, is what makes dashboards feel contradictory.
+        If two screens disagree, check which layer each screen is allowed to write — then look at How money works.
+      </div>
+      <div class="section">
+        <h2>A typical week, recap</h2>
+        <ol>
+          <li>Monday — Pulse / Cockpit: what moved, which red needs a decision.</li>
+          <li>Tuesday — Estimation Planning or work items if the Plan or Demand changed.</li>
+          <li>Wednesday — RAID and gates. Record the decision in the product.</li>
+          <li>Thursday — timesheets in; approve what is true.</li>
+          <li>Friday — Financials: Plan vs Actual vs Forecast. Do not “fix” Budget because a phase is late.</li>
+        </ol>
+      </div>
+      <p>Questions: Support in the app, or About → How this app works. Sales conversations: Expression of Interest at www.iprojectx.com · www.iprojectx.com.au.</p>
+    </div>
+    <div class="foot"><span>www.iprojectx.com</span><span>10 / 10 · End of manual</span></div>
+  </section>
+</body>
+</html>

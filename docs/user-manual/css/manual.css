@@ -1,0 +1,174 @@
+:root {
+  --navy: #0f1b3d;
+  --navy-2: #1a2d58;
+  --ink: #12233f;
+  --accent: #3b6fa0;
+  --paper: #ffffff;
+  --muted: #5b6b80;
+  --line: #d7e0eb;
+  --green: #15803d;
+  --amber: #c47b0a;
+  --red: #c81e1e;
+  --soft: #f4f7fb;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: Inter, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  color: var(--ink);
+  background: #ddd;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+@page { size: A4; margin: 0; }
+
+.page {
+  width: 210mm;
+  height: 297mm;
+  background: var(--paper);
+  page-break-after: always;
+  overflow: hidden;
+  position: relative;
+}
+.page:last-child { page-break-after: auto; }
+
+.hero {
+  background: linear-gradient(145deg, #0c1734 0%, #1a3260 70%, #2a4d78 100%);
+  color: #fff;
+  padding: 12mm 14mm 10mm;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: -0.02em;
+}
+.mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: #0b1733;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mark img { height: 22px; width: 22px; object-fit: contain; mix-blend-mode: screen; }
+.eyebrow {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #9ec0df;
+  margin: 8px 0 4px;
+}
+h1 {
+  margin: 0 0 6px;
+  font-size: 28px;
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+}
+h1 em { font-style: normal; color: #7eb3d9; }
+.lede { margin: 0; font-size: 12px; line-height: 1.4; color: #d5deea; max-width: 175mm; }
+
+.topbar {
+  padding: 8mm 12mm 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.topbar .brand { color: var(--navy); }
+.kicker {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+h1.play {
+  font-size: 20px;
+  color: var(--navy);
+  margin: 3mm 12mm 0;
+  letter-spacing: -0.02em;
+}
+
+.body { padding: 6mm 12mm 12mm; }
+h2 { margin: 0 0 3.5mm; font-size: 13.5px; color: var(--navy); letter-spacing: -0.02em; }
+h3 { margin: 0 0 2mm; font-size: 11px; color: var(--navy); }
+p { margin: 0 0 3.5mm; font-size: 10px; line-height: 1.38; color: var(--muted); }
+ul, ol { margin: 0 0 3.5mm; padding-left: 4.5mm; }
+li { font-size: 10px; line-height: 1.38; color: var(--muted); margin-bottom: 1.4mm; }
+strong { color: var(--navy); }
+
+.g2, .g3, .g4 { display: grid; gap: 3mm; }
+.g2 { grid-template-columns: 1fr 1fr; }
+.g3 { grid-template-columns: 1fr 1fr 1fr; }
+.g4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+.card {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 3mm 3.2mm;
+  background: var(--soft);
+}
+.card.white { background: #fff; }
+.section { margin-top: 5mm; }
+.toc li { font-size: 10.5px; }
+.toc b { color: var(--navy); }
+.step {
+  display: grid;
+  grid-template-columns: 8mm 1fr;
+  gap: 2.5mm;
+  margin-bottom: 3mm;
+}
+.n {
+  width: 7mm;
+  height: 7mm;
+  border-radius: 50%;
+  background: var(--navy);
+  color: #fff;
+  font-size: 8px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.4mm;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9.2px;
+}
+.table th {
+  text-align: left;
+  background: var(--soft);
+  color: var(--navy);
+  padding: 1.6mm 2mm;
+  border-bottom: 1px solid var(--line);
+}
+.table td {
+  padding: 1.6mm 2mm;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  vertical-align: top;
+}
+.table td:first-child { color: var(--navy); font-weight: 700; white-space: nowrap; }
+.foot {
+  position: absolute;
+  left: 12mm; right: 12mm; bottom: 5mm;
+  display: flex; justify-content: space-between;
+  font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase; color: #8a97a8;
+}
+.callout {
+  background: var(--navy);
+  color: #fff;
+  border-radius: 8px;
+  padding: 3.5mm 4mm;
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+.callout strong { color: #7eb3d9; }
+.rule { color: var(--navy); font-weight: 700; }
