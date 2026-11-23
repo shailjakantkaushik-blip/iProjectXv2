@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>iProjectX — Platform sales pitch</title>
+  <link rel="stylesheet" href="./css/a4.css" />
+  <style>
+    .cover-hero { min-height: 132mm; padding: 14mm 14mm 11mm; }
+    .cover-hero h1 { font-size: 30px; line-height: 1.08; max-width: 176mm; }
+    .cover-hero .lede { font-size: 12.5px; max-width: 170mm; }
+    .verbs { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 3mm; margin-top: 8mm; }
+    .verbs div { background: #ffffff16; border: 1px solid #ffffff28; border-radius: 8px; padding: 4mm 3.5mm; }
+    .verbs b { display: block; font-size: 13px; margin-bottom: 1.5mm; }
+    .verbs span { font-size: 9px; color: #d5deea; line-height: 1.35; }
+    .toc { margin: 0; padding-left: 5mm; columns: 2; column-gap: 10mm; }
+    .toc li { font-size: 10.5px; color: var(--navy); margin-bottom: 1.8mm; break-inside: avoid; }
+    .toc b { color: var(--accent); }
+    .body.tight { padding-top: 5mm; }
+    .dim { display: grid; grid-template-columns: 22mm 1fr 18mm; gap: 2mm; align-items: start; margin-bottom: 2.6mm; }
+    .dim b { font-size: 11px; color: var(--navy); }
+    .dim span { font-size: 9.6px; color: var(--muted); line-height: 1.35; }
+    .dim em { font-style: normal; font-size: 11px; font-weight: 800; color: var(--accent); text-align: right; }
+    .loop { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2mm; }
+    .loop div { background: var(--soft); border: 1px solid var(--line); border-radius: 7px; padding: 2.4mm 2mm; }
+    .loop b { display: block; font-size: 9px; color: var(--navy); margin-bottom: 1mm; }
+    .loop span { font-size: 8.4px; color: var(--muted); line-height: 1.3; }
+  </style>
+</head>
+<body>
+
+  <!-- 01 COVER -->
+  <section class="page">
+    <div class="hero cover-hero">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <p class="eyebrow">Sales pitch · Platform capabilities</p>
+      <h1>The portfolio intelligence platform.<br /><em>Every capability, in one truth.</em></h1>
+      <p class="lede">
+        iProjectX is the decision layer over delivery. It calculates project health, explains money
+        and RAG, governs stage gates, books people against real calendars, and isolates every tenant —
+        Agile and Waterfall on the same spine.
+      </p>
+      <div class="verbs">
+        <div><b>See</b><span>Pulse, cockpit, dashboards, and Home scoped to what that person may see.</span></div>
+        <div><b>Explain</b><span>Eight-dimension Health Engine. Plan, Forecast, Demand, Actuals that never overwrite each other.</span></div>
+        <div><b>Govern</b><span>Gates with checklists. RAID, Investment Committee, dependencies, and CPM on the project.</span></div>
+        <div><b>Trust</b><span>MFA for every user. Row-level tenancy. Optional SSO, BYOD, white-label. In-house AI.</span></div>
+      </div>
+    </div>
+    <div class="body tight">
+      <h2>What this pitch covers</h2>
+      <ol class="toc">
+        <li><b>02</b> Why a register is not enough</li>
+        <li><b>03</b> How the platform is built</li>
+        <li><b>04</b> Command Center — see what moved</li>
+        <li><b>05</b> Project Health Engine</li>
+        <li><b>06</b> Money layers and financials</li>
+        <li><b>07</b> People, capacity, and time</li>
+        <li><b>08</b> Delivery — streams, work, methods</li>
+        <li><b>09</b> Governance — gates, RAID, decisions</li>
+        <li><b>10</b> Portfolio arena and intake</li>
+        <li><b>11</b> Trust, admin, and the screen atlas</li>
+        <li><b>12</b> Who buys, and how to start</li>
+      </ol>
+    </div>
+    <div class="foot"><span>Confidential · Sales pitch</span><span>01 / 12 · www.iprojectx.com</span></div>
+  </section>
+
+  <!-- 02 PROBLEM -->
+  <section class="page">
+    <div class="topbar">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <span class="kicker">The expensive week</span>
+    </div>
+    <h1 class="play">Sunday rebuild. Monday theatre. Tuesday surprise.</h1>
+    <div class="body">
+      <p>Leaders do not lack slides. They lack a live, explainable portfolio. By the time the pack is pretty, the money has already moved. iProjectX exists so the board meeting is not a reconstruction.</p>
+      <div class="g2 section">
+        <div class="card fail white">
+          <h3>Without iProjectX</h3>
+          <ul>
+            <li>RAG is typed by hand so the pack can go out.</li>
+            <li>The deck is last month’s weather. Overruns appear at year-end.</li>
+            <li>Gate approvals live in email. RAID rots in a shared workbook.</li>
+            <li>The same person is booked five times. Capacity is a conversation.</li>
+            <li>Budget, forecast, and actuals live in three files that disagree.</li>
+            <li>Executives see a neighbour’s RAID because access is a shared login.</li>
+          </ul>
+        </div>
+        <div class="card win white">
+          <h3>With iProjectX</h3>
+          <ul>
+            <li>Health is calculated. A named override is marked so the room can see it.</li>
+            <li>Pulse shows what deteriorated this week. Cockpit shows what needs a decision.</li>
+            <li>A gate leaves a checklist and a Decision. RAID sits on the project.</li>
+            <li>Capacity is working days × hours/day after holidays and leave.</li>
+            <li>Budget, Plan, Forecast, Demand, and Actuals have one write path each.</li>
+            <li>Project Access scopes pages, KPIs, dropdowns, and Home.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="section callout">
+        The buyer is not shopping for more columns. They are buying an early-warning system that can
+        <strong>defend every red, every dollar, and every hold</strong> in the room.
+      </div>
+      <div class="section">
+        <h2>Four jobs the product must win</h2>
+        <div class="g4">
+          <div class="card white"><h3>PMO</h3><p>“I will not rebuild the pack on Sunday.” One truth for health, gates, RAID, and resources.</p></div>
+          <div class="card white"><h3>Sponsor</h3><p>“Show me what needs a decision this week.” Attention cards, not a 40-slide appendix.</p></div>
+          <div class="card white"><h3>CFO</h3><p>“Defend the number.” Plan / Actual / Forecast, FY envelope, CapEx / OpEx, benefits.</p></div>
+          <div class="card white"><h3>CISO</h3><p>“Do not leak the portfolio.” MFA, RLS, optional SSO / BYOD, in-house AI, audit evidence.</p></div>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>Do not compete with another register</span><span>02 / 12</span></div>
+  </section>
+
+  <!-- 03 SPINE -->
+  <section class="page">
+    <div class="topbar">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <span class="kicker">Platform spine</span>
+    </div>
+    <h1 class="play">Everything hangs off the same stack</h1>
+    <div class="body">
+      <p>Money, people, and gates attach to a <strong>stream</strong>, then roll up to the project. That is why Budget is set on the stream, people are planned on the stream, and gates are passed on the stream.</p>
+      <table class="table">
+        <thead><tr><th>Block</th><th>What it is</th><th>Why it matters in a sale</th></tr></thead>
+        <tbody>
+          <tr><td>Strategic Alignment</td><td>Why we spend: Business Strategic, IT Strategic, CAPEX, Unfunded.</td><td>Executives see mix, not only a project code.</td></tr>
+          <tr><td>Program</td><td>A named family of related projects.</td><td>Roll-ups and access grants have somewhere to hang.</td></tr>
+          <tr><td>Project</td><td>One change, with a code, owner, delivery method, dates.</td><td>The workspace. Dropdown to switch. Register lives on Programs.</td></tr>
+          <tr><td>Functional area</td><td>Which part of the business owns the outcome.</td><td>Pulse and executive filters. Access grants.</td></tr>
+          <tr><td>Stream</td><td>A delivery lane. Core is created. Extra lanes get dates, budget, people, gates.</td><td>Real work is rarely one bucket of hours.</td></tr>
+          <tr><td>Work item</td><td>A task with hours. Those hours are Demand, not Plan.</td><td>Stops “the plan is the to-do list” confusion.</td></tr>
+        </tbody>
+      </table>
+      <div class="section">
+        <h2>The operating loop — seven steps, one product</h2>
+        <div class="loop">
+          <div><b>1 Align</b><span>Program, project, method, owner.</span></div>
+          <div><b>2 Envelope</b><span>Stream Budget in Data Editor.</span></div>
+          <div><b>3 Plan</b><span>Estimation Planning → Apply.</span></div>
+          <div><b>4 Forecast</b><span>FY outlook. Late gates can lift it.</span></div>
+          <div><b>5 Demand</b><span>Work items and the board.</span></div>
+          <div><b>6 Actuals</b><span>Approved timesheets + posted OpEx.</span></div>
+          <div><b>7 Steer</b><span>Gates, RAID, Pulse, Financials.</span></div>
+        </div>
+      </div>
+      <div class="section">
+        <h2>Delivery methods on one spine</h2>
+        <div class="g3">
+          <div class="card white"><h3>Waterfall</h3><p>Stage gates (Discovery, Design, Build…). Each stream has its own gate dates. Pass, hold, or reject with a checklist.</p></div>
+          <div class="card white"><h3>Agile</h3><p>Sprints under Agile / Sprints. Work items can be tied to a sprint. Health still rolls up the same way.</p></div>
+          <div class="card white"><h3>Hybrid</h3><p>Gates and sprints on the same project. Stage gate for phase money; sprint for iteration capture. RAID stays with the project.</p></div>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>If a competitor splits Agile and Waterfall into two products, they split the truth</span><span>03 / 12</span></div>
+  </section>
+
+  <!-- 04 SEE -->
+  <section class="page">
+    <div class="topbar">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <span class="kicker">See · Command Center</span>
+    </div>
+    <h1 class="play">Show what moved this week — then open the project that needs a decision</h1>
+    <div class="body">
+      <div class="g2">
+        <div class="card white">
+          <h3>Home</h3>
+          <p>Role-aware landing. Executives see Pulse and Cockpit first. PMs see My Work, Projects, Work Items. Admins see Team, Configuration, and Project data access. Home KPIs honour Project Access — no neighbour’s portfolio.</p>
+        </div>
+        <div class="card white">
+          <h3>My Work + the bell</h3>
+          <p>Personal queue: assigned work items, timesheet approvals, decisions waiting on you, unread alerts. Over-allocation (leave and holidays) notifies the person and their resource manager.</p>
+        </div>
+        <div class="card white">
+          <h3>Portfolio Pulse</h3>
+          <p>Six areas: financial, delivery, resources, risk, benefits, dependencies — with week-over-week movement. Leaders see what deteriorated, what improved, and what became overdue. Filter by program, alignment, functional area.</p>
+        </div>
+        <div class="card white">
+          <h3>Executive Cockpit</h3>
+          <p>Attention cards, scoreboard, health mix, FY money, project summaries. Built for the room that has twelve minutes, not a 40-slide appendix. Filterable to the projects that person is allowed to see.</p>
+        </div>
+        <div class="card white">
+          <h3>Executive Dashboard</h3>
+          <p>Charts and the live register. Same Health Engine RAG unless a named override is set. Segmentation and mix sit here so spend can be read by why, not only by code.</p>
+        </div>
+        <div class="card white">
+          <h3>Executive Intelligence</h3>
+          <p>Delay cascades and what-ifs. “If this predecessor slips, who is already late?” belongs in the product, not a side spreadsheet. Investment ranking and asks stay on the same truth.</p>
+        </div>
+      </div>
+      <div class="section">
+        <h2>Also in Command Center</h2>
+        <div class="g3">
+          <div class="card white"><h3>Strategic Alignment</h3><p>The investment tree — Business Strategic, IT Strategic, CAPEX, Unfunded — and how projects hang off it.</p></div>
+          <div class="card white"><h3>In-house AI</h3><p>Portfolio Q&amp;A from live PMO data in the organisation session. An approved Open AI model is off unless the organisation turns it on.</p></div>
+          <div class="card white"><h3>Latest Updates · Support · About</h3><p>What shipped. How to get help. How the app and money work — plus downloadable manuals and this pitch.</p></div>
+        </div>
+      </div>
+      <p class="section">Demo path: Pulse → red project → Cockpit attention card → Explain This on the money → FY cashflow.</p>
+    </div>
+    <div class="foot"><span>Scoped intelligence is the product. A shared login is not</span><span>04 / 12</span></div>
+  </section>
+
+  <!-- 05 HEALTH -->
+  <section class="page">
+    <div class="topbar">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <span class="kicker">Explain · Project Health Engine</span>
+    </div>
+    <h1 class="play">Health is calculated. RAG is earned.</h1>
+    <div class="body">
+      <p>Weighted across eight dimensions. Early warnings and a 30-day outlook — not a traffic light someone chose in a panic. Dashboards that show overall RAG use this engine unless a named override is set (marked <strong>M</strong>).</p>
+      <div class="rag" style="margin: 0 0 5mm;">
+        <div class="g">Green ≥ 80 — on the rails. Still watch the drivers.</div>
+        <div class="a">Amber 65–79 — pressure is visible. Act this week.</div>
+        <div class="r">Red &lt; 65 — the room needs a decision, not a colour.</div>
+      </div>
+      <div class="dim"><b>Schedule</b><span>Slip against planned dates, gate lateness, planned versus actual progress.</span><em>20%</em></div>
+      <div class="dim"><b>Financial</b><span>FAC versus approved envelope, cashflow variance, Plan versus Actual versus Forecast.</span><em>20%</em></div>
+      <div class="dim"><b>Delivery</b><span>Work throughput, phase progress, method-aware gates and sprints.</span><em>15%</em></div>
+      <div class="dim"><b>Scope</b><span>Change pressure and whether the agreed outcome is still the work being done.</span><em>10%</em></div>
+      <div class="dim"><b>Resource</b><span>Load versus hours/day after holidays and leave. Over / Optimal / Under on the people who do the work.</span><em>10%</em></div>
+      <div class="dim"><b>Risk</b><span>Open RAID, critical and overdue items, whether issues are ageing without an owner.</span><em>10%</em></div>
+      <div class="dim"><b>Dependencies</b><span>Predecessor delay, critical path, cross-project links that will cascade.</span><em>10%</em></div>
+      <div class="dim"><b>Benefits</b><span>Promised versus realised. Benefits realisation is scored into health, not a slide at year-end.</span><em>5%</em></div>
+      <div class="section g2">
+        <div class="card white">
+          <h3>Explain This</h3>
+          <p>Material forecast and spend figures carry drivers: FAC versus envelope, monthly Plan vs Actual vs Forecast, CapEx and OpEx. The CFO should never have to ask “where did that come from?” in a public room.</p>
+        </div>
+        <div class="card white">
+          <h3>Override is visible</h3>
+          <p>A sponsor may set a named RAG override. It is marked so nobody pretends the engine agreed. That is the honest version of “the pack has to go out.”</p>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>If a competitor types the chip, they are a register</span><span>05 / 12</span></div>
+  </section>
+
+  <!-- 06 MONEY -->
+  <section class="page">
+    <div class="topbar">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <span class="kicker">Explain · Money</span>
+    </div>
+    <h1 class="play">Five layers. One write path each. Dashboards only read.</h1>
+    <div class="body">
+      <table class="table">
+        <thead><tr><th>Layer</th><th>Plain meaning</th><th>Where it is written</th></tr></thead>
+        <tbody>
+          <tr><td>Budget</td><td>Approved envelope for the stream.</td><td>Data Editor → Project Streams. FY Allocation is the year slice.</td></tr>
+          <tr><td>Plan</td><td>The frozen baseline: how we intend to spend, by month and person.</td><td>Estimation Planning → Apply. Labor is OpEx; further costs tagged CapEx/OpEx.</td></tr>
+          <tr><td>Forecast</td><td>What we think the bill will be now. Starts equal to Plan.</td><td>FY Allocation forecast $. A late gate can lift phase forecast.</td></tr>
+          <tr><td>Demand</td><td>Work handed to people (work-item hours).</td><td>Work Items. Does not rewrite Plan.</td></tr>
+          <tr><td>Actual</td><td>Hours and money that already happened.</td><td>Approved timesheets + posted other OpEx.</td></tr>
+        </tbody>
+      </table>
+      <div class="section">
+        <h2>Financial screens — all readers of those layers</h2>
+        <div class="g4">
+          <div class="card white"><h3>Financials</h3><p>Plan vs Actual vs Forecast in one view. The steering pack for Friday.</p></div>
+          <div class="card white"><h3>FY Allocation</h3><p>Split Budget and Forecast $ by financial year. Year totals must not exceed the stream envelope.</p></div>
+          <div class="card white"><h3>Budget vs Plan</h3><p>Did the baseline consume the approved envelope — before anyone talks forecast?</p></div>
+          <div class="card white"><h3>Phase Financials</h3><p>Money by gate / phase so a late Build does not hide inside a project total.</p></div>
+          <div class="card white"><h3>Earned Value (EVM)</h3><p>Earned value against the same Plan and Actuals — not a second set of books.</p></div>
+          <div class="card white"><h3>Cost vs Benefit</h3><p>What we are spending versus what we promised to get back.</p></div>
+          <div class="card white"><h3>Benefits</h3><p>Promised versus realised, scored into the Health Engine (5%).</p></div>
+          <div class="card white"><h3>How money works</h3><p>In-app glossary. The household-renovation version of the five words.</p></div>
+        </div>
+      </div>
+      <div class="section callout">
+        Mixing Budget with Forecast, or Demand with Plan, is what makes dashboards feel contradictory.
+        iProjectX <strong>refuses that mix</strong> at the write path — that is a capability, not a training slide.
+      </div>
+    </div>
+    <div class="foot"><span>Forecast can move. Budget and Plan stay until someone formally changes them</span><span>06 / 12</span></div>
+  </section>
+
+  <!-- 07 PEOPLE -->
+  <section class="page">
+    <div class="topbar">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <span class="kicker">People, capacity, time</span>
+    </div>
+    <h1 class="play">Capacity is a number — after weekends, holidays, and leave</h1>
+    <div class="body">
+      <div class="g2">
+        <div class="card white">
+          <h3>Estimation Planning</h3>
+          <p>The estimate board. Select a role, put a named person on a stream phase. Effort is hours / days / weeks. Working days already exclude weekends, location holidays, and that person’s dated leave.</p>
+          <p>If assigned hours exceed remaining capacity: <strong>Save anyway?</strong> Confirming still saves, toast-warns the planner, and notifies the person’s linked login and resource manager.</p>
+          <p><strong>Apply planned baseline</strong> writes Plan only: planned dates, CapEx/OpEx plan, Planned FTE. It does not write actuals.</p>
+        </div>
+        <div class="card white">
+          <h3>Resources</h3>
+          <p>Name, role, location, hours/day, cost rate, resource manager. Location drives public holidays (* is org-wide). Hours/day is the Over / Optimal / Under cap.</p>
+          <p>Utilisation is allocation vs demand vs actual. Monthly capacity is <strong>working days × hours/day</strong> — not a flat week × 4.33.</p>
+          <p><strong>Holidays &amp; leave</strong> live on Resources. Annual / Sick / General with inclusive dates. Geography holidays match the person’s location.</p>
+        </div>
+      </div>
+      <div class="section g2">
+        <div class="card white">
+          <h3>Timesheets</h3>
+          <p>Week grid against assigned work items. Daily totals flag Over / Optimal / Under. Submit → PM then Resource Manager approve. Only <strong>approved</strong> hours become Actual FTE $ (hours × rate). Month plan respects the same holiday/leave calendar.</p>
+        </div>
+        <div class="card white">
+          <h3>Load chips</h3>
+          <p><strong>Optimal</strong> is ≥ 60% of the daily cap. <strong>Over</strong> is above the cap. A dated window whose weekdays are all leave or holidays is Over — weekend-only windows are not. That is what stops “they’re on leave, keep booking.”</p>
+        </div>
+      </div>
+      <div class="section">
+        <h2>What the room can say after a demo</h2>
+        <p>“We do not book a person who is off. We do not pretend 40 hours exist in a 32-hour week. And when someone still saves, the person and their manager hear about it — in the product, not in Slack folklore.”</p>
+      </div>
+    </div>
+    <div class="foot"><span>Talent fog is a governance failure with a payroll number attached</span><span>07 / 12</span></div>
+  </section>
+
+  <!-- 08 DELIVERY -->
+  <section class="page">
+    <div class="topbar">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <span class="kicker">Delivery</span>
+    </div>
+    <h1 class="play">Plan the lane. Hand out the work. See it on a board, a timeline, and a gate.</h1>
+    <div class="body">
+      <div class="g3">
+        <div class="card white"><h3>Projects workspace</h3><p>Overview, summary, streams, RAID, finance. Switch with the project dropdown. The full register lives on Programs — the Projects menu is the workspace, not a second list that drifts.</p></div>
+        <div class="card white"><h3>Streams</h3><p>Core is created for you. Extra lanes (data, security, change) get their own dates, budget, people, and gates. Project totals are roll-ups, not a second envelope.</p></div>
+        <div class="card white"><h3>Work Items</h3><p>Title, estimate hours, planned dates, assignees. Stage gate for Waterfall/Hybrid; sprint for Agile/Hybrid. Load chips vs each person’s hours/day. Lane pending = allocated Plan minus demand.</p></div>
+        <div class="card white"><h3>Work Board</h3><p>The same items as a board. Status moves here; hours still live on the item. No shadow Kanban in a different tool that the PMO cannot see.</p></div>
+        <div class="card white"><h3>Timeline</h3><p>Dates against people and streams. Useful when the question is “when,” not “how many hours.”</p></div>
+        <div class="card white"><h3>Roadmap × Governance</h3><p>Work dates against gates. Analytics for the same roadmap so a pretty picture is not a different dataset.</p></div>
+        <div class="card white"><h3>Agile / Sprints</h3><p>Sprint records under the project. Work items can be tied to a sprint. Hybrid projects use this beside stage gates.</p></div>
+        <div class="card white"><h3>Delivery Methods &amp; Gates</h3><p>Configure gate names per method. Do not invent a gate in a spreadsheet that the method does not list.</p></div>
+        <div class="card white"><h3>Project Infographic</h3><p>A one-page picture of the project for people who will not open the register. Downloadable brief when the sponsor wants a leave-behind.</p></div>
+      </div>
+      <div class="section callout">
+        Demand is the to-do list. Plan is the reserved FTE. If a competitor treats them as the same column,
+        the utilisation heatmap is theatre.
+      </div>
+    </div>
+    <div class="foot"><span>Agile and Waterfall are not two products</span><span>08 / 12</span></div>
+  </section>
+
+  <!-- 09 GOVERN -->
+  <section class="page">
+    <div class="topbar">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <span class="kicker">Govern</span>
+    </div>
+    <h1 class="play">Gates, RAID, and decisions — with evidence, not email</h1>
+    <div class="body">
+      <div class="g2">
+        <div class="card white">
+          <h3>Stage Gates</h3>
+          <p>Pass, hold, or reject with a checklist. The decision is stored on the project. Approvals become Decisions. A late gate can raise phase <strong>Forecast</strong>; it does not silently rewrite Budget or Plan.</p>
+        </div>
+        <div class="card white">
+          <h3>Investment Committee</h3>
+          <p>Portfolio-level go / hold / stop with financials on the same page. Use it when the ask is bigger than a stream gate — funding, stop, or reshape the envelope.</p>
+        </div>
+        <div class="card white">
+          <h3>RAID</h3>
+          <p>Risks, Actions, Issues, Decisions — plus stakeholders and lessons. Filter by project, stream, forum, sponsor, and gate. Critical and overdue items escalate. Daily digests keep the queue moving. My Work shows items waiting on you.</p>
+        </div>
+        <div class="card white">
+          <h3>Governance Channel</h3>
+          <p>Forums and cadence windows so steering is a rhythm, not a surprise. RAID can be scoped to the forum that owns it.</p>
+        </div>
+        <div class="card white">
+          <h3>Dependencies &amp; Schedule CPM</h3>
+          <p>Project-to-project and work-item links. Critical path on Schedule CPM. Delay what-ifs belong in Executive Intelligence.</p>
+        </div>
+        <div class="card white">
+          <h3>Risk Roadmap · Releases · Lessons</h3>
+          <p>Risk over time, a release register, and lessons learned that stay with the organisation — not in a slide that dies after the close-out meeting.</p>
+        </div>
+      </div>
+      <div class="section">
+        <h2>Reports you can take into the room</h2>
+        <p><strong>Executive Reports</strong> and <strong>Report Builder</strong> produce packs from live data. Excel on-ramp lives in Data Editor (codes and names, never raw UUIDs). Page-download policy lets the org decide which screens may export.</p>
+      </div>
+      <div class="section callout">
+        Governance is useless if it is a different system from delivery. iProjectX <strong>refuses that split</strong>.
+      </div>
+    </div>
+    <div class="foot"><span>Demo: open RAID → record a gate decision → watch it on My Work</span><span>09 / 12</span></div>
+  </section>
+
+  <!-- 10 PORTFOLIO -->
+  <section class="page">
+    <div class="topbar">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <span class="kicker">Portfolio arena</span>
+    </div>
+    <h1 class="play">Shape the portfolio before the work is a project — then keep it honest</h1>
+    <div class="body">
+      <div class="g3">
+        <div class="card white">
+          <h3>Programs</h3>
+          <p>Named families and the full project register. New Project starts here. Roll-ups for sponsors who own a program, not a project code.</p>
+        </div>
+        <div class="card white">
+          <h3>Demand Pipeline</h3>
+          <p>Ideas that are not projects yet. Score and convert when the organisation is ready. Do not plan FTE on an idea. Jira can land demand in this funnel.</p>
+        </div>
+        <div class="card white">
+          <h3>Segmentation</h3>
+          <p>Cut the portfolio by alignment, functional area, method, health. Mix the executives actually use in a funding conversation.</p>
+        </div>
+        <div class="card white">
+          <h3>Prioritisation</h3>
+          <p>Rank what should move, stop, or wait — using the same health and money, not a separate scoring spreadsheet.</p>
+        </div>
+        <div class="card white">
+          <h3>Alignment Scenarios</h3>
+          <p>What if we shift mix across Business Strategic / IT Strategic / CAPEX / Unfunded? Scenarios for the conversation before the IC paper is typed.</p>
+        </div>
+        <div class="card white">
+          <h3>Movements</h3>
+          <p>What entered, left, or changed band. The opposite of a static register that cannot explain last quarter.</p>
+        </div>
+      </div>
+      <div class="section">
+        <h2>Integrations (shipped vs not claimed)</h2>
+        <div class="g2">
+          <div class="card win white">
+            <h3>Shipped</h3>
+            <p>Jira into the Demand Pipeline, under the same tenancy rules. Excel import/export via Data Editor (project_code, resource_name, holiday and leave sheets). Webhooks follow isolation.</p>
+          </div>
+          <div class="card white">
+            <h3>Not claimed as shipped</h3>
+            <p>Azure DevOps and ServiceNow are not sold as live connectors. Do not promise a certificate, a customer logo, or an ROI percentage the product has not earned.</p>
+          </div>
+        </div>
+      </div>
+      <p class="section">White-label: logos, colours, auth experience, and themes per organisation. Their board should see their mark. Branding does not weaken tenancy.</p>
+    </div>
+    <div class="foot"><span>Intake without conversion is a suggestion box. Conversion without health is a new register</span><span>10 / 12</span></div>
+  </section>
+
+  <!-- 11 TRUST -->
+  <section class="page">
+    <div class="topbar">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <span class="kicker">Trust · Admin · Atlas</span>
+    </div>
+    <h1 class="play">Enterprise-hard by default. Optional where it must be.</h1>
+    <div class="body">
+      <div class="g3">
+        <div class="card white"><h3>Identity</h3><p>Authenticator TOTP required for every user. Optional per-organisation SAML SSO. Optional IP / CIDR allowlists.</p></div>
+        <div class="card white"><h3>Isolation</h3><p>Row-level security per organisation. Project Access grants by alignment, program, functional area, project, and stream — including Home KPIs.</p></div>
+        <div class="card white"><h3>Residency</h3><p>Optional BYOD: tenant registers on your PostgREST-compatible database. Auth and control plane stay on iProjectX.</p></div>
+        <div class="card white"><h3>Intelligence</h3><p>In-house AI first. An approved Open AI model is off unless the organisation requests it. Do not paste a neighbour’s RAID into a public chatbot.</p></div>
+        <div class="card white"><h3>Evidence</h3><p>Admin audit log, security events, Excel evidence packs. Designed for SOC 2 and ISO 27001 <em>readiness</em> — we do not claim a certificate we have not earned.</p></div>
+        <div class="card white"><h3>Admin control plane</h3><p>Users, roles, permissions, navigation sequence, page-download policy, closed-project purge, billing, licenses, alert emails.</p></div>
+      </div>
+      <div class="section">
+        <h2>Screen atlas — where the capability lives</h2>
+        <table class="table">
+          <thead><tr><th>Group</th><th>Capabilities</th></tr></thead>
+          <tbody>
+            <tr><td>Command Center</td><td>Home · Strategic Alignment · My Work · Pulse · Cockpit · Dashboard · Intelligence · In-house AI · Updates · Support · About</td></tr>
+            <tr><td>Project Arena</td><td>Projects · Estimation Planning · Programs · Infographic · Segmentation · Prioritisation · Movements · Demand Pipeline · Alignment Scenarios</td></tr>
+            <tr><td>Delivery</td><td>Work Items · Work Board · Timeline · Roadmap × Governance · Analytics · Stage Gates · Methods · Sprints · Governance Channel · IC · Dependencies · CPM · Resources · Timesheets · Risk Roadmap</td></tr>
+            <tr><td>Financials</td><td>Financials · How money works · FY Allocation · Budget vs Plan · Phase Financials · EVM · Cost vs Benefit · Benefits</td></tr>
+            <tr><td>Governance</td><td>Risks · Issues · Decisions · Actions · Stakeholders · Lessons · Releases · Executive Reports · Report Builder · Audit Log · Data Editor</td></tr>
+            <tr><td>Org Admin</td><td>Configuration · Integrations · Navigation · Page downloads · Project data access · Purge · Billing · Licenses · Users · Permissions</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="foot"><span>Hand the CISO the security one-pager. Do not over-claim</span><span>11 / 12</span></div>
+  </section>
+
+  <!-- 12 CLOSE -->
+  <section class="page">
+    <div class="hero" style="padding: 10mm 12mm 8mm;">
+      <div class="brand"><span class="mark"><img src="../../public/landing/logos/mark-x.png" alt="" /></span>iProjectX</div>
+      <p class="eyebrow">Close · Expression of Interest</p>
+      <h1 style="font-size: 26px;">Turn the portfolio into<br /><em>an intelligence advantage.</em></h1>
+      <p class="lede">White-label ready. MFA-enforced. Optional SSO and BYOD. In-house AI by default. Deploy calculated health, Portfolio Pulse, explainable money, governed gates, and honest capacity — not another spreadsheet register.</p>
+    </div>
+    <div class="body">
+      <h2>What to leave in the room</h2>
+      <div class="g3">
+        <div class="card white"><h3>This pitch (12 pages)</h3><p>Capabilities in detail. For the PMO and the sponsor who will champion the product.</p></div>
+        <div class="card white"><h3>2-page brochure</h3><p>See / Explain / Govern / Trust. The leave-behind if they only take two pages.</p></div>
+        <div class="card white"><h3>Security / trust sheet</h3><p>For CISO and procurement. Controls, AI, BYOD. No fake certificates.</p></div>
+      </div>
+      <div class="section">
+        <h2>Suggested next hour</h2>
+        <div class="g3">
+          <div class="card white"><h3>01 · Walk their pain</h3><p>Cockpit on their scope — their programs, their reds, their FY money.</p></div>
+          <div class="card white"><h3>02 · Prove the write paths</h3><p>Estimation Planning → a leave clash → Pulse on the same project → a gate with a checklist.</p></div>
+          <div class="card white"><h3>03 · Capture EOI</h3><p>Same day. www.iprojectx.com · www.iprojectx.com.au</p></div>
+        </div>
+      </div>
+      <div class="section dark-cta">
+        <div>
+          <h2>Expression of Interest</h2>
+          <p>Stop flying blind. Give the board one truth.</p>
+        </div>
+        <div style="text-align:right;">
+          <b>www.iprojectx.com</b><br />
+          <b>www.iprojectx.com.au</b>
+        </div>
+      </div>
+      <p class="section" style="font-size:9px; color:#8a97a8;">Companion documents: user manual (how to operate), 10-slide room pitch (one idea per slide), one-pager. Seller playbook is internal — do not leave it with the buyer. No invented logos, quotes, or ROI.</p>
+    </div>
+    <div class="foot"><span>www.iprojectx.com · www.iprojectx.com.au</span><span>12 / 12 · Confidential</span></div>
+  </section>
+</body>
+</html>

@@ -3,7 +3,7 @@
  * Requires Google Chrome / Chromium on PATH (or CHROME_PATH).
  */
 import { spawnSync } from "node:child_process";
-import { mkdirSync, existsSync, mkdtempSync, copyFileSync, unlinkSync } from "node:fs";
+import { mkdirSync, existsSync, mkdtempSync, copyFileSync, unlinkSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -50,6 +50,11 @@ const jobs = [
     timeout: "30",
   },
   {
+    html: join(root, "docs", "sales", "iProjectX-Platform-Pitch.html"),
+    pdf: join(root, "docs", "sales", "pdf", "iProjectX-Platform-Pitch.pdf"),
+    timeout: "90",
+  },
+  {
     html: join(root, "docs", "sales", "iProjectX-Security-Trust.html"),
     pdf: join(root, "docs", "sales", "pdf", "iProjectX-Security-Trust.pdf"),
     timeout: "30",
@@ -93,6 +98,7 @@ for (const job of jobs) {
     `--user-data-dir=${profile}`,
     "--no-pdf-header-footer",
     "--hide-scrollbars",
+    "--virtual-time-budget=20000",
     `--print-to-pdf=${job.pdf}`,
     url,
   ];
@@ -102,7 +108,10 @@ for (const job of jobs) {
     killSignal: "SIGKILL",
   });
   const timedOut = run.error?.code === "ETIMEDOUT";
-  if (run.error || run.status !== 0 || !existsSync(job.pdf)) {
+  const wrote = existsSync(job.pdf) && statSync(job.pdf).size > 1000;
+  // Headless Chrome sometimes writes the PDF then hangs; the destination was
+  // unlinked first, so a new non-empty file is success even on timeout.
+  if (!wrote) {
     console.error(
       run.error?.message ||
         run.stderr ||

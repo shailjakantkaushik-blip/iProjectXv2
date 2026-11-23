@@ -6,8 +6,9 @@ Print-ready pack for enterprise conversations. Source is HTML in this folder. Ge
 
 | File | Who | Use |
 | --- | --- | --- |
+| `pdf/iProjectX-Platform-Pitch.pdf` | Sponsor / PMO / exec | **12-page A4 capabilities pitch.** Features in detail. |
 | `pdf/iProjectX-Sales-Brochure.pdf` | Anyone in the room | 2-page A4 brochure. |
-| `pdf/iProjectX-Sales-Pitch.pdf` | Sponsor / PMO / exec | 10-slide 16:9 pitch. One idea per slide. |
+| `pdf/iProjectX-Sales-Pitch.pdf` | Short room | 10-slide 16:9 pitch. One idea per slide. |
 | `pdf/iProjectX-One-Pager.pdf` | Anyone who missed the meeting | A4 leave-behind. |
 | `pdf/iProjectX-Security-Trust.pdf` | CISO / procurement | Controls, AI, BYOD. No fake certificates. |
 | `pdf/iProjectX-Seller-Playbook.pdf` | iProjectX sellers only | Talk track, discovery, demo path, objections, close. **Do not leave this with the buyer.** |
